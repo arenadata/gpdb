@@ -46,6 +46,7 @@
 #include "c.h"
 #include "utils/elog.h"
 #include "utils/palloc.h"
+#include "storage/itemptr.h"
 
 /* ----------------------------------------------------------------
  *				Section 1:	variable-length datatypes (TOAST support)
@@ -107,13 +108,19 @@ typedef struct varatt_expanded
  * Type tag for the various sorts of "TOAST pointer" datums.  The peculiar
  * value for VARTAG_ONDISK comes from a requirement for on-disk compatibility
  * with a previous notion that the tag field was the pointer datum's length.
+ *
+ * GPDB: In PostgreSQL VARTAG_ONDISK is set to 18 in order to match the
+ * historic (VARHDRSZ_EXTERNAL + sizeof(struct varatt_external)) value of the
+ * pointer datum's length. In Greenplum VARHDRSZ_EXTERNAL is two bytes longer
+ * than PostgreSQL due to extra padding in varattrib_1b_e, so VARTAG_ONDISK has
+ * to be set to 20.
  */
 typedef enum vartag_external
 {
 	VARTAG_INDIRECT = 1,
 	VARTAG_EXPANDED_RO = 2,
 	VARTAG_EXPANDED_RW = 3,
-	VARTAG_ONDISK = 18
+	VARTAG_ONDISK = 20
 } vartag_external;
 
 /* this test relies on the specific tag values above */
@@ -156,32 +163,35 @@ typedef struct
 	char		va_data[FLEXIBLE_ARRAY_MEMBER]; /* Data begins here */
 } varattrib_1b;
 
+/* NOT Like Postgres! ...In GPDB, We waste a few bytes of padding */
 /* TOAST pointers are a subset of varattrib_1b with an identifying tag byte */
 typedef struct
 {
-	uint8		va_header;		/* Always 0x80 or 0x01 */
+	uint8		va_header;		/* Always 0x80  */
 	uint8		va_tag;			/* Type of datum */
+	uint8		va_padding[2];	/*** GPDB only:  Alignment padding ***/
 	char		va_data[FLEXIBLE_ARRAY_MEMBER]; /* Type-specific data */
 } varattrib_1b_e;
 
 /*
- * Bit layouts for varlena headers on big-endian machines:
+ * Bit layouts for varlena headers: (GPDB always stores this big-endian format)
  *
  * 00xxxxxx 4-byte length word, aligned, uncompressed data (up to 1G)
  * 01xxxxxx 4-byte length word, aligned, *compressed* data (up to 1G)
  * 10000000 1-byte length word, unaligned, TOAST pointer
  * 1xxxxxxx 1-byte length word, unaligned, uncompressed data (up to 126b)
  *
- * Bit layouts for varlena headers on little-endian machines:
+ * Greenplum differs from PostgreSQL here... In Postgres, they use different
+ * macros for big-endian and little-endian machines, so the length is contiguous,
+ * while the 4 byte lengths are stored in native endian format.
  *
- * xxxxxx00 4-byte length word, aligned, uncompressed data (up to 1G)
- * xxxxxx10 4-byte length word, aligned, *compressed* data (up to 1G)
- * 00000001 1-byte length word, unaligned, TOAST pointer
- * xxxxxxx1 1-byte length word, unaligned, uncompressed data (up to 126b)
+ * Greenplum stored the 4 byte varlena header in network byte order, so it always
+ * look big-endian in the tuple.   This is a bit ugly, but changing it would require
+ * all our customers to initdb.
  *
  * The "xxx" bits are the length field (which includes itself in all cases).
- * In the big-endian case we mask to extract the length, in the little-endian
- * case we shift.  Note that in both cases the flag bits are in the physically
+ * In the big-endian case we mask to extract the length.
+ * Note that in both cases the flag bits are in the physically
  * first byte.  Also, it is not possible for a 1-byte length word to be zero;
  * this lets us disambiguate alignment padding bytes from the start of an
  * unaligned datum.  (We now *require* pad bytes to be filled with zero!)
@@ -199,8 +209,6 @@ typedef struct
  * checking for IS_1B.
  */
 
-#ifdef WORDS_BIGENDIAN
-
 #define VARATT_IS_4B(PTR) \
 	((((varattrib_1b *) (PTR))->va_header & 0x80) == 0x00)
 #define VARATT_IS_4B_U(PTR) \
@@ -216,54 +224,21 @@ typedef struct
 
 /* VARSIZE_4B() should only be used on known-aligned data */
 #define VARSIZE_4B(PTR) \
-	(((varattrib_4b *) (PTR))->va_4byte.va_header & 0x3FFFFFFF)
+	(ntohl(((varattrib_4b *) (PTR))->va_4byte.va_header) & 0x3FFFFFFF)
 #define VARSIZE_1B(PTR) \
 	(((varattrib_1b *) (PTR))->va_header & 0x7F)
 #define VARTAG_1B_E(PTR) \
 	(((varattrib_1b_e *) (PTR))->va_tag)
 
 #define SET_VARSIZE_4B(PTR,len) \
-	(((varattrib_4b *) (PTR))->va_4byte.va_header = (len) & 0x3FFFFFFF)
+	(((varattrib_4b *) (PTR))->va_4byte.va_header = htonl( (len) & 0x3FFFFFFF ))
 #define SET_VARSIZE_4B_C(PTR,len) \
-	(((varattrib_4b *) (PTR))->va_4byte.va_header = ((len) & 0x3FFFFFFF) | 0x40000000)
+	(((varattrib_4b *) (PTR))->va_4byte.va_header = htonl( ((len) & 0x3FFFFFFF) | 0x40000000 ))
 #define SET_VARSIZE_1B(PTR,len) \
 	(((varattrib_1b *) (PTR))->va_header = (len) | 0x80)
 #define SET_VARTAG_1B_E(PTR,tag) \
 	(((varattrib_1b_e *) (PTR))->va_header = 0x80, \
 	 ((varattrib_1b_e *) (PTR))->va_tag = (tag))
-#else							/* !WORDS_BIGENDIAN */
-
-#define VARATT_IS_4B(PTR) \
-	((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x00)
-#define VARATT_IS_4B_U(PTR) \
-	((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x00)
-#define VARATT_IS_4B_C(PTR) \
-	((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x02)
-#define VARATT_IS_1B(PTR) \
-	((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x01)
-#define VARATT_IS_1B_E(PTR) \
-	((((varattrib_1b *) (PTR))->va_header) == 0x01)
-#define VARATT_NOT_PAD_BYTE(PTR) \
-	(*((uint8 *) (PTR)) != 0)
-
-/* VARSIZE_4B() should only be used on known-aligned data */
-#define VARSIZE_4B(PTR) \
-	((((varattrib_4b *) (PTR))->va_4byte.va_header >> 2) & 0x3FFFFFFF)
-#define VARSIZE_1B(PTR) \
-	((((varattrib_1b *) (PTR))->va_header >> 1) & 0x7F)
-#define VARTAG_1B_E(PTR) \
-	(((varattrib_1b_e *) (PTR))->va_tag)
-
-#define SET_VARSIZE_4B(PTR,len) \
-	(((varattrib_4b *) (PTR))->va_4byte.va_header = (((uint32) (len)) << 2))
-#define SET_VARSIZE_4B_C(PTR,len) \
-	(((varattrib_4b *) (PTR))->va_4byte.va_header = (((uint32) (len)) << 2) | 0x02)
-#define SET_VARSIZE_1B(PTR,len) \
-	(((varattrib_1b *) (PTR))->va_header = (((uint8) (len)) << 1) | 0x01)
-#define SET_VARTAG_1B_E(PTR,tag) \
-	(((varattrib_1b_e *) (PTR))->va_header = 0x01, \
-	 ((varattrib_1b_e *) (PTR))->va_tag = (tag))
-#endif							/* WORDS_BIGENDIAN */
 
 #define VARHDRSZ_SHORT			offsetof(varattrib_1b, va_data)
 #define VARATT_SHORT_MAX		0x7F
@@ -273,6 +248,7 @@ typedef struct
 #define VARATT_CONVERTED_SHORT_SIZE(PTR) \
 	(VARSIZE(PTR) - VARHDRSZ + VARHDRSZ_SHORT)
 
+/* In Postgres, this is 2, but in GPDB, it's 4, due to padding */
 #define VARHDRSZ_EXTERNAL		offsetof(varattrib_1b_e, va_data)
 
 #define VARDATA_4B(PTR)		(((varattrib_4b *) (PTR))->va_4byte.va_data)
@@ -360,12 +336,45 @@ typedef struct
  *
  * sizeof(Datum) == sizeof(void *) == 4 or 8
  *
+ *  Greenplum CDB:
+ *     Datum is always 8 bytes, regardless if it is 32bit or 64bit machine.
+ *  so may be > sizeof(void *). To align with postgres, which defines Datum as
+ *  uintptr_t type, it is defined as a uintptr_t to make sure the raw Datum
+ *  comparator work. GPDB's document requires a x86_64 environment where
+ *  uintptr_t is 64bits which doesn't violate the original 64bits definition.
+ *  Although it is unclear why did GPDB had that restriction at the beginning.
+ *
  * The macros below and the analogous macros for other types should be used to
  * convert between a Datum and the appropriate C type.
  */
 
 typedef uintptr_t Datum;
+typedef union Datum_U
+{
+	Datum d;
 
+	float4 f4[2];
+	float8 f8;
+
+	void *ptr;
+} Datum_U;
+
+#define SIZEOF_DATUM 8
+
+typedef Datum *DatumPtr;
+
+#define GET_1_BYTE(datum)	(((Datum) (datum)) & 0x000000ff)
+#define GET_2_BYTES(datum)	(((Datum) (datum)) & 0x0000ffff)
+#define GET_4_BYTES(datum)	(((Datum) (datum)) & 0xffffffff)
+#if SIZEOF_DATUM == 8
+#define GET_8_BYTES(datum)	((Datum) (datum))
+#endif
+#define SET_1_BYTE(value)	(((Datum) (value)) & 0x000000ff)
+#define SET_2_BYTES(value)	(((Datum) (value)) & 0x0000ffff)
+#define SET_4_BYTES(value)	(((Datum) (value)) & 0xffffffff)
+#if SIZEOF_DATUM == 8
+#define SET_8_BYTES(value)	((Datum) (value))
+#endif
 /*
  * A NullableDatum is used in places where both a Datum and its nullness needs
  * to be stored. This can be more efficient than storing datums and nullness
@@ -381,7 +390,11 @@ typedef struct NullableDatum
 	/* due to alignment padding this could be used for flags for free */
 } NullableDatum;
 
-#define SIZEOF_DATUM SIZEOF_VOID_P
+
+/* 
+ * Conversion between Datum and type X.  Changed from Macro to static inline
+ * functions to get proper type checking.
+ */
 
 /*
  * DatumGetBool
@@ -389,237 +402,33 @@ typedef struct NullableDatum
  *
  * Note: any nonzero value will be considered true.
  */
+static inline bool DatumGetBool(Datum d) { return ((bool)d) != 0; }
+static inline Datum BoolGetDatum(bool b) { return (b ? 1 : 0); } 
 
-#define DatumGetBool(X) ((bool) ((X) != 0))
+static inline char DatumGetChar(Datum d) { return (char) d; }
+static inline Datum CharGetDatum(char c) { return (Datum) c; } 
 
-/*
- * BoolGetDatum
- *		Returns datum representation for a boolean.
- *
- * Note: any nonzero value will be considered true.
- */
+static inline int8 DatumGetInt8(Datum d) { return (int8) d; } 
+static inline Datum Int8GetDatum(int8 i8) { return (Datum) i8; }
 
-#define BoolGetDatum(X) ((Datum) ((X) ? 1 : 0))
+static inline uint8 DatumGetUInt8(Datum d) { return (uint8) d; } 
+static inline Datum UInt8GetDatum(uint8 ui8) { return (Datum) ui8; } 
 
-/*
- * DatumGetChar
- *		Returns character value of a datum.
- */
+static inline int16 DatumGetInt16(Datum d) { return (int16) d; } 
+static inline Datum Int16GetDatum(int16 i16) { return (Datum) i16; } 
 
-#define DatumGetChar(X) ((char) (X))
+static inline uint16 DatumGetUInt16(Datum d) { return (uint16) d; } 
+static inline Datum UInt16GetDatum(uint16 ui16) { return (Datum) ui16; } 
 
-/*
- * CharGetDatum
- *		Returns datum representation for a character.
- */
+static inline int32 DatumGetInt32(Datum d) { return (int32) d; } 
+static inline Datum Int32GetDatum(int32 i32) { return (Datum) i32; } 
 
-#define CharGetDatum(X) ((Datum) (X))
+static inline uint32 DatumGetUInt32(Datum d) { return (uint32) d; } 
+static inline Datum UInt32GetDatum(uint32 ui32) { return (Datum) ui32; } 
 
-/*
- * Int8GetDatum
- *		Returns datum representation for an 8-bit integer.
- */
-
-#define Int8GetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetUInt8
- *		Returns 8-bit unsigned integer value of a datum.
- */
-
-#define DatumGetUInt8(X) ((uint8) (X))
-
-/*
- * UInt8GetDatum
- *		Returns datum representation for an 8-bit unsigned integer.
- */
-
-#define UInt8GetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetInt16
- *		Returns 16-bit integer value of a datum.
- */
-
-#define DatumGetInt16(X) ((int16) (X))
-
-/*
- * Int16GetDatum
- *		Returns datum representation for a 16-bit integer.
- */
-
-#define Int16GetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetUInt16
- *		Returns 16-bit unsigned integer value of a datum.
- */
-
-#define DatumGetUInt16(X) ((uint16) (X))
-
-/*
- * UInt16GetDatum
- *		Returns datum representation for a 16-bit unsigned integer.
- */
-
-#define UInt16GetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetInt32
- *		Returns 32-bit integer value of a datum.
- */
-
-#define DatumGetInt32(X) ((int32) (X))
-
-/*
- * Int32GetDatum
- *		Returns datum representation for a 32-bit integer.
- */
-
-#define Int32GetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetUInt32
- *		Returns 32-bit unsigned integer value of a datum.
- */
-
-#define DatumGetUInt32(X) ((uint32) (X))
-
-/*
- * UInt32GetDatum
- *		Returns datum representation for a 32-bit unsigned integer.
- */
-
-#define UInt32GetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetObjectId
- *		Returns object identifier value of a datum.
- */
-
-#define DatumGetObjectId(X) ((Oid) (X))
-
-/*
- * ObjectIdGetDatum
- *		Returns datum representation for an object identifier.
- */
-
-#define ObjectIdGetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetTransactionId
- *		Returns transaction identifier value of a datum.
- */
-
-#define DatumGetTransactionId(X) ((TransactionId) (X))
-
-/*
- * TransactionIdGetDatum
- *		Returns datum representation for a transaction identifier.
- */
-
-#define TransactionIdGetDatum(X) ((Datum) (X))
-
-/*
- * MultiXactIdGetDatum
- *		Returns datum representation for a multixact identifier.
- */
-
-#define MultiXactIdGetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetCommandId
- *		Returns command identifier value of a datum.
- */
-
-#define DatumGetCommandId(X) ((CommandId) (X))
-
-/*
- * CommandIdGetDatum
- *		Returns datum representation for a command identifier.
- */
-
-#define CommandIdGetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetPointer
- *		Returns pointer value of a datum.
- */
-
-#define DatumGetPointer(X) ((Pointer) (X))
-
-/*
- * PointerGetDatum
- *		Returns datum representation for a pointer.
- */
-
-#define PointerGetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetCString
- *		Returns C string (null-terminated string) value of a datum.
- *
- * Note: C string is not a full-fledged Postgres type at present,
- * but type input functions use this conversion for their inputs.
- */
-
-#define DatumGetCString(X) ((char *) DatumGetPointer(X))
-
-/*
- * CStringGetDatum
- *		Returns datum representation for a C string (null-terminated string).
- *
- * Note: C string is not a full-fledged Postgres type at present,
- * but type output functions use this conversion for their outputs.
- * Note: CString is pass-by-reference; caller must ensure the pointed-to
- * value has adequate lifetime.
- */
-
-#define CStringGetDatum(X) PointerGetDatum(X)
-
-/*
- * DatumGetName
- *		Returns name value of a datum.
- */
-
-#define DatumGetName(X) ((Name) DatumGetPointer(X))
-
-/*
- * NameGetDatum
- *		Returns datum representation for a name.
- *
- * Note: Name is pass-by-reference; caller must ensure the pointed-to
- * value has adequate lifetime.
- */
-
-#define NameGetDatum(X) CStringGetDatum(NameStr(*(X)))
-
-/*
- * DatumGetInt64
- *		Returns 64-bit integer value of a datum.
- *
- * Note: this macro hides whether int64 is pass by value or by reference.
- */
-
-#ifdef USE_FLOAT8_BYVAL
-#define DatumGetInt64(X) ((int64) (X))
-#else
-#define DatumGetInt64(X) (* ((int64 *) DatumGetPointer(X)))
-#endif
-
-/*
- * Int64GetDatum
- *		Returns datum representation for a 64-bit integer.
- *
- * Note: if int64 is pass by reference, this function returns a reference
- * to palloc'd space.
- */
-
-#ifdef USE_FLOAT8_BYVAL
-#define Int64GetDatum(X) ((Datum) (X))
-#else
-extern Datum Int64GetDatum(int64 X);
-#endif
+static inline int64 DatumGetInt64(Datum d) { return (int64) d; } 
+static inline Datum Int64GetDatum(int64 i64) { return (Datum) i64; } 
+static inline Datum Int64GetDatumFast(int64 x) { return Int64GetDatum(x); } 
 
 /*
  * DatumGetUInt64
@@ -648,138 +457,75 @@ extern Datum Int64GetDatum(int64 X);
 #define UInt64GetDatum(X) Int64GetDatum((int64) (X))
 #endif
 
-/*
- * Float <-> Datum conversions
- *
- * These have to be implemented as inline functions rather than macros, when
- * passing by value, because many machines pass int and float function
- * parameters/results differently; so we need to play weird games with unions.
- */
+static inline Oid DatumGetObjectId(Datum d) { return (Oid) d; } 
+static inline Datum ObjectIdGetDatum(Oid oid) { return (Datum) oid; } 
+
+static inline TransactionId DatumGetTransactionId(Datum d) { return (TransactionId) d; } 
+static inline Datum TransactionIdGetDatum(TransactionId tid) { return (Datum) tid; } 
+
+static inline TransactionId DatumGetMultiXactId(Datum d) { return (TransactionId) d; } 
+static inline Datum MultiXactIdGetDatum(TransactionId tid) { return (Datum) tid; } 
+
+static inline CommandId DatumGetCommandId(Datum d) { return (CommandId) d; } 
+static inline Datum CommandIdGetDatum(CommandId cid) { return (Datum) cid; } 
 
 /*
- * DatumGetFloat4
- *		Returns 4-byte floating point value of a datum.
- *
- * Note: this macro hides whether float4 is pass by value or by reference.
+ * DatumGetPointer
+ *		Returns pointer value of a datum.
  */
 
-#ifdef USE_FLOAT4_BYVAL
-static inline float4
-DatumGetFloat4(Datum X)
+#define DatumGetPointer(X) ((Pointer) (X))
+
+/*
+ * PointerGetDatum
+ *		Returns datum representation for a pointer.
+ */
+
+#define PointerGetDatum(X) ((Datum) (X))
+
+static inline char *DatumGetCString(Datum d) { return (char* ) DatumGetPointer(d); } 
+static inline Datum CStringGetDatum(const char *p) { return PointerGetDatum(p); }
+
+static inline Name DatumGetName(Datum d) { return (Name) DatumGetPointer(d); }
+static inline Datum NameGetDatum(const Name n) { return PointerGetDatum(n); }
+
+#ifndef WORDS_BIGENDIAN 
+static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[0]; } 
+static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[0] = f; return du.d; } 
+#else
+static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[1]; } 
+static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[1] = f; return du.d; } 
+#endif
+
+static inline float8 DatumGetFloat8(Datum d) { Datum_U du; du.d = d; return du.f8; } 
+static inline Datum Float8GetDatum(float8 f) { Datum_U du; du.f8 = f; return du.d; }
+static inline Datum Float8GetDatumFast(float8 f) { return Float8GetDatum(f); }
+
+static inline ItemPointer DatumGetItemPointer(Datum d) { return (ItemPointer) DatumGetPointer(d); }
+static inline Datum ItemPointerGetDatum(ItemPointer i) { return PointerGetDatum(i); }
+
+
+static inline bool IsAligned(void *p, int align)
 {
-	union
-	{
-		int32		value;
-		float4		retval;
-	}			myunion;
-
-	myunion.value = DatumGetInt32(X);
-	return myunion.retval;
+        int64 i = (int64) PointerGetDatum(p);
+        return ((i & (align-1)) == 0);
 }
-#else
-#define DatumGetFloat4(X) (* ((float4 *) DatumGetPointer(X)))
-#endif
 
-/*
- * Float4GetDatum
- *		Returns datum representation for a 4-byte floating point number.
- *
- * Note: if float4 is pass by reference, this function returns a reference
- * to palloc'd space.
- */
-#ifdef USE_FLOAT4_BYVAL
-static inline Datum
-Float4GetDatum(float4 X)
-{
-	union
-	{
-		float4		value;
-		int32		retval;
-	}			myunion;
-
-	myunion.value = X;
-	return Int32GetDatum(myunion.retval);
-}
-#else
-extern Datum Float4GetDatum(float4 X);
-#endif
-
-/*
- * DatumGetFloat8
- *		Returns 8-byte floating point value of a datum.
- *
- * Note: this macro hides whether float8 is pass by value or by reference.
+/* ----------------------------------------------------------------
+ *				Section 3:	exception handling backend support
+ * ----------------------------------------------------------------
  */
 
-#ifdef USE_FLOAT8_BYVAL
-static inline float8
-DatumGetFloat8(Datum X)
-{
-	union
-	{
-		int64		value;
-		float8		retval;
-	}			myunion;
-
-	myunion.value = DatumGetInt64(X);
-	return myunion.retval;
-}
-#else
-#define DatumGetFloat8(X) (* ((float8 *) DatumGetPointer(X)))
-#endif
+#define COMPILE_ASSERT(e) ((void)sizeof(char[1-2*!(e)]))
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
 /*
- * Float8GetDatum
- *		Returns datum representation for an 8-byte floating point number.
+ * Backend only infrastructure for the assertion-related macros in c.h.
  *
- * Note: if float8 is pass by reference, this function returns a reference
- * to palloc'd space.
+ * ExceptionalCondition must be present even when assertions are not enabled.
  */
-
-#ifdef USE_FLOAT8_BYVAL
-static inline Datum
-Float8GetDatum(float8 X)
-{
-	union
-	{
-		float8		value;
-		int64		retval;
-	}			myunion;
-
-	myunion.value = X;
-	return Int64GetDatum(myunion.retval);
-}
-#else
-extern Datum Float8GetDatum(float8 X);
-#endif
-
-
-/*
- * Int64GetDatumFast
- * Float8GetDatumFast
- * Float4GetDatumFast
- *
- * These macros are intended to allow writing code that does not depend on
- * whether int64, float8, float4 are pass-by-reference types, while not
- * sacrificing performance when they are.  The argument must be a variable
- * that will exist and have the same value for as long as the Datum is needed.
- * In the pass-by-ref case, the address of the variable is taken to use as
- * the Datum.  In the pass-by-val case, these will be the same as the non-Fast
- * macros.
- */
-
-#ifdef USE_FLOAT8_BYVAL
-#define Int64GetDatumFast(X)  Int64GetDatum(X)
-#define Float8GetDatumFast(X) Float8GetDatum(X)
-#else
-#define Int64GetDatumFast(X)  PointerGetDatum(&(X))
-#define Float8GetDatumFast(X) PointerGetDatum(&(X))
-#endif
-
-#ifdef USE_FLOAT4_BYVAL
-#define Float4GetDatumFast(X) Float4GetDatum(X)
-#else
-#define Float4GetDatumFast(X) PointerGetDatum(&(X))
-#endif
+extern void ExceptionalCondition(const char *conditionName,
+					 const char *errorType,
+			   const char *fileName, int lineNumber) pg_attribute_noreturn();
 
 #endif							/* POSTGRES_H */

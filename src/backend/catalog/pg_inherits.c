@@ -28,6 +28,7 @@
 #include "storage/lmgr.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
@@ -143,6 +144,34 @@ find_inheritance_children(Oid parentrelId, LOCKMODE lockmode)
 	}
 
 	pfree(oidarr);
+
+	/*
+	 * The order in which child OIDs are scanned on master may not be
+	 * the same on segments.  When a partitioned table needs to be
+	 * rewritten during ALTER TABLE, master generates new OIDs for
+	 * every child in this list.  Segments scan pg_inherits and
+	 * correlate the list of OIDs dispatched by master with each
+	 * child.  To guarantee that the child <--> new OID pairs are
+	 * identical on master and segments, we need the following sort.
+	 */
+	{
+		ListCell   *item;
+		Oid        *ordered_list;
+
+		ordered_list = (Oid *) palloc(sizeof(Oid) * list_length(list));
+		i = 0;
+		foreach(item, list)
+		{
+			ordered_list[i++] = lfirst_oid(item);
+		}
+		qsort(ordered_list, list_length(list), sizeof(Oid), oid_cmp);
+		i = 0;
+		foreach(item, list)
+		{
+			lfirst_oid(item) = ordered_list[i++];
+		}
+		pfree(ordered_list);
+	}
 
 	return list;
 }

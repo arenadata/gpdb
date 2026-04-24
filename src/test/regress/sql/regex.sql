@@ -68,6 +68,22 @@ select 'xyy' ~ '(?<![xy])yy+';
 select 'zyy' ~ '(?<![xy])yy+';
 
 -- Test conversion of regex patterns to indexable conditions
+-- start_ignore
+-- GPDB_93_MERGE_FIXME: the statistics and/or cost estimation code
+-- in GPDB, means that the planner chooses a seq scan
+-- rather than an index scan for these. Force index scans, so that
+-- the test tests what it's supposed to test. But we should investigate
+-- why exactly the cost estimates are so different. There should be no
+-- difference in the true cost of scans on catalog tables - they're not
+-- even distributed.
+-- 
+-- After random_page_cost diminish, this guc still can not rid of.
+-- Our index scan selectivity result have tiny different with upstream,
+-- so that in a small table, e.g. pg_proc, planner will pick seq or bitmap
+-- scan instead.
+set enable_seqscan=off;
+set enable_bitmapscan=off;
+-- end_ignore
 explain (costs off) select * from pg_proc where proname ~ 'abc';
 explain (costs off) select * from pg_proc where proname ~ '^abc';
 explain (costs off) select * from pg_proc where proname ~ '^abc$';
@@ -77,6 +93,11 @@ explain (costs off) select * from pg_proc where proname ~ '^(abc)(def)';
 explain (costs off) select * from pg_proc where proname ~ '^(abc)$';
 explain (costs off) select * from pg_proc where proname ~ '^(abc)?d';
 explain (costs off) select * from pg_proc where proname ~ '^abcd(x|(?=\w\w)q)';
+
+-- start_ignore
+reset enable_seqscan;
+reset enable_bitmapscan;
+-- end_ignore
 
 -- Test for infinite loop in pullback() (CVE-2007-4772)
 select 'a' ~ '($|^)*';

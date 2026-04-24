@@ -29,23 +29,23 @@
  * 1/DEFAULT_EQ_SEL.
  */
 
+/* default number of distinct values in a table */
+#define DEFAULT_NUM_DISTINCT    1000                                /*CDB*/
+
 /* default selectivity estimate for equalities such as "A = b" */
-#define DEFAULT_EQ_SEL	0.005
+#define DEFAULT_EQ_SEL	        (1.0 / DEFAULT_NUM_DISTINCT)        /*CDB*/
 
 /* default selectivity estimate for inequalities such as "A < b" */
-#define DEFAULT_INEQ_SEL  0.3333333333333333
+#define DEFAULT_INEQ_SEL        0.3333333333333333
 
 /* default selectivity estimate for range inequalities "A > b AND A < c" */
-#define DEFAULT_RANGE_INEQ_SEL	0.005
+#define DEFAULT_RANGE_INEQ_SEL	(10 * DEFAULT_EQ_SEL)               /*CDB*/
 
 /* default selectivity estimate for pattern-match operators such as LIKE */
-#define DEFAULT_MATCH_SEL	0.005
-
-/* default number of distinct values in a table */
-#define DEFAULT_NUM_DISTINCT  200
+#define DEFAULT_MATCH_SEL	    (50 * DEFAULT_EQ_SEL)               /*CDB*/
 
 /* default selectivity estimate for boolean and null test nodes */
-#define DEFAULT_UNK_SEL			0.005
+#define DEFAULT_UNK_SEL			DEFAULT_EQ_SEL                      /*CDB*/
 #define DEFAULT_NOT_UNK_SEL		(1.0 - DEFAULT_UNK_SEL)
 
 
@@ -69,6 +69,7 @@ typedef struct VariableStatData
 	RelOptInfo *rel;			/* Relation, or NULL if not identifiable */
 	HeapTuple	statsTuple;		/* pg_statistic tuple, or NULL if none */
 	/* NB: if statsTuple!=NULL, it must be freed when caller is done */
+	double		numdistinctFromPrimaryKey; /* this is the numdistinct as estimated from the primary key relation. If this is < 0, then it is ignored. */
 	void		(*freefunc) (HeapTuple tuple);	/* how to free statsTuple */
 	Oid			vartype;		/* exposed type of expression */
 	Oid			atttype;		/* actual type (after stripping relabel) */
@@ -76,6 +77,9 @@ typedef struct VariableStatData
 	bool		isunique;		/* matches unique index or DISTINCT clause */
 	bool		acl_ok;			/* result of ACL check on table or column */
 } VariableStatData;
+
+/* get the pg_statistic tuple, or NULL if none */
+#define getStatsTuple(vardata) ((vardata)->statsTuple)
 
 #define ReleaseVariableStats(vardata)  \
 	do { \
@@ -158,6 +162,8 @@ extern double var_eq_non_const(VariableStatData *vardata, Oid oproid,
 							   Node *other,
 							   bool varonleft, bool negate);
 
+extern double convert_timevalue_to_scalar(Datum value, Oid typid,
+										  bool *failure);
 extern Selectivity boolvarsel(PlannerInfo *root, Node *arg, int varRelid);
 extern Selectivity booltestsel(PlannerInfo *root, BoolTestType booltesttype,
 							   Node *arg, int varRelid,
@@ -205,5 +211,6 @@ extern Selectivity scalararraysel_containment(PlannerInfo *root,
 											  Node *leftop, Node *rightop,
 											  Oid elemtype, bool isEquality, bool useOr,
 											  int varRelid);
+extern double estimate_num_groups_on_segment(double dNumGroupsTotal, double rows, CdbPathLocus locus);
 
 #endif							/* SELFUNCS_H */

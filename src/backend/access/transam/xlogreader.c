@@ -25,6 +25,11 @@
 #include "common/pg_lzcompress.h"
 #include "replication/origin.h"
 
+#ifdef USE_ZSTD
+/* Zstandard library is provided */
+#include <zstd.h>
+#endif
+
 #ifndef FRONTEND
 #include "miscadmin.h"
 #include "utils/memutils.h"
@@ -41,6 +46,9 @@ static int	ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr,
 static void report_invalid_record(XLogReaderState *state, const char *fmt,...) pg_attribute_printf(2, 3);
 
 static void ResetDecoder(XLogReaderState *state);
+static bool zstd_decompress_backupblock(const char *source, int32 slen,
+										char *dest, int32 rawsize,
+										char *errormessage);
 
 /* size of the buffer allocated for error message. */
 #define MAX_ERRORMSG_LEN 1000
@@ -223,6 +231,7 @@ XLogReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 				total_len;
 	uint32		targetRecOff;
 	uint32		pageHeaderSize;
+	bool		assembled;
 	bool		gotheader;
 	int			readOff;
 
@@ -238,6 +247,8 @@ XLogReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 	state->errormsg_buf[0] = '\0';
 
 	ResetDecoder(state);
+	state->abortedRecPtr = InvalidXLogRecPtr;
+	state->missingContrecPtr = InvalidXLogRecPtr;
 
 	if (RecPtr == InvalidXLogRecPtr)
 	{
@@ -266,7 +277,9 @@ XLogReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 		randAccess = true;
 	}
 
+restart:
 	state->currRecPtr = RecPtr;
+	assembled = false;
 
 	targetPagePtr = RecPtr - (RecPtr % XLOG_BLCKSZ);
 	targetRecOff = RecPtr % XLOG_BLCKSZ;
@@ -363,6 +376,8 @@ XLogReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 		char	   *buffer;
 		uint32		gotlen;
 
+		assembled = true;
+
 		/*
 		 * Enlarge readRecordBuf as needed.
 		 */
@@ -397,8 +412,25 @@ XLogReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 
 			Assert(SizeOfXLogShortPHD <= readOff);
 
-			/* Check that the continuation on next page looks valid */
 			pageHeader = (XLogPageHeader) state->readBuf;
+
+			/*
+			 * If we were expecting a continuation record and got an
+			 * "overwrite contrecord" flag, that means the continuation record
+			 * was overwritten with a different record.  Restart the read by
+			 * assuming the address to read is the location where we found
+			 * this flag; but keep track of the LSN of the record we were
+			 * reading, for later verification.
+			 */
+			if (pageHeader->xlp_info & XLP_FIRST_IS_OVERWRITE_CONTRECORD)
+			{
+				state->overwrittenRecPtr = state->currRecPtr;
+				ResetDecoder(state);
+				RecPtr = targetPagePtr;
+				goto restart;
+			}
+
+			/* Check that the continuation on next page looks valid */
 			if (!(pageHeader->xlp_info & XLP_FIRST_IS_CONTRECORD))
 			{
 				report_invalid_record(state,
@@ -499,6 +531,20 @@ XLogReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 		return NULL;
 
 err:
+	if (assembled)
+	{
+		/*
+		 * We get here when a record that spans multiple pages needs to be
+		 * assembled, but something went wrong -- perhaps a contrecord piece
+		 * was lost.  If caller is WAL replay, it will know where the aborted
+		 * record was and where to direct followup WAL to be written, marking
+		 * the next piece with XLP_FIRST_IS_OVERWRITE_CONTRECORD, which will
+		 * in turn signal downstream WAL consumers that the broken WAL record
+		 * is to be ignored.
+		 */
+		state->abortedRecPtr = RecPtr;
+		state->missingContrecPtr = targetPagePtr;
+	}
 
 	/*
 	 * Invalidate the read state. We might read from a different source after
@@ -869,7 +915,13 @@ XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
 	return true;
 }
 
-#ifdef FRONTEND
+/*
+ * In GPDB, this is used in the test in src/test/walrep, so we need it in the
+ * backend, too.
+ */
+/* #ifdef FRONTEND */
+#if 1
+
 /*
  * Functions that are currently not needed in the backend, but are better
  * implemented inside xlogreader.c because of the internal facilities available
@@ -1414,14 +1466,17 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 
 	if (bkpb->bimg_info & BKPIMAGE_IS_COMPRESSED)
 	{
+		char errormessage[MAX_ERRORMSG_LEN];
 		/* If a backup block image is compressed, decompress it */
-		if (pglz_decompress(ptr, bkpb->bimg_len, tmp.data,
-							BLCKSZ - bkpb->hole_length, true) < 0)
+		if (!zstd_decompress_backupblock(ptr, bkpb->bimg_len, tmp.data,
+										 BLCKSZ - bkpb->hole_length,
+										 errormessage))
 		{
-			report_invalid_record(record, "invalid compressed image at %X/%X, block %d",
+			report_invalid_record(record, "invalid compressed image at %X/%X, block %d (%s)",
 								  (uint32) (record->ReadRecPtr >> 32),
 								  (uint32) record->ReadRecPtr,
-								  block_id);
+								  block_id,
+								  errormessage);
 			return false;
 		}
 		ptr = tmp.data;
@@ -1443,6 +1498,67 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 	}
 
 	return true;
+}
+
+bool
+zstd_decompress_backupblock(const char *source, int32 slen, char *dest,
+							int32 rawsize, char *errormessage)
+{
+#ifdef USE_ZSTD
+		unsigned long long uncompressed_size;
+		int dst_length_used;
+		static ZSTD_DCtx  *cxt = NULL;      /* ZSTD decompression context */
+		if (!cxt)
+		{
+			cxt = ZSTD_createDCtx();
+			if (!cxt)
+			{
+				snprintf(errormessage, MAX_ERRORMSG_LEN, "out of memory");
+				return false;
+			}
+		}
+
+		uncompressed_size = ZSTD_getFrameContentSize(source, slen);
+		if (uncompressed_size == ZSTD_CONTENTSIZE_UNKNOWN)
+		{
+			snprintf(errormessage, MAX_ERRORMSG_LEN,
+					 "decompressed size not known");
+			return false;
+		}
+
+		if (uncompressed_size == ZSTD_CONTENTSIZE_ERROR)
+		{
+			snprintf(errormessage, MAX_ERRORMSG_LEN,
+					 "error computing decompression size");
+			return false;
+		}
+
+		if (uncompressed_size > rawsize)
+		{
+			snprintf(errormessage, MAX_ERRORMSG_LEN,
+					 "too large ("UINT64_FORMAT") size after decompression",
+					 (uint64) uncompressed_size);
+			return false;
+		}
+
+		dst_length_used = ZSTD_decompressDCtx(cxt,
+											  dest, rawsize,
+											  source, slen);
+
+		if (ZSTD_isError(dst_length_used))
+		{
+			snprintf(errormessage, MAX_ERRORMSG_LEN,
+					 "%s error encountered on decompression",
+					 ZSTD_getErrorName(dst_length_used));
+			return false;
+		}
+
+		Assert(dst_length_used == rawsize);
+		return true;
+#endif
+		snprintf(errormessage, MAX_ERRORMSG_LEN,
+				 "binary not compiled with ZSTD support");
+		return false;
 }
 
 #ifndef FRONTEND

@@ -327,7 +327,7 @@ pq_endmessage_reuse(StringInfo buf)
 void
 pq_begintypsend(StringInfo buf)
 {
-	initStringInfo(buf);
+	initStringInfoOfSize(buf, 16);
 	/* Reserve four bytes for the bytea length word */
 	appendStringInfoCharMacro(buf, '\0');
 	appendStringInfoCharMacro(buf, '\0');
@@ -641,3 +641,30 @@ pq_getmsgend(StringInfo msg)
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("invalid message format")));
 }
+
+
+/*
+ * In unit test we need to mock this function, change this function to normal
+ * so our mocker can auto generate mock function for us.
+ */
+#ifdef UNITTEST
+void
+pq_sendint(StringInfo buf, uint32 i, int b)
+{
+	switch (b)
+	{
+		case 1:
+			pq_sendint8(buf, (uint8) i);
+			break;
+		case 2:
+			pq_sendint16(buf, (uint16) i);
+			break;
+		case 4:
+			pq_sendint32(buf, (uint32) i);
+			break;
+		default:
+			elog(ERROR, "unsupported integer size %d", b);
+			break;
+	}
+}
+#endif

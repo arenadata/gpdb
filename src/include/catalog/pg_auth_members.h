@@ -35,6 +35,14 @@ CATALOG(pg_auth_members,1261,AuthMemRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_
 	bool		admin_option;	/* granted with admin option? */
 } FormData_pg_auth_members;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(roleid  REFERENCES pg_authid(oid));
+FOREIGN_KEY(member  REFERENCES pg_authid(oid));
+/*
+ * NOTE: we don't mark grantor a foreign key since we don't actually
+ * remove entries when a grantor is dropped. See DropRole().
+ */
+
 /* ----------------
  *		Form_pg_auth_members corresponds to a pointer to a tuple with
  *		the format of pg_auth_members relation.

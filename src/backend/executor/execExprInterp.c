@@ -76,6 +76,9 @@
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
+#include "cdb/cdbvars.h"
+#include "utils/fmgroids.h"
+
 
 /*
  * Use computed-goto-based opcode dispatch when computed gotos are available.
@@ -379,9 +382,15 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_DOMAIN_CHECK,
 		&&CASE_EEOP_CONVERT_ROWTYPE,
 		&&CASE_EEOP_SCALARARRAYOP,
+		&&CASE_EEOP_SCALARARRAYOP_FAST_INT,
+		&&CASE_EEOP_SCALARARRAYOP_FAST_STR,
 		&&CASE_EEOP_XMLEXPR,
 		&&CASE_EEOP_AGGREF,
 		&&CASE_EEOP_GROUPING_FUNC,
+		&&CASE_EEOP_GROUP_ID,
+		&&CASE_EEOP_GROUPING_SET_ID,
+		&&CASE_EEOP_AGGEXPR_ID,
+		&&CASE_EEOP_ROWIDEXPR,
 		&&CASE_EEOP_WINDOW_FUNC,
 		&&CASE_EEOP_SUBPLAN,
 		&&CASE_EEOP_ALTERNATIVE_SUBPLAN,
@@ -391,6 +400,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_AGG_STRICT_INPUT_CHECK_NULLS,
 		&&CASE_EEOP_AGG_INIT_TRANS,
 		&&CASE_EEOP_AGG_STRICT_TRANS_CHECK,
+		&&CASE_EEOP_AGG_PLAIN_PERGROUP_NULLCHECK,
 		&&CASE_EEOP_AGG_PLAIN_TRANS_BYVAL,
 		&&CASE_EEOP_AGG_PLAIN_TRANS,
 		&&CASE_EEOP_AGG_ORDERED_TRANS_DATUM,
@@ -1211,7 +1221,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		EEO_CASE(EEOP_CURRENTOFEXPR)
 		{
 			/* error invocation uses space, and shouldn't ever occur */
-			ExecEvalCurrentOfExpr(state, op);
+			ExecEvalCurrentOfExpr(state, op, econtext);
 
 			EEO_NEXT();
 		}
@@ -1415,6 +1425,22 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			EEO_NEXT();
 		}
 
+		EEO_CASE(EEOP_SCALARARRAYOP_FAST_INT)
+		{
+			/* too complex for an inline implementation */
+			ExecEvalScalarArrayOpFastInt(state, op);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_SCALARARRAYOP_FAST_STR)
+		{
+			/* too complex for an inline implementation */
+			ExecEvalScalarArrayOpFastStr(state, op);
+
+			EEO_NEXT();
+		}
+
 		EEO_CASE(EEOP_DOMAIN_NOTNULL)
 		{
 			/* too complex for an inline implementation */
@@ -1459,6 +1485,46 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		{
 			/* too complex/uncommon for an inline implementation */
 			ExecEvalGroupingFunc(state, op);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_GROUP_ID)
+		{
+			int			group_id = op->d.group_id.parent->group_id;
+
+			*op->resvalue = Int32GetDatum(group_id);
+			*op->resnull = false;
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_GROUPING_SET_ID)
+		{
+			int			gset_id = op->d.grouping_set_id.parent->gset_id;
+
+			*op->resvalue = Int32GetDatum(gset_id);
+			*op->resnull = false;
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_AGGEXPR_ID)
+		{
+			int			currentExprId = op->d.agg_expr_id.parent->currentExprId;
+
+			*op->resvalue = Int32GetDatum(currentExprId);
+			*op->resnull = false;
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_ROWIDEXPR)
+		{
+			int64		rowcounter = ++op->d.rowidexpr.rowcounter;
+
+			*op->resvalue = Int64GetDatum(rowcounter);
+			*op->resnull = false;
 
 			EEO_NEXT();
 		}
@@ -1557,7 +1623,31 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		}
 
 		/*
-		 * Initialize an aggregate's first value if necessary.
+		 * Check for a NULL pointer to the per-group states.
+		 */
+
+		EEO_CASE(EEOP_AGG_PLAIN_PERGROUP_NULLCHECK)
+		{
+			AggState   *aggstate = castNode(AggState, state->parent);
+			AggStatePerGroup pergroup_allaggs = aggstate->all_pergroups
+				[op->d.agg_plain_pergroup_nullcheck.setoff];
+
+			if (pergroup_allaggs == NULL)
+				EEO_JUMP(op->d.agg_plain_pergroup_nullcheck.jumpnull);
+
+			EEO_NEXT();
+		}
+
+		/*
+		 * Different types of aggregate transition functions are implemented
+		 * as different types of steps, to avoid incurring unnecessary
+		 * overhead.  There's a step type for each valid combination of having
+		 * a by value / by reference transition type, [not] needing to the
+		 * initialize the transition value for the first row in a group from
+		 * input, and [not] strict transition function.
+		 *
+		 * Could optimize further by splitting off by-reference for
+		 * fixed-length types, but currently that doesn't seem worth it.
 		 */
 		EEO_CASE(EEOP_AGG_INIT_TRANS)
 		{
@@ -1702,6 +1792,15 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			 * anything.  Also, if transfn returned a pointer to a R/W
 			 * expanded object that is already a child of the aggcontext,
 			 * assume we can adopt that value without copying it.
+			 *
+			 * It's safe to compare newVal with pergroup->transValue without
+			 * regard for either being NULL, because ExecAggTransReparent()
+			 * takes care to set transValue to 0 when NULL. Otherwise we could
+			 * end up accidentally not reparenting, when the transValue has
+			 * the same numerical value as newValue, despite being NULL.  This
+			 * is a somewhat hot path, making it undesirable to instead solve
+			 * this with another branch for the common case of the transition
+			 * function returning its (modified) input argument.
 			 */
 			if (DatumGetPointer(newVal) != DatumGetPointer(pergroup->transValue))
 				newVal = ExecAggTransReparent(aggstate, pertrans,
@@ -1902,6 +2001,15 @@ CheckOpSlotCompatibility(ExprEvalStep *op, TupleTableSlot *slot)
 	if (slot->tts_ops == &TTSOpsVirtual)
 		return;
 
+	/*
+	 * We think it is OK if op's fetch kind is virtual.
+	 */
+	if (op->d.fetch.kind == &TTSOpsVirtual)
+		return;
+
+	// FIXME: A simple  explain  select * from foo join bar on foo.a=bar.b; where
+	// bar is a PT on the outer side of a HJ triggers this assert without the above
+	// if statement
 	Assert(op->d.fetch.kind == slot->tts_ops);
 #endif
 }
@@ -2272,7 +2380,7 @@ ExecEvalParamExec(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	if (unlikely(prm->execPlan != NULL))
 	{
 		/* Parameter not evaluated yet, so go do it */
-		ExecSetParamPlan(prm->execPlan, econtext);
+		ExecSetParamPlan(prm->execPlan, econtext, NULL);
 		/* ExecSetParamPlan should have processed this param... */
 		Assert(prm->execPlan == NULL);
 	}
@@ -2388,18 +2496,47 @@ ExecEvalSQLValueFunction(ExprState *state, ExprEvalStep *op)
 /*
  * Raise error if a CURRENT OF expression is evaluated.
  *
- * The planner should convert CURRENT OF into a TidScan qualification, or some
- * other special handling in a ForeignScan node.  So we have to be able to do
- * ExecInitExpr on a CurrentOfExpr, but we shouldn't ever actually execute it.
- * If we get here, we suppose we must be dealing with CURRENT OF on a foreign
- * table whose FDW doesn't handle it, and complain accordingly.
- */
+ * GPDB:
+ * Constant folding must have bound observed values of gp_segment_id,
+ * ctid, and tableoid into the CurrentOfExpr for this function's
+ * consumption.
+  */
 void
-ExecEvalCurrentOfExpr(ExprState *state, ExprEvalStep *op)
+ExecEvalCurrentOfExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("WHERE CURRENT OF is not supported for this table type")));
+	CurrentOfExpr *cexpr = (CurrentOfExpr *) state->expr;
+	bool		result = false;
+	TupleTableSlot *slot;
+
+	Assert(cexpr->cvarno != INNER_VAR);
+	Assert(cexpr->cvarno != OUTER_VAR);
+
+	slot = econtext->ecxt_scantuple;
+	Assert(!TupIsNull(slot));
+
+	/*
+	 * The currently scanned tuple must use heap storage for it to possibly
+	 * satisfy the CURRENT OF qualification. Despite our grand attempts during
+	 * parsing and constant folding to demand heap storage, the scanning of an
+	 * AO part is still possible, when the current row uses heap storage, but the
+	 * CURRENT OF invocation uses an unpruned scan of the partition table, yielding
+	 * tuples from the AO parts before the desired heap tuple.
+	 */
+	if (slot->tts_ops == &TTSOpsHeapTuple ||
+		slot->tts_ops == &TTSOpsBufferHeapTuple)
+	{
+		ItemPointerData cursor_tid;
+
+		if (execCurrentOf(cexpr, econtext,
+						  slot->tts_tableOid,
+						  &cursor_tid))
+		{
+			if (ItemPointerEquals(&cursor_tid, &slot->tts_tid))
+				result = true;
+		}
+	}
+	*op->resvalue = result;
+	*op->resnull = false;
 }
 
 /*
@@ -2408,7 +2545,7 @@ ExecEvalCurrentOfExpr(ExprState *state, ExprEvalStep *op)
 void
 ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 {
-	int64		newval = nextval_internal(op->d.nextvalueexpr.seqid, false);
+	int64		newval = nextval_internal(op->d.nextvalueexpr.seqid, false, Gp_role == GP_ROLE_DISPATCH);
 
 	switch (op->d.nextvalueexpr.seqtypid)
 	{
@@ -3492,6 +3629,126 @@ ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
 }
 
 /*
+ * Fast-path versin of "scalar op ANY/ALL (array)".
+ *
+ * Used when 'op' is one of the hard-coded built-in functions, and array is a Const.
+ *
+ * Source array has already been deconstructed in op->fp_len/fp_datum arrays.
+ * Scalar arg is already evaluated into op->scalarval.
+ *
+ * The operator always yields boolean, and we combine the results across all
+ * array elements using OR and AND (for ANY and ALL respectively).  Of course
+ * we short-circuit as soon as the result is known.
+ */
+void
+ExecEvalScalarArrayOpFastInt(ExprState *state, ExprEvalStep *op)
+{
+	Oid			opfuncid = op->d.scalararrayop_fast.opfuncid;
+	int			nelems;
+	Datum	   *fp_datum;
+	Datum		scalar;
+	bool		result;
+
+	/*
+	 * If the scalar is NULL, and the function is strict, return NULL; no
+	 * point in iterating the loop.
+	 *
+	 * (All the hard-coded built-in eq functions we support are strict.)
+	 */
+	if (*op->resnull)
+		return;
+
+	/* Else fetch the scalar argument */
+	scalar = *op->resvalue;
+
+	if (opfuncid == F_INT4EQ || opfuncid == F_DATE_EQ)
+		scalar = Int32GetDatum(DatumGetInt32(scalar));
+	else if (opfuncid == F_INT2EQ)
+	{
+		Assert(opfuncid == F_INT2EQ);
+		scalar = Int16GetDatum(DatumGetInt16(scalar));
+	}
+	else
+	{
+		Assert (opfuncid == F_INT8EQ);
+		scalar = Int64GetDatum(DatumGetInt64(scalar));
+	}
+
+	nelems = op->d.scalararrayop_fast.fp_n;
+	fp_datum = op->d.scalararrayop_fast.fp_datum;
+	result = false;
+	for (int i = 0; i < nelems; i++)
+	{
+		if (scalar == fp_datum[i])
+		{
+			result = true;
+			break;
+		}
+	}
+
+	*op->resvalue = BoolGetDatum(result);
+	*op->resnull = false;
+}
+
+/*
+ * Fast-path version of "scalar op ANY/ALL (array)", texteq() variant.
+ */
+void
+ExecEvalScalarArrayOpFastStr(ExprState *state, ExprEvalStep *op)
+{
+	Oid			opfuncid = op->d.scalararrayop_fast.opfuncid;
+	int			nelems;
+	int		   *fp_len;
+	Datum	   *fp_datum;
+	Datum		scalar;
+	bool		result;
+
+	char *p; void *tofree; int len;
+
+	/*
+	 * If the scalar is NULL, and the function is strict, return NULL; no
+	 * point in iterating the loop.
+	 *
+	 * (All the hard-coded built-in eq functions we support are strict.)
+	 */
+	if (*op->resnull)
+		return;
+
+	/* Else fetch the scalar argument */
+	scalar = *op->resvalue;
+
+	varattrib_untoast_ptr_len(scalar, &p, &len, &tofree);
+
+	/* bpchareq, rid of trailing white space.  see bpeq and bcTruelen */
+	if (opfuncid == F_BPCHAREQ)
+	{
+		while(len > 0 && p[len-1] == ' ')
+			--len;
+	}
+
+	nelems = op->d.scalararrayop_fast.fp_n;
+	fp_len = op->d.scalararrayop_fast.fp_len;
+	fp_datum = op->d.scalararrayop_fast.fp_datum;
+	result = false;
+	for (int i = 0; i < nelems; i++)
+	{
+		if (fp_len[i] != len)
+			continue;
+		if (memcmp(p, DatumGetPointer(fp_datum[i]), fp_len[i]) == 0)
+		{
+			result = true;
+			break;
+		}
+	}
+
+	if (tofree)
+		pfree(tofree);
+
+	*op->resvalue = BoolGetDatum(result);
+	*op->resnull = false;
+}
+
+/*
  * Evaluate a NOT NULL domain constraint.
  */
 void
@@ -4087,6 +4344,8 @@ ExecAggTransReparent(AggState *aggstate, AggStatePerTrans pertrans,
 					 Datum newValue, bool newValueIsNull,
 					 Datum oldValue, bool oldValueIsNull)
 {
+	Assert(newValue != oldValue);
+
 	if (!newValueIsNull)
 	{
 		MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
@@ -4100,6 +4359,16 @@ ExecAggTransReparent(AggState *aggstate, AggStatePerTrans pertrans,
 								 pertrans->transtypeByVal,
 								 pertrans->transtypeLen);
 	}
+	else
+	{
+		/*
+		 * Ensure that AggStatePerGroup->transValue ends up being 0, so
+		 * callers can safely compare newValue/oldValue without having to
+		 * check their respective nullness.
+		 */
+		newValue = (Datum) 0;
+	}
+
 	if (!oldValueIsNull)
 	{
 		if (DatumIsReadWriteExpandedObject(oldValue,

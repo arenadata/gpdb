@@ -529,15 +529,20 @@ CheckForExternalTrigger(void)
 		fflush(stderr);
 
 		/*
-		 * Turn it into a "smart" trigger by truncating the file. Otherwise if
-		 * the server asks us again to restore a segment that was restored
-		 * already, we would return "not found" and upset the server.
+		 * If trigger file found, we *must* delete it. Here's why: When
+		 * recovery completes, we will be asked again for the same file from
+		 * the archive using pg_standby so must remove trigger file so we can
+		 * reload file again and come up correctly.
+		 *
+		 * If it fails, return with an exit code that the server will treat
+		 * as a FATAL error.
 		 */
 		if (ftruncate(fd, 0) < 0)
 		{
 			fprintf(stderr, "WARNING: could not read \"%s\": %s\n",
 					triggerPath, strerror(errno));
 			fflush(stderr);
+			exit(200);
 		}
 		close(fd);
 
@@ -662,8 +667,8 @@ main(int argc, char **argv)
 	 * You can send SIGUSR1 to trigger failover.
 	 *
 	 * Postmaster uses SIGQUIT to request immediate shutdown. The default
-	 * action is to core dump, but we don't want that, so trap it and commit
-	 * suicide without core dump.
+	 * action is to core dump, but we don't want that, so trap it and
+	 * commit suicide without core dump.
 	 *
 	 * We used to use SIGINT and SIGQUIT to trigger failover, but that turned
 	 * out to be a bad idea because postmaster uses SIGQUIT to request

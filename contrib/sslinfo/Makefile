@@ -8,6 +8,8 @@ DATA = sslinfo--1.2.sql sslinfo--1.1--1.2.sql sslinfo--1.0--1.1.sql \
 	sslinfo--unpackaged--1.0.sql
 PGFILEDESC = "sslinfo - information about client SSL certificate"
 
+REGRESS = sslinfo
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

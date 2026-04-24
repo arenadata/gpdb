@@ -16,6 +16,9 @@
 #include "catalog/objectaddress.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
+#include "utils/rel.h"
+#include "storage/buf.h"
+#include "executor/instrument.h"
 
 /*
  * TriggerData is the node type that is passed as fmgr "context" info

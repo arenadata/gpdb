@@ -47,6 +47,11 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "catalog/heap.h"
+#include "catalog/oid_dispatch.h"
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbvars.h"
+
 static void RangeVarCallbackForPolicy(const RangeVar *rv,
 									  Oid relid, Oid oldrelid, void *arg);
 static char parse_policy_command(const char *cmd_name);
@@ -808,8 +813,9 @@ CreatePolicy(CreatePolicyStmt *stmt)
 				 errmsg("policy \"%s\" for table \"%s\" already exists",
 						stmt->policy_name, RelationGetRelationName(target_table))));
 
-	policy_id = GetNewOidWithIndex(pg_policy_rel, PolicyOidIndexId,
-								   Anum_pg_policy_oid);
+	policy_id = GetNewOidForPolicy(pg_policy_rel, PolicyOidIndexId,
+								   Anum_pg_policy_oid,
+								   table_id, stmt->policy_name);
 	values[Anum_pg_policy_oid - 1] = ObjectIdGetDatum(policy_id);
 	values[Anum_pg_policy_polrelid - 1] = ObjectIdGetDatum(table_id);
 	values[Anum_pg_policy_polname - 1] = DirectFunctionCall1(namein,
@@ -876,6 +882,21 @@ CreatePolicy(CreatePolicyStmt *stmt)
 	systable_endscan(sscan);
 	relation_close(target_table, NoLock);
 	table_close(pg_policy_rel, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		Assert(stmt->type == T_CreatePolicyStmt);
+		Assert(stmt->type < 1000);
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackAddObject(PolicyRelationId, myself.objectId, GetUserId(), "CREATE", "POLICY");
+	}
 
 	return myself;
 }
@@ -1206,6 +1227,18 @@ AlterPolicy(AlterPolicyStmt *stmt)
 	systable_endscan(sscan);
 	relation_close(target_table, NoLock);
 	table_close(pg_policy_rel, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		Assert(stmt->type == T_AlterPolicyStmt);
+		Assert(stmt->type < 1000);
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NIL,
+									NULL);
+	}
 
 	return myself;
 }

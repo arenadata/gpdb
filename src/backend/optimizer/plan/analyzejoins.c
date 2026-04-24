@@ -647,6 +647,18 @@ rel_is_distinct_for(PlannerInfo *root, RelOptInfo *rel, List *clause_list)
 	 */
 	if (rel->reloptkind != RELOPT_BASEREL)
 		return false;
+
+	/*
+	 * Randomly distribute tables cannot guarantee uniqueness. You can't create
+	 * a unique index on on either, so this is normally redundant, but there is
+	 * one corner case: If you use gp_dist_random('table') on a replicated or
+	 * catalog table, the underlying table might have a unique index, but when
+	 * we're fetching the copies from all segments, the result will have
+	 * duplicates.
+	 */
+	if (GpPolicyIsRandomPartitioned(rel->cdbpolicy))
+		return false;
+
 	if (rel->rtekind == RTE_RELATION)
 	{
 		/*
@@ -818,15 +830,21 @@ query_is_distinct_for(Query *query, List *colnos, List *opids)
 	 */
 	if (query->groupClause && !query->groupingSets)
 	{
-		foreach(l, query->groupClause)
+		List	   *grouptles;
+		List	   *sortops;
+		List	   *eqops;
+		ListCell   *l_eqop;
+
+		get_sortgroupclauses_tles(query->groupClause, query->targetList,
+								  &grouptles, &sortops, &eqops);
+
+		forboth(l, grouptles, l_eqop, eqops)
 		{
-			SortGroupClause *sgc = (SortGroupClause *) lfirst(l);
-			TargetEntry *tle = get_sortgroupclause_tle(sgc,
-													   query->targetList);
+			TargetEntry *tle = (TargetEntry *) lfirst(l);
 
 			opid = distinct_col_search(tle->resno, colnos, opids);
 			if (!OidIsValid(opid) ||
-				!equality_ops_are_compatible(opid, sgc->eqop))
+				!equality_ops_are_compatible(opid, lfirst_oid(l_eqop)))
 				break;			/* exit early if no match */
 		}
 		if (l == NULL)			/* had matches for all? */

@@ -5,11 +5,13 @@
 # this limits the number of connections needed to run the tests.
 # ----------
 
+# required setup steps
+test: test_setup
+
 # run tablespace by itself, and first, because it forces a checkpoint;
 # we'd prefer not to have checkpoints later in the tests because that
 # interferes with crash-recovery testing.
 test: tablespace
-
 # ----------
 # The first group of parallel tests
 # ----------
@@ -51,6 +53,8 @@ test: copy copyselect copydml insert insert_conflict
 test: create_misc create_operator create_procedure
 # These depend on create_misc and create_operator
 test: create_index create_index_spgist create_view index_including index_including_gist
+# Depends on things setup for create_index
+test: gp_gin_index
 
 # ----------
 # Another group of parallel tests
@@ -58,17 +62,40 @@ test: create_index create_index_spgist create_view index_including index_includi
 test: create_aggregate create_function_3 create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors
 
 # ----------
+# Because vacuum will detect concurrently running transactions, it is necessary to
+# run this test on its own, or it might not detect the pages are 'all visible'
+# ----------
+test: disable_autovacuum
+test: vacuum_stats
+test: enable_autovacuum
+
+# ----------
 # sanity_check does a vacuum, affecting the sort order of SELECT *
 # results. So it should not run parallel to other tests.
+#
+# Disabled in GPDB. FIXME: why?
 # ----------
-test: sanity_check
+#test: sanity_check
 
 # ----------
 # Another group of parallel tests
 # Note: the ignore: line does not run random, just mark it as ignorable
 # ----------
 ignore: random
-test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates transactions random portals arrays btree_index hash_index update delete namespace prepared_xacts
+test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates random portals arrays btree_index hash_index update delete
+
+# In PostgreSQL, namespace test is run as part of the previous group, but there
+# are some GPDB additions in it that will show diff if concurrent tests use
+# temporary tables. So run it separately.
+test: namespace
+
+# 2-phase commit is not supported by GPDB.
+#test: prepared_xacts
+
+# The 'transactions' test is disabled in GPDB, because it uses functions
+# in segments in a way that doesn't work:
+# ERROR:  function cannot execute on a QE slice because it accesses relation "public.xacttest"
+#test: transactions
 
 # ----------
 # Another group of parallel tests
@@ -83,7 +110,16 @@ test: create_table_like alter_generic alter_operator misc async dbsize misc_func
 # rules cannot run concurrently with any test that creates
 # a view or rule in the public schema
 # collate.*.utf8 tests cannot be run in parallel with each other
-test: rules psql psql_crosstab amutils stats_ext collate.linux.utf8
+test: psql psql_crosstab amutils stats_ext collate.linux.utf8
+#
+# 'rules' test is disabled in GPDB. Maintaining the list of views in it is
+# too painful, and there are also errors because of cross-segment UPDATEs
+# and functions.
+#
+# GPDB_84_MERGE_FIXME: While disabling this was not really an effect of the 8.4
+# merge, it was done a long time ago, it's time to revisit this so we can re-
+# enable it
+#test: rules
 
 # run by itself so it can run parallel workers
 test: select_parallel
@@ -95,7 +131,11 @@ test: publication subscription
 # ----------
 # Another group of parallel tests
 # ----------
-test: select_views portals_p2 foreign_key cluster dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass
+test: select_views portals_p2 cluster dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass
+
+# 'foreign_key' test is disabled, because it contains several tables with
+# multiple UNIQUE constraints, which is not supported in GPDB.
+#test: foreign_key
 
 # ----------
 # Another group of parallel tests (JSON related)
@@ -107,7 +147,11 @@ test: json jsonb json_encoding jsonpath jsonpath_encoding jsonb_jsonpath
 # NB: temp.sql does a reconnect which transiently uses 2 connections,
 # so keep this parallel group to at most 19 tests
 # ----------
-test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion truncate alter_table sequence polymorphism rowtypes returning largeobject with xml
+test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion truncate alter_table sequence polymorphism rowtypes returning with xml
+# large objects are not supported by GPDB
+# test: largeobject
+
+test: gp_foreign_data
 
 # ----------
 # Another group of parallel tests
@@ -120,4 +164,8 @@ test: event_trigger
 test: fast_default
 
 # run stats by itself because its delay may be insufficient under heavy load
-test: stats
+#
+# 'stats' test has been disabled in GPDB, because it tries to set stats-related
+# GUCs stats_block_level and stats_row_level, which have been removed from
+# GPDB.
+#test: stats

@@ -53,6 +53,10 @@ CREATE [ OR REPLACE ] AGGREGATE <replaceable class="parameter">name</replaceable
     [ , FINALFUNC_EXTRA ]
     [ , FINALFUNC_MODIFY = { READ_ONLY | SHAREABLE | READ_WRITE } ]
     [ , INITCOND = <replaceable class="parameter">initial_condition</replaceable> ]
+    [ , COMBINEFUNC = <replaceable class="parameter">combinefunc</replaceable> ]
+    [ , SERIALFUNC = <replaceable class="parameter">serialfunc</replaceable> ]
+    [ , DESERIALFUNC = <replaceable class="parameter">deserialfunc</replaceable> ]
+    [ , INITCOND = <replaceable class="parameter">initial_condition</replaceable> ]
     [ , PARALLEL = { SAFE | RESTRICTED | UNSAFE } ]
     [ , HYPOTHETICAL ]
 )
@@ -127,12 +131,15 @@ CREATE [ OR REPLACE ] AGGREGATE <replaceable class="parameter">name</replaceable
    functions:
    a state transition function
    <replaceable class="parameter">sfunc</replaceable>,
-   and an optional final calculation function
-   <replaceable class="parameter">ffunc</replaceable>.
+   an optional final calculation function
+   <replaceable class="parameter">ffunc</replaceable>,
+   and an optional combine function
+   <replaceable class="parameter">combinefunc</replaceable>.
    These are used as follows:
 <programlisting>
 <replaceable class="parameter">sfunc</replaceable>( internal-state, next-data-values ) ---> next-internal-state
 <replaceable class="parameter">ffunc</replaceable>( internal-state ) ---> aggregate-value
+<replaceable class="parameter">combinefunc</replaceable>( internal-state, internal-state ) ---> next-internal-state
 </programlisting>
   </para>
 
@@ -147,6 +154,12 @@ CREATE [ OR REPLACE ] AGGREGATE <replaceable class="parameter">name</replaceable
    the final function is invoked once to calculate the aggregate's return
    value.  If there is no final function then the ending state value
    is returned as-is.
+  </para>
+
+  <para>
+   An aggregate function may also supply a combining function, which allows
+   the aggregation process to be broken down into multiple steps.  This
+   facilitates query optimization techniques such as parallel query.
   </para>
 
   <para>

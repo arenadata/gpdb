@@ -2,6 +2,8 @@
  *
  * pg_dumpall.c
  *
+ * Portions Copyright (c) 2006-2010, Greenplum inc.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -33,10 +35,13 @@
 
 static void help(void);
 
+static void dumpResQueues(PGconn *conn);
+static void dumpResGroups(PGconn *conn);
+static void dumpRoleConstraints(PGconn *conn);
+
 static void dropRoles(PGconn *conn);
 static void dumpRoles(PGconn *conn);
 static void dumpRoleMembership(PGconn *conn);
-static void dumpGroups(PGconn *conn);
 static void dropTablespaces(PGconn *conn);
 static void dumpTablespaces(PGconn *conn);
 static void dropDBs(PGconn *conn);
@@ -64,6 +69,9 @@ static bool output_clean = false;
 static bool skip_acls = false;
 static bool verbose = false;
 static bool dosync = true;
+
+static int	resource_queues = 0;
+static int	resource_groups = 0;
 
 static int	binary_upgrade = 0;
 static int	column_inserts = 0;
@@ -109,7 +117,6 @@ main(int argc, char *argv[])
 		{"database", required_argument, NULL, 'l'},
 		{"no-owner", no_argument, NULL, 'O'},
 		{"port", required_argument, NULL, 'p'},
-		{"roles-only", no_argument, NULL, 'r'},
 		{"schema-only", no_argument, NULL, 's'},
 		{"superuser", required_argument, NULL, 'S'},
 		{"tablespaces-only", no_argument, NULL, 't'},
@@ -132,6 +139,9 @@ main(int argc, char *argv[])
 		{"extra-float-digits", required_argument, NULL, 5},
 		{"if-exists", no_argument, &if_exists, 1},
 		{"inserts", no_argument, &inserts, 1},
+		{"resource-queues", no_argument, &resource_queues, 1},
+		{"resource-groups", no_argument, &resource_groups, 1},
+		{"roles-only", no_argument, NULL, 999},
 		{"lock-wait-timeout", required_argument, NULL, 2},
 		{"no-tablespaces", no_argument, &no_tablespaces, 1},
 		{"quote-all-identifiers", no_argument, &quote_all_identifiers, 1},
@@ -147,6 +157,11 @@ main(int argc, char *argv[])
 		{"no-unlogged-table-data", no_argument, &no_unlogged_table_data, 1},
 		{"on-conflict-do-nothing", no_argument, &on_conflict_do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 7},
+
+		/* START MPP ADDITION */
+		{"gp-syntax", no_argument, NULL, 1000},
+		{"no-gp-syntax", no_argument, NULL, 1001},
+		/* END MPP ADDITION */
 
 		{NULL, 0, NULL, 0}
 	};
@@ -168,6 +183,8 @@ main(int argc, char *argv[])
 	int			c,
 				ret;
 	int			optindex;
+	bool		gp_syntax = false;
+	bool		no_gp_syntax = false;
 
 	pg_logging_init(argv[0]);
 	pg_logging_set_level(PG_LOG_WARNING);
@@ -260,7 +277,17 @@ main(int argc, char *argv[])
 				pgport = pg_strdup(optarg);
 				break;
 
+			/*
+			 * Both Greenplum and PostgreSQL have used -r but for different
+			 * options, disallow the short option entirely to avoid confusion
+			 * and require the use of long options for the conflicting pair.
+			 */
 			case 'r':
+				fprintf(stderr, _("-r option is not supported. Did you mean --roles-only or --resource-queues?\n"));
+				exit(1);
+				break;
+
+			case 999:	/* --roles-only */
 				roles_only = true;
 				break;
 
@@ -335,6 +362,22 @@ main(int argc, char *argv[])
 				appendShellString(pgdumpopts, optarg);
 				break;
 
+				/* START MPP ADDITION */
+			case 1000:
+				/* gp-format */
+				appendPQExpBuffer(pgdumpopts, " --gp-syntax");
+				gp_syntax = true;
+				resource_queues = 1; /* --resource-queues is implied by --gp-syntax */
+				resource_groups = 1; /* --resource-groups is implied by --gp-syntax */
+				break;
+			case 1001:
+				/* no-gp-format */
+				appendPQExpBuffer(pgdumpopts, " --no-gp-syntax");
+				no_gp_syntax = true;
+				break;
+
+				/* END MPP ADDITION */
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit_nicely(1);
@@ -391,6 +434,14 @@ main(int argc, char *argv[])
 		exit_nicely(1);
 	}
 
+	if (gp_syntax && no_gp_syntax)
+	{
+		pg_log_error("options --gp-syntax and --no-gp-syntax cannot be used together");
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+				progname);
+		exit_nicely(1);
+	}
+
 	/*
 	 * If password values are not required in the dump, switch to using
 	 * pg_roles which is equally useful, just more likely to have unrestricted
@@ -432,6 +483,8 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --no-unlogged-table-data");
 	if (on_conflict_do_nothing)
 		appendPQExpBufferStr(pgdumpopts, " --on-conflict-do-nothing");
+	if (roles_only)
+		appendPQExpBufferStr(pgdumpopts, " --roles-only");
 
 	/*
 	 * If there was a database specified on the command line, use that,
@@ -523,10 +576,10 @@ main(int argc, char *argv[])
 	}
 
 	/* Force quoting of all identifiers if requested. */
-	if (quote_all_identifiers && server_version >= 90100)
+	if (quote_all_identifiers)
 		executeCommand(conn, "SET quote_all_identifiers = true");
 
-	fprintf(OPF, "--\n-- PostgreSQL database cluster dump\n--\n\n");
+	fprintf(OPF,"--\n-- Greenplum Database cluster dump\n--\n\n");
 	if (verbose)
 		dumpTimestamp("Started on");
 
@@ -547,6 +600,16 @@ main(int argc, char *argv[])
 	if (strcmp(std_strings, "off") == 0)
 		fprintf(OPF, "SET escape_string_warning = off;\n");
 	fprintf(OPF, "\n");
+
+	if (binary_upgrade)
+	{
+		/*
+		 * Greenplum doesn't allow altering system catalogs without
+		 * setting the allow_system_table_mods GUC first.
+		 */
+		fprintf(OPF, "SET allow_system_table_mods = true;\n");
+		fprintf(OPF, "\n");
+	}
 
 	if (!data_only)
 	{
@@ -574,18 +637,27 @@ main(int argc, char *argv[])
 		 */
 		if (!tablespaces_only)
 		{
+			/* Dump Resource Queues */
+			if (resource_queues)
+				dumpResQueues(conn);
+
+			/* Dump Resource Groups */
+			if (resource_groups)
+				dumpResGroups(conn);
+
 			/* Dump roles (users) */
 			dumpRoles(conn);
 
-			/* Dump role memberships --- need different method for pre-8.1 */
-			if (server_version >= 80100)
-				dumpRoleMembership(conn);
-			else
-				dumpGroups(conn);
+			/* Dump role memberships */
+			dumpRoleMembership(conn);
+
+			/* Dump role constraints */
+			dumpRoleConstraints(conn);
 		}
 
 		/* Dump tablespaces */
 		if (!roles_only && !no_tablespaces)
+			/* Dump tablespaces */
 			dumpTablespaces(conn);
 	}
 
@@ -630,11 +702,13 @@ help(void)
 	printf(_("  -E, --encoding=ENCODING      dump the data in encoding ENCODING\n"));
 	printf(_("  -g, --globals-only           dump only global objects, no databases\n"));
 	printf(_("  -O, --no-owner               skip restoration of object ownership\n"));
-	printf(_("  -r, --roles-only             dump only roles, no databases or tablespaces\n"));
+	printf(_("      --roles-only             dump only roles, no databases or tablespaces\n"));
 	printf(_("  -s, --schema-only            dump only the schema, no data\n"));
 	printf(_("  -S, --superuser=NAME         superuser user name to use in the dump\n"));
 	printf(_("  -t, --tablespaces-only       dump only tablespaces, no databases or roles\n"));
 	printf(_("  -x, --no-privileges          do not dump privileges (grant/revoke)\n"));
+	printf(_("  --resource-queues            dump resource queue data\n"));
+	printf(_("  --resource-groups            dump resource group data\n"));
 	printf(_("  --binary-upgrade             for use by upgrade utilities only\n"));
 	printf(_("  --column-inserts             dump data as INSERT commands with column names\n"));
 	printf(_("  --disable-dollar-quoting     disable dollar quoting, use SQL standard quoting\n"));
@@ -658,6 +732,8 @@ help(void)
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
+	printf(_("  --gp-syntax                  dump with Greenplum Database syntax (default if gpdb)\n"));
+	printf(_("  --no-gp-syntax               dump without Greenplum Database syntax (default if postgresql)\n"));
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR     connect using connection string\n"));
@@ -671,9 +747,352 @@ help(void)
 
 	printf(_("\nIf -f/--file is not used, then the SQL script will be written to the standard\n"
 			 "output.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }
 
+
+/*
+ * Build the WITH clause for resource queue dump
+ */
+static void 
+buildWithClause(const char *resname, const char *ressetting, PQExpBuffer buf)
+{
+	if (0 == strncmp("memory_limit", resname, 12) && (strncmp(ressetting, "-1", 2) != 0))
+        	appendPQExpBuffer(buf, " %s='%s'", resname, ressetting);
+	else
+		appendPQExpBuffer(buf, " %s=%s", resname, ressetting);
+}
+
+/*
+ * Dump resource group
+ */
+static void
+dumpResGroups(PGconn *conn)
+{
+	PQExpBuffer buf = createPQExpBuffer();
+	PGresult   *res;
+	int		i;
+	int		i_groupname,
+			i_cpu_rate_limit,
+			i_concurrency,
+			i_memory_limit,
+			i_memory_shared_quota,
+			i_memory_spill_ratio,
+			i_memory_auditor,
+			i_cpuset;
+
+	printfPQExpBuffer(buf, "SELECT g.rsgname AS groupname, "
+					  "t1.value AS concurrency, "
+					  "t2.value AS cpu_rate_limit, "
+					  "t3.value AS memory_limit, "
+					  "t4.value AS memory_shared_quota, "
+					  "t5.value AS memory_spill_ratio, "
+					  "t6.value AS memory_auditor, "
+					  "t7.value AS cpuset "
+					  "FROM pg_resgroup g "
+					  "     JOIN pg_resgroupcapability t1 ON g.oid = t1.resgroupid AND t1.reslimittype = 1 "
+					  "     JOIN pg_resgroupcapability t2 ON g.oid = t2.resgroupid AND t2.reslimittype = 2 "
+					  "     JOIN pg_resgroupcapability t3 ON g.oid = t3.resgroupid AND t3.reslimittype = 3 "
+					  "     JOIN pg_resgroupcapability t4 ON g.oid = t4.resgroupid AND t4.reslimittype = 4 "
+					  "     JOIN pg_resgroupcapability t5 ON g.oid = t5.resgroupid AND t5.reslimittype = 5 "
+					  "LEFT JOIN pg_resgroupcapability t6 ON g.oid = t6.resgroupid AND t6.reslimittype = 6 "
+					  "LEFT JOIN pg_resgroupcapability t7 ON g.oid = t7.resgroupid AND t7.reslimittype = 7;");
+
+	res = executeQuery(conn, buf->data);
+
+	i_groupname = PQfnumber(res, "groupname");
+	i_cpu_rate_limit = PQfnumber(res, "cpu_rate_limit");
+	i_concurrency = PQfnumber(res, "concurrency");
+	i_memory_limit = PQfnumber(res, "memory_limit");
+	i_memory_shared_quota = PQfnumber(res, "memory_shared_quota");
+	i_memory_spill_ratio = PQfnumber(res, "memory_spill_ratio");
+	i_memory_auditor = PQfnumber(res, "memory_auditor");
+	i_cpuset = PQfnumber(res, "cpuset");
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "--\n-- Resource Group\n--\n\n");
+
+	/*
+	 * total cpu_rate_limit and memory_limit should less than 100, so clean
+	 * them before we seting new memory_limit and cpu_rate_limit.
+	 */
+	fprintf(OPF, "ALTER RESOURCE GROUP \"admin_group\" SET cpu_rate_limit 1;\n");
+	fprintf(OPF, "ALTER RESOURCE GROUP \"default_group\" SET cpu_rate_limit 1;\n");
+	fprintf(OPF, "ALTER RESOURCE GROUP \"system_group\" SET cpu_rate_limit 1;\n");
+	fprintf(OPF, "ALTER RESOURCE GROUP \"admin_group\" SET memory_limit 1;\n");
+	fprintf(OPF, "ALTER RESOURCE GROUP \"default_group\" SET memory_limit 1;\n");
+	fprintf(OPF, "ALTER RESOURCE GROUP \"system_group\" SET memory_limit 1;\n");
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		const char *groupname;
+		const char *cpu_rate_limit;
+		const char *concurrency;
+		const char *memory_limit;
+		const char *memory_shared_quota;
+		const char *memory_spill_ratio;
+		const char *memory_auditor;
+		const char *cpuset;
+
+		groupname = PQgetvalue(res, i, i_groupname);
+		cpu_rate_limit = PQgetvalue(res, i, i_cpu_rate_limit);
+		concurrency = PQgetvalue(res, i, i_concurrency);
+		memory_limit = PQgetvalue(res, i, i_memory_limit);
+		memory_shared_quota = PQgetvalue(res, i, i_memory_shared_quota);
+		memory_spill_ratio = PQgetvalue(res, i, i_memory_spill_ratio);
+		memory_auditor = PQgetvalue(res, i, i_memory_auditor);
+		cpuset = PQgetvalue(res, i, i_cpuset);
+
+		resetPQExpBuffer(buf);
+
+		if (0 == strcmp(groupname, "default_group") || 0 == strcmp(groupname, "admin_group")
+				|| 0 == strcmp(groupname, "system_group"))
+		{
+			/*
+			 * We can't emit CREATE statements for the built-in groups as they
+			 * will already exist in the target cluster. So emit ALTER
+			 * statements instead.
+			 *
+			 * Default resource groups must have memory_auditor == "vmtracker",
+			 * no need to ALTER it, and we do not support ALTER memory_auditor
+			 * at all.
+			 */
+			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET concurrency %s;\n",
+							  fmtId(groupname), concurrency);
+			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET memory_limit %s;\n",
+							  fmtId(groupname), memory_limit);
+			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET memory_shared_quota %s;\n",
+							  fmtId(groupname), memory_shared_quota);
+			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET memory_spill_ratio %s;\n",
+							  fmtId(groupname), memory_spill_ratio);
+			if (atoi(cpu_rate_limit) >= 0)
+				appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET cpu_rate_limit %s;\n",
+								  fmtId(groupname), cpu_rate_limit);
+			else
+				appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET cpuset '%s';\n",
+								  fmtId(groupname), cpuset);
+		}
+		else
+		{
+			const char *memory_auditor_name;
+			const char *cpu_prop;
+			char cpu_setting[1024];
+
+			/*
+			 * Possible values of memory_auditor:
+			 * - "1": cgroup;
+			 * - "0": vmtracker;
+			 * - "": not set, e.g. created on an older version which does not
+			 *   support memory_auditor yet, consider it as vmtracker;
+			 */
+			if (strcmp(memory_auditor, "1") == 0)
+				memory_auditor_name = "cgroup";
+			else
+				memory_auditor_name = "vmtracker";
+
+			if (atoi(cpu_rate_limit) >= 0)
+			{
+				cpu_prop = "cpu_rate_limit";
+				snprintf(cpu_setting, sizeof(cpu_setting), "%s", cpu_rate_limit);
+			}
+			else
+			{
+				cpu_prop = "cpuset";
+				snprintf(cpu_setting, sizeof(cpu_setting), "'%s'", cpuset);
+			}
+
+			printfPQExpBuffer(buf, "CREATE RESOURCE GROUP %s WITH ("
+							  "concurrency=%s, %s=%s, "
+							  "memory_limit=%s, memory_shared_quota=%s, "
+							  "memory_spill_ratio=%s, memory_auditor=%s);\n",
+							  fmtId(groupname), concurrency, cpu_prop, cpu_setting,
+							  memory_limit, memory_shared_quota,
+							  memory_spill_ratio, memory_auditor_name);
+		}
+
+		fprintf(OPF, "%s", buf->data);
+	}
+
+	PQclear(res);
+
+	destroyPQExpBuffer(buf);
+
+	fprintf(OPF, "\n\n");
+}
+
+/*
+ * Dump resource queues
+ */
+static void
+dumpResQueues(PGconn *conn)
+{
+	PQExpBuffer buf = createPQExpBuffer();
+	PGresult   *res;
+	int			i_rsqname,
+				i_resname,
+				i_ressetting,
+				i_rqoid;
+	int			i;
+	char	   *prev_rsqname = NULL;
+	bool		bWith = false;
+
+	printfPQExpBuffer(buf,
+					  "SELECT oid, rsqname, 'activelimit' as resname, "
+					  "rsqcountlimit::text as ressetting, "
+					  "1 as ord FROM pg_resqueue "
+					  "UNION "
+					  "SELECT oid, rsqname, 'costlimit' as resname, "
+					  "rsqcostlimit::text as ressetting, "
+					  "2 as ord FROM pg_resqueue "
+					  "UNION "
+					  "SELECT oid, rsqname, 'overcommit' as resname, "
+					  "case when rsqovercommit then '1' "
+					  "else '0' end as ressetting, "
+					  "3 as ord FROM pg_resqueue "
+					  "UNION "
+					  "SELECT oid, rsqname, 'ignorecostlimit' as resname, "
+					  "rsqignorecostlimit::text as ressetting, "
+					  "4 as ord FROM pg_resqueue "
+					  "UNION "
+						  "SELECT rq.oid, rq.rsqname, rt.resname, rc.ressetting, "
+						  "rt.restypid as ord FROM "
+						  "pg_resqueue rq,  pg_resourcetype rt, "
+						  "pg_resqueuecapability rc WHERE "
+						  "rq.oid=rc.resqueueid and rc.restypid = rt.restypid "
+						  "order by rsqname,  ord");
+
+	res = executeQuery(conn, buf->data);
+
+	i_rqoid = PQfnumber(res, "oid");
+	i_rsqname = PQfnumber(res, "rsqname");
+	i_resname = PQfnumber(res, "resname");
+	i_ressetting = PQfnumber(res, "ressetting");
+
+	if (PQntuples(res) > 0)
+	    fprintf(OPF, "--\n-- Resource Queues\n--\n\n");
+
+
+	/*
+	 * settings for resource queue are spread over multiple rows, but sorted
+	 * by queue name (and ranked in order of resname ) eg:
+	 *
+	 * rsqname	  |		resname		| ressetting | ord
+	 * -----------+-----------------+------------+----- pg_default |
+	 * activelimit	   | 20			|	1 pg_default | costlimit	   | -1 |
+	 * 2 pg_default | overcommit	  | 0		   |   3 pg_default |
+	 * ignorecostlimit | 0			|	4
+	 *
+	 * This format lets us support an arbitrary number of resqueuecapability
+	 * entries.  So watch for change of rsqname to switch to next CREATE
+	 * statement.
+	 *
+	 */
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		const char *rsqname;
+		const char *resname;
+		const char *ressetting;
+
+		rsqname = PQgetvalue(res, i, i_rsqname);
+		resname = PQgetvalue(res, i, i_resname);
+		ressetting = PQgetvalue(res, i, i_ressetting);
+
+		/* if first CREATE statement, or name changed... */
+		if (!prev_rsqname || (0 != strcmp(rsqname, prev_rsqname)))
+		{
+			if (prev_rsqname)
+			{
+				/* terminate the WITH if necessary */
+				if (bWith)
+					appendPQExpBuffer(buf, ") ");
+
+				appendPQExpBuffer(buf, ";\n");
+
+				fprintf(OPF, "%s", buf->data);
+
+				free(prev_rsqname);
+			}
+
+			bWith = false;
+
+			/* save the name */
+			prev_rsqname = strdup(rsqname);
+
+			resetPQExpBuffer(buf);
+
+			/* MPP-6926: cannot DROP or CREATE default queue, so ALTER it  */
+			if (0 == strcmp(rsqname, "pg_default"))
+				appendPQExpBuffer(buf, "ALTER RESOURCE QUEUE %s", fmtId(rsqname));
+			else
+				appendPQExpBuffer(buf, "CREATE RESOURCE QUEUE %s", fmtId(rsqname));
+		}
+
+		/* NOTE: currently 3.3-style, but will switch to one WITH clause... */
+
+		if (0 == strcmp("activelimit", resname))
+		{
+			if (strcmp(ressetting, "-1") != 0)
+				appendPQExpBuffer(buf, " ACTIVE THRESHOLD %s",
+								  ressetting);
+		}
+		else if (0 == strcmp("costlimit", resname))
+		{
+			if (strcmp(ressetting, "-1") != 0)
+				appendPQExpBuffer(buf, " COST THRESHOLD %.2f",
+								  atof(ressetting));
+		}
+		else if (0 == strcmp("ignorecostlimit", resname))
+		{
+			if (!((strcmp(ressetting, "-1") == 0)
+				  || (strcmp(ressetting, "0") == 0)))
+				appendPQExpBuffer(buf, " IGNORE THRESHOLD %.2f",
+								  atof(ressetting));
+		}
+		else if (0 == strcmp("overcommit", resname))
+		{
+			if (strcmp(ressetting, "1") == 0)
+				appendPQExpBuffer(buf, " OVERCOMMIT");
+			else
+				appendPQExpBuffer(buf, " NOOVERCOMMIT");
+		}
+		else
+		{
+			/* build the WITH clause */
+			if (bWith)
+				appendPQExpBuffer(buf, ",\n");
+			else
+			{
+				bWith = true;
+				appendPQExpBuffer(buf, "\n WITH (");
+			}
+
+			buildWithClause(resname, ressetting, buf);
+
+		}
+
+	}							/* end for */
+
+	/* need to write out last statement */
+	if (prev_rsqname)
+	{
+		/* terminate the WITH if necessary */
+		if (bWith)
+			appendPQExpBuffer(buf, ") ");
+
+		appendPQExpBuffer(buf, ";\n");
+
+		fprintf(OPF, "%s", buf->data);
+
+		free(prev_rsqname);
+	}
+
+	PQclear(res);
+
+	destroyPQExpBuffer(buf);
+
+	fprintf(OPF, "\n\n");
+}
 
 /*
  * Drop roles
@@ -751,8 +1170,31 @@ dumpRoles(PGconn *conn)
 				i_rolreplication,
 				i_rolbypassrls,
 				i_rolcomment,
+				i_rolqueuename = -1,	/* keep compiler quiet */
+				i_rolgroupname = -1,	/* keep compiler quiet */
+				i_rolcreaterextgpfd = -1,
+				i_rolcreaterexthttp = -1,
+				i_rolcreatewextgpfd = -1,
+				i_rolcreaterexthdfs = -1,
+				i_rolcreatewexthdfs = -1,
 				i_is_current_user;
 	int			i;
+	bool		exttab_auth = (server_version >= 80214);
+	/*
+	 * Support for gphdfs was removed in Greenplum 6
+	 */
+	bool		hdfs_auth = (server_version >= 80215 && server_version < 80400);
+	char	   *resq_col = resource_queues ? ", (SELECT rsqname FROM pg_resqueue WHERE "
+	"  pg_resqueue.oid = rolresqueue) AS rolqueuename " : "";
+	char	   *resgroup_col = resource_groups ? ", (SELECT rsgname FROM pg_resgroup WHERE "
+	"  pg_resgroup.oid = rolresgroup) AS rolgroupname " : "";
+	char	   *extauth_col = exttab_auth ? ", rolcreaterextgpfd, rolcreaterexthttp, rolcreatewextgpfd" : "";
+	char	   *hdfs_col = hdfs_auth ? ", rolcreaterexthdfs, rolcreatewexthdfs " : "";
+
+	/*
+	 * Query to select role info get resqueue if version support it get
+	 * external table auth on gpfdist, gpfdists and http if version support it get
+	 */
 
 	/* note: rolconfig is dumped later */
 	if (server_version >= 90600)
@@ -763,9 +1205,10 @@ dumpRoles(PGconn *conn)
 						  "rolvaliduntil, rolreplication, rolbypassrls, "
 						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
+						  " %s %s %s %s"
 						  "FROM %s "
 						  "WHERE rolname !~ '^pg_' "
-						  "ORDER BY 2", role_catalog, role_catalog);
+						  "ORDER BY 2", role_catalog, resq_col, resgroup_col, extauth_col, hdfs_col, role_catalog);
 	else if (server_version >= 90500)
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
@@ -774,75 +1217,33 @@ dumpRoles(PGconn *conn)
 						  "rolvaliduntil, rolreplication, rolbypassrls, "
 						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
+						  " %s %s %s %s"
 						  "FROM %s "
-						  "ORDER BY 2", role_catalog, role_catalog);
+						  "ORDER BY 2", role_catalog, resq_col, resgroup_col, extauth_col, hdfs_col, role_catalog);
 	else if (server_version >= 90100)
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
-						  "rolcreaterole, rolcreatedb, "
+						  "rolcreaterole, rolcreatedb, rolcatupdate, "
 						  "rolcanlogin, rolconnlimit, rolpassword, "
 						  "rolvaliduntil, rolreplication, "
 						  "false as rolbypassrls, "
 						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
+						  " %s %s %s %s"
 						  "FROM %s "
-						  "ORDER BY 2", role_catalog, role_catalog);
-	else if (server_version >= 80200)
+						  "ORDER BY 2", role_catalog, resq_col, resgroup_col, extauth_col, hdfs_col, role_catalog);
+	else
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
-						  "rolcreaterole, rolcreatedb, "
+						  "rolcreaterole, rolcreatedb, rolcatupdate, "
 						  "rolcanlogin, rolconnlimit, rolpassword, "
 						  "rolvaliduntil, false as rolreplication, "
 						  "false as rolbypassrls, "
 						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
+						  " %s %s %s %s"
 						  "FROM %s "
-						  "ORDER BY 2", role_catalog, role_catalog);
-	else if (server_version >= 80100)
-		printfPQExpBuffer(buf,
-						  "SELECT oid, rolname, rolsuper, rolinherit, "
-						  "rolcreaterole, rolcreatedb, "
-						  "rolcanlogin, rolconnlimit, rolpassword, "
-						  "rolvaliduntil, false as rolreplication, "
-						  "false as rolbypassrls, "
-						  "null as rolcomment, "
-						  "rolname = current_user AS is_current_user "
-						  "FROM %s "
-						  "ORDER BY 2", role_catalog);
-	else
-		printfPQExpBuffer(buf,
-						  "SELECT 0 as oid, usename as rolname, "
-						  "usesuper as rolsuper, "
-						  "true as rolinherit, "
-						  "usesuper as rolcreaterole, "
-						  "usecreatedb as rolcreatedb, "
-						  "true as rolcanlogin, "
-						  "-1 as rolconnlimit, "
-						  "passwd as rolpassword, "
-						  "valuntil as rolvaliduntil, "
-						  "false as rolreplication, "
-						  "false as rolbypassrls, "
-						  "null as rolcomment, "
-						  "usename = current_user AS is_current_user "
-						  "FROM pg_shadow "
-						  "UNION ALL "
-						  "SELECT 0 as oid, groname as rolname, "
-						  "false as rolsuper, "
-						  "true as rolinherit, "
-						  "false as rolcreaterole, "
-						  "false as rolcreatedb, "
-						  "false as rolcanlogin, "
-						  "-1 as rolconnlimit, "
-						  "null::text as rolpassword, "
-						  "null::timestamptz as rolvaliduntil, "
-						  "false as rolreplication, "
-						  "false as rolbypassrls, "
-						  "null as rolcomment, "
-						  "false AS is_current_user "
-						  "FROM pg_group "
-						  "WHERE NOT EXISTS (SELECT 1 FROM pg_shadow "
-						  " WHERE usename = groname) "
-						  "ORDER BY 2");
+						  "ORDER BY 2", role_catalog, resq_col, resgroup_col, extauth_col, hdfs_col, role_catalog);
 
 	res = executeQuery(conn, buf->data);
 
@@ -860,6 +1261,24 @@ dumpRoles(PGconn *conn)
 	i_rolbypassrls = PQfnumber(res, "rolbypassrls");
 	i_rolcomment = PQfnumber(res, "rolcomment");
 	i_is_current_user = PQfnumber(res, "is_current_user");
+
+	if (resource_queues)
+		i_rolqueuename = PQfnumber(res, "rolqueuename");
+
+	if (resource_groups)
+		i_rolgroupname = PQfnumber(res, "rolgroupname");
+
+	if (exttab_auth)
+	{
+		i_rolcreaterextgpfd = PQfnumber(res, "rolcreaterextgpfd");
+		i_rolcreaterexthttp = PQfnumber(res, "rolcreaterexthttp");
+		i_rolcreatewextgpfd = PQfnumber(res, "rolcreatewextgpfd");
+		if (hdfs_auth)
+		{
+			i_rolcreaterexthdfs = PQfnumber(res, "rolcreaterexthdfs");
+			i_rolcreatewexthdfs = PQfnumber(res, "rolcreatewexthdfs");
+		}
+	}
 
 	if (PQntuples(res) > 0)
 		fprintf(OPF, "--\n-- Roles\n--\n\n");
@@ -885,8 +1304,8 @@ dumpRoles(PGconn *conn)
 		{
 			appendPQExpBufferStr(buf, "\n-- For binary upgrade, must preserve pg_authid.oid\n");
 			appendPQExpBuffer(buf,
-							  "SELECT pg_catalog.binary_upgrade_set_next_pg_authid_oid('%u'::pg_catalog.oid);\n\n",
-							  auth_oid);
+							  "SELECT pg_catalog.binary_upgrade_set_next_pg_authid_oid('%u'::pg_catalog.oid, '%s'::text);\n\n",
+							  auth_oid, rolename);
 		}
 
 		/*
@@ -932,10 +1351,13 @@ dumpRoles(PGconn *conn)
 		else
 			appendPQExpBufferStr(buf, " NOREPLICATION");
 
-		if (strcmp(PQgetvalue(res, i, i_rolbypassrls), "t") == 0)
-			appendPQExpBufferStr(buf, " BYPASSRLS");
-		else
-			appendPQExpBufferStr(buf, " NOBYPASSRLS");
+		if (server_version >= 90600)
+		{
+			if (strcmp(PQgetvalue(res, i, i_rolbypassrls), "t") == 0)
+				appendPQExpBufferStr(buf, " BYPASSRLS");
+			else
+				appendPQExpBufferStr(buf, " NOBYPASSRLS");
+		}
 
 		if (strcmp(PQgetvalue(res, i, i_rolconnlimit), "-1") != 0)
 			appendPQExpBuffer(buf, " CONNECTION LIMIT %s",
@@ -951,6 +1373,47 @@ dumpRoles(PGconn *conn)
 		if (!PQgetisnull(res, i, i_rolvaliduntil))
 			appendPQExpBuffer(buf, " VALID UNTIL '%s'",
 							  PQgetvalue(res, i, i_rolvaliduntil));
+
+		if (resource_queues)
+		{
+			if (!PQgetisnull(res, i, i_rolqueuename))
+				appendPQExpBuffer(buf, " RESOURCE QUEUE %s",
+								  PQgetvalue(res, i, i_rolqueuename));
+		}
+
+		if (resource_groups)
+		{
+			if (!PQgetisnull(res, i, i_rolgroupname))
+				appendPQExpBuffer(buf, " RESOURCE GROUP %s",
+								  PQgetvalue(res, i, i_rolgroupname));
+		}
+
+		if (exttab_auth)
+		{
+			/* we use the same privilege for gpfdist and gpfdists */
+			if (!PQgetisnull(res, i, i_rolcreaterextgpfd) &&
+				strcmp(PQgetvalue(res, i, i_rolcreaterextgpfd), "t") == 0)
+				appendPQExpBufferStr(buf, " CREATEEXTTABLE (protocol='gpfdist', type='readable')");
+
+			if (!PQgetisnull(res, i, i_rolcreatewextgpfd) &&
+				strcmp(PQgetvalue(res, i, i_rolcreatewextgpfd), "t") == 0)
+				appendPQExpBufferStr(buf, " CREATEEXTTABLE (protocol='gpfdist', type='writable')");
+
+			if (!PQgetisnull(res, i, i_rolcreaterexthttp) &&
+				strcmp(PQgetvalue(res, i, i_rolcreaterexthttp), "t") == 0)
+				appendPQExpBufferStr(buf, " CREATEEXTTABLE (protocol='http')");
+
+			if (hdfs_auth)
+			{
+				if (!PQgetisnull(res, i, i_rolcreaterexthdfs) &&
+					strcmp(PQgetvalue(res, i, i_rolcreaterexthdfs), "t") == 0)
+					appendPQExpBufferStr(buf, " CREATEEXTTABLE (protocol='gphdfs', type='readable')");
+
+				if (!PQgetisnull(res, i, i_rolcreatewexthdfs) &&
+					strcmp(PQgetvalue(res, i, i_rolcreatewexthdfs), "t") == 0)
+					appendPQExpBufferStr(buf, " CREATEEXTTABLE (protocol='gphdfs', type='writable')");
+			}
+		}
 
 		appendPQExpBufferStr(buf, ";\n");
 
@@ -1044,70 +1507,38 @@ dumpRoleMembership(PGconn *conn)
 }
 
 /*
- * Dump group memberships from a pre-8.1 server.  It's annoying that we
- * can't share any useful amount of code with the post-8.1 case, but
- * the catalog representations are too different.
+ * Dump role time constraints. 
  *
- * Note: we expect dumpRoles already created all the roles, but there is
- * no membership yet.
+ * Note: we expect dumpRoles already created all the roles, but there are
+ * no time constraints yet.
  */
 static void
-dumpGroups(PGconn *conn)
+dumpRoleConstraints(PGconn *conn)
 {
-	PQExpBuffer buf = createPQExpBuffer();
 	PGresult   *res;
-	int			i;
+	int 		i;
 
-	res = executeQuery(conn,
-					   "SELECT groname, grolist FROM pg_group ORDER BY 1");
+	res = executeQuery(conn, "SELECT a.rolname, c.start_day, c.start_time, c.end_day, c.end_time "
+							 "FROM pg_authid a, pg_auth_time_constraint c "
+							 "WHERE a.oid = c.authid "
+							 "ORDER BY 1");
 
 	if (PQntuples(res) > 0)
-		fprintf(OPF, "--\n-- Role memberships\n--\n\n");
+		fprintf(OPF, "--\n-- Role time constraints\n--\n\n");
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
-		char	   *groname = PQgetvalue(res, i, 0);
-		char	   *grolist = PQgetvalue(res, i, 1);
-		PGresult   *res2;
-		int			j;
+		char		*rolname 	= PQgetvalue(res, i, 0);
+		char		*start_day 	= PQgetvalue(res, i, 1);
+		char 		*start_time = PQgetvalue(res, i, 2);
+		char		*end_day 	= PQgetvalue(res, i, 3);
+		char 		*end_time 	= PQgetvalue(res, i, 4);
 
-		/*
-		 * Array representation is {1,2,3} ... convert to (1,2,3)
-		 */
-		if (strlen(grolist) < 3)
-			continue;
-
-		grolist = pg_strdup(grolist);
-		grolist[0] = '(';
-		grolist[strlen(grolist) - 1] = ')';
-		printfPQExpBuffer(buf,
-						  "SELECT usename FROM pg_shadow "
-						  "WHERE usesysid IN %s ORDER BY 1",
-						  grolist);
-		free(grolist);
-
-		res2 = executeQuery(conn, buf->data);
-
-		for (j = 0; j < PQntuples(res2); j++)
-		{
-			char	   *usename = PQgetvalue(res2, j, 0);
-
-			/*
-			 * Don't try to grant a role to itself; can happen if old
-			 * installation has identically named user and group.
-			 */
-			if (strcmp(groname, usename) == 0)
-				continue;
-
-			fprintf(OPF, "GRANT %s", fmtId(groname));
-			fprintf(OPF, " TO %s;\n", fmtId(usename));
-		}
-
-		PQclear(res2);
+		fprintf(OPF, "ALTER ROLE %s DENY BETWEEN DAY %s TIME '%s' AND DAY %s TIME '%s';\n", 
+				fmtId(rolname), start_day, start_time, end_day, end_time);
 	}
 
 	PQclear(res);
-	destroyPQExpBuffer(buf);
 
 	fprintf(OPF, "\n\n");
 }
@@ -1157,58 +1588,21 @@ dumpTablespaces(PGconn *conn)
 	PGresult   *res;
 	int			i;
 
+	// WALREP_FIXME: filespaces are gone. How do we deal with that here?
+	
 	/*
 	 * Get all tablespaces except built-in ones (which we assume are named
 	 * pg_xxx)
 	 *
-	 * For the tablespace ACLs, as of 9.6, we extract both the positive (as
-	 * spcacl) and negative (as rspcacl) ACLs, relative to the default ACL for
-	 * tablespaces, which are then passed to buildACLCommands() below.
-	 *
-	 * See buildACLQueries() and buildACLCommands().
-	 *
-	 * The order in which privileges are in the ACL string (the order they
-	 * have been GRANT'd in, which the backend maintains) must be preserved to
-	 * ensure that GRANTs WITH GRANT OPTION and subsequent GRANTs based on
-	 * those are dumped in the correct order.
-	 *
-	 * Note that we do not support initial privileges (pg_init_privs) on
-	 * tablespaces, so this logic cannot make use of buildACLQueries().
+	 * [FIXME] the queries need to be slightly different if the backend isn't
+	 * Greenplum, and the dump format should vary depending on if the dump is
+	 * --gp-syntax or --no-gp-syntax.
 	 */
-	if (server_version >= 90600)
+	if (server_version >= 90200)
 		res = executeQuery(conn, "SELECT oid, spcname, "
 						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
 						   "pg_catalog.pg_tablespace_location(oid), "
-						   "(SELECT array_agg(acl ORDER BY row_n) FROM "
-						   "  (SELECT acl, row_n FROM "
-						   "     unnest(coalesce(spcacl,acldefault('t',spcowner))) "
-						   "     WITH ORDINALITY AS perm(acl,row_n) "
-						   "   WHERE NOT EXISTS ( "
-						   "     SELECT 1 "
-						   "     FROM unnest(acldefault('t',spcowner)) "
-						   "       AS init(init_acl) "
-						   "     WHERE acl = init_acl)) AS spcacls) "
-						   " AS spcacl, "
-						   "(SELECT array_agg(acl ORDER BY row_n) FROM "
-						   "  (SELECT acl, row_n FROM "
-						   "     unnest(acldefault('t',spcowner)) "
-						   "     WITH ORDINALITY AS initp(acl,row_n) "
-						   "   WHERE NOT EXISTS ( "
-						   "     SELECT 1 "
-						   "     FROM unnest(coalesce(spcacl,acldefault('t',spcowner))) "
-						   "       AS permp(orig_acl) "
-						   "     WHERE acl = orig_acl)) AS rspcacls) "
-						   " AS rspcacl, "
-						   "array_to_string(spcoptions, ', '),"
-						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
-						   "FROM pg_catalog.pg_tablespace "
-						   "WHERE spcname !~ '^pg_' "
-						   "ORDER BY 1");
-	else if (server_version >= 90200)
-		res = executeQuery(conn, "SELECT oid, spcname, "
-						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "pg_catalog.pg_tablespace_location(oid), "
-						   "spcacl, '' as rspcacl, "
+						   "spcacl, acldefault('t', spcowner) AS acldefault, "
 						   "array_to_string(spcoptions, ', '),"
 						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 						   "FROM pg_catalog.pg_tablespace "
@@ -1217,16 +1611,8 @@ dumpTablespaces(PGconn *conn)
 	else if (server_version >= 90000)
 		res = executeQuery(conn, "SELECT oid, spcname, "
 						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "spclocation, spcacl, '' as rspcacl, "
+						   "spclocation, spcacl, NULL AS acldefault, "
 						   "array_to_string(spcoptions, ', '),"
-						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
-						   "FROM pg_catalog.pg_tablespace "
-						   "WHERE spcname !~ '^pg_' "
-						   "ORDER BY 1");
-	else if (server_version >= 80200)
-		res = executeQuery(conn, "SELECT oid, spcname, "
-						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "spclocation, spcacl, '' as rspcacl, null, "
 						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
@@ -1234,8 +1620,8 @@ dumpTablespaces(PGconn *conn)
 	else
 		res = executeQuery(conn, "SELECT oid, spcname, "
 						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "spclocation, spcacl, '' as rspcacl, "
-						   "null, null "
+						   "spclocation, spcacl, NULL AS acldefault, null, "
+						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
 						   "ORDER BY 1");
@@ -1251,7 +1637,7 @@ dumpTablespaces(PGconn *conn)
 		char	   *spcowner = PQgetvalue(res, i, 2);
 		char	   *spclocation = PQgetvalue(res, i, 3);
 		char	   *spcacl = PQgetvalue(res, i, 4);
-		char	   *rspcacl = PQgetvalue(res, i, 5);
+		char	   *acldefault = PQgetvalue(res, i, 5);
 		char	   *spcoptions = PQgetvalue(res, i, 6);
 		char	   *spccomment = PQgetvalue(res, i, 7);
 		char	   *fspcname;
@@ -1259,7 +1645,7 @@ dumpTablespaces(PGconn *conn)
 		/* needed for buildACLCommands() */
 		fspcname = pg_strdup(fmtId(spcname));
 
-		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
+		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", spcname);
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
 
 		appendPQExpBufferStr(buf, " LOCATION ");
@@ -1270,9 +1656,11 @@ dumpTablespaces(PGconn *conn)
 			appendPQExpBuffer(buf, "ALTER TABLESPACE %s SET (%s);\n",
 							  fspcname, spcoptions);
 
+		/* tablespaces can't have initprivs */
+
 		if (!skip_acls &&
 			!buildACLCommands(fspcname, NULL, NULL, "TABLESPACE",
-							  spcacl, rspcacl,
+							  spcacl, acldefault,
 							  spcowner, "", server_version, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for tablespace \"%s\"",
@@ -1613,7 +2001,7 @@ buildShSecLabels(PGconn *conn, const char *catalog_name, Oid objectId,
 	PQExpBuffer sql = createPQExpBuffer();
 	PGresult   *res;
 
-	buildShSecLabelQuery(conn, catalog_name, objectId, sql);
+	buildShSecLabelQuery(catalog_name, objectId, sql);
 	res = executeQuery(conn, sql->data);
 	emitShSecLabels(conn, res, buffer, objtype, objname);
 
@@ -1816,11 +2204,11 @@ connectDatabase(const char *dbname, const char *connection_string,
 	my_version = PG_VERSION_NUM;
 
 	/*
-	 * We allow the server to be back to 8.0, and up to any minor release of
+	 * We allow the server to be back to 8.3, and up to any minor release of
 	 * our own major version.  (See also version check in pg_dump.c.)
 	 */
 	if (my_version != server_version
-		&& (server_version < 80000 ||
+		&& (server_version < GPDB5_MAJOR_PGVERSION ||		/* we can handle back to 8.3 */
 			(server_version / 100) > (my_version / 100)))
 	{
 		pg_log_error("server version: %s; %s version: %s",

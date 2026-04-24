@@ -3,6 +3,8 @@
  * nodeFunctionscan.c
  *	  Support routines for scanning RangeFunctions (functions in rangetable).
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -22,12 +24,19 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/nodeFunctionscan.h"
 #include "funcapi.h"
 #include "nodes/nodeFuncs.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
+
+#include "cdb/cdbvars.h"
+#include "cdb/memquota.h"
+#include "executor/nodeShareInputScan.h"
+#include "executor/spi.h"
 
 
 /*
@@ -44,6 +53,8 @@ typedef struct FunctionScanPerFuncState
 } FunctionScanPerFuncState;
 
 static TupleTableSlot *FunctionNext(FunctionScanState *node);
+static void ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+static void ExecEagerFreeFunctionScan(FunctionScanState *node);
 
 
 /* ----------------------------------------------------------------
@@ -57,7 +68,7 @@ static TupleTableSlot *FunctionNext(FunctionScanState *node);
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
-FunctionNext(FunctionScanState *node)
+FunctionNext_guts(FunctionScanState *node)
 {
 	EState	   *estate;
 	ScanDirection direction;
@@ -73,6 +84,41 @@ FunctionNext(FunctionScanState *node)
 	estate = node->ss.ps.state;
 	direction = estate->es_direction;
 	scanslot = node->ss.ss_ScanTupleSlot;
+
+	/*
+	 * FunctionNext read tuple from tuplestore instead
+	 * of executing the real function.
+	 * Tuplestore is filled by the FunctionScan's initplan.
+	 */
+	if(node->resultInTupleStore)
+	{
+		bool gotOK = false;
+		bool forward = true;
+
+		/*
+		 * Setup tuplestore reader on first call.
+		 *
+		 * The tuplestore should have been created by preprocess_initplans()
+		 * already, we just read it here.
+		 */
+		if (!node->ts_state)
+		{
+			char rwfile_prefix[100];
+			function_scan_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), node->initplanId);
+
+			node->ts_state = tuplestore_open_shared(get_shareinput_fileset(),
+													rwfile_prefix);
+		}
+
+		gotOK = tuplestore_gettupleslot(node->ts_state, forward, false,
+										scanslot);
+
+		if(!gotOK)
+		{
+			return NULL;
+		}
+		return scanslot;
+	}
 
 	if (node->simple)
 	{
@@ -96,7 +142,18 @@ FunctionNext(FunctionScanState *node)
 											node->ss.ps.ps_ExprContext,
 											node->argcontext,
 											node->funcstates[0].tupdesc,
-											node->eflags & EXEC_FLAG_BACKWARD);
+											node->eflags & EXEC_FLAG_BACKWARD,
+											PlanStateOperatorMemKB( (PlanState *) node));
+
+			/* CDB: Offer extra info for EXPLAIN ANALYZE. */
+			if (node->ss.ps.instrument && node->ss.ps.instrument->need_cdb)
+			{
+				/* Let the tuplestore share our Instrumentation object. */
+				tuplestore_set_instrument(tstore, node->ss.ps.instrument);
+
+				/* Request a callback at end of query. */
+				node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
+			}
 
 			/*
 			 * paranoia - cope if the function, which may have constructed the
@@ -155,7 +212,18 @@ FunctionNext(FunctionScanState *node)
 											node->ss.ps.ps_ExprContext,
 											node->argcontext,
 											fs->tupdesc,
-											node->eflags & EXEC_FLAG_BACKWARD);
+											node->eflags & EXEC_FLAG_BACKWARD,
+											PlanStateOperatorMemKB( (PlanState *) node));
+
+			/* CDB: Offer extra info for EXPLAIN ANALYZE. */
+			if (node->ss.ps.instrument && node->ss.ps.instrument->need_cdb)
+			{
+				/* Let the tuplestore share our Instrumentation object. */
+				tuplestore_set_instrument(fs->tstore, node->ss.ps.instrument);
+
+				/* Request a callback at end of query. */
+				node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
+			}
 
 			/*
 			 * paranoia - cope if the function, which may have constructed the
@@ -211,8 +279,8 @@ FunctionNext(FunctionScanState *node)
 
 			for (i = 0; i < fs->colcount; i++)
 			{
-				scanslot->tts_values[att] = fs->func_slot->tts_values[i];
-				scanslot->tts_isnull[att] = fs->func_slot->tts_isnull[i];
+				scanslot->tts_values[att] = slot_getattr(fs->func_slot, i + 1,
+														 &scanslot->tts_isnull[att]);
 				att++;
 			}
 
@@ -241,6 +309,19 @@ FunctionNext(FunctionScanState *node)
 		ExecStoreVirtualTuple(scanslot);
 
 	return scanslot;
+}
+
+static TupleTableSlot *
+FunctionNext(FunctionScanState *node)
+{
+	TupleTableSlot *result;
+
+	result = FunctionNext_guts(node);
+
+	if (TupIsNull(result) && !node->delayEagerFree)
+		ExecEagerFreeFunctionScan((FunctionScanState *) &node->ss.ps);
+
+	return result;
 }
 
 /*
@@ -303,6 +384,9 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	scanstate->ss.ps.state = estate;
 	scanstate->ss.ps.ExecProcNode = ExecFunctionScan;
 	scanstate->eflags = eflags;
+	scanstate->resultInTupleStore = node->resultInTupleStore;
+	scanstate->initplanId = node->initplanId;
+	scanstate->ts_state = NULL;
 
 	/*
 	 * are we adding an ordinality column?
@@ -491,6 +575,46 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	 */
 	ExecInitResultTypeTL(&scanstate->ss.ps);
 	ExecAssignScanProjectionInfo(&scanstate->ss);
+	
+	if (!IsResManagerMemoryPolicyNone())
+	{
+		SPI_ReserveMemory(((Plan *)node)->operatorMemKB * 1024L);
+	}
+
+	/*
+	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
+	 * then this node is not eager free safe.
+	 */
+	scanstate->delayEagerFree =
+		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
+
+	/*
+	 * Also don't free eagerly, if there are multiple functions. If a ROWS
+	 * FROM() expression with multiple functions is used with a nested loop,
+	 * when the param changes, we might need to rescan some, but not all, of
+	 * the functions, depending on which function's arguments refer to the
+	 * params. In that case, we prefer to avoid the rescans for those
+	 * functions that we can.
+	 *
+	 * (In a nested loop with no params at all, the EXEC_FLAG_REWIND flag is
+	 * set. And in the case of a single function, the param must be used as
+	 * an arugment of that function, and we'll need to always rescan it.)
+	 */
+	if (nfuncs > 0)
+		scanstate->delayEagerFree = true;
+
+	/*
+	 * Create a memory context that ExecMakeTableFunctionResult can use to
+	 * evaluate function arguments in.  We can't use the per-tuple context for
+	 * this because it gets reset too often; but we don't want to leak
+	 * evaluation results into the query-lifespan context either.  We just
+	 * need one context, because we evaluate each function separately.
+	 */
+	scanstate->argcontext = AllocSetContextCreate(CurrentMemoryContext,
+												  "Table function arguments",
+												  ALLOCSET_DEFAULT_MINSIZE,
+												  ALLOCSET_DEFAULT_INITSIZE,
+												  ALLOCSET_DEFAULT_MAXSIZE);
 
 	/*
 	 * initialize child expressions
@@ -512,6 +636,20 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	return scanstate;
 }
 
+/*
+ * ExecFunctionScanExplainEnd
+ *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
+ *
+ * The cleanup that ordinarily would occur during ExecutorEnd() needs to be 
+ * done earlier in order to report statistics to EXPLAIN ANALYZE.  Note that 
+ * ExecEndFunctionScan() will be called for a second time during ExecutorEnd().
+ */
+void
+ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf pg_attribute_unused())
+{
+	ExecEagerFreeFunctionScan((FunctionScanState *) planstate);
+}                               /* ExecFunctionScanExplainEnd */
+
 /* ----------------------------------------------------------------
  *		ExecEndFunctionScan
  *
@@ -521,8 +659,6 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 void
 ExecEndFunctionScan(FunctionScanState *node)
 {
-	int			i;
-
 	/*
 	 * Free the exprcontext
 	 */
@@ -535,22 +671,13 @@ ExecEndFunctionScan(FunctionScanState *node)
 		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
+	ExecEagerFreeFunctionScan(node);
+
 	/*
-	 * Release slots and tuplestore resources
+	 * destroy tuplestore reader if exists
 	 */
-	for (i = 0; i < node->nfuncs; i++)
-	{
-		FunctionScanPerFuncState *fs = &node->funcstates[i];
-
-		if (fs->func_slot)
-			ExecClearTuple(fs->func_slot);
-
-		if (fs->tstore != NULL)
-		{
-			tuplestore_end(node->funcstates[i].tstore);
-			fs->tstore = NULL;
-		}
-	}
+	if (node->ts_state != NULL)
+		tuplestore_end(node->ts_state);
 }
 
 /* ----------------------------------------------------------------
@@ -575,6 +702,18 @@ ExecReScanFunctionScan(FunctionScanState *node)
 		if (fs->func_slot)
 			ExecClearTuple(fs->func_slot);
 	}
+
+	/*
+	 * For function execute on INITPLAN, tuplestore accessor needs to
+	 * seek to the begin of file for rescan.
+	 *
+	 * Note that we've already stored the function result in tuplestore by
+	 * INITPLAN node, so there is no need to re-use the tuplestore in
+	 * function scan, which is used to avoid re-executing the
+	 * function again when rescan a FunctionScan
+	 */
+	if(node->resultInTupleStore && node->ts_state)
+		tuplestore_rescan(node->ts_state);
 
 	ExecScanReScan(&node->ss);
 
@@ -617,4 +756,41 @@ ExecReScanFunctionScan(FunctionScanState *node)
 		if (node->funcstates[i].tstore != NULL)
 			tuplestore_rescan(node->funcstates[i].tstore);
 	}
+}
+
+static void
+ExecEagerFreeFunctionScan(FunctionScanState *node)
+{
+	int			i;
+
+	/*
+	 * Release slots and tuplestore resources
+	 */
+	for (i = 0; i < node->nfuncs; i++)
+	{
+		FunctionScanPerFuncState *fs = &node->funcstates[i];
+
+		if (fs->func_slot)
+			ExecClearTuple(fs->func_slot);
+
+		if (fs->tstore != NULL)
+		{
+			tuplestore_end(node->funcstates[i].tstore);
+			fs->tstore = NULL;
+		}
+	}
+}
+
+void
+ExecSquelchFunctionScan(FunctionScanState *node)
+{
+	if (!node->delayEagerFree)
+		ExecEagerFreeFunctionScan(node);
+}
+
+void
+function_scan_create_bufname_prefix(char* p, int size, int initplan_id)
+{
+	snprintf(p, size, "FUNCTION_SCAN_%d_%d",
+			 gp_session_id, initplan_id);
 }

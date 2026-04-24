@@ -23,7 +23,7 @@ standard_targets = all install installdirs uninstall distprep clean distclean ma
 # these targets should recurse even into subdirectories not being built:
 standard_always_targets = distprep clean distclean maintainer-clean
 
-.PHONY: $(standard_targets) install-strip html man installcheck-parallel
+.PHONY: $(standard_targets) install-strip html man installcheck-parallel installcheck-good
 
 # make `all' the default target
 all:
@@ -32,13 +32,22 @@ all:
 # started to update the file.
 .DELETE_ON_ERROR:
 
+# BLD_ARCH
+BLD_ARCH = @BLD_ARCH@
+
 # Never delete any intermediate files automatically.
 .SECONDARY:
 
 # PostgreSQL version number
-VERSION = @PACKAGE_VERSION@
+VERSION = @PG_PACKAGE_VERSION@
 MAJORVERSION = @PG_MAJORVERSION@
+PG_VERSION = @PG_PACKAGE_VERSION@
+PG_MAJORVERSION = @PG_MAJORVERSION@
 VERSION_NUM = @PG_VERSION_NUM@
+
+# GPDB version number
+GP_VERSION = @GP_VERSION_SHORT@
+GP_MAJORVERSION = @GP_MAJORVERSION@
 
 # Set top_srcdir, srcdir, and VPATH.
 ifdef PGXS
@@ -100,6 +109,8 @@ exec_prefix := @exec_prefix@
 datarootdir := @datarootdir@
 
 bindir := @bindir@
+sbindir := @sbindir@
+libexecdir := @libexecdir@
 
 datadir := @datadir@
 ifeq "$(findstring pgsql, $(datadir))" ""
@@ -183,6 +194,7 @@ bitcodedir = $(pkglibdir)/bitcode
 with_icu	= @with_icu@
 with_perl	= @with_perl@
 with_python	= @with_python@
+with_pythonsrc_ext = @with_pythonsrc_ext@
 with_tcl	= @with_tcl@
 with_openssl	= @with_openssl@
 with_selinux	= @with_selinux@
@@ -196,13 +208,29 @@ with_llvm	= @with_llvm@
 with_system_tzdata = @with_system_tzdata@
 with_uuid	= @with_uuid@
 with_zlib	= @with_zlib@
+with_libbz2	= @with_libbz2@
+with_apr_config	= @with_apr_config@
+enable_shared	= @enable_shared@
 enable_rpath	= @enable_rpath@
-enable_nls	= @enable_nls@
+# NLS is not supported in Greenplum, see comment documenting
+# this in configure.in
+# enable_nls	= @enable_nls@
 enable_debug	= @enable_debug@
 enable_dtrace	= @enable_dtrace@
 enable_coverage	= @enable_coverage@
 enable_tap_tests	= @enable_tap_tests@
 enable_thread_safety	= @enable_thread_safety@
+enable_strong_random	= @enable_strong_random@
+enable_largefile	= @enable_largefile@
+enable_orca		= @enable_orca@
+enable_gpfdist		= @enable_gpfdist@
+enable_debug_extensions = @enable_debug_extensions@
+enable_orafce		= @enable_orafce@
+enable_mapreduce    = @enable_mapreduce@
+enable_gpcloud 	    = @enable_gpcloud@
+enable_ic_proxy     = @enable_ic_proxy@
+
+enable_tap_tests = @enable_tap_tests@
 
 python_includespec	= @python_includespec@
 python_libdir		= @python_libdir@
@@ -232,6 +260,14 @@ CLANG = @CLANG@
 BITCODE_CFLAGS = @BITCODE_CFLAGS@
 BITCODE_CXXFLAGS = @BITCODE_CXXFLAGS@
 
+have_yaml 		= @have_yaml@
+YAML_LIBS		= @YAML_LIBS@
+with_zstd 		= @with_zstd@
+ZSTD_CFLAGS		= @ZSTD_CFLAGS@
+ZSTD_LIBS		= @ZSTD_LIBS@
+with_quicklz		= @with_quicklz@
+EVENT_LIBS		= @EVENT_LIBS@
+
 ##########################################################################
 #
 # Programs and flags
@@ -242,7 +278,7 @@ CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 PG_SYSROOT = @PG_SYSROOT@
 
-override CPPFLAGS := $(ICU_CFLAGS) $(CPPFLAGS)
+override CPPFLAGS := $(ICU_CFLAGS) $(ZSTD_CFLAGS) $(CPPFLAGS)
 
 ifdef PGXS
 override CPPFLAGS := -I$(includedir_server) -I$(includedir_internal) $(CPPFLAGS)
@@ -268,6 +304,9 @@ LLVM_CPPFLAGS = @LLVM_CPPFLAGS@
 LLVM_CFLAGS = @LLVM_CFLAGS@
 LLVM_CXXFLAGS = @LLVM_CXXFLAGS@
 
+CXX = @CXX@
+CXXFLAGS = @CXXFLAGS@
+
 # Kind-of compilers
 
 BISON = @BISON@
@@ -291,6 +330,9 @@ UUID_EXTRA_OBJS = @UUID_EXTRA_OBJS@
 LLVM_LIBS=@LLVM_LIBS@
 LD = @LD@
 with_gnu_ld = @with_gnu_ld@
+
+# Greenplum uses zstd in frontend and backend
+LIBS := $(LIBS) $(ZSTD_LIBS)
 
 # It's critical that within LDFLAGS, all -L switches pointing to build-tree
 # directories come before any -L switches pointing to external directories.
@@ -336,6 +378,14 @@ perl_includespec	= @perl_includespec@
 perl_embed_ccflags	= @perl_embed_ccflags@
 perl_embed_ldflags	= @perl_embed_ldflags@
 
+# apr-1-config
+
+APR_1_CONFIG		= @APR_1_CONFIG@
+apr_includes		= @apr_includes@
+apr_link_ld_libs	= @apr_link_ld_libs@
+apr_cflags			= @apr_cflags@
+apr_cppflags		= @apr_cppflags@
+
 # Miscellaneous
 
 AWK	= @AWK@
@@ -375,6 +425,8 @@ endif
 
 # Testing
 
+NO_TEMP_INSTALL = yes # GPDB: We assume a GPDB cluster is running (gpdemo)
+
 # In much the same way as above, these rules ensure that we build a temp
 # install tree just once in any recursive "make check".  The additional test
 # on abs_top_builddir prevents doing anything foolish to the root directory.
@@ -399,7 +451,11 @@ endif
 # entries appear more than once in the tree, and parallel installs of the same
 # file can fail with EEXIST.
 checkprep:
+ifndef NO_TEMP_INSTALL
 	$(if $(EXTRA_INSTALL),for extra in $(EXTRA_INSTALL); do $(MAKE) -C '$(top_builddir)'/$$extra DESTDIR='$(abs_top_builddir)'/tmp_install install || exit; done)
+else
+	$(if $(EXTRA_INSTALL),for extra in $(EXTRA_INSTALL); do $(MAKE) -C '$(top_builddir)'/$$extra install || exit; done)
+endif
 
 PROVE = @PROVE@
 # There are common routines in src/test/perl, and some test suites have
@@ -426,7 +482,6 @@ with_temp_install = \
 	$(with_temp_install_extra)
 
 ifeq ($(enable_tap_tests),yes)
-
 define prove_installcheck
 rm -rf '$(CURDIR)'/tmp_check
 $(MKDIR_P) '$(CURDIR)'/tmp_check
@@ -442,6 +497,24 @@ endef
 else
 prove_installcheck = @echo "TAP tests not enabled"
 prove_check = $(prove_installcheck)
+endif
+
+ifeq ($(enable_debug_extensions),yes)
+define faultinjector_prep
+$(top_builddir)/src/test/regress/scan_flaky_fault_injectors.sh &&
+endef
+FAULTINJECTOR_OPTS := --load-extension=gp_inject_fault
+else
+define faultinjector_prep
+# TODO: A similar grep command is used in
+# scan_flaky_fault_injectors.sh script.  Find a way to avoid the
+# duplication.
+grep -sERIli '(select|perform)\s.*gp_inject_fault' sql input specs \
+	| sed 's,^[^/]*/\(.*\)\.[^.]*$$,\1,' \
+	| sort -u \
+	> tests_using_faultinjector.txt &&
+endef
+FAULTINJECTOR_OPTS := --exclude-file=tests_using_faultinjector.txt
 endif
 
 # Installation.
@@ -489,7 +562,10 @@ endif
 # Feature settings
 
 DEF_PGPORT = @default_port@
-WANTED_LANGUAGES = @WANTED_LANGUAGES@
+# NLS is not supported in Greenplum, see comment documenting
+# this in configure.in
+# WANTED_LANGUAGES = @WANTED_LANGUAGES@
+
 
 
 ##########################################################################
@@ -625,35 +701,46 @@ TEMP_CONF += --temp-config=$(TEMP_CONFIG)
 endif
 
 pg_regress_locale_flags = $(if $(ENCODING),--encoding=$(ENCODING)) $(NOLOCALE)
-pg_regress_clean_files = results/ regression.diffs regression.out tmp_check/ tmp_check_iso/ log/ output_iso/
+pg_regress_clean_files = results/ regression.diffs regression.out tmp_check/ tmp_check_iso/ log/ output_iso/ tests_using_faultinjector.txt
 
 pg_regress_check = \
+    $(faultinjector_prep) \
     $(with_temp_install) \
     $(top_builddir)/src/test/regress/pg_regress \
     --temp-instance=./tmp_check \
     --inputdir=$(srcdir) \
     --bindir= \
     $(TEMP_CONF) \
-    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS) $(FAULTINJECTOR_OPTS)
 pg_regress_installcheck = \
+    $(faultinjector_prep) \
     $(top_builddir)/src/test/regress/pg_regress \
     --inputdir=$(srcdir) \
     --bindir='$(bindir)' \
-    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS) $(FAULTINJECTOR_OPTS)
 
 pg_isolation_regress_check = \
+    $(faultinjector_prep) \
     $(with_temp_install) \
     $(top_builddir)/src/test/isolation/pg_isolation_regress \
     --temp-instance=./tmp_check_iso \
     --inputdir=$(srcdir) --outputdir=output_iso \
     --bindir= \
     $(TEMP_CONF) \
-    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS) $(FAULTINJECTOR_OPTS)
 pg_isolation_regress_installcheck = \
+    $(faultinjector_prep) \
     $(top_builddir)/src/test/isolation/pg_isolation_regress \
     --inputdir=$(srcdir) --outputdir=output_iso \
     --bindir='$(bindir)' \
-    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
+    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS) $(FAULTINJECTOR_OPTS)
+
+pg_isolation2_regress_installcheck = \
+    $(faultinjector_prep) \
+    $(top_builddir)/src/test/isolation2/pg_isolation2_regress \
+    --inputdir=$(srcdir) \
+    --bindir='$(bindir)' \
+    $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS) $(FAULTINJECTOR_OPTS)
 
 ##########################################################################
 #
@@ -713,7 +800,9 @@ LIBS := -lpgcommon -lpgport $(LIBS)
 
 # to make ws2_32.lib the last library
 ifeq ($(PORTNAME),win32)
-LIBS += -lws2_32
+LIBS += -lws2_32 -lshfolder
+override LDFLAGS := -L$(top_builddir)/gpAux/ext/win32/kfw-3-2-2/lib $(LDFLAGS)
+override AR := /usr/bin/i686-pc-mingw32-ar
 endif
 
 # Not really standard libc functions, used by the backend.

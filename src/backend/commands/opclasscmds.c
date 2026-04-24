@@ -27,6 +27,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/opfam_internal.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
@@ -49,6 +50,9 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp_query.h"
 
 
 static void AlterOpFamilyAdd(AlterOpFamilyStmt *stmt,
@@ -275,8 +279,9 @@ CreateOpFamily(const char *amname, const char *opfname, Oid namespaceoid, Oid am
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	opfamilyoid = GetNewOidWithIndex(rel, OpfamilyOidIndexId,
-									 Anum_pg_opfamily_oid);
+	opfamilyoid = GetNewOidForOperatorFamily(rel, OpfamilyOidIndexId,
+											 Anum_pg_opfamily_oid,
+											 amoid, unconstify(char *, opfname), namespaceoid);
 	values[Anum_pg_opfamily_oid - 1] = ObjectIdGetDatum(opfamilyoid);
 	values[Anum_pg_opfamily_opfmethod - 1] = ObjectIdGetDatum(amoid);
 	namestrcpy(&opfName, opfname);
@@ -642,8 +647,9 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	opclassoid = GetNewOidWithIndex(rel, OpclassOidIndexId,
-									Anum_pg_opclass_oid);
+	opclassoid = GetNewOidForOperatorClass(rel, OpclassOidIndexId,
+										   Anum_pg_opclass_oid,
+										   amoid, opcname,namespaceoid);
 	values[Anum_pg_opclass_oid - 1] = ObjectIdGetDatum(opclassoid);
 	values[Anum_pg_opclass_opcmethod - 1] = ObjectIdGetDatum(amoid);
 	namestrcpy(&opcName, opcname);
@@ -718,6 +724,16 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	InvokeObjectPostCreateHook(OperatorClassRelationId, opclassoid, 0);
 
 	table_close(rel, RowExclusiveLock);
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	return myself;
 }
@@ -760,7 +776,20 @@ DefineOpFamily(CreateOpFamilyStmt *stmt)
 				 errmsg("must be superuser to create an operator family")));
 
 	/* Insert pg_opfamily catalog entry */
-	return CreateOpFamily(stmt->amname, opfname, namespaceoid, amoid);
+	ObjectAddress objAddr;
+	objAddr = CreateOpFamily(stmt->amname, opfname, namespaceoid, amoid);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
+	return objAddr;
 }
 
 
@@ -827,6 +856,13 @@ AlterOpFamily(AlterOpFamilyStmt *stmt)
 		AlterOpFamilyAdd(stmt, amoid, opfamilyoid,
 						 maxOpNumber, maxProcNumber, stmt->items);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
 	return opfamilyoid;
 }
 
@@ -1347,8 +1383,10 @@ storeOperators(List *opfamilyname, Oid amoid,
 		memset(values, 0, sizeof(values));
 		memset(nulls, false, sizeof(nulls));
 
-		entryoid = GetNewOidWithIndex(rel, AccessMethodOperatorOidIndexId,
-									  Anum_pg_amop_oid);
+		entryoid = GetNewOidForAccessMethodOperator(
+			rel, AccessMethodOperatorOidIndexId, Anum_pg_amop_oid,
+			opfamilyoid, op->lefttype, op->righttype, op->number);
+
 		values[Anum_pg_amop_oid - 1] = ObjectIdGetDatum(entryoid);
 		values[Anum_pg_amop_amopfamily - 1] = ObjectIdGetDatum(opfamilyoid);
 		values[Anum_pg_amop_amoplefttype - 1] = ObjectIdGetDatum(op->lefttype);
@@ -1462,8 +1500,10 @@ storeProcedures(List *opfamilyname, Oid amoid,
 		memset(values, 0, sizeof(values));
 		memset(nulls, false, sizeof(nulls));
 
-		entryoid = GetNewOidWithIndex(rel, AccessMethodProcedureOidIndexId,
-									  Anum_pg_amproc_oid);
+		entryoid = GetNewOidForAccessMethodProcedure(
+			rel, AccessMethodProcedureOidIndexId, Anum_pg_amproc_oid,
+			opfamilyoid, proc->lefttype, proc->righttype, proc->object);
+
 		values[Anum_pg_amproc_oid - 1] = ObjectIdGetDatum(entryoid);
 		values[Anum_pg_amproc_amprocfamily - 1] = ObjectIdGetDatum(opfamilyoid);
 		values[Anum_pg_amproc_amproclefttype - 1] = ObjectIdGetDatum(proc->lefttype);

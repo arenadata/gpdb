@@ -58,8 +58,12 @@ relation_open(Oid relationId, LOCKMODE lockmode)
 	/* The relcache does all the real work... */
 	r = RelationIdGetRelation(relationId);
 
+	/* GPDB_12_AFTER_MERGE_FIXME: We had added the errdetail in GPDB. Is it still valid? */
 	if (!RelationIsValid(r))
-		elog(ERROR, "could not open relation with OID %u", relationId);
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_TABLE),
+				 errmsg("could not open relation with OID %u", relationId),
+				 errdetail("This can be validly caused by a concurrent delete operation on this object.")));
 
 	/*
 	 * If we didn't get the lock ourselves, assert that caller holds one,
@@ -69,9 +73,11 @@ relation_open(Oid relationId, LOCKMODE lockmode)
 		   IsBootstrapProcessingMode() ||
 		   CheckRelationLockedByMe(r, AccessShareLock, true));
 
+#if 0 /* Upstream code not applicable to GPDB */
 	/* Make note that we've accessed a temporary relation */
 	if (RelationUsesLocalBuffers(r))
 		MyXactFlags |= XACT_FLAGS_ACCESSEDTEMPNAMESPACE;
+#endif
 
 	pgstat_initstats(r);
 
@@ -86,7 +92,7 @@ relation_open(Oid relationId, LOCKMODE lockmode)
  * ----------------
  */
 Relation
-try_relation_open(Oid relationId, LOCKMODE lockmode)
+try_relation_open(Oid relationId, LOCKMODE lockmode, bool noWait)
 {
 	Relation	r;
 
@@ -94,7 +100,22 @@ try_relation_open(Oid relationId, LOCKMODE lockmode)
 
 	/* Get the lock first */
 	if (lockmode != NoLock)
-		LockRelationOid(relationId, lockmode);
+	{
+		if (!noWait)
+			LockRelationOid(relationId, lockmode);
+		else
+		{
+			/*
+			 * noWait is a Greenplum addition to the open_relation code
+			 * basically to support INSERT ... FOR UPDATE NOWAIT.  Our NoWait
+			 * handling needs to be more tolerant of failed locks than standard
+			 * postgres largely due to the fact that we have to promote certain
+			 * update locks in order to handle distributed updates.
+			 */
+			if (!ConditionalLockRelationOid(relationId, lockmode))
+				return NULL;
+		}
+	}
 
 	/*
 	 * Now that we have the lock, probe to see if the relation really exists
@@ -113,15 +134,22 @@ try_relation_open(Oid relationId, LOCKMODE lockmode)
 	r = RelationIdGetRelation(relationId);
 
 	if (!RelationIsValid(r))
-		elog(ERROR, "could not open relation with OID %u", relationId);
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_TABLE),
+				 errmsg("could not open relation with OID %u", relationId),
+				 errdetail("This can be validly caused by a concurrent delete operation on this object.")));
+	}
 
 	/* If we didn't get the lock ourselves, assert that caller holds one */
 	Assert(lockmode != NoLock ||
 		   CheckRelationLockedByMe(r, AccessShareLock, true));
 
+#if 0 /* Upstream code not applicable to GPDB */
 	/* Make note that we've accessed a temporary relation */
 	if (RelationUsesLocalBuffers(r))
 		MyXactFlags |= XACT_FLAGS_ACCESSEDTEMPNAMESPACE;
+#endif
 
 	pgstat_initstats(r);
 
@@ -189,7 +217,7 @@ relation_openrv_extended(const RangeVar *relation, LOCKMODE lockmode,
 	if (!OidIsValid(relOid))
 		return NULL;
 
-	/* Let relation_open do the rest */
+	/* Let try_relation_open do the rest */
 	return relation_open(relOid, NoLock);
 }
 
@@ -214,4 +242,20 @@ relation_close(Relation relation, LOCKMODE lockmode)
 
 	if (lockmode != NoLock)
 		UnlockRelationId(&relid, lockmode);
+	else
+	{
+		LOCKTAG		tag;
+
+		SET_LOCKTAG_RELATION(tag, relid.dbId, relid.relId);
+
+		/*
+		 * Closing with NoLock is a sufficient condition for a relation lock
+		 * to be transaction-level(means the lock can only be released after
+		 * the holding transaction is over).
+		 * This is because the difference betwwen the ref counts in the
+		 * relation and the lock tag can not be removed.
+		 * So this is a good time to set the holdTillEndXact flag for the lock.
+		 */
+		LockSetHoldTillEndXact(&tag);
+	}
 }

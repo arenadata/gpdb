@@ -40,9 +40,10 @@ usage(const char *progname)
 	printf(_(" [-D, --pgdata=]DATADIR  data directory\n"));
 	printf(_("  -V, --version          output version information, then exit\n"));
 	printf(_("  -?, --help             show this help, then exit\n"));
+	printf(_("  --gp-version   output Greenplum version information, then exit\n"));
 	printf(_("\nIf no data directory (DATADIR) is specified, "
 			 "the environment variable PGDATA\nis used.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }
 
 
@@ -120,9 +121,15 @@ main(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_controldata (PostgreSQL) " PG_VERSION);
+			puts("pg_controldata (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
+		if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			puts("pg_controldata (Greenplum Database) " GP_VERSION);
+			exit(0);
+		}
+
 	}
 
 	while ((c = getopt_long(argc, argv, "D:", long_options, NULL)) != -1)
@@ -252,8 +259,12 @@ main(int argc, char *argv[])
 	printf(_("Latest checkpoint's NextXID:          %u:%u\n"),
 		   EpochFromFullTransactionId(ControlFile->checkPointCopy.nextFullXid),
 		   XidFromFullTransactionId(ControlFile->checkPointCopy.nextFullXid));
+	printf(_("Latest checkpoint's NextGxid:         "UINT64_FORMAT"\n"),
+		   ControlFile->checkPointCopy.nextGxid);
 	printf(_("Latest checkpoint's NextOID:          %u\n"),
 		   ControlFile->checkPointCopy.nextOid);
+	printf(_("Latest checkpoint's NextRelfilenode:  %u\n"),
+		   ControlFile->checkPointCopy.nextRelfilenode);
 	printf(_("Latest checkpoint's NextMultiXactId:  %u\n"),
 		   ControlFile->checkPointCopy.nextMulti);
 	printf(_("Latest checkpoint's NextMultiOffset:  %u\n"),

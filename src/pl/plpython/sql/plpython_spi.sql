@@ -96,11 +96,14 @@ select spi_prepared_plan_test_one('doe');
 select spi_prepared_plan_test_two('smith');
 select spi_prepared_plan_test_nested('smith');
 
+-- start_ignore
+-- Greenplum doesn't support functions that execute SQL from segments
 SELECT join_sequences(sequences) FROM sequences;
 SELECT join_sequences(sequences) FROM sequences
 	WHERE join_sequences(sequences) ~* '^A';
 SELECT join_sequences(sequences) FROM sequences
 	WHERE join_sequences(sequences) ~* '^B';
+-- end_ignore
 
 SELECT spi_recursive_sum(10);
 

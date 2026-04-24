@@ -3,8 +3,16 @@
 -- Test partitionwise join between partitioned tables
 --
 
+-- Disable ORCA since it does support partition-wise joins
+set optimizer to off;
+
 -- Enable partitionwise join, which by default is disabled.
 SET enable_partitionwise_join to true;
+
+-- Also enable Nested Loop and Merge Joins, which are disabled by default in
+-- GPDB, to get plans more similar to upstream's.
+set enable_nestloop to true;
+set enable_mergejoin to true;
 
 --
 -- partitioned by a single column
@@ -75,6 +83,8 @@ SELECT sum(t1.a), avg(t1.a), sum(t1.b), avg(t1.b) FROM prt1 t1 WHERE NOT EXISTS 
 SELECT sum(t1.a), avg(t1.a), sum(t1.b), avg(t1.b) FROM prt1 t1 WHERE NOT EXISTS (SELECT 1 FROM prt2 t2 WHERE t1.a = t2.b);
 
 -- lateral reference
+-- GPDB_12_MERGE_FIXME: this is failing in GPDB. Known issue, there were similar
+-- failures in other LATERAL tests before the v12 merge.
 EXPLAIN (COSTS OFF)
 SELECT * FROM prt1 t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t3.a AS t3a, least(t1.a,t2.a,t3.b) FROM prt1 t2 JOIN prt2 t3 ON (t2.a = t3.b)) ss
@@ -337,6 +347,8 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 FULL JOIN (SELECT * FROM prt2_l WHERE prt2_l.a = 0) t2 ON (t1.a = t2.b AND t1.c = t2.c) ORDER BY t1.a, t2.b;
 
 -- lateral partitionwise join
+-- GPDB_12_MERGE_FIXME: this is failing in GPDB. Known issue, there were similar
+-- failures in other LATERAL tests before the v12 merge.
 EXPLAIN (COSTS OFF)
 SELECT * FROM prt1_l t1 LEFT JOIN LATERAL
 			  (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM prt1_l t2 JOIN prt2_l t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss

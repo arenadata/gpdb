@@ -4,6 +4,8 @@
  *	  definitions for query plan nodes
  *
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,7 +22,36 @@
 #include "nodes/bitmapset.h"
 #include "nodes/lockoptions.h"
 #include "nodes/primnodes.h"
+#include "parsenodes.h"
 
+typedef struct DirectDispatchInfo
+{
+	/*
+	 * if true then this Slice requires an n-gang but the gang can be
+	 * targeted to fewer segments than the entire cluster.
+	 *
+	 * When true, 'contentIds' list the segments that this slice needs to be
+	 * dispatched to.
+	 */
+	bool		isDirectDispatch;
+	List	   *contentIds;
+
+	/* only used while planning, in createplan.c */
+	bool		haveProcessedAnyCalculations;
+} DirectDispatchInfo;
+
+typedef enum PlanGenerator
+{
+	PLANGEN_PLANNER,			/* plan produced by the planner*/
+	PLANGEN_OPTIMIZER,			/* plan produced by the optimizer*/
+} PlanGenerator;
+
+/* DML Actions */
+typedef enum DMLAction
+{
+	DML_DELETE,
+	DML_INSERT
+} DMLAction;
 
 /* ----------------------------------------------------------------
  *						node definitions
@@ -45,6 +76,8 @@ typedef struct PlannedStmt
 
 	CmdType		commandType;	/* select|insert|update|delete|utility */
 
+	PlanGenerator	planGen;		/* optimizer generation */
+
 	uint64		queryId;		/* query identifier (copied from Query) */
 
 	bool		hasReturning;	/* is it insert|update|delete RETURNING? */
@@ -54,6 +87,9 @@ typedef struct PlannedStmt
 	bool		canSetTag;		/* do I set the command result tag? */
 
 	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+	bool		oneoffPlan;		/* redo plan on every execution? */
+
+	Oid			simplyUpdatableRel; /* if valid, query can be used with CURRENT OF for this rel */
 
 	bool		dependsOnRole;	/* is plan specific to current role? */
 
@@ -62,6 +98,10 @@ typedef struct PlannedStmt
 	int			jitFlags;		/* which forms of JIT should be performed */
 
 	struct Plan *planTree;		/* tree of Plan nodes */
+
+	/* Slice table */
+	int			numSlices;
+	struct PlanSlice *slices;
 
 	List	   *rtable;			/* list of RangeTblEntry nodes */
 
@@ -76,6 +116,7 @@ typedef struct PlannedStmt
 
 	List	   *subplans;		/* Plan trees for SubPlan expressions; note
 								 * that some could be NULL */
+	int		   *subplan_sliceIds;	/* slice IDs containing SubPlans; size equals 'subplans' */
 
 	Bitmapset  *rewindPlanIDs;	/* indices of subplans that require REWIND */
 
@@ -92,12 +133,121 @@ typedef struct PlannedStmt
 	/* statement location in source string (copied from Query) */
 	int			stmt_location;	/* start location, or -1 if unknown */
 	int			stmt_len;		/* length in bytes; 0 means "rest of string" */
+
+	/* 
+	 * Cloned from top Query node at the end of planning.
+	 * Holds the result distribution policy
+	 * for SELECT ... INTO and set operations.
+	 */
+	struct GpPolicy  *intoPolicy;
+
+	/* What is the memory reserved for this query's execution? */
+	uint64		query_mem;
+
+	int			total_memory_coordinator;	/* GPDB: The total usable virtual memory on coordinator node in MB */
+	int			nsegments_coordinator;		/* GPDB: The number of primary segments on coordinator node  */
+
+	/*
+	 * GPDB: Used to keep target information for CTAS and it is needed
+	 * to be dispatched to QEs.
+	 */
+	IntoClause *intoClause;
+	CopyIntoClause *copyIntoClause;
+	RefreshClause   *refreshClause;		/* relation to insert into */
+
+	/* 
+ 	 * GPDB: whether a query is a SPI inner query for extension usage 
+ 	 */
+	int8		metricsQueryType;
 } PlannedStmt;
 
-/* macro for fetching the Plan associated with a SubPlan node */
-#define exec_subplan_get_plan(plannedstmt, subplan) \
-	((Plan *) list_nth((plannedstmt)->subplans, (subplan)->plan_id - 1))
+/*
+ * Fetch the Plan associated with a SubPlan node in a completed PlannedStmt.
+ */
+static inline struct Plan *exec_subplan_get_plan(struct PlannedStmt *plannedstmt, SubPlan *subplan)
+{
+	return (struct Plan *) list_nth(plannedstmt->subplans, subplan->plan_id - 1);
+}
 
+/*
+ * Rewrite the Plan associated with a SubPlan node in a completed PlannedStmt.
+ */
+static inline void exec_subplan_put_plan(struct PlannedStmt *plannedstmt, SubPlan *subplan, struct Plan *plan)
+{
+	ListCell *cell = list_nth_cell(plannedstmt->subplans, subplan->plan_id-1);
+	cell->data.ptr_value = plan;
+}
+
+/*
+ * FlowType - kinds of tuple flows in parallelized plans.
+ *
+ * This enum is a MPP extension.
+ */
+typedef enum FlowType
+{
+	FLOW_UNDEFINED,		/* used prior to calculation of type of derived flow */
+	FLOW_SINGLETON,		/* flow has single stream */
+	FLOW_REPLICATED,	/* flow is replicated across IOPs */
+	FLOW_PARTITIONED,	/* flow is partitioned across IOPs */
+} FlowType;
+
+/*----------
+ * Flow - describes a tuple flow in a parallelized plan
+ *
+ * This node type is a MPP extension.
+ *
+ * Plan nodes contain a reference to a Flow that characterizes the output
+ * tuple flow of the node.
+ *----------
+ */
+typedef struct Flow
+{
+	NodeTag		type;			/* T_Flow */
+	FlowType	flotype;		/* Type of flow produced by the plan. */
+
+	/* Locus type (optimizer flow characterization).
+	 */
+	CdbLocusType	locustype;
+
+	/* If flotype is FLOW_SINGLETON, then this is the segment (-1 for entry)
+	 * on which tuples occur.
+	 */
+	int			segindex;		/* Segment index of singleton flow. */
+	int         numsegments;
+
+} Flow;
+
+/* GangType enumeration is used in several structures related to CDB
+ * slice plan support.
+ */
+typedef enum GangType
+{
+	GANGTYPE_UNALLOCATED,       /* a root slice executed by the qDisp */
+	GANGTYPE_ENTRYDB_READER,    /* a 1-gang with read access to the entry db */
+	GANGTYPE_SINGLETON_READER,	/* a 1-gang to read the segment dbs */
+	GANGTYPE_PRIMARY_READER,    /* a 1-gang or N-gang to read the segment dbs */
+	GANGTYPE_PRIMARY_WRITER		/* the N-gang that can update the segment dbs */
+} GangType;
+
+/*
+ * PlanSlice represents one query slice, to be executed by a separate gang
+ * of executor processes.
+ */
+typedef struct PlanSlice
+{
+	int			sliceIndex;
+	int			parentIndex;
+
+	GangType	gangType;
+
+	/* # of segments in the gang, for PRIMARY_READER/WRITER slices */
+	int			numsegments;
+	/* segment to execute on, for SINGLETON_READER slices */
+	int			segindex;
+
+	/* direct dispatch information, for PRIMARY_READER/WRITER slices */
+	DirectDispatchInfo directDispatch;
+} PlanSlice;
 
 /* ----------------
  *		Plan node
@@ -114,7 +264,6 @@ typedef struct PlannedStmt
 typedef struct Plan
 {
 	NodeTag		type;
-
 	/*
 	 * estimated execution costs for plan (see costsize.c for more info)
 	 */
@@ -157,6 +306,19 @@ typedef struct Plan
 	 */
 	Bitmapset  *extParam;
 	Bitmapset  *allParam;
+
+	/*
+	 * MPP needs to keep track of the characteristics of flow of output
+	 * tuple of Plan nodes.
+	 */
+	Flow		*flow;			/* Flow description.  Initially NULL.
+	 * Set during parallelization.
+	 */
+
+	/**
+	 * How much memory (in KB) should be used to execute this plan node?
+	 */
+	uint64 operatorMemKB;
 } Plan;
 
 /* ----------------
@@ -179,12 +341,21 @@ typedef struct Plan
  * If resconstantqual isn't NULL, it represents a one-time qualification
  * test (i.e., one that doesn't depend on any variables from the outer plan,
  * so needs to be evaluated only once).
+ *
+ * If numHashFilterCols is non-zero, we compute a cdbhash value based
+ * on the columns listed in hashFilterColIdx for each input row. If the
+ * target segment based on the hash doesn't match the current execution
+ * segment, the row is discarded.
  * ----------------
  */
 typedef struct Result
 {
 	Plan		plan;
 	Node	   *resconstantqual;
+
+	int			numHashFilterCols;
+	AttrNumber *hashFilterColIdx;
+	Oid		   *hashFilterFuncs;
 } Result;
 
 /* ----------------
@@ -237,6 +408,9 @@ typedef struct ModifyTable
 	Node	   *onConflictWhere;	/* WHERE for ON CONFLICT UPDATE */
 	Index		exclRelRTI;		/* RTI of the EXCLUDED pseudo relation */
 	List	   *exclRelTlist;	/* tlist of the EXCLUDED pseudo relation */
+	List	   *isSplitUpdates;
+
+	bool		forceTupleRouting; /* dynamic scans require tuple routing */
 } ModifyTable;
 
 struct PartitionPruneInfo;		/* forward reference to struct below */
@@ -259,6 +433,13 @@ typedef struct Append
 
 	/* Info for run-time subplan pruning; NULL if we're not doing that */
 	struct PartitionPruneInfo *part_prune_info;
+
+	/*
+	 * Info for run-time join pruning, using Partition Selector nodes.
+	 * These param IDs contain additional Bitmapsets containing selected
+	 * partitions.
+	 */
+	List	   *join_prune_paramids;
 } Append;
 
 /* ----------------
@@ -278,7 +459,25 @@ typedef struct MergeAppend
 	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
 	/* Info for run-time subplan pruning; NULL if we're not doing that */
 	struct PartitionPruneInfo *part_prune_info;
+
+	/*
+	 * Info for run-time join pruning, using Partition Selector nodes.
+	 * These param IDs contain additional Bitmapsets containing selected
+	 * partitions.
+	 */
+	List	   *join_prune_paramids;
 } MergeAppend;
+
+/*
+ * Sequence node
+ *   Execute a list of subplans in the order of left-to-right, and return
+ * the results of the last subplan.
+ */
+typedef struct Sequence
+{
+	Plan plan;
+	List *subplans;
+} Sequence;
 
 /* ----------------
  *	RecursiveUnion node -
@@ -407,6 +606,33 @@ typedef struct IndexScan
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 } IndexScan;
 
+/*
+ * DynamicIndexScan
+ *   Scan a list of indexes that will be determined at run time.
+ *   The primary application of this operator is to be used
+ *   for partition tables.
+*/
+typedef struct DynamicIndexScan
+{
+	/* Fields shared with a normal IndexScan. Must be first! */
+	IndexScan	indexscan;
+
+	/*
+	 * List of partition OIDs to scan.
+	 */
+	List	   *partOids;
+
+	/* Info for run-time subplan pruning; NULL if we're not doing that */
+	struct PartitionPruneInfo *part_prune_info;
+
+	/*
+	 * Info for run-time join pruning, using Partition Selector nodes.
+	 * These param IDs contain additional Bitmapsets containing selected
+	 * partitions.
+	 */
+	List	   *join_prune_paramids;
+} DynamicIndexScan;
+
 /* ----------------
  *		index-only scan node
  *
@@ -422,6 +648,9 @@ typedef struct IndexScan
  * with one TLE per index column.  Vars appearing in this list reference
  * the base table, and this is the only field in the plan node that may
  * contain such Vars.
+ *
+ * GPDB: We need indexqualorig to determine direct dispatch, however there
+ * is no need to dispatch it.
  * ----------------
  */
 typedef struct IndexOnlyScan
@@ -429,6 +658,7 @@ typedef struct IndexOnlyScan
 	Scan		scan;
 	Oid			indexid;		/* OID of index to scan */
 	List	   *indexqual;		/* list of index quals (usually OpExprs) */
+	List	   *indexqualorig;	/* the same in original form (GPDB keeps it) */
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
@@ -448,7 +678,9 @@ typedef struct IndexOnlyScan
  *
  * In a BitmapIndexScan plan node, the targetlist and qual fields are
  * not used and are always NIL.  The indexqualorig field is unused at
- * run time too, but is saved for the benefit of EXPLAIN.
+ * run time too, but is saved for the benefit of EXPLAIN, as well
+ * as for the use of the planner when doing clause examination on plans
+ * (such as for targeted dispatch)
  * ----------------
  */
 typedef struct BitmapIndexScan
@@ -459,6 +691,17 @@ typedef struct BitmapIndexScan
 	List	   *indexqual;		/* list of index quals (OpExprs) */
 	List	   *indexqualorig;	/* the same in original form */
 } BitmapIndexScan;
+
+/*
+ * DynamicBitmapIndexScan
+ *   Scan a list of indexes that will be determined at run time.
+ *   For use with partitioned tables.
+*/
+typedef struct DynamicBitmapIndexScan
+{
+	/* Fields shared with a normal BitmapIndexScan. Must be first! */
+	BitmapIndexScan biscan;
+} DynamicBitmapIndexScan;
 
 /* ----------------
  *		bitmap sequential scan node
@@ -474,6 +717,58 @@ typedef struct BitmapHeapScan
 	Scan		scan;
 	List	   *bitmapqualorig; /* index quals, in standard expr form */
 } BitmapHeapScan;
+
+/*
+ * DynamicBitmapHeapScan
+ *   Scan a list of tables that will be determined at run time.
+ *
+ * Dynamic counterpart of a BitmapHeapScan, for use with partitioned tables.
+ */
+typedef struct DynamicBitmapHeapScan
+{
+	BitmapHeapScan bitmapheapscan;
+
+	/*
+	 * List of partition OIDs to scan.
+	 */
+	List	   *partOids;
+
+	/* Info for run-time subplan pruning; NULL if we're not doing that */
+	struct PartitionPruneInfo *part_prune_info;
+
+	/*
+	 * Info for run-time join pruning, using Partition Selector nodes.
+	 * These param IDs contain additional Bitmapsets containing selected
+	 * partitions.
+	 */
+	List	   *join_prune_paramids;
+} DynamicBitmapHeapScan;
+
+/*
+ * DynamicSeqScan
+ *   Scan a list of tables that will be determined at run time.
+ */
+typedef struct DynamicSeqScan
+{
+	/* Fields shared with a normal SeqScan. Must be first! */
+	SeqScan		seqscan;
+
+	/*
+	 * List of partition OIDs to scan.
+	 */
+	List	   *partOids;
+
+	/* Info for run-time subplan pruning; NULL if we're not doing that */
+	struct PartitionPruneInfo *part_prune_info;
+
+	/*
+	 * Info for run-time join pruning, using Partition Selector nodes.
+	 * These param IDs contain additional Bitmapsets containing selected
+	 * partitions.
+	 */
+	List	   *join_prune_paramids;
+
+} DynamicSeqScan;
 
 /* ----------------
  *		tid scan node
@@ -520,7 +815,24 @@ typedef struct FunctionScan
 	Scan		scan;
 	List	   *functions;		/* list of RangeTblFunction nodes */
 	bool		funcordinality; /* WITH ORDINALITY */
+	Param      *param;			/* used when funtionscan run as initplan */
+	bool		resultInTupleStore; /* function result stored in tuplestore */
+	int			initplanId;			/* initplan id for function execute on initplan */
 } FunctionScan;
+
+/* ----------------
+ *      TableFunctionScan node
+ *
+ * This is similar to a FunctionScan, but we only support one function,
+ * and WITH ORDINALITY is not supported.
+ *
+ * ----------------
+ */
+typedef struct TableFunctionScan
+{
+	Scan		scan;
+	struct RangeTblFunction *function;
+} TableFunctionScan;
 
 /* ----------------
  *		ValuesScan node
@@ -572,6 +884,33 @@ typedef struct WorkTableScan
 	Scan		scan;
 	int			wtParam;		/* ID of Param representing work table */
 } WorkTableScan;
+
+/* ----------------
+ * External Scan parameters
+ *
+ * Field filenames is a list of N string node pointers (or NULL)
+ * where N is number of segments in the array. The pointer in
+ * position I is NULL or points to the string node containing the
+ * file name for segment I.
+ *
+ * This used to be a separate node type. Now it's just used to carry
+ * the parameters for a Foreign Scan on an external table, for the
+ * shim layer.
+ * ----------------
+ */
+typedef struct ExternalScanInfo
+{
+	NodeTag		type;
+	List		*uriList;       /* data uri or null for each segment  */
+	char		fmtType;        /* data format type                   */
+	bool		isMasterOnly;   /* true for EXECUTE on master seg only */
+	int			rejLimit;       /* reject limit (-1 for no sreh)      */
+	bool		rejLimitInRows; /* true if ROWS false if PERCENT      */
+	char		logErrors;      /* 't', 'p' to log errors into file. 'p' makes persistent error log */
+	int			encoding;		/* encoding of external table data    */
+	uint32      scancounter;	/* counter incr per scan node created */
+	List	   *extOptions;		/* external options */
+} ExternalScanInfo;
 
 /* ----------------
  *		ForeignScan node
@@ -680,6 +1019,10 @@ typedef struct Join
 	JoinType	jointype;
 	bool		inner_unique;
 	List	   *joinqual;		/* JOIN quals (in addition to plan.qual) */
+
+	bool		prefetch_inner; /* to avoid deadlock in MPP */
+	bool		prefetch_joinqual; /* to avoid deadlock in MPP */
+	bool		prefetch_qual; /* to avoid deadlock in MPP */
 } Join;
 
 /* ----------------
@@ -697,6 +1040,9 @@ typedef struct NestLoop
 {
 	Join		join;
 	List	   *nestParams;		/* list of NestLoopParam nodes */
+
+	bool		shared_outer;
+	bool		singleton_outer; /*CDB-OLAP true => outer is plain Agg */
 } NestLoop;
 
 typedef struct NestLoopParam
@@ -727,17 +1073,65 @@ typedef struct MergeJoin
 	Oid		   *mergeCollations;	/* per-clause OIDs of collations */
 	int		   *mergeStrategies;	/* per-clause ordering (ASC or DESC) */
 	bool	   *mergeNullsFirst;	/* per-clause nulls ordering */
+	bool		unique_outer; /*CDB-OLAP true => outer is unique in merge key */
 } MergeJoin;
 
 /* ----------------
- *		hash join node
+ *		hash join (probe) node
+ *
+ * CDB:	In order to support hash join on IS NOT DISTINCT FROM (as well as =),
+ *		field hashqualclauses is added to hold the expression that tests for
+ *		a match.  This is normally identical to hashclauses (which holds the
+ *		equality test), but differs in case of non-equijoin comparisons.
+ *		Field hashclauses is retained for use in hash table operations.
  * ----------------
  */
 typedef struct HashJoin
 {
 	Join		join;
 	List	   *hashclauses;
+	List	   *hashqualclauses;
 } HashJoin;
+
+#define SHARE_ID_NOT_SHARED (-1)
+#define SHARE_ID_NOT_ASSIGNED (-2)
+
+/* ----------------
+ *		shareinputscan node
+ * ----------------
+ */
+typedef struct ShareInputScan
+{
+	Scan 		scan;
+
+	bool		cross_slice;
+	int 		share_id;
+
+	/*
+	 * Slice that produces the tuplestore for this shared scan.
+	 *
+	 * As a special case, in a plan that has only one slice, this may be left
+	 * to -1. The executor node ignores this when there is only one slice.
+	 */
+	int			producer_slice_id;
+
+	/*
+	 * Slice id that this ShareInputScan node runs in. If it's
+	 * different from current slice ID, this ShareInputScan is "alien"
+	 * to the current slice and doesn't need to be executed at all (in
+	 * this slice). It is used to skip IPC in alien nodes.
+	 *
+	 * Like producer_slice_id, this can be left to -1 if there is only one
+	 * slice in the plan tree.
+	 */
+	int			this_slice_id;
+
+	/* Number of consumer slices participating, not including the producer. */
+	int			nconsumers;
+
+	/* Discard the scan output? True for ORCA CTE producer, false otherwise. */
+	bool        discard_output;
+} ShareInputScan;
 
 /* ----------------
  *		materialization node
@@ -746,6 +1140,8 @@ typedef struct HashJoin
 typedef struct Material
 {
 	Plan		plan;
+	bool		cdb_strict;
+	bool		cdb_shield_child_from_rescans;
 } Material;
 
 /* ----------------
@@ -761,21 +1157,6 @@ typedef struct Sort
 	Oid		   *collations;		/* OIDs of collations */
 	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
 } Sort;
-
-/* ---------------
- *	 group node -
- *		Used for queries with GROUP BY (but no aggregates) specified.
- *		The input must be presorted according to the grouping columns.
- * ---------------
- */
-typedef struct Group
-{
-	Plan		plan;
-	int			numCols;		/* number of grouping columns */
-	AttrNumber *grpColIdx;		/* their indexes in the target list */
-	Oid		   *grpOperators;	/* equality operators to compare with */
-	Oid		   *grpCollations;
-} Group;
 
 /* ---------------
  *		aggregate node
@@ -805,10 +1186,56 @@ typedef struct Agg
 	/* Note: planner provides numGroups & aggParams only in HASHED/MIXED case */
 	List	   *groupingSets;	/* grouping sets to use */
 	List	   *chain;			/* chained Agg/Sort nodes */
+
+	/* Stream entries when out of memory instead of spilling to disk */
+	bool		streaming;
+
+	/* if input tuple has an AggExprId, save the tlist index */
+	Index       agg_expr_id;
 } Agg;
+
+/* ---------------
+ *		tuple split node
+ *
+ * A TupleSplit node implements tuple split in multiple DQAs MPP query.
+ *
+ * ---------------
+ */
+typedef struct TupleSplit
+{
+	Plan		plan;
+
+	int			numCols;		    /* number of grouping columns */
+	AttrNumber *grpColIdx;		    /* their indexes in the target list */
+
+	List       *dqa_expr_lst;
+} TupleSplit;
 
 /* ----------------
  *		window aggregate node
+ *
+ * A WindowAgg node implements window functions over zero or more
+ * ordering/framing specifications within a partition specification on
+ * appropriately ordered input.
+ *
+ * For example, if there are window functions
+ *
+ *   over (partition by a,b orderby c) and
+ *   over (partition by a,b order by c,d,e)
+ *
+ * then the input (outer plan) of the window node will be sorted by
+ * (a,b,c,d,e) -- the common partition key (a,b) and the partial
+ * ordering keys (c) and (d,e).
+ *
+ * A Window node contains no direct information about the window
+ * functions it computes.  Those functions are found by scanning
+ * the node's targetlist for WindowFunc nodes during executor startup.
+ * There need not be any, but there's no good reason for the planner
+ * to construct a WindowAgg node without at least one WindowFunc.
+ *
+ * A WindowFunc is related to its WindowAgg node by the fact that it is
+ * contained by it.
+ *
  * ----------------
  */
 typedef struct WindowAgg
@@ -823,6 +1250,22 @@ typedef struct WindowAgg
 	AttrNumber *ordColIdx;		/* their indexes in the target list */
 	Oid		   *ordOperators;	/* equality operators for ordering columns */
 	Oid		   *ordCollations;	/* collations for ordering columns */
+
+	/*
+	 * GPDB: Information on the first ORDER BY column. This is different from
+	 * simply taking the first element of the ordColIdx/ordOperators fields,
+	 * because those arrays don't include any columns that are also present
+	 * in the PARTITION BY. For example, in "OVER (PARTITION BY foo ORDER BY
+	 * foo, bar)", ordColIdx/ordOperators would not include column 'foo'. But
+	 * for computing with RANGE BETWEEN values correctly, we need the first
+	 * actual ORDER BY column, even if it's redundant with the PARTITION BY.
+	 * firstOrder* has that information. Also, we need a sort operator, not
+	 * equality operator, here.
+	 */
+	AttrNumber	firstOrderCol;
+	Oid			firstOrderCmpOperator; /* ordering op */
+	bool		firstOrderNullsFirst;
+
 	int			frameOptions;	/* frame_clause options, see WindowDef */
 	Node	   *startOffset;	/* expression for starting bound, if any */
 	Node	   *endOffset;		/* expression for ending bound, if any */
@@ -899,6 +1342,7 @@ typedef struct GatherMerge
 typedef struct Hash
 {
 	Plan		plan;
+	bool		rescannable;            /* CDB: true => save rows for rescan */
 	Oid			skewTable;		/* outer join key's table OID, or InvalidOid */
 	AttrNumber	skewColumn;		/* outer join key's column #, or zero */
 	bool		skewInherit;	/* is outer join rel an inheritance tree? */
@@ -955,6 +1399,85 @@ typedef struct Limit
 	Node	   *limitCount;		/* COUNT parameter, or NULL if none */
 } Limit;
 
+/* -------------------------
+ *		motion node structs
+ * -------------------------
+ */
+typedef enum MotionType
+{
+	MOTIONTYPE_GATHER,		/* Send tuples from N senders to one receiver */
+	MOTIONTYPE_GATHER_SINGLE, /* Execute subplan on N nodes, but only send the tuples from one */
+	MOTIONTYPE_HASH,		/* Use hashing to select a segindex destination */
+	MOTIONTYPE_BROADCAST,	/* Send tuples from one sender to a fixed set of segindexes */
+	MOTIONTYPE_EXPLICIT,	/* Send tuples to the segment explicitly specified in their segid column */
+	MOTIONTYPE_OUTER_QUERY	/* Gather or Broadcast to outer query's slice, don't know which one yet */
+} MotionType;
+
+/*
+ * Motion Node
+ *
+ */
+typedef struct Motion
+{
+	Plan		plan;
+
+	MotionType  motionType;
+	bool		sendSorted;			/* if true, output should be sorted */
+	int			motionID;			/* required by AMS  */
+
+	/* For Hash */
+	List		*hashExprs;			/* list of hash expressions */
+	Oid			*hashFuncs;			/* corresponding hash functions */
+	int         numHashSegments;	/* the module number of the hash function */
+
+	/* For Explicit */
+	AttrNumber segidColIdx;			/* index of the segid column in the target list */
+
+	/* The following field is only used when sendSorted == true */
+	int			numSortCols;	/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
+
+	/* sender slice info */
+	PlanSlice  *senderSliceInfo;
+} Motion;
+
+/*
+ * SplitUpdate Node
+ *
+ */
+typedef struct SplitUpdate
+{
+	Plan		plan;
+	AttrNumber	actionColIdx;		/* index of action column into the target list */
+	List		*insertColIdx;		/* list of columns to INSERT into the target list */
+	List		*deleteColIdx;		/* list of columns to DELETE into the target list */
+
+	/*
+	 * Fields for calculating the target segment id.
+	 *
+	 * If the targetlist contains a 'gp_segment_id' field, these fields are
+	 * used to compute the target segment id, for INSERT-action rows.
+	 */
+	int			numHashAttrs;
+	AttrNumber *hashAttnos;
+	Oid		   *hashFuncs;			/* corresponding hash functions */
+	int			numHashSegments;	/* # of segs to use in hash computation */
+} SplitUpdate;
+
+/*
+ * AssertOp Node
+ *
+ */
+typedef struct AssertOp
+{
+	Plan 			plan;
+	int				errcode;		/* SQL error code */
+	List 			*errmessage;	/* error message */
+
+} AssertOp;
 
 /*
  * RowMarkType -
@@ -992,7 +1515,7 @@ typedef enum RowMarkType
 	ROW_MARK_NOKEYEXCLUSIVE,	/* obtain no-key exclusive tuple lock */
 	ROW_MARK_SHARE,				/* obtain shared tuple lock */
 	ROW_MARK_KEYSHARE,			/* obtain keyshare tuple lock */
-	ROW_MARK_REFERENCE,			/* just fetch the TID, don't lock it */
+	ROW_MARK_REFERENCE,			/* just fetch the TID */
 	ROW_MARK_COPY				/* physically copy the row value */
 } RowMarkType;
 
@@ -1048,6 +1571,7 @@ typedef struct PlanRowMark
 	LockClauseStrength strength;	/* LockingClause's strength, or LCS_NONE */
 	LockWaitPolicy waitPolicy;	/* NOWAIT and SKIP LOCKED options */
 	bool		isParent;		/* true if this is a "dummy" parent entry */
+	bool        canOptSelectLockingClause; /* Whether can do some optimization on select with locking clause */
 } PlanRowMark;
 
 
@@ -1213,5 +1737,25 @@ typedef struct PlanInvalItem
 	int			cacheId;		/* a syscache ID, see utils/syscache.h */
 	uint32		hashValue;		/* hash value of object's cache lookup key */
 } PlanInvalItem;
+
+/* ----------------
+ * PartitionSelector node
+ *
+ * PartitionSelector performs partition pruning based on rows seen on
+ * the "other" side of a join. It performs partition pruning similar to
+ * run-time partition pruning in an Append node, but it is performed based
+ * on the rows seen, instead of executor params. The set of surviving
+ * partitions is made available to the Append node, by storing it in a
+ * special executor param, identified by 'paramid' field.
+ * ----------------
+ */
+typedef struct PartitionSelector
+{
+	Plan		plan;
+
+	struct PartitionPruneInfo *part_prune_info;
+	int32		paramid;	/* result is stored here */
+
+} PartitionSelector;
 
 #endif							/* PLANNODES_H */

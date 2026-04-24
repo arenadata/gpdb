@@ -85,28 +85,28 @@ $node->run_log(
 # dump.
 $node->command_ok(
 	[
-		'pg_dumpall', '-r', '-f', $discard, '--dbname',
+		'pg_dumpall', '--roles-only', '-f', $discard, '--dbname',
 		$node->connstr($dbname1),
 		'-U', $username4
 	],
 	'pg_dumpall with long ASCII name 1');
 $node->command_ok(
 	[
-		'pg_dumpall', '--no-sync', '-r', '-f', $discard, '--dbname',
+		'pg_dumpall', '--no-sync', '--roles-only', '-f', $discard, '--dbname',
 		$node->connstr($dbname2),
 		'-U', $username3
 	],
 	'pg_dumpall with long ASCII name 2');
 $node->command_ok(
 	[
-		'pg_dumpall', '--no-sync', '-r', '-f', $discard, '--dbname',
+		'pg_dumpall', '--no-sync', '--roles-only', '-f', $discard, '--dbname',
 		$node->connstr($dbname3),
 		'-U', $username2
 	],
 	'pg_dumpall with long ASCII name 3');
 $node->command_ok(
 	[
-		'pg_dumpall', '--no-sync', '-r', '-f', $discard, '--dbname',
+		'pg_dumpall', '--no-sync', '--roles-only', '-f', $discard, '--dbname',
 		$node->connstr($dbname4),
 		'-U', $username1
 	],
@@ -115,7 +115,7 @@ $node->command_ok(
 	[
 		'pg_dumpall',         '-U',
 		$src_bootstrap_super, '--no-sync',
-		'-r',                 '-l',
+		'--roles-only',       '-l',
 		'dbname=template1'
 	],
 	'pg_dumpall -l accepts connection string');

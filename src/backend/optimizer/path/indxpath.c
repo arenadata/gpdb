@@ -4,6 +4,8 @@
  *	  Routines to determine which indexes are usable for scanning a
  *	  given relation, and create Paths accordingly.
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -34,6 +36,10 @@
 #include "optimizer/restrictinfo.h"
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
+
+#include "optimizer/subselect.h"
+#include "parser/parsetree.h"
+#include "utils/index_selfuncs.h"
 
 
 /* XXX see PartCollMatchesExprColl */
@@ -790,7 +796,23 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	{
 		IndexPath  *ipath = (IndexPath *) lfirst(lc);
 
-		if (index->amhasgettuple)
+		/*
+		 * Random access to Append-Only is slow because AO doesn't use the buffer
+		 * pool and we want to avoid decompressing blocks multiple times.  So,
+		 * only consider bitmap paths because they are processed in TID order.
+		 * The appendonlyam.c module will optimize fetches in TID order by keeping
+		 * the last decompressed block between fetch calls.
+		 * Index scan path on GPDB's bitmap index should works the same as bitmap paths.
+		 *
+		 * GPDB_12_MERGE_FIXME: Also there is no code in place in order to be
+		 * able to use index only scans on AO/AOCO relations. However it is
+		 * suboptimal to have to expose the relation's access method here. There
+		 * are no straight forward solutions though.
+		 */
+		if (index->amhasgettuple &&
+				((rel->relam != AO_ROW_TABLE_AM_OID &&
+				 rel->relam != AO_COLUMN_TABLE_AM_OID) ||
+				 index->amcostestimate == bmcostestimate))
 			add_path(rel, (Path *) ipath);
 
 		if (index->amhasgetbitmap &&
@@ -996,6 +1018,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	{
 		index_pathkeys = build_index_pathkeys(root, index,
 											  ForwardScanDirection);
+
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys);
 		orderbyclauses = NIL;
@@ -2261,6 +2284,17 @@ match_clause_to_index(PlannerInfo *root,
 					  IndexClauseSet *clauseset)
 {
 	int			indexcol;
+
+	if (rinfo->contain_outer_query_references &&
+		(GpPolicyIsPartitioned(index->rel->cdbpolicy) ||
+		 GpPolicyIsReplicated(index->rel->cdbpolicy)))
+	{
+		/*
+		 * Don't allow pushing down a qual that needs to be evaluted
+		 * in the outer query locus.
+		 */
+		return;
+	}
 
 	/*
 	 * Never match pseudoconstants to indexes.  (Normally a match could not

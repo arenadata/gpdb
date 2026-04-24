@@ -124,6 +124,9 @@ datumGetSize(Datum value, bool typByVal, int typLen)
  * about to be destroyed, and the expanded object is probably in a child
  * context that will also go away.  Moreover, many callers assume that the
  * result is a single pfree-able chunk.
+ *
+ * NOTICE: GPDB had a similar function datumCopyWithMemManager to acceleration
+ * aggreation, please keep datumCopyWithMemManager in sync with datumCopy.
  *-------------------------------------------------------------------------
  */
 Datum

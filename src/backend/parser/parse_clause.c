@@ -3,6 +3,8 @@
  * parse_clause.c
  *	  handle clauses in parser
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -27,6 +29,7 @@
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "nodes/makefuncs.h"
@@ -52,6 +55,11 @@
 #include "utils/syscache.h"
 #include "utils/rel.h"
 
+#include "catalog/pg_operator.h"
+#include "cdb/cdbvars.h"
+#include "utils/builtins.h"
+#include "utils/regproc.h"
+#include "utils/syscache.h"
 
 /* Convenience macro for the most common makeNamespaceItem() case */
 #define makeDefaultNSItem(rte)	makeNamespaceItem(rte, true, true, false, true)
@@ -103,6 +111,19 @@ static Node *transformFrameOffset(ParseState *pstate, int frameOptions,
 								  Oid rangeopfamily, Oid rangeopcintype, Oid *inRangeFunc,
 								  Node *clause);
 
+typedef struct grouping_rewrite_ctx
+{
+	List *grp_tles;
+	ParseState *pstate;
+} grouping_rewrite_ctx;
+
+typedef struct winref_check_ctx
+{
+	ParseState *pstate;
+	Index winref;
+	bool has_order;
+	bool has_frame;
+} winref_check_ctx;
 
 /*
  * transformFromClause -
@@ -131,9 +152,9 @@ transformFromClause(ParseState *pstate, List *frmList)
 	foreach(fl, frmList)
 	{
 		Node	   *n = lfirst(fl);
-		RangeTblEntry *rte;
-		int			rtindex;
-		List	   *namespace;
+		RangeTblEntry *rte = NULL;
+		int			rtindex = 0;
+		List	   *namespace = NULL;
 
 		n = transformFromClauseItem(pstate, n,
 									&rte,
@@ -156,6 +177,70 @@ transformFromClause(ParseState *pstate, List *frmList)
 	 * but those should have been that way already.
 	 */
 	setNamespaceLateralState(pstate->p_namespace, false, true);
+}
+
+/*
+ * winref_checkspec_walker
+ */
+static bool
+winref_checkspec_walker(Node *node, void *ctx)
+{
+	winref_check_ctx *ref = (winref_check_ctx *)ctx;
+
+	if (!node)
+		return false;
+	else if (IsA(node, WindowFunc))
+	{
+		WindowFunc *winref = (WindowFunc *) node;
+
+		/*
+		 * Look at functions pointing to the interesting spec only.
+		 */
+		if (winref->winref != ref->winref)
+			return false;
+
+		if (winref->windistinct)
+		{
+			if (ref->has_order)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("DISTINCT cannot be used with window specification containing an ORDER BY clause"),
+						 parser_errposition(ref->pstate, winref->location)));
+
+			if (ref->has_frame)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("DISTINCT cannot be used with window specification containing a framing clause"),
+						 parser_errposition(ref->pstate, winref->location)));
+		}
+	}
+
+	return expression_tree_walker(node, winref_checkspec_walker, ctx);
+}
+
+/*
+ * winref_checkspec
+ *
+ * See if any WindowFuncss using this spec are DISTINCT qualified.
+ *
+ * In addition, we're going to check winrequireorder / winallowframe.
+ * You might want to do it in ParseFuncOrColumn,
+ * but we need to do this here after all the transformations
+ * (especially parent inheritance) was done.
+ */
+static bool
+winref_checkspec(ParseState *pstate, List *targetlist, Index winref,
+				 bool has_order, bool has_frame)
+{
+	winref_check_ctx ctx;
+
+	ctx.pstate = pstate;
+	ctx.winref = winref;
+	ctx.has_order = has_order;
+	ctx.has_frame = has_frame;
+
+	return expression_tree_walker((Node *) targetlist,
+								  winref_checkspec_walker, (void *) &ctx);
 }
 
 /*
@@ -186,6 +271,9 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 {
 	RangeTblEntry *rte;
 	int			rtindex;
+	ParseCallbackState pcbstate;
+	bool lockUpgraded = false;
+	LOCKMODE    lockmode;
 
 	/*
 	 * ENRs hide tables of the same name, so we need to check for them first.
@@ -208,21 +296,79 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	 *
 	 * free_parsestate() will eventually do the corresponding table_close(),
 	 * but *not* release the lock.
+     *
+	 * CDB: Acquire ExclusiveLock if it is a distributed relation and we are
+	 * doing UPDATE or DELETE activity or `insert on conflict do update`.
+	 *
+	 * We should use heap_openrv instead of parserOpenTable for inserts because
+	 * parserOpenTable upgrades the lock to Exclusive mode for distributed
+	 * tables.
+	 *
+	 * Greenplum specific behavior:
+	 * Statement `insert on conflict do update` should be considered
+	 * like update when deducting lockmode. See github issue:
+	 * https://github.com/greenplum-db/gpdb/issues/9449
 	 */
-	pstate->p_target_relation = parserOpenTable(pstate, relation,
-												RowExclusiveLock);
+	if (pstate->p_is_insert && !pstate->p_is_on_conflict_update)
+	{
+		setup_parser_errposition_callback(&pcbstate, pstate, relation->location);
+		pstate->p_target_relation = heap_openrv(relation, RowExclusiveLock);
+		cancel_parser_errposition_callback(&pcbstate);
+	}
+	else
+	{
+		pstate->p_target_relation = parserOpenTable(pstate, relation, RowExclusiveLock, &lockUpgraded);
+	}
+
+	lockmode = lockUpgraded ? ExclusiveLock : RowExclusiveLock;
+
+	if (Gp_role == GP_ROLE_DISPATCH &&
+		pstate->p_is_insert &&
+		!gp_enable_global_deadlock_detector &&
+		pstate->p_target_relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		/*
+		 * Greenplum specific code:
+		 * When GDD is disabled, and we are inserting into a partition table,
+		 * then we need to lock all leaf partitions. The reason is:
+		 *    1. we cannot predict which leaf partitions will be inserted
+		 *    2. if we do not hold lock on leaf partitions on QD, then this
+		 *       insert statement will be dispatched to QEs, and not dispatch
+		 *       is async, so on some segments, this session's insert will
+		 *       first hold locks on leaf partition and block others; however,
+		 *       on some segments, this session's insert will be blocked by
+		 *       others. Thus we have risk to have global deadlock.
+		 * See issue https://github.com/greenplum-db/gpdb/issues/13652 for details.
+		 */
+		(void) find_all_inheritors(RelationGetRelid(pstate->p_target_relation),
+								   lockmode, NULL);
+	}
 
 	/*
 	 * Now build an RTE.
 	 */
 	rte = addRangeTableEntryForRelation(pstate, pstate->p_target_relation,
-										RowExclusiveLock,
+										lockmode, /* CDB */
 										relation->alias, inh, false);
 	pstate->p_target_rangetblentry = rte;
 
 	/* assume new rte is at end */
 	rtindex = list_length(pstate->p_rtable);
 	Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
+
+	/*
+	 * Special check for DML on system relations,
+	 * allow DML when:
+	 * 	- in single user mode: initdb insert PIN entries to pg_depend,...
+	 * 	- in maintenance mode, upgrade mode or
+	 *  - allow_system_table_mods = true
+	 */
+	if (IsUnderPostmaster && !allowSystemTableMods
+		&& IsSystemRelation(pstate->p_target_relation))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("permission denied: \"%s\" is a system catalog",
+						 RelationGetRelationName(pstate->p_target_relation))));
 
 	/*
 	 * Override addRangeTableEntry's default ACL_SELECT permissions check, and
@@ -436,7 +582,7 @@ transformRangeSubselect(ParseState *pstate, RangeSubselect *r)
 	 * Analyze and transform the subquery.
 	 */
 	query = parse_sub_analyze(r->subquery, pstate, NULL,
-							  isLockedRefname(pstate, r->alias->aliasname),
+							  getLockedRefname(pstate, r->alias->aliasname),
 							  true);
 
 	/* Restore state */
@@ -476,6 +622,71 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 	bool		is_lateral;
 	RangeTblEntry *rte;
 	ListCell   *lc;
+
+	if (!r->is_rowsfrom && list_length(r->functions) == 1)
+	{
+		List	   *pair = (List *) linitial(r->functions);
+		Node	   *fexpr;
+		List	   *coldeflist;
+		
+		/* Disassemble the function-call/column-def-list pairs */
+		Assert(list_length(pair) == 2);
+		fexpr = (Node *) linitial(pair);
+		coldeflist = (List *) lsecond(pair);
+
+		/* If we see a gp_dist_random('name') call with no special decoration, it actually
+		 * refers to a table.
+		 */
+		if (IsA(fexpr, FuncCall))
+		{
+			FuncCall   *fc = (FuncCall *) fexpr;
+
+			if (list_length(fc->funcname) == 1 &&
+				pg_strcasecmp(strVal(linitial(fc->funcname)), GP_DIST_RANDOM_NAME) == 0 &&
+				fc->agg_order == NIL &&
+				fc->agg_filter == NULL &&
+				!fc->agg_star &&
+				!fc->agg_distinct &&
+				!fc->func_variadic &&
+				fc->over == NULL &&
+				coldeflist == NIL)
+			{
+				/* OK, now we need to check the arguments and generate a RTE */
+
+				if (list_length(fc->args) != 1)
+					elog(ERROR, "Invalid %s syntax.", GP_DIST_RANDOM_NAME);
+
+				if (IsA(linitial(fc->args), A_Const))
+				{
+					A_Const *arg_val;
+					List *qualified_name_list;
+					RangeVar *rel;
+
+					arg_val = linitial(fc->args);
+					if (!IsA(&arg_val->val, String))
+					{
+						elog(ERROR, "%s: invalid argument type, non-string in value", GP_DIST_RANDOM_NAME);
+					}
+
+					/* Build the RTE for the table. */
+					qualified_name_list = stringToQualifiedNameList(strVal(&arg_val->val));
+					rel = makeRangeVarFromNameList(qualified_name_list);
+					rel->location = arg_val->location;
+
+					rte = addRangeTableEntry(pstate, rel, r->alias, false, true);
+
+					/* Now we set our special attribute in the rte. */
+					rte->forceDistRandom = true;
+
+					return rte;
+				}
+				else
+				{
+					elog(ERROR, "%s: invalid argument type", GP_DIST_RANDOM_NAME);
+				}
+			}
+		}
+	}
 
 	/*
 	 * We make lateral_only names of this level visible, whether or not the
@@ -2579,6 +2790,14 @@ transformSortClause(ParseState *pstate,
 /*
  * transformWindowDefinitions -
  *		transform window definitions (WindowDef to WindowClause)
+ *
+ * There's a fair bit to do here: column references in the PARTITION and
+ * ORDER clauses must be valid; ORDER clause must present if the function
+ * requires; the frame clause must be checked to ensure that the function
+ * supports framing, that the framed column is of the right type, that the
+ * offset is sane, that the start and end of the frame are sane.
+ * Then we translate it to use the proper parse nodes for the respective
+ * part of the clause.
  */
 List *
 transformWindowDefinitions(ParseState *pstate,
@@ -2589,6 +2808,16 @@ transformWindowDefinitions(ParseState *pstate,
 	Index		winref = 0;
 	ListCell   *lc;
 
+	/*
+	 * We have two lists of window specs: one in the ParseState -- put there
+	 * when we find the OVER(...) clause in the targetlist and the other
+	 * is windowClause, a list of named window clauses. So, we concatenate
+	 * them together.
+	 *
+	 * Note that we're careful place those found in the target list at
+	 * the end because the spec might refer to a named clause and we'll
+	 * after to know about those first.
+	 */
 	foreach(lc, windowdefs)
 	{
 		WindowDef  *windef = (WindowDef *) lfirst(lc);
@@ -2717,11 +2946,34 @@ transformWindowDefinitions(ParseState *pstate,
 			/* Else this clause is just OVER (foo), so say this: */
 			ereport(ERROR,
 					(errcode(ERRCODE_WINDOWING_ERROR),
-					 errmsg("cannot copy window \"%s\" because it has a frame clause",
-							windef->refname),
+			errmsg("cannot copy window \"%s\" because it has a frame clause",
+				   windef->refname),
 					 errhint("Omit the parentheses in this OVER clause."),
 					 parser_errposition(pstate, windef->location)));
 		}
+
+		/*
+		 * Finally, process the framing clause. parseProcessWindFunc() will
+		 * have picked up window functions that do not support framing.
+		 *
+		 * What we do need to do is the following:
+		 * - If BETWEEN has been specified, the trailing bound is not
+		 *   UNBOUNDED FOLLOWING; the leading bound is not UNBOUNDED
+		 *   PRECEDING; if the first bound specifies CURRENT ROW, the
+		 *   second bound shall not specify a PRECEDING bound; if the
+		 *   first bound specifies a FOLLOWING bound, the second bound
+		 *   shall not specify a PRECEDING or CURRENT ROW bound.
+		 *
+		 * - If the user did not specify BETWEEN, the bound is assumed to be
+		 *   a trailing bound and the leading bound is set to CURRENT ROW.
+		 *   We're careful not to set is_between here because the user did not
+		 *   specify it.
+		 *
+		 * - If RANGE is specified: the ORDER BY clause of the window spec
+		 *   may specify only one column; the type of that column must support
+		 *   +/- <integer> operations and must be merge-joinable.
+		 */
+
 		wc->frameOptions = windef->frameOptions;
 
 		/*
@@ -2777,8 +3029,19 @@ transformWindowDefinitions(ParseState *pstate,
 											 windef->endOffset);
 		wc->winref = winref;
 
+		/* finally, check function restriction with this spec. */
+		winref_checkspec(pstate, *targetlist, winref,
+						 PointerIsValid(wc->orderClause),
+						 wc->frameOptions != FRAMEOPTION_DEFAULTS);
+
 		result = lappend(result, wc);
 	}
+
+	/* If there are no window functions in the targetlist,
+	 * forget the window clause.
+	 */
+	if (!pstate->p_hasWindowFuncs)
+		pstate->p_windowdefs = NIL;
 
 	return result;
 }
@@ -2978,6 +3241,50 @@ transformDistinctOnClause(ParseState *pstate, List *distinctlist,
 	Assert(result != NIL);
 
 	return result;
+}
+
+/*
+ * transformScatterClause -
+ *	  transform a SCATTER BY clause
+ *
+ * SCATTER BY items will be added to the targetlist (as resjunk columns)
+ * if not already present, so the targetlist must be passed by reference.
+ *
+ */
+List *
+transformScatterClause(ParseState *pstate,
+					   List *scatterlist,
+					   List **targetlist)
+{
+	List	   *outlist = NIL;
+	ListCell   *olitem;
+
+	/* Special case handling for SCATTER RANDOMLY */
+	if (list_length(scatterlist) == 1 && linitial(scatterlist) == NULL)
+		return list_make1(NULL);
+	
+	/* preprocess the scatter clause, lookup TLEs */
+	foreach(olitem, scatterlist)
+	{
+		Node			*node = lfirst(olitem);
+		TargetEntry		*tle;
+
+		tle = findTargetlistEntrySQL99(pstate, node, targetlist,
+									   EXPR_KIND_SCATTER_BY);
+
+		/* coerce unknown to text */
+		if (exprType((Node *) tle->expr) == UNKNOWNOID)
+		{
+			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
+											 UNKNOWNOID, TEXTOID, -1,
+											 COERCION_IMPLICIT,
+											 COERCE_IMPLICIT_CAST,
+											 -1);
+		}
+
+		outlist = lappend(outlist, tle->expr);
+	}
+	return outlist;
 }
 
 /*
@@ -3239,7 +3546,7 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 										 restype, TEXTOID, -1,
 										 COERCION_IMPLICIT,
 										 COERCE_IMPLICIT_CAST,
-										 -1);
+										 exprLocation((Node *) tle->expr));
 		restype = TEXTOID;
 	}
 
@@ -3646,8 +3953,11 @@ transformFrameOffset(ParseState *pstate, int frameOptions,
 		node = NULL;
 	}
 
+	/* In GPDB, we allow this. */
+#if 0
 	/* Disallow variables in frame offsets */
 	checkExprIsVarFree(pstate, node, constructName);
+#endif
 
 	return node;
 }

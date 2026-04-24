@@ -1,0 +1,36 @@
+<!--
+doc/src/sgml/ref/create_resource_group.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createresourcegroup">
+ <indexterm zone="sql-createresourcegroup">
+  <primary>CREATE RESOURCE GROUP</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE RESOURCE GROUP</refentrytitle>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE RESOURCE GROUP</refname>
+  <refpurpose>define a new resource group</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+
+CREATE RESOURCE GROUP name WITH (group_attribute=value [, ... ]) 
+where group_attribute is:
+   CPU_RATE_LIMIT=integer | CPUSET=tuple
+   MEMORY_LIMIT=integer
+   [ CONCURRENCY=integer ]
+   [ MEMORY_SHARED_QUOTA=integer ]
+   [ MEMORY_SPILL_RATIO=integer ]
+   [ MEMORY_AUDITOR= {vmtracker | cgroup} ]
+
+</synopsis>
+ </refsynopsisdiv>
+
+</refentry>

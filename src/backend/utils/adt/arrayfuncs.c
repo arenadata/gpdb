@@ -20,6 +20,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
+#include "access/tupmacs.h"
 #include "libpq/pqformat.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/supportnodes.h"
@@ -32,6 +33,7 @@
 #include "utils/memutils.h"
 #include "utils/selfuncs.h"
 #include "utils/typcache.h"
+#include "catalog/pg_type.h"
 
 
 /*
@@ -990,7 +992,7 @@ CopyArrayEls(ArrayType *array,
 		if (bitmap)
 		{
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				*bitmap++ = bitval;
 				bitval = 0;
@@ -3317,6 +3319,11 @@ construct_array(Datum *elems, int nelems,
  * elem values will be copied into the object even if pass-by-ref type.
  * Also note the result will be 0-D not ndims-D if any dims[i] = 0.
  *
+ * If the "elems" array is NULL and an array of fixed width type is requested,
+ * a newly allocated array will be used.  This removes the O(array_size) behavior
+ * of this routine in the cases where a fixed length datum is being used.  In this
+ * case, this path will result in O(1) behavior.
+ *
  * NOTE: it would be cleaner to look up the elmlen/elmbval/elmalign info
  * from the system catalogs, given the elmtype.  However, the caller is
  * in a better position to cache this info across multiple uses, or even
@@ -3336,6 +3343,7 @@ construct_md_array(Datum *elems,
 	int32		dataoffset;
 	int			i;
 	int			nelems;
+	bool		fixedwidthtype;
 
 	if (ndims < 0)				/* we do allow zero-dimension arrays */
 		ereport(ERROR,
@@ -3355,25 +3363,61 @@ construct_md_array(Datum *elems,
 
 	/* compute required space */
 	nbytes = 0;
-	hasnulls = false;
-	for (i = 0; i < nelems; i++)
+
+	/*   fast path for fixed width types */
+	switch (elmtype) 
 	{
-		if (nulls && nulls[i])
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+		case FLOAT4OID:
+		case FLOAT8OID:
+			fixedwidthtype=true;
+			break;
+		default:
+			fixedwidthtype=false;
+	}
+	hasnulls = false;
+	if (fixedwidthtype)
+	{
+		nbytes = nelems * elmlen;
+
+		/* Still need to handle the possibility of nulls */
+		if (nulls)
 		{
-			hasnulls = true;
-			continue;
+			for (i = 0; i < nelems; i++)
+			{
+				if (nulls[i])
+				{
+					hasnulls = true;
+					nbytes -= elmlen;
+				}
+			}
 		}
-		/* make sure data is not toasted */
-		if (elmlen == -1)
-			elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
-		nbytes = att_addlength_datum(nbytes, elmlen, elems[i]);
+
 		nbytes = att_align_nominal(nbytes, elmalign);
-		/* check for overflow of total request */
-		if (!AllocSizeIsValid(nbytes))
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("array size exceeds the maximum allowed (%d)",
-							(int) MaxAllocSize)));
+	} 
+	else 
+	{
+		for (i = 0; i < nelems; i++)
+		{
+			/* make sure data is not toasted */
+			if (nulls && nulls[i])
+			{
+				hasnulls = true;
+				continue;
+			}
+			else if (elmlen == -1)
+				elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
+			nbytes = att_addlength_datum(nbytes, elmlen, elems[i]);
+			nbytes = att_align_nominal(nbytes, elmalign);
+			/* check for overflow of total request */
+			if (!AllocSizeIsValid(nbytes))
+				ereport(ERROR,
+						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+						 errmsg("array size exceeds the maximum allowed (%d)",
+								(int) MaxAllocSize)));
+		}
 	}
 
 	/* Allocate and initialize result array */
@@ -3395,10 +3439,17 @@ construct_md_array(Datum *elems,
 	memcpy(ARR_DIMS(result), dims, ndims * sizeof(int));
 	memcpy(ARR_LBOUND(result), lbs, ndims * sizeof(int));
 
-	CopyArrayEls(result,
-				 elems, nulls, nelems,
-				 elmlen, elmbyval, elmalign,
-				 false);
+	if (elems==NULL && fixedwidthtype) 
+	{
+		/* do nothing */
+	} 
+	else
+	{
+		CopyArrayEls(result,
+					 elems, nulls, nelems,
+					 elmlen, elmbyval, elmalign,
+					 false);
+	}
 
 	return result;
 }
@@ -3509,7 +3560,7 @@ deconstruct_array(ArrayType *array,
 		if (bitmap)
 		{
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				bitmap++;
 				bitmask = 1;
@@ -4608,7 +4659,7 @@ array_seek(char *ptr, int offset, bits8 *nullbitmap, int nitems,
 				ptr = (char *) att_align_nominal(ptr, typalign);
 			}
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				nullbitmap++;
 				bitmask = 1;
@@ -4711,7 +4762,7 @@ array_bitmap_copy(bits8 *destbitmap, int destoffset,
 			else
 				destbitval &= ~destbitmask;
 			destbitmask <<= 1;
-			if (destbitmask == 0x100)
+			if (destbitmask == 0x100 /* (1<<8) */)
 			{
 				*destbitmap++ = destbitval;
 				destbitmask = 1;
@@ -4719,7 +4770,7 @@ array_bitmap_copy(bits8 *destbitmap, int destoffset,
 					destbitval = *destbitmap;
 			}
 			srcbitmask <<= 1;
-			if (srcbitmask == 0x100)
+			if (srcbitmask == 0x100 /* (1<<8) */)
 			{
 				srcbitmap++;
 				srcbitmask = 1;
@@ -4736,7 +4787,7 @@ array_bitmap_copy(bits8 *destbitmap, int destoffset,
 		{
 			destbitval |= destbitmask;
 			destbitmask <<= 1;
-			if (destbitmask == 0x100)
+			if (destbitmask == 0x100 /* (1<<8) */)
 			{
 				*destbitmap++ = destbitval;
 				destbitmask = 1;
@@ -4992,7 +5043,7 @@ array_insert_slice(ArrayType *destArray,
  * In the older scheme, you start with a NULL ArrayBuildState pointer, and
  * call accumArrayResult once per element.  In this scheme you end up with
  * a NULL pointer if there were no elements, which you need to special-case.
- * In the newer scheme, call initArrayResult and then call accumArrayResult
+ * In the newer scheme, call initArrayResultWithSize and then call accumArrayResult
  * once per element.  In this scheme you always end with a non-NULL pointer
  * that you can pass to makeArrayResult; you get an empty array if there
  * were no elements.  This is preferred if an empty array is what you want.
@@ -5010,8 +5061,26 @@ array_insert_slice(ArrayType *destArray,
  * single memory context is impractical. Instead, pass subcontext=true so that
  * the array build states can be freed individually.
  */
+
 ArrayBuildState *
 initArrayResult(Oid element_type, MemoryContext rcontext, bool subcontext)
+{
+	/*
+	 * When using a subcontext, we can afford to start with a somewhat larger
+	 * initial array size.  Without subcontexts, we'd better hope that most of
+	 * the states stay small ...
+	 */
+	return initArrayResultWithSize(element_type, rcontext, subcontext,
+								   subcontext ? 64 : 8);
+}
+
+/*
+ * initArrayResultWithSize
+ *		As initArrayResult, but allow the initial size of the allocated arrays
+ *		to be specified.
+ */
+ArrayBuildState *
+initArrayResultWithSize(Oid element_type, MemoryContext rcontext, bool subcontext, int initsize)
 {
 	ArrayBuildState *astate;
 	MemoryContext arr_context = rcontext;
@@ -5026,7 +5095,7 @@ initArrayResult(Oid element_type, MemoryContext rcontext, bool subcontext)
 		MemoryContextAlloc(arr_context, sizeof(ArrayBuildState));
 	astate->mcontext = arr_context;
 	astate->private_cxt = subcontext;
-	astate->alen = (subcontext ? 64 : 8);	/* arbitrary starting array size */
+	astate->alen = initsize;
 	astate->dvalues = (Datum *)
 		MemoryContextAlloc(arr_context, astate->alen * sizeof(Datum));
 	astate->dnulls = (bool *)
@@ -5108,7 +5177,7 @@ accumArrayResult(ArrayBuildState *astate,
  * makeArrayResult - produce 1-D final result of accumArrayResult
  *
  * Note: only releases astate if it was initialized within a separate memory
- * context (i.e. using subcontext=true when calling initArrayResult).
+ * context (i.e. using subcontext=true when calling initArrayResultWithSize).
  *
  *	astate is working state (must not be NULL)
  *	rcontext is where to construct result
@@ -5137,7 +5206,7 @@ makeArrayResult(ArrayBuildState *astate,
  * accumulated.
  *
  * Note: if the astate was not initialized within a separate memory context
- * (that is, initArrayResult was called with subcontext=false), then using
+ * (that is, initArrayResultWithSize was called with subcontext=false), then using
  * release=true is illegal. Instead, release astate along with the rest of its
  * context when appropriate.
  *
@@ -5183,7 +5252,7 @@ makeMdArrayResult(ArrayBuildState *astate,
 
 /*
  * The following three functions provide essentially the same API as
- * initArrayResult/accumArrayResult/makeArrayResult, but instead of accepting
+ * initArrayResultWithSize/accumArrayResult/makeArrayResult, but instead of accepting
  * inputs that are array elements, they accept inputs that are arrays and
  * produce an output array having N+1 dimensions.  The inputs must all have
  * identical dimensionality as well as element type.
@@ -5464,7 +5533,7 @@ makeArrayResultArr(ArrayBuildStateArr *astate,
 
 /*
  * The following three functions provide essentially the same API as
- * initArrayResult/accumArrayResult/makeArrayResult, but can accept either
+ * initArrayResultWithSize/accumArrayResult/makeArrayResult, but can accept either
  * scalar or array inputs, invoking the appropriate set of functions above.
  */
 

@@ -66,6 +66,22 @@ typedef struct
 #define PG_RETURN_TIMEADT(x)	 return TimeADTGetDatum(x)
 #define PG_RETURN_TIMETZADT_P(x) return TimeTzADTPGetDatum(x)
 
+/* Difference (in days) between two DateADT.  Provides external
+ * access to algorithm and used in implementation of date_mi.
+ */
+static inline int32 date_diff(DateADT d1, DateADT d2)
+{
+	return (int32) (d1 - d2);
+}
+
+/* Advance DateADT by given number of day.  Positive and
+ * negative days handled correctly.  Provides external
+ * access to algoritm and uses in implementation of date_pli.
+ */
+static inline DateADT date_pl_days(DateADT date, int32 days)
+{
+	return (DateADT) (date  + days);
+}
 
 /* date.c */
 extern int32 anytime_typmod_check(bool istz, int32 typmod);
@@ -76,5 +92,9 @@ extern TimeTzADT *GetSQLCurrentTime(int32 typmod);
 extern TimeADT GetSQLLocalTime(int32 typmod);
 extern int	time2tm(TimeADT time, struct pg_tm *tm, fsec_t *fsec);
 extern int	timetz2tm(TimeTzADT *time, struct pg_tm *tm, fsec_t *fsec, int *tzp);
+
+extern float8 time_li_fraction(TimeADT x, TimeADT x0, TimeADT x1,
+							   bool *eq_bounds, bool *eq_abscissas);
+extern TimeADT time_li_value(float8 f, TimeADT y0, TimeADT y1);
 
 #endif							/* DATE_H */

@@ -3,6 +3,8 @@
  * pg_proc.h
  *	  definition of the "procedure" system catalog (pg_proc)
  *
+ * Portions Copyright (c) 2006-2010, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -123,8 +125,23 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 
 	/* access permissions */
 	aclitem		proacl[1] BKI_DEFAULT(_null_);
+
+	/* data access indicator (GPDB specific) */
+	char		prodataaccess BKI_DEFAULT(n);
+
+	 /* EXECUTE ON ANY or SEGMENTS (GPDB specific) */
+	char		proexeclocation BKI_DEFAULT(a);
+
 #endif
 } FormData_pg_proc;
+
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(pronamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(proowner REFERENCES pg_authid(oid));
+FOREIGN_KEY(prolang REFERENCES pg_language(oid));
+FOREIGN_KEY(prorettype REFERENCES pg_type(oid));
+/*   alter table pg_proc add vector_fk proargtypes on pg_type(oid); */
+/*   alter table pg_proc add vector_fk proallargtypes on pg_type(oid); */
 
 /* ----------------
  *		Form_pg_proc corresponds to a pointer to a tuple with
@@ -132,6 +149,12 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
  * ----------------
  */
 typedef FormData_pg_proc *Form_pg_proc;
+
+/*
+ * TODO: It would be nice if we could default prodataaccess to 'c' for all
+ * SQL-language functions. But the process_col_defaults.pl script isn't
+ * currently smart enough for that.
+ */
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 
@@ -175,6 +198,20 @@ typedef FormData_pg_proc *Form_pg_proc;
 #define PROARGMODE_VARIADIC 'v'
 #define PROARGMODE_TABLE	't'
 
+/*
+ * Symbolic values for prodataaccess column: these provide a hint regarding
+ * what kind of statements are included in the function.
+ */
+#define PRODATAACCESS_NONE		'n'
+#define PRODATAACCESS_CONTAINS	'c'
+#define PRODATAACCESS_READS		'r'
+#define PRODATAACCESS_MODIFIES	'm'
+
+#define PROEXECLOCATION_ANY		'a'
+#define PROEXECLOCATION_COORDINATOR	'c'
+#define PROEXECLOCATION_INITPLAN 'i'
+#define PROEXECLOCATION_ALL_SEGMENTS 's'
+
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
 
@@ -186,6 +223,7 @@ extern ObjectAddress ProcedureCreate(const char *procedureName,
 									 Oid proowner,
 									 Oid languageObjectId,
 									 Oid languageValidator,
+									 Oid describeFuncOid,
 									 const char *prosrc,
 									 const char *probin,
 									 char prokind,
@@ -203,10 +241,18 @@ extern ObjectAddress ProcedureCreate(const char *procedureName,
 									 Datum proconfig,
 									 Oid prosupport,
 									 float4 procost,
-									 float4 prorows);
+									 float4 prorows,
+									 char prodataaccess,
+									 char proexeclocation);
 
 extern bool function_parse_error_transpose(const char *prosrc);
 
 extern List *oid_array_to_list(Datum datum);
+
+#define IS_MEDIAN_OID(x) ((x) == MEDIAN_FLOAT8_OID || \
+						  (x) == MEDIAN_INTERVAL_OID || \
+						  (x) == MEDIAN_TIMESTAMP_OID || \
+						  (x) == MEDIAN_TIMESTAMPTZ_OID)
+
 
 #endif							/* PG_PROC_H */

@@ -345,7 +345,12 @@ select hstore_to_jsonb('"a key" =>1, b => t, c => null, d=> 12345, e => 012345, 
 select cast( hstore  '"a key" =>1, b => t, c => null, d=> 12345, e => 012345, f=> 1.234, g=> 2.345e+4' as jsonb);
 select hstore_to_jsonb_loose('"a key" =>1, b => t, c => null, d=> 12345, e => 012345, f=> 1.234, g=> 2.345e+4, h=> "2016-01-01"');
 
-create table test_json_agg (f1 text, f2 hstore);
+-- GPDB: use a replicated table, so that the json_agg() below will see the
+-- rows in the same order the rows are inserted in. With a non-replicated
+-- table, the rows would be gathered across segments in nondeterministic
+-- order, but with replicated, the aggregate will run in a single segment,
+-- and it will always see them in the same order.
+create table test_json_agg (f1 text, f2 hstore) distributed replicated;
 insert into test_json_agg values ('rec1','"a key" =>1, b => t, c => null, d=> 12345, e => 012345, f=> 1.234, g=> 2.345e+4'),
        ('rec2','"a key" =>2, b => f, c => "null", d=> -12345, e => 012345.6, f=> -1.234, g=> 0.345e-4');
 select json_agg(q) from test_json_agg q;

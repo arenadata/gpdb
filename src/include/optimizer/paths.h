@@ -4,6 +4,8 @@
  *	  prototypes for various files in optimizer/path
  *
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,8 +22,6 @@
 /*
  * allpaths.c
  */
-extern PGDLLIMPORT bool enable_geqo;
-extern PGDLLIMPORT int geqo_threshold;
 extern PGDLLIMPORT int min_parallel_table_scan_size;
 extern PGDLLIMPORT int min_parallel_index_scan_size;
 
@@ -69,6 +69,7 @@ extern void debug_print_rel(PlannerInfo *root, RelOptInfo *rel);
  * indxpath.c
  *	  routines to generate index paths
  */
+
 extern void create_index_paths(PlannerInfo *root, RelOptInfo *rel);
 extern bool relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 										  List *restrictlist,
@@ -105,7 +106,7 @@ extern bool have_join_order_restriction(PlannerInfo *root,
 										RelOptInfo *rel1, RelOptInfo *rel2);
 extern bool have_dangerous_phv(PlannerInfo *root,
 							   Relids outer_relids, Relids inner_params);
-extern void mark_dummy_rel(RelOptInfo *rel);
+extern void mark_dummy_rel(PlannerInfo *root, RelOptInfo *rel);
 extern bool have_partkey_equi_join(RelOptInfo *joinrel,
 								   RelOptInfo *rel1, RelOptInfo *rel2,
 								   JoinType jointype, List *restrictlist);
@@ -181,6 +182,19 @@ typedef enum
 	PATHKEYS_DIFFERENT			/* neither pathkey includes the other */
 } PathKeysComparison;
 
+typedef struct
+{
+	Node *replaceThis;
+	Node *withThis;
+	int numReplacementsDone;
+} ReplaceExpressionMutatorReplacement;
+
+extern PathKey *makePathKey(EquivalenceClass *eclass, Oid opfamily,
+							int strategy, bool nulls_first);
+
+extern Node * replace_expression_mutator(Node *node, void *context);
+extern void generate_implied_quals(PlannerInfo *root);
+
 extern PathKeysComparison compare_pathkeys(List *keys1, List *keys2);
 extern bool pathkeys_contained_in(List *keys1, List *keys2);
 extern Path *get_cheapest_path_for_pathkeys(List *paths, List *pathkeys,
@@ -196,6 +210,13 @@ extern List *build_index_pathkeys(PlannerInfo *root, IndexOptInfo *index,
 								  ScanDirection scandir);
 extern List *build_partition_pathkeys(PlannerInfo *root, RelOptInfo *partrel,
 									  ScanDirection scandir, bool *partialkeys);
+extern PathKey *make_pathkey_from_sortop(PlannerInfo *root,
+										 Expr *expr,
+										 Relids nullable_relids,
+										 Oid ordering_op,
+										 bool nulls_first,
+										 Index sortref,
+										 bool create_it);
 extern List *build_expression_pathkey(PlannerInfo *root, Expr *expr,
 									  Relids nullable_relids, Oid opno,
 									  Relids rel, bool create_it);
@@ -206,9 +227,26 @@ extern List *build_join_pathkeys(PlannerInfo *root,
 								 RelOptInfo *joinrel,
 								 JoinType jointype,
 								 List *outer_pathkeys);
+extern DistributionKey *cdb_make_distkey_for_expr(PlannerInfo  *root,
+												  RelOptInfo *rel,
+												  Node *expr, Oid opfamily /* hash opfamily */, int sortref);
+extern EquivalenceClass *
+cdb_pull_up_eclass(PlannerInfo    *root,
+					EquivalenceClass *eclass,
+                    Relids          relids,
+                    List           *targetlist,
+                    List           *newvarlist,
+                    Index           newrelid);
+
 extern List *make_pathkeys_for_sortclauses(PlannerInfo *root,
 										   List *sortclauses,
 										   List *tlist);
+extern void make_distribution_exprs_for_groupclause(PlannerInfo *root,
+													List *groupclause, List *tlist,
+													List **partition_dist_pathkeys,
+													List **partition_dist_exprs,
+													List **partition_dist_opfamilies,
+													List **partition_dist_sortrefs);
 extern void initialize_mergeclause_eclasses(PlannerInfo *root,
 											RestrictInfo *restrictinfo);
 extern void update_mergeclause_eclasses(PlannerInfo *root,

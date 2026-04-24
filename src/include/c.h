@@ -9,6 +9,8 @@
  *	  polluting the namespace with lots of stuff...
  *
  *
+ * Portions Copyright (c) 2006-2011, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -518,6 +520,19 @@ typedef TransactionId MultiXactId;
 
 typedef uint32 MultiXactOffset;
 
+typedef int32 DistributedSnapshotId;
+
+typedef uint64 DistributedTransactionId;
+#define InvalidDistributedTransactionId	((DistributedTransactionId) 0)
+#define FirstDistributedTransactionId	((DistributedTransactionId) 1)
+#define LastDistributedTransactionId	((DistributedTransactionId) 0xffffFFFFffffFFFF)
+
+/*
+ * max(LastDistributedTransactionId) is 20-bytes, and then plus NULL.
+ * FIXME: Use hex later to save a bit memory.
+ */
+#define TMGIDSIZE 21
+
 typedef uint32 CommandId;
 
 #define FirstCommandId	((CommandId) 0)
@@ -734,6 +749,8 @@ typedef NameData *Name;
 #define AssertArg(condition)	((void)true)
 #define AssertState(condition)	((void)true)
 #define AssertPointerAlignment(ptr, bndr)	((void)true)
+#define AssertImply(condition1, condition2)	((void)true)
+#define AssertEquivalent(cond1, cond2)	((void)true)
 #define Trap(condition, errorType)	((void)true)
 #define TrapMacro(condition, errorType) (true)
 
@@ -782,6 +799,12 @@ typedef NameData *Name;
 
 #define AssertState(condition) \
 		Trap(!(condition), "BadState")
+
+#define AssertImply(cond1, cond2) \
+		Trap(!(!(cond1) || (cond2)), "AssertImply failed")
+
+#define AssertEquivalent(cond1, cond2) \
+		Trap(!((bool)(cond1) == (bool)(cond2)), "AssertEquivalent failed")
 
 /*
  * Check that `ptr' is `bndr' aligned.
@@ -1243,6 +1266,10 @@ extern unsigned long long strtoull(const char *str, char **endptr, int base);
 
 #ifndef SIGNAL_ARGS
 #define SIGNAL_ARGS  int postgres_signal_arg
+#endif
+
+#ifndef PASS_SIGNAL_ARGS
+#define PASS_SIGNAL_ARGS postgres_signal_arg
 #endif
 
 /*

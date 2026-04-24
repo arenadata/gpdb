@@ -8,7 +8,7 @@ plpy.info('the question', detail=42);
 plpy.info('This is message text.',
           detail='This is detail text',
           hint='This is hint text.',
-          sqlstate='XX000',
+          sqlstate='XX001', 	  # GPDB: Don't use Use XX000 (ERRCODE_INTERNAL_ERROR), because it causes the source file location to be printed
           schema_name='any info about schema',
           table_name='any info about table',
           column_name='any info about column',

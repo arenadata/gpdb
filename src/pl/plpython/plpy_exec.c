@@ -169,7 +169,7 @@ PLy_exec_function(FunctionCallInfo fcinfo, PLyProcedure *proc)
 				srfstate->iter = NULL;
 
 				if (has_error)
-					PLy_elog(ERROR, "error fetching next item from iterator");
+					PLy_elog(ERROR, "function \"%s\" error fetching next item from iterator", proc->proname);
 
 				/* Pass a null through the data-returning steps below */
 				Py_INCREF(Py_None);
@@ -1037,6 +1037,7 @@ PLy_procedure_call(PLyProcedure *proc, const char *kargs, PyObject *vargs)
 
 	PG_TRY();
 	{
+		PLy_enter_python_intepreter = true;
 #if PY_VERSION_HEX >= 0x03020000
 		rv = PyEval_EvalCode(proc->code,
 							 proc->globals, proc->globals);
@@ -1044,6 +1045,7 @@ PLy_procedure_call(PLyProcedure *proc, const char *kargs, PyObject *vargs)
 		rv = PyEval_EvalCode((PyCodeObject *) proc->code,
 							 proc->globals, proc->globals);
 #endif
+		PLy_enter_python_intepreter = false;
 
 		/*
 		 * Since plpy will only let you close subtransactions that you
@@ -1054,6 +1056,7 @@ PLy_procedure_call(PLyProcedure *proc, const char *kargs, PyObject *vargs)
 	}
 	PG_CATCH();
 	{
+		PLy_enter_python_intepreter = false;
 		PLy_abort_open_subtransactions(save_subxact_level);
 		PG_RE_THROW();
 	}

@@ -454,8 +454,8 @@ insert into rtest_view2 values (7);
 insert into rtest_view2 values (7);
 
 select * from rtest_vview1;
-select * from rtest_vview2;
-select * from rtest_vview3;
+select * from rtest_vview2 ORDER BY 1;
+select * from rtest_vview3 ORDER BY 1;
 select * from rtest_vview4 order by a, b;
 select * from rtest_vview5;
 
@@ -776,7 +776,7 @@ drop table cchild;
 \a\t
 
 SELECT viewname, definition FROM pg_views
-WHERE schemaname IN ('pg_catalog', 'public')
+WHERE schemaname <> 'information_schema' AND viewname <> 'pg_roles' AND viewname <> 'gp_pgdatabase' AND viewname <> 'pg_locks' AND viewname <> 'gp_max_external_files' AND viewname <> 'pg_resqueue_status' AND viewname <> 'pg_stat_resqueues'
 ORDER BY viewname;
 
 SELECT tablename, rulename, definition FROM pg_rules
@@ -1058,6 +1058,18 @@ create view rule_v1(x) as select * from (values(1,2)) v(q,w);
 \d+ rule_v1
 drop view rule_v1;
 
+-- test for pg_get_functiondef properly regurgitating SET parameters
+-- Note that the function is kept around to stress pg_dump.
+CREATE FUNCTION func_with_set_params() RETURNS integer
+    AS 'select 1;'
+    LANGUAGE SQL
+    SET extra_float_digits TO 2
+    SET work_mem TO '4MB'
+    SET datestyle to iso, mdy
+    SET search_path TO PG_CATALOG, "Mixed/Case", 'c:/''a"/path', '', '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
+    IMMUTABLE STRICT;
+SELECT pg_get_functiondef('func_with_set_params()'::regprocedure);
+
 --
 -- Check DO INSTEAD rules with ON CONFLICT
 --
@@ -1218,3 +1230,8 @@ SELECT * FROM ruletest2;
 
 DROP TABLE ruletest1;
 DROP TABLE ruletest2;
+
+-- test rule for select-for-update
+create table t_test_rules_select_for_update (c int) distributed randomly;
+create rule myrule as on insert to t_test_rules_select_for_update
+do instead select * from t_test_rules_select_for_update for update;

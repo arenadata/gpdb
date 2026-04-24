@@ -2,6 +2,10 @@
 
 create table testtr (a int, b text);
 
+-- GPDB: If 'a' is the distribution key, the UPDATE below fails:
+-- ERROR:  UPDATE on distributed key column not allowed on relation with update triggers
+alter table testtr set distributed randomly;
+
 create function testtr_trigger() returns trigger language plpgsql as
 $$begin
   raise notice 'tg_op = %', tg_op;

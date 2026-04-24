@@ -30,6 +30,8 @@ DATA = pgcrypto--1.3.sql pgcrypto--1.2--1.3.sql pgcrypto--1.1--1.2.sql \
 	pgcrypto--1.0--1.1.sql pgcrypto--unpackaged--1.0.sql
 PGFILEDESC = "pgcrypto - cryptographic functions"
 
+REGRESS_OPTS = --dbname=$(CONTRIB_TESTDB) --init-file=$(top_builddir)/src/test/regress/init_file 
+
 REGRESS = init md5 sha1 hmac-md5 hmac-sha1 blowfish rijndael \
 	$(CF_TESTS) \
 	crypt-des crypt-md5 crypt-blowfish crypt-xdes \

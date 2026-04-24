@@ -24,9 +24,11 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
 #include "utils/array.h"
@@ -164,8 +166,9 @@ CreateConstraintEntry(const char *constraintName,
 		values[i] = (Datum) NULL;
 	}
 
-	conOid = GetNewOidWithIndex(conDesc, ConstraintOidIndexId,
-								Anum_pg_constraint_oid);
+	conOid = GetNewOidForConstraint(conDesc, ConstraintOidIndexId,
+									Anum_pg_constraint_oid,
+									relId, constraintType, NameStr(cname));
 	values[Anum_pg_constraint_oid - 1] = ObjectIdGetDatum(conOid);
 	values[Anum_pg_constraint_conname - 1] = NameGetDatum(&cname);
 	values[Anum_pg_constraint_connamespace - 1] = ObjectIdGetDatum(constraintNamespace);
@@ -632,6 +635,7 @@ RemoveConstraintById(Oid conId)
 	ReleaseSysCache(tup);
 	table_close(conDesc, RowExclusiveLock);
 }
+
 
 /*
  * RenameConstraintById
@@ -1278,6 +1282,9 @@ DeconstructFkConstraintRow(HeapTuple tuple, int *numfks,
  * to be able to represent the not-null-ness as part of the constraints added
  * to *constraintDeps.  FIXME whenever not-null constraints get represented
  * in pg_constraint.
+ *
+ * GPDB_91_MERGE_FIXME: this does not seem to correctly reject invalid GROUPING
+ * SET queries. Possibly because those were backported from 9.5?
  */
 bool
 check_functional_grouping(Oid relid,
@@ -1316,4 +1323,100 @@ check_functional_grouping(Oid relid,
 	}
 
 	return false;
+}
+
+
+/**
+ * This method determines if the input attribute is a foreign key and if so,
+ * retrieves the primary key's relation oid and attribute number. It looks at
+ * the pg_constraint system table to determine the answer.
+ * 
+ * Input:
+ * 	relid - relation whose attribute we are examining
+ *  attno - attribute number of the said column
+ *  
+ * Output:
+ * 	*pkrelid - relation id of the table that contains the primary key
+ *  *pkattno - attribute number of the primary key
+ * 	return   - true if found/ false otherwise
+ * 
+ * It returns a value of true if (relid, attno) is indeed a foreign key. It also
+ * sets the output pkrelid and pkattno. If it returns false, then this
+ * column is not a primary key and these output variables are not modified.
+ */
+
+bool
+ConstraintGetPrimaryKeyOf(Oid relid, AttrNumber attno, Oid *pkrelid, AttrNumber *pkattno)
+{
+	bool		found;
+	Relation	conDesc;
+	SysScanDesc conscan;
+	ScanKeyData skey;
+	HeapTuple	tup;
+
+	conDesc = heap_open(ConstraintRelationId, AccessShareLock);
+
+	found = false;
+
+	ScanKeyInit(&skey,
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	conscan = systable_beginscan(conDesc, ConstraintRelidTypidNameIndexId, true,
+								 NULL, 1, &skey);
+
+	while (HeapTupleIsValid(tup = systable_getnext(conscan)))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tup);
+		
+		if (con->conrelid == relid && con->contype == CONSTRAINT_FOREIGN)
+		{
+			Datum		val;
+			bool		valisnull;
+			Datum		*valarray;
+			int          valarray_length;
+
+			/* first ensure that this is the right key */
+			val = heap_getattr(tup, Anum_pg_constraint_conkey,
+					RelationGetDescr(conDesc), &valisnull);
+
+			Assert(!valisnull);
+
+			deconstruct_array(DatumGetArrayTypeP(val),
+					INT2OID, 2, true, 's',
+					&valarray, NULL, &valarray_length);
+
+			if (valarray_length == 1 && DatumGetInt16(valarray[0]) == attno)
+			{
+				Datum		fval;
+				bool		fvalisnull;
+				Datum		*fvalarray;
+				int          fvalarray_length;
+
+				/* this is the right key, now extract the primary table,key */
+				Assert(con->confrelid != InvalidOid);
+
+				fval = heap_getattr(tup, Anum_pg_constraint_confkey,
+						RelationGetDescr(conDesc), &fvalisnull);
+
+				Assert(!fvalisnull);
+				deconstruct_array(DatumGetArrayTypeP(fval),
+						INT2OID, 2, true, 's',
+						&fvalarray, NULL, &fvalarray_length);
+
+				Assert(fvalarray_length == 1);
+
+				found = true;
+				*pkrelid = con->confrelid;
+				*pkattno = (AttrNumber) DatumGetInt16(fvalarray[0]);
+				break;
+			}
+		}
+	}
+
+	systable_endscan(conscan);
+	heap_close(conDesc, AccessShareLock);
+
+	return found;
 }

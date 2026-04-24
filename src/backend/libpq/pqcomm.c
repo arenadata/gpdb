@@ -67,7 +67,11 @@
  *------------------------
  */
 #include "postgres.h"
+#include <pthread.h>
 
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
 #include <signal.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -95,6 +99,27 @@
 #include "storage/ipc.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
+#include "cdb/cdbvars.h"
+#include "tcop/tcopprot.h"
+
+/*
+ * Cope with the various platform-specific ways to spell TCP keepalive socket
+ * options.  This doesn't cover Windows, which as usual does its own thing.
+ */
+#if defined(TCP_KEEPIDLE)
+/* TCP_KEEPIDLE is the name of this option on Linux and *BSD */
+#define PG_TCP_KEEPALIVE_IDLE TCP_KEEPIDLE
+#define PG_TCP_KEEPALIVE_IDLE_STR "TCP_KEEPIDLE"
+#elif defined(TCP_KEEPALIVE_THRESHOLD)
+/* TCP_KEEPALIVE_THRESHOLD is the name of this option on Solaris >= 11 */
+#define PG_TCP_KEEPALIVE_IDLE TCP_KEEPALIVE_THRESHOLD
+#define PG_TCP_KEEPALIVE_IDLE_STR "TCP_KEEPALIVE_THRESHOLD"
+#elif defined(TCP_KEEPALIVE) && defined(__darwin__)
+/* TCP_KEEPALIVE is the name of this option on macOS */
+/* Caution: Solaris has this symbol but it means something different */
+#define PG_TCP_KEEPALIVE_IDLE TCP_KEEPALIVE
+#define PG_TCP_KEEPALIVE_IDLE_STR "TCP_KEEPALIVE"
+#endif
 
 /*
  * Cope with the various platform-specific ways to spell TCP keepalive socket
@@ -238,8 +263,6 @@ pq_init(void)
 static void
 socket_comm_reset(void)
 {
-	/* Do not throw away pending data, but do reset the busy flag */
-	PqCommBusy = false;
 	/* We can abort any old-style COPY OUT, too */
 	pq_endcopyout(true);
 }
@@ -302,6 +325,24 @@ socket_close(int code, Datum arg)
 	}
 }
 
+/* --------------------------------
+ *		pq_comm_close_fatal - shutdown libpq at backend fatal error exit
+ * --------------------------------
+ */
+void
+pq_comm_close_fatal(void)
+{
+	if (MyProcPort != NULL)
+	{
+		/* Cleanly shut down SSL layer */
+		secure_close(MyProcPort);
+
+		if (MyProcPort->sock >= 0)
+            closesocket(MyProcPort->sock);
+        
+		MyProcPort->sock = -1;
+	}
+}                               /* pq_comm_close_fatal */
 
 
 /*
@@ -506,7 +547,7 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 		}
 #endif
 
-#ifdef IPV6_V6ONLY
+#if defined(IPV6_V6ONLY) && defined(IPPROTO_IPV6)
 		if (addr->ai_family == AF_INET6)
 		{
 			if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY,
@@ -746,6 +787,23 @@ StreamConnection(pgsocket server_fd, Port *port)
 		return STATUS_ERROR;
 	}
 
+	/* 
+	 * Set a send timeout on the socket if specified, on the master only
+	 * Solaris doesn't support setting SO_SNDTIMEO, so setting this won't work on Solaris (MPP-22526) 
+	 */ 
+	if (IS_QUERY_DISPATCHER() && gp_connection_send_timeout > 0)
+	{
+	  struct timeval timeout;
+	  timeout.tv_sec = gp_connection_send_timeout;
+	  timeout.tv_usec = 0;
+
+	  if (setsockopt (port->sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout,
+			  sizeof(timeout)) < 0)
+	    {
+	      elog(LOG, "setsockopt(SO_SNDTIMEO) failed: %m");
+	    }
+	}
+
 	/* select NODELAY and KEEPALIVE options if it's a TCP connection */
 	if (!IS_AF_UNIX(port->laddr.addr.ss_family))
 	{
@@ -966,8 +1024,8 @@ pq_recvbuf(void)
 
 		if (r < 0)
 		{
-			if (errno == EINTR)
-				continue;		/* Ok if interrupted */
+			if (errno == EINTR || errno == EAGAIN)
+				continue;		/* Ok if interrupted or timeout expired */
 
 			/*
 			 * Careful: an ereport() that tries to write to the client would
@@ -990,6 +1048,67 @@ pq_recvbuf(void)
 		/* r contains number of bytes read, so just incr length */
 		PqRecvLength += r;
 		return 0;
+	}
+}
+
+/**
+ *
+ * Can only be called for non-SSL connections (such as file replication connections).
+ *
+ * Wait for at least one byte of data to be available, or for the
+ *   socket to be in error.
+ *
+ * return true if we have data or a socket error, false if the function
+ *   call was interrupted
+ */
+bool
+pq_waitForDataUsingSelect(void)
+{
+	if ( PqRecvPointer < PqRecvLength)
+	{
+		/* we already have data in the buffer ... so done */
+		return true;
+	}
+
+#ifdef USE_SSL
+	if ( MyProcPort->ssl )
+	{
+		elog(ERROR, "SSL connection cannot be used with pq_waitForDataUsingSelect");
+		return true; /* unreachable */
+	}
+	else
+#endif
+	{
+		int sock = MyProcPort->sock;
+		for ( ;; )
+		{
+			fd_set toRead;
+			fd_set haveError;
+			int numSockets;
+
+			FD_ZERO(&toRead);
+			FD_ZERO(&haveError);
+
+			FD_SET(sock, &toRead);
+			FD_SET(sock, &haveError);
+
+			errno = 0;
+			numSockets = select(sock+1, &toRead, NULL /* toWrite */, &haveError, NULL );
+
+			if ( errno == EINTR)
+			{
+				return false;
+			}
+			else if (errno != 0 )
+			{
+				elog(FATAL, "select failed: %m");
+			}
+			else if ( numSockets > 0 )
+			{
+				/* the socket has data to read or is in error so break out */
+				return true;
+			}
+		}
 	}
 }
 
@@ -1460,9 +1579,14 @@ internal_flush(void)
 			if (errno != last_reported_send_errno)
 			{
 				last_reported_send_errno = errno;
+				/* TDOO: what's this? */
+				HOLD_INTERRUPTS();
+
+				/* we can use ereport here, for the protection of send mutex */
 				ereport(COMMERROR,
 						(errcode_for_socket_access(),
 						 errmsg("could not send data to client: %m")));
+				RESUME_INTERRUPTS();
 			}
 
 			/*
@@ -1550,9 +1674,7 @@ socket_is_send_pending(void)
  *
  *		We also suppress messages generated while pqcomm.c is busy.  This
  *		avoids any possibility of messages being inserted within other
- *		messages.  The only known trouble case arises if SIGQUIT occurs
- *		during a pqcomm.c routine --- quickdie() will try to send a warning
- *		message, and the most reasonable approach seems to be to drop it.
+ *		messages.
  *
  *		returns 0 if OK, EOF if trouble
  * --------------------------------
@@ -1561,11 +1683,17 @@ static int
 socket_putmessage(char msgtype, const char *s, size_t len)
 {
 	if (DoingCopyOut || PqCommBusy)
-		return 0;
+	{
+		return EOF;
+	}
 	PqCommBusy = true;
+
 	if (msgtype)
+	{
 		if (internal_putbytes(&msgtype, 1))
 			goto fail;
+	}
+
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 	{
 		uint32		n32;
@@ -1574,6 +1702,7 @@ socket_putmessage(char msgtype, const char *s, size_t len)
 		if (internal_putbytes((char *) &n32, 4))
 			goto fail;
 	}
+
 	if (internal_putbytes(s, len))
 		goto fail;
 	PqCommBusy = false;
@@ -1868,7 +1997,7 @@ pq_getkeepalivescount(Port *port)
 
 	if (port->default_keepalives_count == 0)
 	{
-		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_count);
+		socklen_t size = sizeof(port->default_keepalives_count);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPCNT,
 					   (char *) &port->default_keepalives_count,
@@ -1998,4 +2127,54 @@ pq_settcpusertimeout(int timeout, Port *port)
 #endif
 
 	return STATUS_OK;
+}
+
+/*
+ * Check if the client is still connected.
+ */
+bool
+pq_check_connection(void)
+{
+	struct pollfd pollfd;
+	int         rc;
+	short		poll_ev_aux;
+
+#if defined(POLLRDHUP)
+	/*
+	 * POLLRDHUP is a Linux extension to poll(2) to detect sockets closed by the
+	 * other end.
+	 * We don't have a portable way to do that without actually trying to read
+	 * or write data on other systems. We don't want to read because that would
+	 * be confused by pipelined queries and COPY data. Perhaps in future we'll
+	 * try to write a heartbeat message instead.
+	 */
+	poll_ev_aux = POLLRDHUP;
+#elif defined(__darwin__)
+	/*
+	 * OSX is able to detect closed sockets via single POSIX-compliant POLLHUP
+	 * option
+	 */
+	poll_ev_aux = 0;
+#else
+	return true;
+#endif
+
+	pollfd.fd = MyProcPort->sock;
+	pollfd.events = POLLOUT | POLLIN | poll_ev_aux;
+
+	pollfd.revents = 0;
+
+	rc = poll(&pollfd, 1, 0);
+
+	if (rc < 0)
+	{
+		ereport(COMMERROR,
+				(errcode_for_socket_access(),
+				 errmsg("could not poll socket: %m")));
+		return false;
+	}
+	else if (rc == 1 && (pollfd.revents & (POLLHUP | poll_ev_aux)))
+		return false;
+
+	return true;
 }

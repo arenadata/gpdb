@@ -20,11 +20,11 @@
 #include "access/amapi.h"
 #include "access/itup.h"
 #include "access/sdir.h"
+#include "common/hashfn.h"
 #include "fmgr.h"
 #include "lib/stringinfo.h"
 #include "storage/bufmgr.h"
 #include "storage/lockdefs.h"
-#include "utils/hashutils.h"
 #include "utils/hsearch.h"
 #include "utils/relcache.h"
 
@@ -350,7 +350,7 @@ extern bool hashinsert(Relation rel, Datum *values, bool *isnull,
 					   IndexUniqueCheck checkUnique,
 					   struct IndexInfo *indexInfo);
 extern bool hashgettuple(IndexScanDesc scan, ScanDirection dir);
-extern int64 hashgetbitmap(IndexScanDesc scan, TIDBitmap *tbm);
+extern int64 hashgetbitmap(IndexScanDesc scan, Node **bmNodeP);
 extern IndexScanDesc hashbeginscan(Relation rel, int nkeys, int norderbys);
 extern void hashrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 					   ScanKey orderbys, int norderbys);

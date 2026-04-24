@@ -65,6 +65,9 @@ typedef int YYSTYPE;
 #define LEXRES_BACKSLASH	2	/* backslash command start */
 
 
+#ifdef ECHO
+#undef ECHO
+#endif
 #define ECHO psqlscan_emit(cur_state, yytext, yyleng)
 
 /*

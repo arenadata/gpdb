@@ -19,6 +19,7 @@
 #include "pg_backup_archiver.h"
 #include "pg_backup_db.h"
 #include "pg_backup_utils.h"
+#include "parallel.h"
 
 #include <unistd.h>
 #include <ctype.h>
@@ -29,7 +30,7 @@
 
 static void _check_database_version(ArchiveHandle *AH);
 static PGconn *_connectDB(ArchiveHandle *AH, const char *newdbname, const char *newUser);
-static void notice_processor(void *arg, const char *message);
+static void notice_processor(void *arg pg_attribute_unused(), const char *message);
 
 static void
 _check_database_version(ArchiveHandle *AH)
@@ -240,7 +241,8 @@ ConnectDatabase(Archive *AHX,
 				const char *pghost,
 				const char *pgport,
 				const char *username,
-				trivalue prompt_password)
+				trivalue prompt_password,
+				bool binary_upgrade)
 {
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	char	   *password;
@@ -263,11 +265,10 @@ ConnectDatabase(Archive *AHX,
 	 * Start the connection.  Loop until we have a password if requested by
 	 * backend.
 	 */
+	const char *keywords[8];
+	const char *values[8];
 	do
 	{
-		const char *keywords[7];
-		const char *values[7];
-
 		keywords[0] = "host";
 		values[0] = pghost;
 		keywords[1] = "port";
@@ -325,6 +326,21 @@ ConnectDatabase(Archive *AHX,
 	/* check for version mismatch */
 	_check_database_version(AH);
 
+	/* GPDB: If binary upgrade, we need to use the correct
+	 * session GUC to connect in utility mode, which depends on
+	 * the server version. We don't know the server version until
+	 * we connect for the first time, so set the correct GUC and
+	 * reconnect.
+	 */
+	if (binary_upgrade)
+	{
+		keywords[6] = "options";
+		values[6] = AH->public.remoteVersion < GPDB7_MAJOR_PGVERSION ?
+								"-c gp_session_role=utility" : "-c gp_role=utility";
+		keywords[7] = NULL;
+		values[7] = NULL;
+		AH->connection = PQconnectdbParams(keywords, values, true);
+	}
 	PQsetNoticeProcessor(AH->connection, notice_processor, NULL);
 
 	/* arrange for SIGINT to issue a query cancel on this connection */
@@ -373,7 +389,7 @@ GetConnection(Archive *AHX)
 }
 
 static void
-notice_processor(void *arg, const char *message)
+notice_processor(void *arg pg_attribute_unused(), const char *message)
 {
 	pg_log_generic(PG_LOG_INFO, "%s", message);
 }

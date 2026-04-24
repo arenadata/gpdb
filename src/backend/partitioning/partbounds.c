@@ -21,6 +21,7 @@
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_type.h"
 #include "commands/tablecmds.h"
+#include "common/hashfn.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -32,7 +33,6 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
-#include "utils/hashutils.h"
 #include "utils/lsyscache.h"
 #include "utils/partcache.h"
 #include "utils/rel.h"
@@ -1048,6 +1048,7 @@ check_new_partition_bound(char *relname, Relation parent,
 		case PARTITION_STRATEGY_LIST:
 			{
 				Assert(spec->strategy == PARTITION_STRATEGY_LIST);
+				Assert(spec->listdatums != NULL);
 
 				if (partdesc->nparts > 0)
 				{
@@ -1253,7 +1254,7 @@ check_default_partition_contents(Relation parent, Relation default_rel,
 	 */
 	if (PartConstraintImpliedByRelConstraint(default_rel, def_part_constraints))
 	{
-		ereport(INFO,
+		ereport(DEBUG1,
 				(errmsg("updated partition constraint for default partition \"%s\" is implied by existing constraints",
 						RelationGetRelationName(default_rel))));
 		return;
@@ -1304,7 +1305,7 @@ check_default_partition_contents(Relation parent, Relation default_rel,
 			if (PartConstraintImpliedByRelConstraint(part_rel,
 													 def_part_constraints))
 			{
-				ereport(INFO,
+				ereport(DEBUG1,
 						(errmsg("updated partition constraint for default partition \"%s\" is implied by existing constraints",
 								RelationGetRelationName(part_rel))));
 
@@ -2836,7 +2837,7 @@ satisfies_hash_partition(PG_FUNCTION_ARGS)
 		int			j;
 
 		/* Open parent relation and fetch partition key info */
-		parent = try_relation_open(parentId, AccessShareLock);
+		parent = try_relation_open(parentId, AccessShareLock, false);
 		if (parent == NULL)
 			PG_RETURN_NULL();
 		key = RelationGetPartitionKey(parent);

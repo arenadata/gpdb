@@ -44,8 +44,14 @@
 #include "pgstat.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
+
+#include "access/tuptoaster.h"
+#include "catalog/pg_collation.h"
+#include "cdb/cdbvars.h"
+#include "utils/pg_locale.h"
 
 
 typedef struct LastAttnumInfo
@@ -71,6 +77,10 @@ static void ExecInitSubscriptingRef(ExprEvalStep *scratch,
 									SubscriptingRef *sbsref,
 									ExprState *state,
 									Datum *resv, bool *resnull);
+static bool ExecInitScalarArrayOpFastPath(ExprEvalStep *scratch,
+										  ScalarArrayOpExpr *opexpr,
+										  ExprState *state, Datum *resv, bool *resnull);
+
 static bool isAssignmentIndirectionExpr(Expr *expr);
 static void ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
 								   ExprState *state,
@@ -78,7 +88,8 @@ static void ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
 static void ExecBuildAggTransCall(ExprState *state, AggState *aggstate,
 								  ExprEvalStep *scratch,
 								  FunctionCallInfo fcinfo, AggStatePerTrans pertrans,
-								  int transno, int setno, int setoff, bool ishash);
+								  int transno, int setno, int setoff, bool ishash,
+								  bool nullcheck);
 
 
 /*
@@ -822,6 +833,64 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				break;
 			}
 
+		case T_GroupId:
+			{
+				if (!state->parent || !IsA(state->parent, AggState) || !IsA(state->parent->plan, Agg))
+					elog(ERROR, "parent of GROUP_ID is not Agg node");
+				else
+				{
+					scratch.opcode = EEOP_GROUP_ID;
+					scratch.d.group_id.parent = (AggState *) state->parent;
+
+					ExprEvalPushStep(state, &scratch);
+				}
+			}
+			break;
+
+		case T_GroupingSetId:
+			{
+				if (!state->parent || !IsA(state->parent, AggState) ||
+					!IsA(state->parent->plan, Agg))
+					elog(ERROR, "GroupingSetId found in non-Agg plan node (parent %d, plan %d)",
+						 state->parent ? state->parent->type : -1,
+						 state->parent ? state->parent->plan->type : -1);
+
+				scratch.opcode = EEOP_GROUPING_SET_ID;
+				scratch.d.grouping_set_id.parent = (AggState *) state->parent;
+
+				ExprEvalPushStep(state, &scratch);
+				break;
+			}
+
+		case T_AggExprId:
+			{
+				if (!state->parent || !IsA(state->parent, TupleSplitState) ||
+					!IsA(state->parent->plan, TupleSplit))
+					elog(ERROR, "AggExprId found in non-TupleSplit plan node");
+
+				scratch.opcode = EEOP_AGGEXPR_ID;
+				scratch.d.agg_expr_id.parent = (TupleSplitState *) state->parent;
+
+				ExprEvalPushStep(state, &scratch);
+				break;
+			}
+
+		case T_RowIdExpr:
+			{
+				/*
+				 * RowIdExpr generates a number that's unique for this row,
+				 * within this query execution. Different segments can
+				 * generate rows in parallel, so we include the segment ID in
+				 * the value so that two segments never generate the same
+				 * value.
+				 */
+				scratch.opcode = EEOP_ROWIDEXPR;
+				scratch.d.rowidexpr.rowcounter = ((int64) GpIdentity.dbid) << 48;
+
+				ExprEvalPushStep(state, &scratch);
+				break;
+			}
+
 		case T_WindowFunc:
 			{
 				WindowFunc *wfunc = (WindowFunc *) node;
@@ -963,6 +1032,11 @@ ExecInitExprRec(Expr *node, ExprState *state,
 					aclcheck_error(aclresult, OBJECT_FUNCTION,
 								   get_func_name(opexpr->opfuncid));
 				InvokeFunctionExecuteHook(opexpr->opfuncid);
+
+				/* GPDB: Try the hard-coded fast-path versions of these */
+				if (ExecInitScalarArrayOpFastPath(&scratch, opexpr,
+												  state, resv, resnull))
+					break;
 
 				/* Set up the primary fmgr lookup information */
 				finfo = palloc0(sizeof(FmgrInfo));
@@ -2899,6 +2973,205 @@ ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
 }
 
 /*
+ * GPDB: For a few built-in equality operators, we have a specialized fast-path
+ * version to evaluate a ScalarArrayOpExpr. In the fast path, the array
+ * argument must be a constant. It is decomposed into a C array here for faster
+ * evaluation at runtime.
+ */
+static bool
+ExecInitScalarArrayOpFastPath(ExprEvalStep *scratch,
+							  ScalarArrayOpExpr *opexpr,
+							  ExprState *state, Datum *resv, bool *resnull)
+{
+	Oid			opfuncid = opexpr->opfuncid;
+	Oid			collid = opexpr->inputcollid;
+	Expr	   *scalararg;
+	Expr	   *arrayarg;
+	Const	   *arrayconst;
+	ArrayType  *arr;
+	int16		typlen;
+	bool		typbyval;
+	char		typalign;
+	char	   *s;
+	bits8	   *bitmap;
+	int			bitmask;
+	int			nelems;
+	int		   *fp_len;
+	Datum	   *fp_datum;
+
+	Assert(list_length(opexpr->args) == 2);
+	scalararg = (Expr *) linitial(opexpr->args);
+	arrayarg = (Expr *) lsecond(opexpr->args);
+
+	/* IN will be evaluated as OR */
+	if (!opexpr->useOr)
+		return false;
+
+	/* only if the array arg is const */
+	if (!IsA(arrayarg, Const))
+		return false;
+	arrayconst = (Const *) arrayarg;
+
+	/* We do not handle null */
+	if (arrayconst->constisnull)
+		return false;
+
+	arr = DatumGetArrayTypeP(arrayconst->constvalue);
+	nelems = ArrayGetNItems(ARR_NDIM(arr), ARR_DIMS(arr));
+
+	/* We do not handle this case */
+	if (nelems <= 0)
+		return false;
+
+	if (opfuncid == F_INT2EQ || opfuncid == F_INT4EQ || opexpr->opfuncid == F_INT8EQ ||
+		opfuncid == F_DATE_EQ)
+	{
+		/* ok */
+	}
+	else if (opfuncid == F_TEXTEQ || opfuncid == F_BPCHAREQ)
+	{
+		/*
+		 * Since we're not calling texteq(), sanity check here that collation was
+		 * reosolved. This is the same as check_collation_set(collid).
+		 */
+		if (!OidIsValid(collid))
+		{
+			/*
+			 * This typically means that the parser could not resolve a conflict
+			 * of implicit collations, so report it that way.
+			 */
+			ereport(ERROR,
+					(errcode(ERRCODE_INDETERMINATE_COLLATION),
+					 errmsg("could not determine which collation to use for string comparison"),
+					 errhint("Use the COLLATE clause to set the collation explicitly.")));
+		}
+
+		/*
+		 * Only ok if we can use memcmp(). These conditions should match those
+		 * in texteq()!
+		 */
+		if (lc_collate_is_c(collid) ||
+			collid == DEFAULT_COLLATION_OID ||
+			pg_newlocale_from_collation(collid)->deterministic)
+		{
+			/* ok */
+		}
+		else
+			return false;
+	}
+	else
+		return false;
+
+	/* All looks good. Deconstruct the array. */
+	get_typlenbyvalalign(ARR_ELEMTYPE(arr),
+						 &typlen,
+						 &typbyval,
+						 &typalign);
+	s = (char *) ARR_DATA_PTR(arr);
+	bitmap = ARR_NULLBITMAP(arr);
+	bitmask = 1;
+
+	fp_len = (int *) palloc(sizeof(int) * nelems);
+	fp_datum = (Datum *) palloc(sizeof(Datum) * nelems);
+
+	for (int i = 0; i < nelems; i++)
+	{
+		Datum		elt;
+		Datum		datum;
+		int			len = 0;
+
+		/* Do not deal with null yet */
+		if (bitmap && (*bitmap & bitmask) == 0)
+			return false;
+
+		elt = fetch_att(s, typbyval, typlen);
+		s = att_addlength_pointer(s, typlen, PointerGetDatum(s));
+		s = (char *) att_align_nominal(s, typalign);
+
+		/* int type */
+		if (opfuncid == F_INT2EQ)
+			datum = Int16GetDatum(DatumGetInt16(elt));
+		else if (opfuncid == F_INT4EQ || opfuncid == F_DATE_EQ)
+			datum = Int32GetDatum(DatumGetInt32(elt));
+		else if (opfuncid == F_INT8EQ)
+			datum = elt;
+		else if (opfuncid == F_TEXTEQ || opfuncid == F_BPCHAREQ)
+		{
+			char	   *p;
+			void	   *tofree;
+			char	   *pdest;
+
+			varattrib_untoast_ptr_len(elt, &p, &len, &tofree);
+
+			/* bpchareq, rid of trailing white space.  see bpeq and bcTruelen */
+			if (opfuncid == F_BPCHAREQ)
+			{
+				while(len > 0 && p[len-1] == ' ')
+					--len;
+			}
+
+			pdest = palloc(len);
+			datum = PointerGetDatum(pdest);
+
+			memcpy(pdest, p, len);
+
+			if (tofree)
+				pfree(tofree);
+		}
+		else
+		{
+			Assert(!"Wrong optimize_funcoid");
+			return false;
+		}
+
+		fp_len[i] = len;
+		fp_datum[i] = datum;
+
+		/* advance bitmap pointer if any */
+		if (bitmap)
+		{
+			bitmask <<= 1;
+			if (bitmask == 0x100 /* 1<<8 */)
+			{
+				bitmap++;
+				bitmask = 1;
+			}
+		}
+	}
+
+	/*
+	 * Evaluate scalar argument into our return value.  There's no danger in
+	 * that, because the return value is guaranteed to be overwritten by
+	 * EEOP_SCALARARRAYOP_FAST_* step, and will not be passed to any other
+	 * expression. (In the slow path, the array argument is similarly
+	 * evaluated into the return value)
+	 */
+	ExecInitExprRec(scalararg, state, resv, resnull);
+
+	/* And perform the operation */
+	if (opfuncid == F_INT2EQ || opfuncid == F_INT4EQ || opfuncid == F_INT8EQ ||
+		opfuncid == F_DATE_EQ)
+	{
+		scratch->opcode = EEOP_SCALARARRAYOP_FAST_INT;
+	}
+	else if (opfuncid == F_TEXTEQ || opfuncid == F_BPCHAREQ)
+		scratch->opcode = EEOP_SCALARARRAYOP_FAST_STR;
+	else
+	{
+		Assert(!"Wrong optimize_funcoid");
+		return false;
+	}
+
+	scratch->d.scalararrayop_fast.opfuncid = opfuncid;
+	scratch->d.scalararrayop_fast.fp_n = nelems;
+	scratch->d.scalararrayop_fast.fp_len = fp_len;
+	scratch->d.scalararrayop_fast.fp_datum = fp_datum;
+	ExprEvalPushStep(state, scratch);
+
+	return true;
+}
+
+/*
  * Build transition/combine function invocations for all aggregate transition
  * / combination function invocations in a grouping sets phase. This has to
  * invoke all sort based transitions in a phase (if doSort is true), all hash
@@ -2908,17 +3181,19 @@ ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
  * check for filters, evaluate aggregate input, check that that input is not
  * NULL for a strict transition function, and then finally invoke the
  * transition for each of the concurrently computed grouping sets.
+ *
+ * If nullcheck is true, the generated code will check for a NULL pointer to
+ * the array of AggStatePerGroup, and skip evaluation if so.
  */
 ExprState *
 ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
-				  bool doSort, bool doHash)
+				  bool doSort, bool doHash, bool nullcheck)
 {
 	ExprState  *state = makeNode(ExprState);
 	PlanState  *parent = &aggstate->ss.ps;
 	ExprEvalStep scratch = {0};
 	int			transno = 0;
 	int			setoff = 0;
-	bool		isCombine = DO_AGGSPLIT_COMBINE(aggstate->aggsplit);
 	LastAttnumInfo deform = {0, 0, 0};
 
 	state->expr = (Expr *) aggstate;
@@ -2945,6 +3220,10 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 								&deform);
 		get_last_attnums_walker((Node *) pertrans->aggref->aggfilter,
 								&deform);
+
+		if (aggstate->AggExprId_AttrNum > 0)
+			deform.last_outer = Max(deform.last_outer,
+									aggstate->AggExprId_AttrNum);
 	}
 	ExecPushExprSlots(state, &deform);
 
@@ -2963,6 +3242,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 		NullableDatum *strictargs = NULL;
 		bool	   *strictnulls = NULL;
 
+		bool isCombine = DO_AGGSPLIT_COMBINE(pertrans->aggref->aggsplit);
 		/*
 		 * If filter present, emit. Do so before evaluating the input, to
 		 * avoid potentially unneeded computations, or even worse, unintended
@@ -2973,6 +3253,42 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 		{
 			/* evaluate filter expression */
 			ExecInitExprRec(pertrans->aggref->aggfilter, state,
+							&state->resvalue, &state->resnull);
+			/* and jump out if false */
+			scratch.opcode = EEOP_JUMP_IF_NOT_TRUE;
+			scratch.d.jump.jumpdone = -1;	/* adjust later */
+			ExprEvalPushStep(state, &scratch);
+			adjust_bailout = lappend_int(adjust_bailout,
+										 state->steps_len - 1);
+		}
+
+		/* if AggExprId is in input, trans function bitmap should match */
+		if (aggstate->AggExprId_AttrNum > 0)
+		{
+			Expr	   *aggexpr_matches_expr;
+
+			/* evaluate expression: <AggExprId column> == pertrans->agg_aggref->expr_id - 1 */
+			aggexpr_matches_expr = (Expr *)
+				makeFuncExpr(F_INT4EQ,
+							 BOOLOID,
+							 list_make2(
+								 makeVar(OUTER_VAR,
+										 aggstate->AggExprId_AttrNum,
+										 INT4OID,
+										 -1,
+										 InvalidOid,
+										 0),
+								 makeConst(INT4OID,
+										   -1,
+										   InvalidOid,
+										   sizeof(int32),
+										   Int32GetDatum(pertrans->aggref->agg_expr_id - 1),
+										   false,
+										   true)),
+							 InvalidOid,
+							 InvalidOid,
+							 COERCE_EXPLICIT_CALL);
+			ExecInitExprRec(aggexpr_matches_expr, state,
 							&state->resvalue, &state->resnull);
 			/* and jump out if false */
 			scratch.opcode = EEOP_JUMP_IF_NOT_TRUE;
@@ -3144,7 +3460,8 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 			for (setno = 0; setno < processGroupingSets; setno++)
 			{
 				ExecBuildAggTransCall(state, aggstate, &scratch, trans_fcinfo,
-									  pertrans, transno, setno, setoff, false);
+									  pertrans, transno, setno, setoff, false,
+									  nullcheck);
 				setoff++;
 			}
 		}
@@ -3162,7 +3479,8 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 			for (setno = 0; setno < numHashes; setno++)
 			{
 				ExecBuildAggTransCall(state, aggstate, &scratch, trans_fcinfo,
-									  pertrans, transno, setno, setoff, true);
+									  pertrans, transno, setno, setoff, true,
+									  nullcheck);
 				setoff++;
 			}
 		}
@@ -3210,16 +3528,29 @@ static void
 ExecBuildAggTransCall(ExprState *state, AggState *aggstate,
 					  ExprEvalStep *scratch,
 					  FunctionCallInfo fcinfo, AggStatePerTrans pertrans,
-					  int transno, int setno, int setoff, bool ishash)
+					  int transno, int setno, int setoff, bool ishash,
+					  bool nullcheck)
 {
 	int			adjust_init_jumpnull = -1;
 	int			adjust_strict_jumpnull = -1;
 	ExprContext *aggcontext;
+	int adjust_jumpnull = -1;
 
 	if (ishash)
 		aggcontext = aggstate->hashcontext;
 	else
 		aggcontext = aggstate->aggcontexts[setno];
+
+	/* add check for NULL pointer? */
+	if (nullcheck)
+	{
+		scratch->opcode = EEOP_AGG_PLAIN_PERGROUP_NULLCHECK;
+		scratch->d.agg_plain_pergroup_nullcheck.setoff = setoff;
+		/* adjust later */
+		scratch->d.agg_plain_pergroup_nullcheck.jumpnull = -1;
+		ExprEvalPushStep(state, scratch);
+		adjust_jumpnull = state->steps_len - 1;
+	}
 
 	/*
 	 * If the initial value for the transition state doesn't exist in the
@@ -3297,6 +3628,16 @@ ExecBuildAggTransCall(ExprState *state, AggState *aggstate,
 
 		Assert(as->d.agg_strict_trans_check.jumpnull == -1);
 		as->d.agg_strict_trans_check.jumpnull = state->steps_len;
+	}
+
+	/* fix up jumpnull */
+	if (adjust_jumpnull != -1)
+	{
+		ExprEvalStep *as = &state->steps[adjust_jumpnull];
+
+		Assert(as->opcode == EEOP_AGG_PLAIN_PERGROUP_NULLCHECK);
+		Assert(as->d.agg_plain_pergroup_nullcheck.jumpnull == -1);
+		as->d.agg_plain_pergroup_nullcheck.jumpnull = state->steps_len;
 	}
 }
 
@@ -3452,4 +3793,146 @@ ExecBuildGroupingEqual(TupleDesc ldesc, TupleDesc rdesc,
 	ExecReadyExpr(state);
 
 	return state;
+}
+
+/* ----------------------------------------------------------------
+ *	isJoinExprNull
+ *
+ *	Checks if the join expression evaluates to NULL for a given
+ *	input tuple.
+ *
+ *	The input tuple has to be present in the correct TupleTableSlot
+ *	in the ExprContext. For example, if all the expressions
+ *	in joinExpr refer to the inner side of the join,
+ *	econtext->ecxt_innertuple must be valid.
+ * ----------------------------------------------------------------
+ */
+bool
+isJoinExprNull(List *joinExpr, ExprContext *econtext)
+{
+	ListCell   *lc;
+	bool		joinkeys_null = true;
+
+	Assert(joinExpr != NIL);
+
+	foreach(lc, joinExpr)
+	{
+		ExprState  *keyexpr = (ExprState *) lfirst(lc);
+		bool		isNull = false;
+
+		/*
+		 * Evaluate the current join attribute value of the tuple
+		 */
+		ExecEvalExpr(keyexpr, econtext, &isNull);
+
+		if (!isNull)
+		{
+			/* Found at least one non-null join expression, we're done */
+			joinkeys_null = false;
+			break;
+		}
+	}
+
+	return joinkeys_null;
+}
+
+
+
+/*
+ * ExecIsExprUnsafeToConst_walker
+ *
+ * Almost all of the expressions are not allowed without the executor.
+ * Returns true as soon as possible we find such unsafe nodes.
+ */
+static bool
+ExecIsExprUnsafeToConst_walker(Node *node, void *context)
+{
+	switch(nodeTag(node))
+	{
+		/*
+		 * Param can be a Const in some situation, but the demanded use case
+		 * so far doesn't want it.
+		 */
+		case T_Const:
+		case T_CaseTestExpr:
+		case T_FuncExpr:
+		case T_OpExpr:
+		case T_DistinctExpr:
+		case T_ScalarArrayOpExpr:
+		case T_BoolExpr:
+		case T_CaseExpr:
+		case T_CoalesceExpr:
+		case T_MinMaxExpr:
+		case T_NullIfExpr:
+		case T_NullTest:
+		case T_BooleanTest:
+		case T_List:
+		case T_TypeCast:
+			return false;
+
+		default:
+			return true;
+	}
+}
+
+/*
+ * ExecIsExprUnsafeToConst
+ *
+ * Returns true if the expression cannot be evaluated to a const value.
+ */
+static bool
+ExecIsExprUnsafeToConst(Node *node)
+{
+	Assert(node != NULL);
+	return ExecIsExprUnsafeToConst_walker(node, NULL);
+}
+
+/*
+ * ExecEvalFunctionArgToConst
+ *
+ * Evaluates an argument of function expression and returns the result.
+ * This is assumed to be used in the parser stage, where
+ * dynamic evaluation such like Var is not available, though we put it
+ * here so that we can extend it to be useful in other places later.
+ */
+Datum
+ExecEvalFunctionArgToConst(FuncExpr *fexpr, int argno, bool *isnull)
+{
+	Expr		   *aexpr;
+	Oid				argtype;
+	int32			argtypmod;
+	Oid				argcollation;
+	Const		   *result;
+
+	/* argument number sanity check */
+	if (argno < 0 || list_length(fexpr->args) <= argno)
+		elog(ERROR, "invalid argument number found during evaluating function argument");
+
+	aexpr = (Expr *) list_nth(fexpr->args, argno);
+	/*
+	 * Check if the expression can be evaluated in the Const fasion.
+	 */
+	if (ExecIsExprUnsafeToConst((Node *) aexpr))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+				 errmsg("unable to resolve function argument"),
+				 errposition(exprLocation((Node *) aexpr))));
+
+	argtype = exprType((Node *) aexpr);
+	if (!OidIsValid(argtype))
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_DATATYPE),
+				 errmsg("unable to resolve function argument type"),
+				 errposition(exprLocation((Node *) aexpr))));
+	argtypmod = exprTypmod((Node *) aexpr);
+	argcollation = exprCollation((Node *) aexpr);
+
+	result = (Const *) evaluate_expr(aexpr, argtype, argtypmod, argcollation);
+	/* evaluate_expr always returns Const */
+	Assert(IsA(result, Const));
+
+	if (isnull)
+		*isnull = result->constisnull;
+
+	return result->constvalue;
 }

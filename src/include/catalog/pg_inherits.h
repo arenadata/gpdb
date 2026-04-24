@@ -36,6 +36,10 @@ CATALOG(pg_inherits,2611,InheritsRelationId)
 	int32		inhseqno;
 } FormData_pg_inherits;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(inhrelid REFERENCES pg_class(oid));
+FOREIGN_KEY(inhparent REFERENCES pg_class(oid));
+
 /* ----------------
  *		Form_pg_inherits corresponds to a pointer to a tuple with
  *		the format of pg_inherits relation.

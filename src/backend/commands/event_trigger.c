@@ -128,6 +128,11 @@ static const event_trigger_support_data event_trigger_support[] = {
 	{"TYPE", true},
 	{"USER MAPPING", true},
 	{"VIEW", true},
+
+	/* GPDB additions */
+	{"EXTERNAL TABLE", true},
+	{"PROTOCOL", true},
+
 	{NULL, false}
 };
 
@@ -171,7 +176,6 @@ CreateEventTrigger(CreateEventTrigStmt *stmt)
 	HeapTuple	tuple;
 	Oid			funcoid;
 	Oid			funcrettype;
-	Oid			fargtypes[1];	/* dummy */
 	Oid			evtowner = GetUserId();
 	ListCell   *lc;
 	List	   *tags = NULL;
@@ -237,7 +241,7 @@ CreateEventTrigger(CreateEventTrigStmt *stmt)
 						stmt->trigname)));
 
 	/* Find and validate the trigger function. */
-	funcoid = LookupFuncName(stmt->funcname, 0, fargtypes, false);
+	funcoid = LookupFuncName(stmt->funcname, 0, NULL, false);
 	funcrettype = get_func_rettype(funcoid);
 	if (funcrettype != EVTTRIGGEROID)
 		ereport(ERROR,
@@ -1155,6 +1159,13 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_VIEW:
 			return true;
 
+		/* GPDB additions */
+		case OBJECT_EXTPROTOCOL:
+			return true;
+		case OBJECT_RESQUEUE:
+		case OBJECT_RESGROUP:
+			return false;
+
 			/*
 			 * There's intentionally no default: case here; we want the
 			 * compiler to warn if a new ObjectType hasn't been handled above.
@@ -1216,6 +1227,8 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_SUBSCRIPTION:
 		case OCLASS_TRANSFORM:
 			return true;
+		case OCLASS_EXTPROTOCOL:
+			return false;
 
 			/*
 			 * There's intentionally no default: case here; we want the
@@ -1223,8 +1236,7 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 			 */
 	}
 
-	/* Shouldn't get here, but if we do, say "no support" */
-	return false;
+	return true;
 }
 
 /*
@@ -2290,6 +2302,9 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
 		case OBJECT_VIEW:
+		case OBJECT_EXTPROTOCOL:
+		case OBJECT_RESQUEUE:
+		case OBJECT_RESGROUP:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 	}
 
@@ -2372,6 +2387,9 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
 		case OBJECT_VIEW:
+		case OBJECT_EXTPROTOCOL:
+		case OBJECT_RESQUEUE:
+		case OBJECT_RESGROUP:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 	}
 

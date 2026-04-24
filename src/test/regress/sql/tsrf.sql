@@ -27,6 +27,7 @@ SELECT generate_series(1, generate_series(1, 3)), generate_series(2, 4);
 
 CREATE TABLE few(id int, dataa text, datab text);
 INSERT INTO few VALUES(1, 'a', 'foo'),(2, 'a', 'bar'),(3, 'b', 'bar');
+ANALYZE few;
 
 -- SRF with a provably-dummy relation
 explain (verbose, costs off)
@@ -83,7 +84,7 @@ SELECT sum((3 = ANY(SELECT lag(x) over(order by x)
 SELECT min(generate_series(1, 3)) OVER() FROM few;
 
 -- SRFs are normally computed after window functions
-SELECT id,lag(id) OVER(), count(*) OVER(), generate_series(1,3) FROM few;
+SELECT id,lag(id) OVER(order by id), count(*) OVER(), generate_series(1,3) FROM few;
 -- unless referencing SRFs
 SELECT SUM(count(*)) OVER(PARTITION BY generate_series(1,3) ORDER BY generate_series(1,3)), generate_series(1,3) g FROM few GROUP BY g;
 
@@ -93,11 +94,11 @@ SELECT few.dataa, count(*), min(id), max(id), generate_series(1,3) FROM few GROU
 -- grouping sets are a bit special, they produce NULLs in columns not actually NULL
 set enable_hashagg = false;
 SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab);
-SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab) ORDER BY dataa;
-SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab) ORDER BY g;
+SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab) ORDER BY dataa, b, g;
+SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab) ORDER BY g, dataa, b;
 SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab, g);
-SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab, g) ORDER BY dataa;
-SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab, g) ORDER BY g;
+SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab, g) ORDER BY dataa, b, g;
+SELECT dataa, datab b, generate_series(1,2) g, count(*) FROM few GROUP BY CUBE(dataa, datab, g) ORDER BY g, dataa, b;
 reset enable_hashagg;
 
 -- case with degenerate ORDER BY

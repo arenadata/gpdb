@@ -93,3 +93,47 @@ ERROR:  operator does not exist: time with time zone + time with time zone
 LINE 1: SELECT f1 + time with time zone '00:01' AS "Illegal" FROM TI...
                   ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+-- basic sanity of sample timezones
+set timezone = 'America/New_York';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as NYC;
+             nyc              
+------------------------------
+ Fri Aug 08 20:52:00 2014 EDT
+(1 row)
+
+set timezone = 'America/Los_Angeles';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as LA;
+              la              
+------------------------------
+ Fri Aug 08 17:52:00 2014 PDT
+(1 row)
+
+set timezone = 'Asia/Tokyo';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Tokyo;
+            tokyo             
+------------------------------
+ Sat Aug 09 09:52:00 2014 JST
+(1 row)
+
+set timezone = 'Asia/Kolkata';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Kolkata;
+           kolkata            
+------------------------------
+ Sat Aug 09 06:22:00 2014 IST
+(1 row)
+
+set timezone = 'Asia/Shanghai';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Shanghai;
+           shanghai           
+------------------------------
+ Sat Aug 09 08:52:00 2014 CST
+(1 row)
+
+-- Casablanca time has changed in new timezone db lets verify it
+set timezone = 'Africa/Casablanca';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Casablanca;
+          casablanca          
+------------------------------
+ Sat Aug 09 01:52:00 2014 +01
+(1 row)
+

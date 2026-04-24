@@ -40,6 +40,10 @@ CATALOG(pg_default_acl,826,DefaultAclRelationId)
 #endif
 } FormData_pg_default_acl;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(defaclrole REFERENCES pg_authid(oid));
+FOREIGN_KEY(defaclnamespace REFERENCES pg_namespace(oid));
+
 /* ----------------
  *		Form_pg_default_acl corresponds to a pointer to a tuple with
  *		the format of pg_default_acl relation.

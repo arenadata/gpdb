@@ -37,6 +37,7 @@
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_extension.h"
+#include "catalog/pg_extprotocol.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_language.h"
@@ -51,6 +52,8 @@
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_rel.h"
 #include "catalog/pg_rewrite.h"
+#include "catalog/pg_resgroup.h"
+#include "catalog/pg_resqueue.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_tablespace.h"
@@ -68,6 +71,8 @@
 #include "commands/extension.h"
 #include "commands/policy.h"
 #include "commands/proclang.h"
+#include "commands/queue.h"
+#include "commands/resgroupcmds.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "foreign/foreign.h"
@@ -526,6 +531,23 @@ static const ObjectPropertyType ObjectProperty[] =
 		OBJECT_STATISTIC_EXT,
 		true
 	}
+
+
+	/* GPDB additions */
+	,
+	{
+		ExtprotocolRelationId,
+		ExtprotocolOidIndexId,
+		EXTPROTOCOLOID,
+		EXTPROTOCOLNAME,
+		Anum_pg_extprotocol_oid,
+		Anum_pg_extprotocol_ptcname,
+		InvalidAttrNumber,
+		Anum_pg_extprotocol_ptcowner,
+		Anum_pg_extprotocol_ptcacl,
+		OBJECT_EXTPROTOCOL,
+		true
+	},
 };
 
 /*
@@ -911,9 +933,12 @@ get_object_address(ObjectType objtype, Node *object,
 			case OBJECT_FDW:
 			case OBJECT_FOREIGN_SERVER:
 			case OBJECT_EVENT_TRIGGER:
+			case OBJECT_EXTPROTOCOL:
 			case OBJECT_ACCESS_METHOD:
 			case OBJECT_PUBLICATION:
 			case OBJECT_SUBSCRIPTION:
+			case OBJECT_RESQUEUE:
+			case OBJECT_RESGROUP:
 				address = get_object_address_unqualified(objtype,
 														 (Value *) object, missing_ok);
 				break;
@@ -1216,6 +1241,21 @@ get_object_address_unqualified(ObjectType objtype,
 		case OBJECT_SUBSCRIPTION:
 			address.classId = SubscriptionRelationId;
 			address.objectId = get_subscription_oid(name, missing_ok);
+			address.objectSubId = 0;
+			break;
+		case OBJECT_EXTPROTOCOL:
+			address.classId = ExtprotocolRelationId;
+			address.objectId = get_extprotocol_oid(name, missing_ok);
+			address.objectSubId = 0;
+			break;
+		case OBJECT_RESQUEUE:
+			address.classId = ResQueueRelationId;
+			address.objectId = get_resqueue_oid(name, missing_ok);
+			address.objectSubId = 0;
+			break;
+		case OBJECT_RESGROUP:
+			address.classId = ResGroupRelationId;
+			address.objectId = get_resgroup_oid(name, missing_ok);
 			address.objectSubId = 0;
 			break;
 		default:
@@ -2185,6 +2225,9 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_SCHEMA:
 		case OBJECT_SUBSCRIPTION:
 		case OBJECT_TABLESPACE:
+		case OBJECT_EXTPROTOCOL:
+		case OBJECT_RESGROUP:
+		case OBJECT_RESQUEUE:
 			if (list_length(name) != 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -2464,9 +2507,16 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 							 errmsg("must have CREATEROLE privilege")));
 			}
 			break;
+		case OBJECT_EXTPROTOCOL:
+			if (!pg_extprotocol_ownercheck(address.objectId, roleid))
+				aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EXTPROTOCOL,
+							   strVal((Value *) object));
+			break;
 		case OBJECT_TSPARSER:
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_ACCESS_METHOD:
+		case OBJECT_RESQUEUE:
+		case OBJECT_RESGROUP:
 			/* We treat these object types as being owned by superusers */
 			if (!superuser_arg(roleid))
 				ereport(ERROR,
@@ -3639,10 +3689,12 @@ getObjectDescription(const ObjectAddress *object)
 				break;
 			}
 
-			/*
-			 * There's intentionally no default: case here; we want the
-			 * compiler to warn if a new OCLASS hasn't been handled above.
-			 */
+		case OCLASS_EXTPROTOCOL:
+			{
+				appendStringInfo(&buffer, _("protocol %s"),
+								 ExtProtocolGetNameByOid(object->objectId));
+				break;
+			}
 	}
 
 	return buffer.data;
@@ -3708,6 +3760,18 @@ getRelationDescription(StringInfo buffer, Oid relid)
 			break;
 		case RELKIND_TOASTVALUE:
 			appendStringInfo(buffer, _("toast table %s"),
+							 relname);
+			break;
+		case RELKIND_AOSEGMENTS:
+			appendStringInfo(buffer, _("append only file segment listing %s"),
+							 relname);
+			break;
+		case RELKIND_AOBLOCKDIR:
+			appendStringInfo(buffer, _("append only file block directory %s"),
+							 relname);
+			break;
+		case RELKIND_AOVISIMAP:
+			appendStringInfo(buffer, _("append only file visibility map %s"),
 							 relname);
 			break;
 		case RELKIND_VIEW:
@@ -4145,6 +4209,10 @@ getObjectTypeDescription(const ObjectAddress *object)
 
 		case OCLASS_TRANSFORM:
 			appendStringInfoString(&buffer, "transform");
+			break;
+
+		case OCLASS_EXTPROTOCOL:
+			appendStringInfoString(&buffer, "external protocol");
 			break;
 
 			/*
@@ -5202,6 +5270,18 @@ getObjectIdentityParts(const ObjectAddress *object,
 				}
 
 				table_close(transformDesc, AccessShareLock);
+			}
+			break;
+
+		case OCLASS_EXTPROTOCOL:
+			{
+				char	   *extprotname;
+
+				extprotname = ExtProtocolGetNameByOid(object->objectId);
+				appendStringInfoString(&buffer,
+									   quote_identifier(extprotname));
+				if (objname)
+					*objname = list_make1(extprotname);
 			}
 			break;
 

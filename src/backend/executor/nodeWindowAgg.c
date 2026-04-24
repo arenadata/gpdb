@@ -40,18 +40,25 @@
 #include "executor/executor.h"
 #include "executor/nodeWindowAgg.h"
 #include "miscadmin.h"
+#include "nodes/execnodes.h"
+#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/optimizer.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_oper.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/faultinjector.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
+#include "utils/tuplesort.h"
 #include "windowapi.h"
+
+#include "optimizer/optimizer.h" // for exprType
+#include "parser/parse_expr.h" // for exprType
 
 /*
  * All the window function APIs are called with this object, which is passed
@@ -132,6 +139,25 @@ typedef struct WindowStatePerAggData
 	bool		resultValueIsNull;
 
 	/*
+	 * Support for DISTINCT-qualified aggregates. For example:
+	 *
+	 * COUNT(DISTINCT foo) OVER (PARTITION BY bar)
+	 *
+	 * This is only supported for aggregates that take a single argument
+	 * (we checked for that in parse analysis).
+	 */
+	bool		isDistinct;				/* is this a DISTINCT-qualified aggregate? */
+	Oid			distinctType;			/* type of the argument */
+	bool		distinctTypeByVal;
+	Oid			distinctColl;
+	/* support for sorting by the argument type */
+	Oid			distinctLtOper;
+	SortSupportData distinctComparator;
+
+	/* Input values accumulated for this aggregate so far. */
+	Tuplesortstate *distinctSortState;
+
+	/*
 	 * We need the len and byval info for the agg's input, result, and
 	 * transition data types in order to know how to copy/delete values.
 	 */
@@ -166,6 +192,10 @@ static void advance_windowaggregate(WindowAggState *winstate,
 static bool advance_windowaggregate_base(WindowAggState *winstate,
 										 WindowStatePerFunc perfuncstate,
 										 WindowStatePerAgg peraggstate);
+static void call_transfunc(WindowAggState *winstate,
+						   WindowStatePerFunc perfuncstate,
+						   WindowStatePerAgg peraggstate,
+						   FunctionCallInfo fcinfo);
 static void finalize_windowaggregate(WindowAggState *winstate,
 									 WindowStatePerFunc perfuncstate,
 									 WindowStatePerAgg peraggstate,
@@ -195,6 +225,8 @@ static bool are_peers(WindowAggState *winstate, TupleTableSlot *slot1,
 					  TupleTableSlot *slot2);
 static bool window_gettupleslot(WindowObject winobj, int64 pos,
 								TupleTableSlot *slot);
+
+static void compute_start_end_offsets(WindowAggState *winstate);
 
 
 /*
@@ -230,6 +262,18 @@ initialize_windowaggregate(WindowAggState *winstate,
 	peraggstate->transValueCount = 0;
 	peraggstate->resultValue = (Datum) 0;
 	peraggstate->resultValueIsNull = true;
+
+	if (peraggstate->isDistinct)
+	{
+		peraggstate->distinctSortState =
+			tuplesort_begin_datum(peraggstate->distinctType,
+								  peraggstate->distinctLtOper,
+								  peraggstate->distinctColl,
+								  false, /* nullsFirstFlag */
+								  PlanStateOperatorMemKB((PlanState *) winstate),
+								  NULL, /* coordinate */
+								  false);
+	}
 }
 
 /*
@@ -243,8 +287,6 @@ advance_windowaggregate(WindowAggState *winstate,
 {
 	LOCAL_FCINFO(fcinfo, FUNC_MAX_ARGS);
 	WindowFuncExprState *wfuncstate = perfuncstate->wfuncstate;
-	int			numArguments = perfuncstate->numArguments;
-	Datum		newVal;
 	ListCell   *arg;
 	int			i;
 	MemoryContext oldContext;
@@ -276,6 +318,61 @@ advance_windowaggregate(WindowAggState *winstate,
 											 &fcinfo->args[i].isnull);
 		i++;
 	}
+
+	/*
+	 * If this is a DISTINCT-qualified aggregate, we cannot call the
+	 * transition function yet. Instead, we spool the input into a tuplesort.
+	 * We will perform the sort, deduplicate, and call the transition
+	 * function later, after we have spooled all the input values in this
+	 * partition.
+	 */
+	if (peraggstate->isDistinct)
+	{
+		Assert(list_length(wfuncstate->args) == 1);
+
+		/*
+		 * For a strict transfn, nothing happens when there's a NULL input; we
+		 * just keep the prior transValue.
+		 */
+		if (peraggstate->transfn.fn_strict && fcinfo->args[1].isnull)
+		{
+			/* skip it */
+		}
+		else
+			tuplesort_putdatum(peraggstate->distinctSortState,
+							   fcinfo->args[1].value,
+							   fcinfo->args[1].isnull);
+	}
+	else
+		call_transfunc(winstate, perfuncstate, peraggstate, fcinfo);
+
+	MemoryContextSwitchTo(oldContext);
+}
+
+/*
+ * Helper function to call the transition function.
+ *
+ * The caller must load the arguments into fcinfo->args/argnulls already,
+ * and switch to tmpcontext->ecxt_per_tuple_context.
+ */
+static void
+call_transfunc(WindowAggState *winstate,
+			   WindowStatePerFunc perfuncstate,
+			   WindowStatePerAgg peraggstate,
+			   FunctionCallInfo fcinfo)
+{
+	int			numArguments = perfuncstate->numArguments;
+	Datum		newVal;
+	int			i;
+	MemoryContext oldContext;
+	ExprContext *econtext = winstate->tmpcontext;
+
+	/*
+	 * This may seem weird, but it allows us to keep the code that follows unchanged
+	 * from upstream. In the upstream, this is part of advance_windowaggregate().
+	 */
+	Assert(CurrentMemoryContext == econtext->ecxt_per_tuple_memory);
+	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 	if (peraggstate->transfn.fn_strict)
 	{
@@ -571,6 +668,87 @@ advance_windowaggregate_base(WindowAggState *winstate,
 }
 
 /*
+ * Call transition function for a DISTINCT-qualified aggregate.
+ *
+ * All the input values have been loaded into the tuplesort. Perform the sort,
+ * deduplicate, and call the transition function for each unique value.
+ */
+static void
+perform_distinct_windowaggregate(WindowAggState *winstate,
+								 WindowStatePerFunc perfuncstate,
+								 WindowStatePerAgg peraggstate)
+{
+	LOCAL_FCINFO(fcinfo, FUNC_MAX_ARGS);
+	Datum		prevDatum = (Datum) 0;
+	bool		prevNull = true;
+	MemoryContext oldcontext;
+
+	oldcontext = MemoryContextSwitchTo(winstate->tmpcontext->ecxt_per_tuple_memory);
+
+	tuplesort_performsort(peraggstate->distinctSortState);
+
+#ifdef FAULT_INJECTOR
+	/*
+	 * This routine is used for tracing whether the sort operation of DISTINCT-qualified
+	 * WindowAgg spills to disk.
+	 */
+	if (SIMPLE_FAULT_INJECTOR("distinct_winagg_perform_sort") == FaultInjectorTypeSkip)
+	{
+		TuplesortInstrumentation sortstats;
+		tuplesort_get_stats(peraggstate->distinctSortState, &sortstats);
+		if (sortstats.spaceType == SORT_SPACE_TYPE_MEMORY)
+			ereport(NOTICE,
+					(errmsg("distinct winagg sortstats: sort operation fitted in memory")));
+		else
+			ereport(NOTICE,
+					(errmsg("distinct winagg sortstats: sort operation spilled to disk")));
+	}
+#endif
+
+	/* load the first tuple from spool */
+	if (tuplesort_getdatum(peraggstate->distinctSortState, true,
+						   &fcinfo->args[1].value, &fcinfo->args[1].isnull, NULL))
+	{
+		call_transfunc(winstate, perfuncstate, peraggstate, fcinfo);
+		prevDatum = fcinfo->args[1].value;
+		prevNull = fcinfo->args[1].isnull;
+
+		/* continue loading more tuples */
+		while (tuplesort_getdatum(peraggstate->distinctSortState, true,
+								  &fcinfo->args[1].value, &fcinfo->args[1].isnull, NULL))
+		{
+			int		cmp;
+
+			cmp = ApplySortComparator(prevDatum, prevNull,
+									  fcinfo->args[1].value, fcinfo->args[1].isnull,
+									  &peraggstate->distinctComparator);
+			if (cmp < 0)
+			{
+				call_transfunc(winstate, perfuncstate, peraggstate, fcinfo);
+			}
+			else if (cmp == 0)
+			{
+				/* Equal, skip it */
+			}
+			else
+				elog(ERROR, "value came out in wrong order from sort");
+
+			/* free the previous value, if it's pass-by-ref. */
+			if (!peraggstate->distinctTypeByVal && !prevNull)
+				pfree(DatumGetPointer(prevDatum));
+
+			prevDatum = fcinfo->args[1].value;
+			prevNull = fcinfo->args[1].isnull;
+		}
+	}
+
+	tuplesort_end(peraggstate->distinctSortState);
+	peraggstate->distinctSortState = NULL;
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
  * finalize_windowaggregate
  * parallel to finalize_aggregate in nodeAgg.c
  */
@@ -581,6 +759,23 @@ finalize_windowaggregate(WindowAggState *winstate,
 						 Datum *result, bool *isnull)
 {
 	MemoryContext oldContext;
+
+	/*
+	 * If this is a distinct-qualified aggregate, then we have only spooled the
+	 * inputs into the sorter so far. We haven't run the transition function over
+	 * the input yet. Perform the sort now, and call the transition function on the
+	 * unique values.
+	 */
+	if (peraggstate->isDistinct)
+	{
+		perform_distinct_windowaggregate(winstate,
+										 perfuncstate,
+										 peraggstate);
+		/*
+		 * Now we have the final transition value in peraggstate->transValue, like
+		 * in the normal, non-DISTINCT, case.
+		 */
+	}
 
 	oldContext = MemoryContextSwitchTo(winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 
@@ -638,7 +833,7 @@ finalize_windowaggregate(WindowAggState *winstate,
 	 * If result is pass-by-ref, make sure it is in the right context.
 	 */
 	if (!peraggstate->resulttypeByVal && !*isnull &&
-		!MemoryContextContains(CurrentMemoryContext,
+		!MemoryContextContainsGenericAllocation(CurrentMemoryContext,
 							   DatumGetPointer(*result)))
 		*result = datumCopy(*result,
 							peraggstate->resulttypeByVal,
@@ -671,6 +866,8 @@ eval_windowaggregates(WindowAggState *winstate)
 	WindowObject agg_winobj;
 	TupleTableSlot *agg_row_slot;
 	TupleTableSlot *temp_slot;
+	bool		frame_head_moved_backwards;
+	bool		frame_tail_moved_backwards;
 
 	numaggs = winstate->numaggs;
 	if (numaggs == 0)
@@ -730,9 +927,14 @@ eval_windowaggregates(WindowAggState *winstate)
 	 *
 	 * The frame head should never move backwards, and the code below wouldn't
 	 * cope if it did, so for safety we complain if it does.
+	 *
+	 * GPDB: We accept it if the start offset is not a constant. PostgreSQL
+	 * only allows constant offsets, but we're more flexible. The code below
+	 * does actually cope with it just fine.
 	 */
 	update_frameheadpos(winstate);
-	if (winstate->frameheadpos < winstate->aggregatedbase)
+	if (winstate->start_offset_var_free &&
+		winstate->frameheadpos < winstate->aggregatedbase)
 		elog(ERROR, "window frame head moved backward");
 
 	/*
@@ -751,7 +953,9 @@ eval_windowaggregates(WindowAggState *winstate)
 								   FRAMEOPTION_END_CURRENT_ROW)) &&
 		!(winstate->frameOptions & FRAMEOPTION_EXCLUSION) &&
 		winstate->aggregatedbase <= winstate->currentpos &&
-		winstate->aggregatedupto > winstate->currentpos)
+		winstate->aggregatedupto > winstate->currentpos &&
+		winstate->start_offset_var_free &&
+		winstate->end_offset_var_free)
 	{
 		for (i = 0; i < numaggs; i++)
 		{
@@ -762,6 +966,50 @@ eval_windowaggregates(WindowAggState *winstate)
 		}
 		return;
 	}
+
+	/*
+	 * If the END offset contains a variable, then it's possible for the frame's
+	 * end to move backwards. If that happens, restart all aggregates. (Depending
+	 * on how much it moved, it might be faster to apply the inverse transition
+	 * function to "subtract" those rows, but let's keep this simple for now.)
+	 */
+	frame_tail_moved_backwards = false;
+	if (!winstate->end_offset_var_free && winstate->aggregatedupto > 0)
+	{
+		/* Fetch the last row of the previous frame */
+		if (!TupIsNull(agg_row_slot))
+			ExecClearTuple(agg_row_slot);
+		if (!window_gettupleslot(agg_winobj, winstate->aggregatedupto - 1,
+								 agg_row_slot))
+		{
+			/* must be end of partition */
+			/* XXX: I don't think this should ever happen. */
+			frame_tail_moved_backwards = true;
+		}
+		/*
+		 * Is the last row of the previous frame still in current frame?
+		 * If not, then the end of the frame must've moved backwards.
+		 * (Or it moved so much forward that there is no overlap between
+		 * the old and the new frame. In that case, we would restart
+		 * all the aggregates anyway.)
+		 */
+		else if (row_is_in_frame(winstate, winstate->aggregatedupto - 1, agg_row_slot) != 1)
+		{
+			frame_tail_moved_backwards = true;
+		}
+
+		ExecClearTuple(agg_row_slot);
+	}
+
+	/*
+	 * Likewise, if the frame head moves backwards, then we need to restart the
+	 * aggregation. (We could instead call the transition function on the rows
+	 * that became part of the frame again, but let's keep this simple for now.)
+	 */
+	if (winstate->frameheadpos < winstate->aggregatedbase)
+		frame_head_moved_backwards = true;
+	else
+		frame_head_moved_backwards = false;
 
 	/*----------
 	 * Initialize restart flags.
@@ -786,7 +1034,9 @@ eval_windowaggregates(WindowAggState *winstate)
 			(winstate->aggregatedbase != winstate->frameheadpos &&
 			 !OidIsValid(peraggstate->invtransfn_oid)) ||
 			(winstate->frameOptions & FRAMEOPTION_EXCLUSION) ||
-			winstate->aggregatedupto <= winstate->frameheadpos)
+			winstate->aggregatedupto <= winstate->frameheadpos ||
+			frame_head_moved_backwards ||
+			frame_tail_moved_backwards)
 		{
 			peraggstate->restart = true;
 			numaggs_restart++;
@@ -975,7 +1225,13 @@ next_tuple:
 	}
 
 	/* The frame's end is not supposed to move backwards, ever */
-	Assert(aggregatedupto_nonrestarted <= winstate->aggregatedupto);
+	/*
+	 * In GPDB, though, it's entirely possible, if the START or END offset is
+	 * not a constant.
+	 */
+	Assert(frame_head_moved_backwards ||
+		   frame_tail_moved_backwards ||
+		   aggregatedupto_nonrestarted <= winstate->aggregatedupto);
 
 	/*
 	 * finalize aggregates and fill result/isnull fields.
@@ -1061,8 +1317,9 @@ eval_windowfunction(WindowAggState *winstate, WindowStatePerFunc perfuncstate,
 	 * tuple, as is entirely possible.)
 	 */
 	if (!perfuncstate->resulttypeByVal && !fcinfo->isnull &&
-		!MemoryContextContains(CurrentMemoryContext,
-							   DatumGetPointer(*result)))
+		!MemoryContextContainsGenericAllocation(CurrentMemoryContext,
+							   DatumGetPointer(*result))
+		)
 		*result = datumCopy(*result,
 							perfuncstate->resulttypeByVal,
 							perfuncstate->resulttypeLen);
@@ -1122,7 +1379,9 @@ begin_partition(WindowAggState *winstate)
 	}
 
 	/* Create new tuplestore for this partition */
-	winstate->buffer = tuplestore_begin_heap(false, false, work_mem);
+	winstate->buffer =
+		tuplestore_begin_heap(false, false,
+							  PlanStateOperatorMemKB((PlanState *) winstate));
 
 	/*
 	 * Set up read pointers for the tuplestore.  The current pointer doesn't
@@ -1145,7 +1404,8 @@ begin_partition(WindowAggState *winstate)
 		 * clause, we might need to restart aggregation ...
 		 */
 		if (!(frameOptions & FRAMEOPTION_START_UNBOUNDED_PRECEDING) ||
-			(frameOptions & FRAMEOPTION_EXCLUSION))
+			(frameOptions & FRAMEOPTION_EXCLUSION) ||
+			!winstate->end_offset_var_free)
 		{
 			/* ... so create a mark pointer to track the frame head */
 			agg_winobj->markptr = tuplestore_alloc_read_pointer(winstate->buffer, 0);
@@ -1197,12 +1457,14 @@ begin_partition(WindowAggState *winstate)
 			 node->ordNumCols != 0) ||
 			(frameOptions & FRAMEOPTION_START_OFFSET))
 			winstate->framehead_ptr =
-				tuplestore_alloc_read_pointer(winstate->buffer, 0);
+				tuplestore_alloc_read_pointer(winstate->buffer,
+											  winstate->start_offset_var_free ? 0 : EXEC_FLAG_REWIND);
 		if (((frameOptions & FRAMEOPTION_END_CURRENT_ROW) &&
 			 node->ordNumCols != 0) ||
 			(frameOptions & FRAMEOPTION_END_OFFSET))
 			winstate->frametail_ptr =
-				tuplestore_alloc_read_pointer(winstate->buffer, 0);
+				tuplestore_alloc_read_pointer(winstate->buffer,
+											  winstate->end_offset_var_free ? 0 : EXEC_FLAG_REWIND);
 	}
 
 	/*
@@ -1362,6 +1624,8 @@ row_is_in_frame(WindowAggState *winstate, int64 pos, TupleTableSlot *slot)
 {
 	int			frameOptions = winstate->frameOptions;
 
+	compute_start_end_offsets(winstate);
+
 	Assert(pos >= 0);			/* else caller error */
 
 	/*
@@ -1469,6 +1733,8 @@ update_frameheadpos(WindowAggState *winstate)
 
 	/* We may be called in a short-lived context */
 	oldcontext = MemoryContextSwitchTo(winstate->ss.ps.ps_ExprContext->ecxt_per_query_memory);
+
+	compute_start_end_offsets(winstate);
 
 	if (frameOptions & FRAMEOPTION_START_UNBOUNDED_PRECEDING)
 	{
@@ -1585,6 +1851,21 @@ update_frameheadpos(WindowAggState *winstate)
 
 			tuplestore_select_read_pointer(winstate->buffer,
 										   winstate->framehead_ptr);
+			/*
+			 * GPDB: If the start offset is not a constant, always start from
+			 * the beginning.
+			 *
+			 * XXX: This is very expensive. A smarter strategy might be
+			 * to walk backwards from the previous frame head, until we reach
+			 * a row that doesn't belong in the frame anymore.
+			 */
+			if (!winstate->start_offset_var_free)
+			{
+				winstate->frameheadpos = 0;
+				ExecClearTuple(winstate->framehead_slot);
+				tuplestore_rescan(winstate->buffer);
+			}
+
 			if (winstate->frameheadpos == 0 &&
 				TupIsNull(winstate->framehead_slot))
 			{
@@ -1720,6 +2001,8 @@ update_frametailpos(WindowAggState *winstate)
 	/* We may be called in a short-lived context */
 	oldcontext = MemoryContextSwitchTo(winstate->ss.ps.ps_ExprContext->ecxt_per_query_memory);
 
+	compute_start_end_offsets(winstate);
+
 	if (frameOptions & FRAMEOPTION_END_UNBOUNDED_FOLLOWING)
 	{
 		/* In UNBOUNDED FOLLOWING mode, all partition rows are in frame */
@@ -1839,6 +2122,21 @@ update_frametailpos(WindowAggState *winstate)
 
 			tuplestore_select_read_pointer(winstate->buffer,
 										   winstate->frametail_ptr);
+			/*
+			 * GPDB: If the end offset is not a constant, always start from
+			 * the beginning.
+			 *
+			 * XXX: This is very expensive. A smarter strategy might be
+			 * to walk backwards from the previous frame tail until
+			 * we reach the last row that's in the frame. Or at least we
+			 * should begin from frame headpos.
+			 */
+			if (!winstate->end_offset_var_free)
+			{
+				winstate->frametailpos = 0;
+				ExecClearTuple(winstate->frametail_slot);
+				tuplestore_rescan(winstate->buffer);
+			}
 			if (winstate->frametailpos == 0 &&
 				TupIsNull(winstate->frametail_slot))
 			{
@@ -2008,6 +2306,80 @@ update_grouptailpos(WindowAggState *winstate)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+static void
+compute_start_end_offsets(WindowAggState *winstate)
+{
+	int			frameOptions = winstate->frameOptions;
+	ExprContext *econtext = winstate->ss.ps.ps_ExprContext;
+	Datum		value;
+	bool		isnull;
+	int16		len;
+	bool		byval;
+
+	/*
+	 * Compute frame offset values, if any
+	 */
+	if (!winstate->start_offset_valid)
+	{
+		econtext->ecxt_outertuple = winstate->ss.ss_ScanTupleSlot;
+		if (frameOptions & FRAMEOPTION_START_OFFSET)
+		{
+			Assert(winstate->startOffset != NULL);
+			value = ExecEvalExprSwitchContext(winstate->startOffset,
+											  econtext,
+											  &isnull);
+			if (isnull)
+				ereport(ERROR,
+						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+						 errmsg("frame starting offset must not be null")));
+			/* copy value into query-lifespan context */
+			get_typlenbyval(exprType((Node *) winstate->startOffset->expr),
+							&len, &byval);
+			winstate->startOffsetValue = datumCopy(value, byval, len);
+			if (frameOptions & (FRAMEOPTION_ROWS | FRAMEOPTION_GROUPS))
+			{
+				/* value is known to be int8 */
+				int64		offset = DatumGetInt64(value);
+
+				if (offset < 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+							 errmsg("frame starting offset must not be negative")));
+			}
+		}
+		winstate->start_offset_valid = true;
+	}
+	if (!winstate->end_offset_valid)
+	{
+		econtext->ecxt_outertuple = winstate->ss.ss_ScanTupleSlot;
+		if (frameOptions & FRAMEOPTION_END_OFFSET)
+		{
+			Assert(winstate->endOffset != NULL);
+			value = ExecEvalExprSwitchContext(winstate->endOffset,
+											  econtext,
+											  &isnull);
+			if (isnull)
+				ereport(ERROR,
+						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+						 errmsg("frame ending offset must not be null")));
+			/* copy value into query-lifespan context */
+			get_typlenbyval(exprType((Node *) winstate->endOffset->expr),
+							&len, &byval);
+			winstate->endOffsetValue = datumCopy(value, byval, len);
+			if (frameOptions & (FRAMEOPTION_ROWS | FRAMEOPTION_GROUPS))
+			{
+				/* value is known to be int8 */
+				int64		offset = DatumGetInt64(value);
+
+				if (offset < 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+							 errmsg("frame ending offset must not be negative")));
+			}
+		}
+		winstate->end_offset_valid = true;
+	}
+}
 
 /* -----------------
  * ExecWindowAgg
@@ -2035,66 +2407,16 @@ ExecWindowAgg(PlanState *pstate)
 	 * Compute frame offset values, if any, during first call (or after a
 	 * rescan).  These are assumed to hold constant throughout the scan; if
 	 * user gives us a volatile expression, we'll only use its initial value.
+	 *
+	 * GPDB: We accept non-constant frame offsets, too. If they're not
+	 * constants, we'll compute them later.
 	 */
-	if (winstate->all_first)
+	if (winstate->all_first &&
+		winstate->start_offset_var_free &&
+		winstate->end_offset_var_free)
 	{
-		int			frameOptions = winstate->frameOptions;
-		ExprContext *econtext = winstate->ss.ps.ps_ExprContext;
-		Datum		value;
-		bool		isnull;
-		int16		len;
-		bool		byval;
+		compute_start_end_offsets(winstate);
 
-		if (frameOptions & FRAMEOPTION_START_OFFSET)
-		{
-			Assert(winstate->startOffset != NULL);
-			value = ExecEvalExprSwitchContext(winstate->startOffset,
-											  econtext,
-											  &isnull);
-			if (isnull)
-				ereport(ERROR,
-						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-						 errmsg("frame starting offset must not be null")));
-			/* copy value into query-lifespan context */
-			get_typlenbyval(exprType((Node *) winstate->startOffset->expr),
-							&len, &byval);
-			winstate->startOffsetValue = datumCopy(value, byval, len);
-			if (frameOptions & (FRAMEOPTION_ROWS | FRAMEOPTION_GROUPS))
-			{
-				/* value is known to be int8 */
-				int64		offset = DatumGetInt64(value);
-
-				if (offset < 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
-							 errmsg("frame starting offset must not be negative")));
-			}
-		}
-		if (frameOptions & FRAMEOPTION_END_OFFSET)
-		{
-			Assert(winstate->endOffset != NULL);
-			value = ExecEvalExprSwitchContext(winstate->endOffset,
-											  econtext,
-											  &isnull);
-			if (isnull)
-				ereport(ERROR,
-						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-						 errmsg("frame ending offset must not be null")));
-			/* copy value into query-lifespan context */
-			get_typlenbyval(exprType((Node *) winstate->endOffset->expr),
-							&len, &byval);
-			winstate->endOffsetValue = datumCopy(value, byval, len);
-			if (frameOptions & (FRAMEOPTION_ROWS | FRAMEOPTION_GROUPS))
-			{
-				/* value is known to be int8 */
-				int64		offset = DatumGetInt64(value);
-
-				if (offset < 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
-							 errmsg("frame ending offset must not be negative")));
-			}
-		}
 		winstate->all_first = false;
 	}
 
@@ -2112,6 +2434,11 @@ ExecWindowAgg(PlanState *pstate)
 		winstate->framehead_valid = false;
 		winstate->frametail_valid = false;
 		/* we don't need to invalidate grouptail here; see below */
+
+		if (!winstate->start_offset_var_free)
+			winstate->start_offset_valid = false;
+		if (!winstate->end_offset_var_free)
+			winstate->end_offset_valid = false;
 	}
 
 	/*
@@ -2119,6 +2446,34 @@ ExecWindowAgg(PlanState *pstate)
 	 * already
 	 */
 	spool_tuples(winstate, winstate->currentpos);
+
+#ifdef FAULT_INJECTOR
+	/*
+	 * This routine is used for testing if we have allocated enough memory
+	 * for the tuplestore (winstate->buffer) in begin_partition(). If all
+	 * tuples of the current partition can be fitted in the memory, we
+	 * emit a notice saying 'fitted in memory'. If they cannot be fitted in
+	 * the memory, we emit a notice saying 'spilled to disk'. If there're
+	 * no input rows, we emit a notice saying 'no input rows'.
+	 *
+	 * NOTE: The fault-injector only triggers once, we emit the notice when
+	 * we finishes spooling all the tuples of the first partition.
+	 */
+	if (winstate->partition_spooled &&
+		winstate->currentpos >= winstate->spooled_rows &&
+		SIMPLE_FAULT_INJECTOR("winagg_after_spool_tuples") == FaultInjectorTypeSkip)
+	{
+		if (winstate->buffer)
+		{
+			if (tuplestore_in_memory(winstate->buffer))
+				ereport(NOTICE, (errmsg("winagg: tuplestore fitted in memory")));
+			else
+				ereport(NOTICE, (errmsg("winagg: tuplestore spilled to disk")));
+		}
+		else
+			ereport(NOTICE, (errmsg("winagg: no input rows")));
+	}
+#endif
 
 	/* Move to the next partition if we reached the end of this partition */
 	if (winstate->partition_spooled &&
@@ -2296,8 +2651,8 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 	 */
 	winstate->aggcontext =
 		AllocSetContextCreate(CurrentMemoryContext,
-							  "WindowAgg Aggregates",
-							  ALLOCSET_DEFAULT_SIZES);
+                              "WindowAgg Aggregates",
+                              ALLOCSET_DEFAULT_SIZES);
 
 	/*
 	 * WindowAgg nodes never have quals, since they can only occur at the
@@ -2517,6 +2872,13 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 	winstate->inRangeAsc = node->inRangeAsc;
 	winstate->inRangeNullsFirst = node->inRangeNullsFirst;
 
+	winstate->start_offset_var_free =
+		!contain_var_clause(node->startOffset) &&
+		!contain_volatile_functions(node->startOffset);
+	winstate->end_offset_var_free =
+		!contain_var_clause(node->endOffset) &&
+		!contain_volatile_functions(node->endOffset);
+
 	winstate->all_first = true;
 	winstate->partition_spooled = false;
 	winstate->more_partitions = false;
@@ -2605,6 +2967,13 @@ ExecReScanWindowAgg(WindowAggState *node)
 	 */
 	if (outerPlan->chgParam == NULL)
 		ExecReScan(outerPlan);
+}
+
+void
+ExecSquelchWindowAgg(WindowAggState *node)
+{
+	// TODO: do some eager freeing here?
+	ExecSquelchNode(outerPlanState(node));
 }
 
 /*
@@ -2818,6 +3187,39 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	else
 		peraggstate->initValue = GetAggInitVal(textInitVal,
 											   aggtranstype);
+
+	/*
+	 * Initialize stuff needed to sort and deduplicate input to a
+	 * DISTINCT-qualified aggregate.
+	 */
+	if (wfunc->windistinct)
+	{
+		/* the parser should have disallowed this case */
+		if (list_length(wfunc->args) != 1)
+			elog(ERROR, "DISTINCT is supported only for single-argument aggregates");
+
+		peraggstate->isDistinct = true;
+
+		peraggstate->distinctType = exprType(linitial(wfunc->args));
+		peraggstate->distinctTypeByVal = get_typbyval(peraggstate->distinctType);
+		peraggstate->distinctColl = exprCollation(linitial(wfunc->args));
+
+		/* initialize support for sorting the argument */
+		get_sort_group_operators(peraggstate->distinctType,
+								 true, false, false,
+								 &peraggstate->distinctLtOper,
+								 NULL,
+								 NULL,
+								 NULL);
+		memset(&peraggstate->distinctComparator, 0, sizeof(SortSupportData));
+
+		peraggstate->distinctComparator.ssup_cxt = CurrentMemoryContext;
+		peraggstate->distinctComparator.ssup_collation = peraggstate->distinctColl;
+		peraggstate->distinctComparator.ssup_nulls_first = false;
+
+		PrepareSortSupportFromOrderingOp(peraggstate->distinctLtOper,
+										 &peraggstate->distinctComparator);
+	}
 
 	/*
 	 * If the transfn is strict and the initval is NULL, make sure input type
@@ -3077,6 +3479,23 @@ WinSetMarkPosition(WindowObject winobj, int64 markpos)
 
 	Assert(WindowObjectIsValid(winobj));
 	winstate = winobj->winstate;
+
+	/*
+	 * In GPDB, unlike in PostgreSQL, the start and end offsets are not
+	 * necessarily constant throughout the execution. In that case, don't
+	 * believe it when the window function tells that it's won't need the
+	 * old rows anymore, in case the window frame needs to enlarge later.
+	 * In principle, it would perhaps be nicer if each window function
+	 * would take this into account and not call WinSetMarkPosition in
+	 * that case, but changing all the window function implementations
+	 * is not very appealing. It woudl be make merging harder, and there
+	 * would be the risk for bugs of omission. 3rd party extenstion,
+	 * written for PostgreSQL, would also not know about it. So all in all,
+	 * let's just keep the all the rows, if the start/end offsets contain
+	 * variables. That is hopefully not very common in practice.
+	 */
+	if (!winstate->start_offset_var_free || !winstate->end_offset_var_free)
+		return;
 
 	if (markpos < winobj->markpos)
 		elog(ERROR, "cannot move WindowObject's mark position backward");

@@ -1,0 +1,6 @@
+clusterConfigPostgresAddonsFile
+clusterConfigFile
+hostfile
+datadirs
+gpdemo-env.sh
+certificate

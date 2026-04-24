@@ -4,6 +4,8 @@
  *	  internal structures for hash joins
  *
  *
+ * Portions Copyright (c) 2007-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -19,6 +21,11 @@
 #include "storage/barrier.h"
 #include "storage/buffile.h"
 #include "storage/lwlock.h"
+
+#include "cdb/cdbexplain.h"			/* CdbExplain_Agg */
+#include "utils/workfile_mgr.h"
+
+struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
 /* ----------------------------------------------------------------
  *				hash-join hash table structures
@@ -141,6 +148,35 @@ typedef struct HashMemoryChunkData *HashMemoryChunk;
 #define HASH_CHUNK_DATA(hc)		(((char *) (hc)) + HASH_CHUNK_HEADER_SIZE)
 /* tuples exceeding HASH_CHUNK_THRESHOLD bytes are put in their own chunk */
 #define HASH_CHUNK_THRESHOLD	(HASH_CHUNK_SIZE / 4)
+
+/* Statistics collection workareas for EXPLAIN ANALYZE */
+typedef struct HashJoinBatchStats
+{
+    uint64      outerfilesize;
+    uint64      innerfilesize;
+    uint64      irdbytes;           /* inner bytes read from workfile */
+    uint64      ordbytes;           /* outer bytes read from workfile */
+    uint64      iwrbytes;           /* inner bytes written (to later batches) */
+    uint64      owrbytes;           /* outer bytes written (to later batches) */
+    uint64      hashspace_final;    /* work_mem for tuples kept in hash table */
+    uint64      spillspace_in;      /* work_mem from lower batches to this one */
+    uint64      spillspace_out;     /* work_mem from this batch to higher ones */
+    uint64      spillrows_out;      /* rows spilled from this batch to higher */
+} HashJoinBatchStats;
+
+typedef struct HashJoinTableStats
+{
+    struct StringInfoData  *joinexplainbuf; /* Join operator's report buf */
+    HashJoinBatchStats     *batchstats;     /* -> array[0..nbatchstats-1] */
+    int                     nbatchstats;    /* num of batchstats slots */
+    int                     endedbatch;     /* index of last batch ended */
+
+    /* These statistics are cumulative over all nontrivial batches... */
+    int                     nonemptybatches;    /* num of nontrivial batches */
+    Size                    workmem_max;        /* work_mem high water mark */
+    CdbExplain_Agg          chainlength;        /* hash chain length stats */
+} HashJoinTableStats;
+
 
 /*
  * For each batch of a Parallel Hash Join, we have a ParallelHashJoinBatch
@@ -315,19 +351,24 @@ typedef struct HashJoinTableData
 
 	bool		growEnabled;	/* flag to shut off nbatch increases */
 
-	double		totalTuples;	/* # tuples obtained from inner plan */
-	double		partialTuples;	/* # tuples obtained from inner plan by me */
-	double		skewTuples;		/* # tuples inserted into skew tuples */
+	uint64		totalTuples;	/* # tuples obtained from inner plan */
+	uint64		partialTuples;	/* # tuples obtained from inner plan by me */
+	uint64		skewTuples;		/* # tuples inserted into skew tuples */
 
 	/*
 	 * These arrays are allocated for the life of the hash join, but only if
 	 * nbatch > 1.  A file is opened only when we first write a tuple into it
 	 * (otherwise its pointer remains NULL).  Note that the zero'th array
-	 * elements never get used, since we will process rather than dump out any
-	 * tuples of batch zero.
+	 * elements can still get used while nbatch > 1 in GPDB to support rescan
+	 * of hashjoin.
 	 */
-	BufFile   **innerBatchFile; /* buffered virtual temp file per batch */
+	BufFile	  **innerBatchFile; /* buffered virtual temp file per batch */
 	BufFile   **outerBatchFile; /* buffered virtual temp file per batch */
+
+	/* Representation of all spill file names, for spill file reuse */
+	workfile_set * work_set;
+
+	BufFile	   *state_file;
 
 	/*
 	 * Info about the datatype-specific hash functions for the datatypes being
@@ -347,6 +388,13 @@ typedef struct HashJoinTableData
 
 	MemoryContext hashCxt;		/* context for whole-hash-join storage */
 	MemoryContext batchCxt;		/* context for this-batch-only storage */
+	MemoryContext bfCxt;		/* CDB */ /* context for temp buf file */
+
+    HashJoinTableStats *stats;  /* statistics workarea for EXPLAIN ANALYZE */
+    bool		eagerlyReleased; /* Has this hash-table been eagerly released? */
+
+    HashJoinState * hjstate; /* reference to the enclosing HashJoinState */
+    bool first_pass; /* Is this the first pass (pre-rescan) */
 
 	/* used for dense allocation of tuples (into linked chunks) */
 	HashMemoryChunk chunks;		/* one list for the whole batch */

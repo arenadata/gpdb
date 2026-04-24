@@ -69,13 +69,19 @@
 
 
 typedef void (*bgworker_main_type) (Datum main_arg);
+typedef bool (*bgworker_start_rule) (Datum rule_arg);
 
 /*
  * Points in time at which a bgworker can request to be started
+ *
+ * CDB: BgWorkerStart_DtxRecovering means worker can be started
+ * after postmaster started and before distributed transactions
+ * are recovered.
  */
 typedef enum
 {
 	BgWorkerStart_PostmasterStart,
+	BgWorkerStart_DtxRecovering,
 	BgWorkerStart_ConsistentState,
 	BgWorkerStart_RecoveryFinished
 } BgWorkerStartTime;
@@ -97,6 +103,7 @@ typedef struct BackgroundWorker
 	Datum		bgw_main_arg;
 	char		bgw_extra[BGW_EXTRALEN];
 	pid_t		bgw_notify_pid; /* SIGUSR1 this backend on start/stop */
+	bgworker_start_rule bgw_start_rule; /* false: never be started */
 } BackgroundWorker;
 
 typedef enum BgwHandleStatus

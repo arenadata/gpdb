@@ -768,6 +768,7 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
 CREATE INDEX jidx ON testjsonb USING gin (j);
 SET enable_seqscan = off;
+SET optimizer_enable_tablescan = off;
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
@@ -856,6 +857,7 @@ SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "
 DROP INDEX jidx;
 CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
 SET enable_seqscan = off;
+SET optimizer_enable_tablescan = off;
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';

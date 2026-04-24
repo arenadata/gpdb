@@ -9,3 +9,6 @@
 /loadable_libraries.txt
 /log/
 /tmp_check/
+
+# GPDB files
+/greenplum/aomd_filehandler.c

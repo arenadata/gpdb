@@ -9,6 +9,8 @@
  * context's MemoryContextMethods struct.
  *
  *
+ * Portions Copyright (c) 2007-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,6 +28,18 @@
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
 
+#include "cdb/cdbvars.h"                    /* coredump_on_memerror */
+#include "inttypes.h"
+
+#ifdef CDB_PALLOC_CALLER_ID
+#define CDB_MCXT_WHERE(context) (context)->callerFile, (context)->callerLine
+#else
+#define CDB_MCXT_WHERE(context) __FILE__, __LINE__
+#endif
+
+#if defined(CDB_PALLOC_TAGS) && !defined(CDB_PALLOC_CALLER_ID)
+#error "If CDB_PALLOC_TAGS is defined, CDB_PALLOC_CALLER_ID must be defined too"
+#endif
 
 /*****************************************************************************
  *	  GLOBAL MEMORY															 *
@@ -48,6 +62,9 @@ MemoryContext CacheMemoryContext = NULL;
 MemoryContext MessageContext = NULL;
 MemoryContext TopTransactionContext = NULL;
 MemoryContext CurTransactionContext = NULL;
+MemoryContext DispatcherContext = NULL;
+MemoryContext InterconnectContext = NULL;
+MemoryContext OptimizerMemoryContext = NULL;
 
 /* This is a transient link to the active portal's memory context: */
 MemoryContext PortalContext = NULL;
@@ -64,8 +81,16 @@ static void MemoryContextStatsPrint(MemoryContext context, void *passthru,
  * an out-of-memory error will be escalated to a PANIC. To enforce that
  * rule, the allocation functions Assert that.
  */
+/*
+ * GPDB_94_MERGE_FIXME: Disabled temporarily, we were unsafe things in GPDB.
+ * Fix all the failures and re-enable this later.
+ */
+#if 0
 #define AssertNotInCriticalSection(context) \
 	Assert(CritSectionCount == 0 || (context)->allowInCritSection)
+#else
+#define AssertNotInCriticalSection(context)
+#endif
 
 /*****************************************************************************
  *	  EXPORTED ROUTINES														 *
@@ -208,13 +233,20 @@ MemoryContextResetChildren(MemoryContext context)
  * We must also delink the context from its parent, if it has one.
  */
 void
-MemoryContextDelete(MemoryContext context)
+MemoryContextDeleteImpl(MemoryContext context, const char* sfile, const char *func, int sline)
 {
+	MemoryContext parent;
+
 	AssertArg(MemoryContextIsValid(context));
 	/* We had better not be deleting TopMemoryContext ... */
 	Assert(context != TopMemoryContext);
 	/* And not CurrentMemoryContext, either */
 	Assert(context != CurrentMemoryContext);
+
+#ifdef CDB_PALLOC_CALLER_ID
+	context->callerFile = sfile;
+	context->callerLine = sline;
+#endif
 
 	/* save a function call in common case where there are no children */
 	if (context->firstchild != NULL)
@@ -233,6 +265,7 @@ MemoryContextDelete(MemoryContext context)
 	 * there's an error we won't have deleted/busted contexts still attached
 	 * to the context tree.  Better a leak than a crash.
 	 */
+	parent = MemoryContextGetParent(context);
 	MemoryContextSetParent(context, NULL);
 
 	/*
@@ -242,7 +275,7 @@ MemoryContextDelete(MemoryContext context)
 	 */
 	context->ident = NULL;
 
-	context->methods->delete_context(context);
+	context->methods->delete_context(context, parent);
 
 	VALGRIND_DESTROY_MEMPOOL(context);
 }
@@ -360,6 +393,9 @@ MemoryContextSetParent(MemoryContext context, MemoryContext new_parent)
 	if (new_parent == context->parent)
 		return;
 
+	/* update memory accounting */
+	AllocSetTransferAccounting(context, new_parent);
+
 	/* Delink from existing parent, if any */
 	if (context->parent)
 	{
@@ -460,6 +496,155 @@ MemoryContextIsEmpty(MemoryContext context)
 		return false;
 	/* Otherwise use the type-specific inquiry */
 	return context->methods->is_empty(context);
+}
+
+/*
+ * MemoryContextError
+ *		Report failure of a memory context operation.  Does not return.
+ */
+void
+MemoryContextError(int errorcode, MemoryContext context,
+		const char *sfile, int sline,
+		const char *fmt, ...)
+{
+	va_list args;
+	char    buf[200];
+
+	/*
+	 * Don't use elog, as we might have a malloc problem.
+	 * Also, don't use write_log, as this method might be
+	 * called from syslogger, which does not support
+	 * write_log calls
+	 */
+	write_stderr("Logging memory usage for memory context error");
+
+	MemoryContextStats(TopMemoryContext);
+
+	if(coredump_on_memerror)
+	{
+		/*
+		 * Turn memory context into a SIGSEGV, so will generate
+		 * a core dump.
+		 *
+		 * XXX What is the right way of doing this?
+		 */
+		((void(*)()) NULL)();
+	}
+
+	if(errorcode != ERRCODE_OUT_OF_MEMORY && errorcode != ERRCODE_INTERNAL_ERROR)
+	{
+		Assert(!"Memory context error: unknown error code.");
+	}
+
+	/* Format caller's message. */
+	va_start(args, fmt);
+	vsnprintf(buf, sizeof(buf)-32, fmt, args);
+	va_end(args);
+
+	/*
+	 * This might fail if we run out of memory at the system level
+	 * (i.e., malloc returned null), and the system is running so
+	 * low in memory that ereport cannot format its parameter.
+	 * However, we already dumped our usage information using
+	 * write_stderr, so we are gonna take a chance by calling ereport.
+	 * If we fail, we at least have OOM message in the log. If we succeed,
+	 * we will also have the detail error code and location of the error.
+	 * Note, ereport should switch to ErrorContext which should have
+	 * some preallocated memory to handle this message. Therefore,
+	 * our chance of success is quite high
+	 */
+	ereport(ERROR, (errcode(errorcode),
+				errmsg("%s (context '%s') (%s:%d)",
+					buf,
+					context->name,
+					sfile ? sfile : "",
+					sline)
+		       ));
+
+	/* not reached */
+	abort();
+}                               /* MemoryContextError */
+
+
+void
+MemoryContextDeclareAccountingRoot(MemoryContext context)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+	return (*context->methods->declare_accounting_root) (context);
+}
+
+/*
+ * MemoryContextGetCurrentSpace
+ *		Return the number of bytes currently occupied by the memory context.
+ *
+ * This is the amount of space obtained from the lower-level source of the
+ * memory (e.g. malloc) and not yet released back to that source.  Includes
+ * overhead and free space held and managed within this context by the
+ * context-type-specific memory manager.
+ */
+Size
+MemoryContextGetCurrentSpace(MemoryContext context)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+	return (*context->methods->get_current_usage) (context);
+}                               /* MemoryContextGetCurrentSpace */
+
+/*
+ * MemoryContextGetPeakSpace
+ *		Return the peak number of bytes occupied by the memory context.
+ *
+ * This is the maximum value reached by MemoryContextGetCurrentSpace() since
+ * the context was created, or since reset by MemoryContextSetPeakSpace().
+ */
+Size
+MemoryContextGetPeakSpace(MemoryContext context)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+	return (*context->methods->get_peak_usage) (context);
+}                               /* MemoryContextGetPeakSpace */
+
+/*
+ * MemoryContextSetPeakSpace
+ *		Resets the peak space statistic to the space currently occupied or
+ *      the specified value, whichever is greater.  Returns the former peak
+ *      space value.
+ *
+ * Can be used to observe local maximum usage over an interval and then to
+ * restore the overall maximum.
+ */
+Size
+MemoryContextSetPeakSpace(MemoryContext context, Size nbytes)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+	return (*context->methods->set_peak_usage) (context, nbytes);
+}                               /* MemoryContextSetPeakSpace */
+
+/*
+ * Find the memory allocated to blocks for this memory context. If recurse is
+ * true, also include children.
+ */
+int64
+MemoryContextMemAllocated(MemoryContext context, bool recurse)
+{
+	int64 total = context->mem_allocated;
+
+	AssertArg(MemoryContextIsValid(context));
+
+	if (recurse)
+	{
+		MemoryContext child = context->firstchild;
+
+		for (child = context->firstchild;
+			 child != NULL;
+			 child = child->nextchild)
+			total += MemoryContextMemAllocated(child, true);
+	}
+
+	return total;
 }
 
 /*
@@ -669,6 +854,18 @@ MemoryContextContains(MemoryContext context, void *pointer)
 	MemoryContext ptr_context;
 
 	/*
+	 * In GPDB, pointer is not guaranteed to always be palloc aligned. Due to
+	 * our use of MemTuples, the pointer may instead point into the palloc'd
+	 * region to an attr offset. Therefore we cannot assume the MemoryContext
+	 * from which the pointer was palloc'd exists in the bytes immediately in
+	 * front of the pointer.
+	 *
+	 * Instead use MemoryContextContainsGenericAllocation() which correctly
+	 * handles the above scenario.
+	 */
+	Assert(false);
+
+	/*
 	 * NB: Can't use GetMemoryChunkContext() here - that performs assertions
 	 * that aren't acceptable here since we might be passed memory not
 	 * allocated by any memory context.
@@ -689,6 +886,38 @@ MemoryContextContains(MemoryContext context, void *pointer)
 }
 
 /*
+ * MemoryContextContainsGenericAllocation
+ *
+ * Detects whether a generic (may or may not be allocated by palloc) chunk of
+ * memory belongs to a given context or not.  Note, the "generic" means it will
+ * be ready to handle chunks not allocated using palloc, not at the start of an
+ * allocated region, and not necessarily aligned.
+ *
+ * Currently only supports AllocSet, will error out if called on any other type
+ * of MemoryContext (AllocSlab, ALlocGenerate, custom)
+ *
+ * Note for new callers:  This will iterate through the linked list of blocks in the
+ *        context provided; at present there are no functions calling it which would
+ *        be expected to have more than 1 block allocated (or possibly a handful
+ *        of blocks, if there are multiple large aggregate/window functions run
+ *        simultaneously in the same query).  If there were some reason why a new
+ *        caller might pass a context with a large number of blocks (hundreds,
+ *        thousands?) and needs to call this frequently, checking for potential
+ *        performance implications before proceeding is recommended.
+ */
+bool
+MemoryContextContainsGenericAllocation(MemoryContext context, void *pointer)
+{
+	if (context->type != T_AllocSetContext)
+		MemoryContextError(ERRCODE_INTERNAL_ERROR,
+			context, CDB_MCXT_WHERE(context),
+			"MemoryContextContainsGenericAllocation is not available for type %u",
+			context->type);
+
+	return AllocSetContains(context, pointer);
+}
+
+/*--------------------
  * MemoryContextCreate
  *		Context-type-independent part of context creation.
  *
@@ -727,8 +956,11 @@ MemoryContextCreate(MemoryContext node,
 					MemoryContext parent,
 					const char *name)
 {
+	// GPDB_94_MERGE_FIXME: same as AssertNotInCriticalSection
+#if 0
 	/* Creating new memory contexts is not allowed in a critical section */
 	Assert(CritSectionCount == 0);
+#endif
 
 	/* Initialize all standard fields of memory context header */
 	node->type = tag;
@@ -736,6 +968,7 @@ MemoryContextCreate(MemoryContext node,
 	node->methods = methods;
 	node->parent = parent;
 	node->firstchild = NULL;
+	node->mem_allocated = 0;
 	node->prevchild = NULL;
 	node->name = name;
 	node->ident = NULL;
@@ -775,8 +1008,16 @@ MemoryContextAlloc(MemoryContext context, Size size)
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
 
+#ifdef CDB_PALLOC_CALLER_ID
+	context->callerFile = sfile;
+	context->callerLine = sline;
+#endif
+
 	if (!AllocSizeIsValid(size))
-		elog(ERROR, "invalid memory alloc request size %zu", size);
+		MemoryContextError(ERRCODE_INTERNAL_ERROR,
+				context, CDB_MCXT_WHERE(context),
+				"invalid memory alloc request size %lu",
+				(unsigned long)size);
 
 	context->isReset = false;
 
@@ -818,8 +1059,16 @@ MemoryContextAllocZero(MemoryContext context, Size size)
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
 
+#ifdef CDB_PALLOC_CALLER_ID
+	context->callerFile = sfile;
+	context->callerLine = sline;
+#endif
+
 	if (!AllocSizeIsValid(size))
-		elog(ERROR, "invalid memory alloc request size %zu", size);
+		MemoryContextError(ERRCODE_INTERNAL_ERROR,
+				context, CDB_MCXT_WHERE(context),
+				"invalid memory alloc request size %lu",
+				(unsigned long)size);
 
 	context->isReset = false;
 
@@ -856,8 +1105,16 @@ MemoryContextAllocZeroAligned(MemoryContext context, Size size)
 	AssertArg(MemoryContextIsValid(context));
 	AssertNotInCriticalSection(context);
 
+#ifdef CDB_PALLOC_CALLER_ID
+	context->callerFile = sfile;
+	context->callerLine = sline;
+#endif
+
 	if (!AllocSizeIsValid(size))
-		elog(ERROR, "invalid memory alloc request size %zu", size);
+		MemoryContextError(ERRCODE_INTERNAL_ERROR,
+				context, CDB_MCXT_WHERE(context),
+				"invalid memory alloc request size %lu",
+				(unsigned long)size);
 
 	context->isReset = false;
 

@@ -34,6 +34,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/reloptions.h"
 #include "access/tableam.h"
 #include "access/xact.h"
 #include "catalog/binary_upgrade.h"
@@ -43,6 +44,7 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
+#include "catalog/pg_compression.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_enum.h"
@@ -58,6 +60,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/optimizer.h"
+#include "parser/analyze.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
@@ -72,6 +75,11 @@
 #include "utils/ruleutils.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+
+#include "catalog/oid_dispatch.h"
+#include "catalog/pg_type_encoding.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp_query.h"
 
 
 /* result structure for get_rels_with_domain() */
@@ -164,6 +172,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	Oid			array_oid;
 	Oid			typoid;
 	Oid			resulttype;
+	Datum		typoptions = 0;
+	List	   *encoding = NIL;
 	ListCell   *pl;
 	ObjectAddress address;
 
@@ -229,7 +239,25 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 		 * creating the shell type was all we're supposed to do.
 		 */
 		if (parameters == NIL)
+		{
+			/* Must dispatch shell type creation */
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				DefineStmt * stmt = makeNode(DefineStmt);
+				stmt->kind = OBJECT_TYPE;
+				stmt->oldstyle = false; /*?*/
+				stmt->defnames = names;
+				stmt->args = NIL;
+				stmt->definition = NIL;
+				CdbDispatchUtilityStatement((Node *) stmt,
+											DF_CANCEL_ON_ERROR|
+											DF_WITH_SNAPSHOT|
+											DF_NEED_TWO_PHASE,
+											GetAssignedOidsForDispatch(),
+											NULL);
+			}
 			return address;
+		}
 	}
 	else
 	{
@@ -283,6 +311,20 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 			defelp = &storageEl;
 		else if (strcmp(defel->defname, "collatable") == 0)
 			defelp = &collatableEl;
+		else if (is_storage_encoding_directive(defel->defname))
+		{
+			/* 
+			 * This is to define default block size, compress type, and
+			 * compress level. When this type is used in an append only column
+			 * oriented table, the column's encoding will be defaulted to these
+			 * values.
+			 * We have to do this instead of having a list of encoding clauses as 
+			 * in ALTER TYPE because the way the encoding clauses are consumed 
+			 * in the parser for CREATE TYPE.
+			 */
+			encoding = lappend(encoding, defel);
+			continue;
+		}
 		else
 		{
 			/* WARNING, not ERROR, for historical backwards-compatibility */
@@ -416,6 +458,13 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	}
 	if (collatableEl)
 		collation = defGetBoolean(collatableEl) ? DEFAULT_COLLATION_OID : InvalidOid;
+
+	/* transform the encoding clause and then get the typoptions */
+	if (encoding)
+	{
+		encoding = transformStorageEncodingClause(encoding, true);
+		typoptions = transformRelOptions((Datum) 0, encoding, NULL, NULL, true, false);
+	}
 
 	/*
 	 * make sure we have our required definitions
@@ -595,7 +644,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	 * array type OID ahead of calling TypeCreate, since the base type and
 	 * array type each refer to the other.
 	 */
-	array_oid = AssignTypeArrayOid();
+	array_type = makeArrayTypeName(typeName, typeNamespace);
+	array_oid = AssignTypeArrayOid(array_type, typeNamespace);
 
 	/*
 	 * now have TypeCreate do all the real work.
@@ -638,10 +688,13 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 				   collation);	/* type's collation */
 	Assert(typoid == address.objectId);
 
+	/* now pg_type_encoding */
+	if (DatumGetPointer(typoptions) != NULL)
+		add_type_encoding(address.objectId, typoptions);
+
 	/*
 	 * Create the array type that goes with it.
 	 */
-	array_type = makeArrayTypeName(typeName, typeNamespace);
 
 	/* alignment must be 'i' or 'd' for arrays */
 	alignment = (alignment == 'd') ? 'd' : 'i';
@@ -680,6 +733,23 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 
 	pfree(array_type);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		DefineStmt * stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_TYPE;
+		stmt->oldstyle = false; /*?*/
+		stmt->defnames = names;
+		stmt->args = NIL;
+		stmt->definition = parameters;
+
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
 	return address;
 }
 
@@ -691,6 +761,13 @@ RemoveTypeById(Oid typeOid)
 {
 	Relation	relation;
 	HeapTuple	tup;
+
+	/* 
+	 * It might look like the call in RemoveType() is enough for
+	 * pg_type_encoding but it's not. This case catches array type derivations
+	 * of base types.
+	 */
+	remove_type_encoding(typeOid);
 
 	relation = table_open(TypeRelationId, RowExclusiveLock);
 
@@ -718,7 +795,7 @@ RemoveTypeById(Oid typeOid)
 
 	ReleaseSysCache(tup);
 
-	table_close(relation, RowExclusiveLock);
+	table_close(relation, Gp_role == GP_ROLE_DISPATCH ? NoLock : RowExclusiveLock);
 }
 
 
@@ -950,6 +1027,8 @@ DefineDomain(CreateDomainStmt *stmt)
 											   NIL, false, false);
 						defaultValueBin = nodeToString(defaultExpr);
 					}
+
+					free_parsestate(pstate);
 				}
 				else
 				{
@@ -1035,7 +1114,8 @@ DefineDomain(CreateDomainStmt *stmt)
 	}
 
 	/* Allocate OID for array type */
-	domainArrayOid = AssignTypeArrayOid();
+	domainArrayName = makeArrayTypeName(domainName, domainNamespace);
+	domainArrayOid = AssignTypeArrayOid(domainArrayName, domainNamespace);
 
 	/*
 	 * Have TypeCreate do all the real work.
@@ -1076,7 +1156,6 @@ DefineDomain(CreateDomainStmt *stmt)
 	/*
 	 * Create the array type that goes with it.
 	 */
-	domainArrayName = makeArrayTypeName(domainName, domainNamespace);
 
 	/* alignment must be 'i' or 'd' for arrays */
 	alignment = (alignment == 'd') ? 'd' : 'i';
@@ -1142,6 +1221,16 @@ DefineDomain(CreateDomainStmt *stmt)
 		CommandCounterIncrement();
 	}
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
 	/*
 	 * Now we can clean up.
 	 */
@@ -1192,7 +1281,8 @@ DefineEnum(CreateEnumStmt *stmt)
 	}
 
 	/* Allocate OID for array type */
-	enumArrayOid = AssignTypeArrayOid();
+	enumArrayName = makeArrayTypeName(enumName, enumNamespace);
+	enumArrayOid = AssignTypeArrayOid(enumArrayName, enumNamespace);
 
 	/* Create the pg_type entry */
 	enumTypeAddr =
@@ -1234,8 +1324,6 @@ DefineEnum(CreateEnumStmt *stmt)
 	/*
 	 * Create the array type that goes with it.
 	 */
-	enumArrayName = makeArrayTypeName(enumName, enumNamespace);
-
 	TypeCreate(enumArrayOid,	/* force assignment of this type OID */
 			   enumArrayName,	/* type name */
 			   enumNamespace,	/* namespace */
@@ -1269,6 +1357,14 @@ DefineEnum(CreateEnumStmt *stmt)
 			   InvalidOid);		/* type's collation */
 
 	pfree(enumArrayName);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
 
 	return enumTypeAddr;
 }
@@ -1314,6 +1410,14 @@ AlterEnum(AlterEnumStmt *stmt)
 	InvokeObjectPostAlterHook(TypeRelationId, enum_type_oid, 0);
 
 	ObjectAddressSet(address, TypeRelationId, enum_type_oid);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
 
 	return address;
 }
@@ -1520,7 +1624,8 @@ DefineRange(CreateRangeStmt *stmt)
 	alignment = (subtypalign == 'd') ? 'd' : 'i';
 
 	/* Allocate OID for array type */
-	rangeArrayOid = AssignTypeArrayOid();
+	rangeArrayName = makeArrayTypeName(typeName, typeNamespace);
+	rangeArrayOid = AssignTypeArrayOid(rangeArrayName, typeNamespace);
 
 	/* Create the pg_type entry */
 	address =
@@ -1564,8 +1669,6 @@ DefineRange(CreateRangeStmt *stmt)
 	/*
 	 * Create the array type that goes with it.
 	 */
-	rangeArrayName = makeArrayTypeName(typeName, typeNamespace);
-
 	TypeCreate(rangeArrayOid,	/* force assignment of this type OID */
 			   rangeArrayName,	/* type name */
 			   typeNamespace,	/* namespace */
@@ -1602,6 +1705,14 @@ DefineRange(CreateRangeStmt *stmt)
 
 	/* And create the constructor functions for this range type */
 	makeRangeConstructors(typeName, typeNamespace, typoid, rangeSubtype);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
 
 	return address;
 }
@@ -1651,6 +1762,7 @@ makeRangeConstructors(const char *name, Oid namespace,
 								 BOOTSTRAP_SUPERUSERID, /* proowner */
 								 INTERNALlanguageId,	/* language */
 								 F_FMGR_INTERNAL_VALIDATOR, /* language validator */
+								 InvalidOid,
 								 prosrc[i], /* prosrc */
 								 NULL,	/* probin */
 								 PROKIND_FUNCTION,
@@ -1668,7 +1780,9 @@ makeRangeConstructors(const char *name, Oid namespace,
 								 PointerGetDatum(NULL), /* proconfig */
 								 InvalidOid,	/* prosupport */
 								 1.0,	/* procost */
-								 0.0);	/* prorows */
+								 0.0,	/* prorows */
+								 PRODATAACCESS_NONE,
+								 PROEXECLOCATION_ANY);
 
 		/*
 		 * Make the constructors internally-dependent on the range type so
@@ -2077,29 +2191,18 @@ findRangeSubtypeDiffFunction(List *procname, Oid subtype)
  *	Pre-assign the type's array OID for use in pg_type.typarray
  */
 Oid
-AssignTypeArrayOid(void)
+AssignTypeArrayOid(char *arrayTypeName, Oid typeNamespace)
 {
 	Oid			type_array_oid;
+	Relation	pg_type;
 
-	/* Use binary-upgrade override for pg_type.typarray? */
-	if (IsBinaryUpgrade)
-	{
-		if (!OidIsValid(binary_upgrade_next_array_pg_type_oid))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("pg_type array OID value not set when in binary upgrade mode")));
-
-		type_array_oid = binary_upgrade_next_array_pg_type_oid;
-		binary_upgrade_next_array_pg_type_oid = InvalidOid;
-	}
-	else
-	{
-		Relation	pg_type = table_open(TypeRelationId, AccessShareLock);
-
-		type_array_oid = GetNewOidWithIndex(pg_type, TypeOidIndexId,
-											Anum_pg_type_oid);
-		table_close(pg_type, AccessShareLock);
-	}
+	pg_type = table_open(TypeRelationId, AccessShareLock);
+	type_array_oid = GetNewOidForType(pg_type,
+									  TypeOidIndexId,
+									  Anum_pg_type_oid,
+									  arrayTypeName,
+									  typeNamespace);
+	table_close(pg_type, AccessShareLock);
 
 	return type_array_oid;
 }
@@ -2126,6 +2229,8 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist)
 	Oid			typeNamespace;
 	ObjectAddress address;
 
+	createStmt->ownerid = GetUserId();
+
 	/*
 	 * now set the parameters for keys/inheritance etc. All of these are
 	 * uninteresting for composite types...
@@ -2138,6 +2243,7 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist)
 	createStmt->oncommit = ONCOMMIT_NOOP;
 	createStmt->tablespacename = NULL;
 	createStmt->if_not_exists = false;
+	createStmt->gp_style_alter_part = false;
 
 	/*
 	 * Check for collision with an existing type name. If there is one and
@@ -2163,8 +2269,9 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist)
 	/*
 	 * Finally create the relation.  This also creates the type.
 	 */
-	DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE, InvalidOid, &address,
-				   NULL);
+	DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE, InvalidOid,
+				   &address, NULL,
+				   true, true, NULL);
 
 	return address;
 }
@@ -2231,6 +2338,8 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 								  typTup->typtypmod,
 								  NameStr(typTup->typname),
 								  0);
+
+		free_parsestate(pstate);
 
 		/*
 		 * If the expression is just a NULL constant, we treat the command
@@ -3115,6 +3224,11 @@ domainAddConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 	pstate->p_pre_columnref_hook = replace_domain_constraint_value;
 	pstate->p_ref_hook_state = (void *) domVal;
 
+	/*
+	 * GPDB: transformExpr scribbles on the input, but we need to keep it intact
+	 * because we dispatch it afterwards.
+	 */
+	constr = (Constraint *) copyObject(constr);
 	expr = transformExpr(pstate, constr->raw_expr, EXPR_KIND_DOMAIN_CHECK);
 
 	/*
@@ -3708,4 +3822,51 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 		AlterTypeNamespaceInternal(arrayOid, nspOid, true, true, objsMoved);
 
 	return oldNspOid;
+}
+
+/*
+ * Currently, we only land here if the user has issued:
+ *
+ * ALTER TYPE <typname> SET DEFAULT ENCODING (...)
+ */
+void
+AlterType(AlterTypeStmt *stmt)
+{
+	TypeName   *typname;
+	Oid			typid;
+	Datum		typoptions;
+	List	   *encoding;
+
+	/* Make a TypeName so we can use standard type lookup machinery */
+	typname = makeTypeNameFromNameList(stmt->typeName);
+	typid = typenameTypeId(NULL, typname);
+
+	if (type_is_rowtype(typid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("type \"%s\" is not a base type",
+						TypeNameToString(typname)),
+				 errhint("The ENCODING clause cannot be used with row or "
+						 "composite types.")));
+
+	/* check permissions on type */
+	if (!pg_type_ownercheck(typid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TYPE,
+					   format_type_be(typid));
+
+	/* transform the encoding clause and then get the typoptions from it */
+	encoding = transformStorageEncodingClause(stmt->encoding, true);
+	typoptions = transformRelOptions(PointerGetDatum(NULL),
+									 encoding, NULL, NULL,
+									 false,
+									 false);
+	update_type_encoding(typid, typoptions);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NIL,
+									NULL);
 }

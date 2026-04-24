@@ -17,6 +17,13 @@ COPY onek FROM '@abs_builddir@/results/onek.data';
 
 COPY tenk1 FROM '@abs_srcdir@/data/tenk.data';
 
+-- Create a table that's identical to 'tenk1', but all the data is in a single
+-- segment. This comes handy in making some PostgreSQL tests pass on GPDB,
+-- where data distribution might make a difference to a test result.
+CREATE SCHEMA singleseg;
+create table singleseg.tenk1 (like tenk1, distkey int4) distributed by (distkey);
+COPY singleseg.tenk1 (unique1,unique2,two,four,ten,twenty,hundred,thousand,twothousand,fivethous,tenthous,odd,even,stringu1,stringu2,string4) FROM '@abs_srcdir@/data/tenk.data';
+
 COPY slow_emp4000 FROM '@abs_srcdir@/data/rect.data';
 
 COPY person FROM '@abs_srcdir@/data/person.data';
@@ -65,6 +72,14 @@ COPY array_index_op_test FROM '@abs_srcdir@/data/array.data';
 -- analyze all the data we just loaded, to ensure plan consistency
 -- in later tests
 
+-- Force pgstat_report_stat() to send tabstat before pgstat_report_analyze.
+-- Nomally this is no needed, but ORCA is very sensitive for statistics.
+-- If analyze msg recevied first, n_mod_since_analyze will not be 0.
+-- And since we create index for some tables later, the triggered auto-ANALYZE
+-- will cause table's index statstics change and ORCA may generate different
+-- plans for some queries.
+select pg_sleep(0.77);
+
 ANALYZE aggtest;
 ANALYZE onek;
 ANALYZE tenk1;
@@ -80,6 +95,7 @@ ANALYZE hash_name_heap;
 ANALYZE hash_txt_heap;
 ANALYZE hash_f8_heap;
 ANALYZE test_tsvector;
+ANALYZE testjsonb;
 ANALYZE bt_i4_heap;
 ANALYZE bt_name_heap;
 ANALYZE bt_txt_heap;
@@ -105,8 +121,9 @@ copy copytest to '@abs_builddir@/results/copytest.csv' csv;
 create temp table copytest2 (like copytest);
 
 copy copytest2 from '@abs_builddir@/results/copytest.csv' csv;
+copy copytest2 from '@abs_builddir@/results/copytest.csv' csv LOG ERRORS SEGMENT REJECT LIMIT 10 ROWS;
 
-select * from copytest except select * from copytest2;
+select * from copytest except select * from copytest2 order by 1,2,3;
 
 truncate copytest2;
 
@@ -116,7 +133,7 @@ copy copytest to '@abs_builddir@/results/copytest.csv' csv quote '''' escape E'\
 
 copy copytest2 from '@abs_builddir@/results/copytest.csv' csv quote '''' escape E'\\';
 
-select * from copytest except select * from copytest2;
+select * from copytest except select * from copytest2 order by 1,2,3;
 
 
 -- test header line feature
@@ -124,7 +141,7 @@ select * from copytest except select * from copytest2;
 create temp table copytest3 (
 	c1 int,
 	"col with , comma" text,
-	"col with "" quote"  int);
+	"col with "" quote"  int) distributed by (c1);
 
 copy copytest3 from stdin csv header;
 this is just a line full of junk that would error out if parsed
@@ -133,6 +150,29 @@ this is just a line full of junk that would error out if parsed
 \.
 
 copy copytest3 to stdout csv header;
+
+-- test copy force quote
+
+create temp table copytest4 (id int, id1 int);
+
+insert into copytest4 values (1,2);
+insert into copytest4 values (1,3);
+insert into copytest4 values (1,4);
+
+copy (select * from copytest4) to stdout csv delimiter ',' force quote id, id1, id2;
+copy (select * from copytest4) to stdout csv delimiter ',' force quote id, id1;
+
+-- test null string with CRLF for text mode
+
+CREATE TEMP TABLE venue(
+    venueid smallint not null,
+    venuename varchar(100),
+    venuecity varchar(30),
+    venuestate char(2),
+    venueseats integer) DISTRIBUTED BY (venueid);
+
+COPY venue FROM '@abs_srcdir@/data/venue_pipe.txt' WITH DELIMITER AS '|';
+SELECT count(*) FROM venue;
 
 -- test copy from with a partitioned table
 create table parted_copytest (
@@ -143,6 +183,8 @@ create table parted_copytest (
 
 create table parted_copytest_a1 (c text, b int, a int);
 create table parted_copytest_a2 (a int, c text, b int);
+
+alter table parted_copytest_a1 set distributed by (a);
 
 alter table parted_copytest attach partition parted_copytest_a1 for values in(1);
 alter table parted_copytest attach partition parted_copytest_a2 for values in(2);

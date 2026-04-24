@@ -74,6 +74,8 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 
+#include "catalog/catalog.h"
+
 
 /* Ideally this would be in a .h file, but it hardly seems worth the trouble */
 extern const char *select_default_timezone(const char *share_path);
@@ -158,6 +160,7 @@ static char *ident_file;
 static char *conf_file;
 static char *dictionary_file;
 static char *info_schema_file;
+static char *cdb_init_d_dir;
 static char *features_file;
 static char *system_views_file;
 static bool success = false;
@@ -172,8 +175,8 @@ static int	output_errno = 0;
 static char *pgdata_native;
 
 /* defaults */
-static int	n_connections = 10;
-static int	n_buffers = 50;
+static int	n_connections = 0;
+static int	n_buffers = 0;
 static const char *dynamic_shared_memory_type = NULL;
 static const char *default_timezone = NULL;
 
@@ -198,7 +201,7 @@ static bool authwarning = false;
  * (no quoting to worry about).
  */
 static const char *boot_options = "-F";
-static const char *backend_options = "--single -F -O -j -c search_path=pg_catalog -c exit_on_error=true";
+static const char *backend_options = "--single -F -O -j -c gp_role=utility -c search_path=pg_catalog -c exit_on_error=true";
 
 static const char *const subdirs[] = {
 	"global",
@@ -222,7 +225,10 @@ static const char *const subdirs[] = {
 	"pg_xact",
 	"pg_logical",
 	"pg_logical/snapshots",
-	"pg_logical/mappings"
+	"pg_logical/mappings",
+	/* GPDB needs these directories */
+	"pg_distributedlog",
+	"log"
 };
 
 
@@ -244,20 +250,23 @@ static int	get_encoding_id(const char *encoding_name);
 static void set_input(char **dest, const char *filename);
 static void check_input(char *path);
 static void write_version_file(const char *extrapath);
-static void set_null_conf(void);
+static void set_null_conf(const char *);
 static void test_config_settings(void);
 static void setup_config(void);
 static void bootstrap_template1(void);
 static void setup_auth(FILE *cmdfd);
-static void get_su_pwd(void);
+static void get_su_pwd();
 static void setup_depend(FILE *cmdfd);
 static void setup_sysviews(FILE *cmdfd);
 static void setup_description(FILE *cmdfd);
+#if 0
 static void setup_collation(FILE *cmdfd);
+#endif
 static void setup_dictionary(FILE *cmdfd);
 static void setup_privileges(FILE *cmdfd);
 static void set_info_version(void);
 static void setup_schema(FILE *cmdfd);
+static void setup_cdb_schema(FILE *cmdfd);
 static void load_plpgsql(FILE *cmdfd);
 static void vacuum_db(FILE *cmdfd);
 static void make_template0(FILE *cmdfd);
@@ -874,12 +883,12 @@ write_version_file(const char *extrapath)
  * a test backend
  */
 static void
-set_null_conf(void)
+set_null_conf(const char* filename)
 {
 	FILE	   *conf_file;
 	char	   *path;
 
-	path = psprintf("%s/postgresql.conf", pg_data);
+	path = psprintf("%s/%s", pg_data, filename);
 	conf_file = fopen(path, PG_BINARY_W);
 	if (conf_file == NULL)
 	{
@@ -956,7 +965,7 @@ test_config_settings(void)
 #define MIN_BUFS_FOR_CONNS(nconns)	((nconns) * 10)
 
 	static const int trial_conns[] = {
-		100, 50, 40, 30, 20
+		200, 100, 50, 40, 30, 20, 10
 	};
 	static const int trial_bufs[] = {
 		16384, 8192, 4096, 3584, 3072, 2560, 2048, 1536,
@@ -992,7 +1001,12 @@ test_config_settings(void)
 	for (i = 0; i < connslen; i++)
 	{
 		test_conns = trial_conns[i];
+		if (n_connections > 0)
+			test_conns = n_connections;
+
 		test_buffs = MIN_BUFS_FOR_CONNS(test_conns);
+		if (n_buffers > 0)
+			test_buffs = n_buffers;
 
 		snprintf(cmd, sizeof(cmd),
 				 "\"%s\" --boot -x0 %s "
@@ -1007,26 +1021,29 @@ test_config_settings(void)
 		status = system(cmd);
 		if (status == 0)
 		{
+			n_connections = test_conns;
 			ok_buffers = test_buffs;
 			break;
 		}
+		if (n_connections > 0 || i == connslen - 1)
+		{
+			pg_log_error("%s: error %d from: %s",
+						 progname, status, cmd);
+			exit(1);
+		}
 	}
-	if (i >= connslen)
-		i = connslen - 1;
-	n_connections = trial_conns[i];
-
 	printf("%d\n", n_connections);
 
 	printf(_("selecting default shared_buffers ... "));
 	fflush(stdout);
 
-	for (i = 0; i < bufslen; i++)
+	for (i = 0; i < bufslen && n_buffers <= 0; i++)
 	{
 		/* Use same amount of memory, independent of BLCKSZ */
 		test_buffs = (trial_bufs[i] * 8192) / BLCKSZ;
 		if (test_buffs <= ok_buffers)
 		{
-			test_buffs = ok_buffers;
+			n_buffers = ok_buffers;
 			break;
 		}
 
@@ -1042,9 +1059,17 @@ test_config_settings(void)
 				 DEVNULL, DEVNULL);
 		status = system(cmd);
 		if (status == 0)
+		{
+			n_buffers = test_buffs;
 			break;
+		}
 	}
-	n_buffers = test_buffs;
+	if (i == bufslen)
+	{
+		pg_log_error("%s: error %d from: %s",
+					 progname, status, cmd);
+		exit(1);
+	}
 
 	if ((n_buffers * (BLCKSZ / 1024)) % 1024 == 0)
 		printf("%dMB\n", (n_buffers * (BLCKSZ / 1024)) / 1024);
@@ -1093,7 +1118,7 @@ setup_config(void)
 	conflines = readfile(conf_file);
 
 	snprintf(repltok, sizeof(repltok), "max_connections = %d", n_connections);
-	conflines = replace_token(conflines, "#max_connections = 100", repltok);
+	conflines = replace_token(conflines, "#max_connections = 200", repltok);
 
 	if ((n_buffers * (BLCKSZ / 1024)) % 1024 == 0)
 		snprintf(repltok, sizeof(repltok), "shared_buffers = %dMB",
@@ -1101,7 +1126,7 @@ setup_config(void)
 	else
 		snprintf(repltok, sizeof(repltok), "shared_buffers = %dkB",
 				 n_buffers * (BLCKSZ / 1024));
-	conflines = replace_token(conflines, "#shared_buffers = 32MB", repltok);
+	conflines = replace_token(conflines, "#shared_buffers = 128MB", repltok);
 
 #ifdef HAVE_UNIX_SOCKETS
 	snprintf(repltok, sizeof(repltok), "#unix_socket_directories = '%s'",
@@ -1186,11 +1211,18 @@ setup_config(void)
 							  repltok);
 #endif
 
+#if 0
+/*
+ * GPDB_12_MERGE_FIXME: the bgwriter section is missing from the sample
+ * configuration used for this, should we keep that off the default config
+ * or was it all an omission?
+ */
 #if DEFAULT_BGWRITER_FLUSH_AFTER > 0
 	snprintf(repltok, sizeof(repltok), "#bgwriter_flush_after = %dkB",
 			 DEFAULT_BGWRITER_FLUSH_AFTER * (BLCKSZ / 1024));
 	conflines = replace_token(conflines, "#bgwriter_flush_after = 0",
 							  repltok);
+#endif
 #endif
 
 #if DEFAULT_CHECKPOINT_FLUSH_AFTER > 0
@@ -1311,9 +1343,11 @@ setup_config(void)
 			conflines = replace_token(conflines,
 									  "host    all             all             ::1",
 									  "#host    all             all             ::1");
-			conflines = replace_token(conflines,
-									  "host    replication     all             ::1",
-									  "#host    replication     all             ::1");
+            if (err != 0 ||
+                    getaddrinfo("fe80::1", NULL, &hints, &gai_result) != 0)
+                conflines = replace_token(conflines,
+                                          "host    all             all             fe80::1",
+                                          "#host    all             all             fe80::1");
 		}
 	}
 #else							/* !HAVE_IPV6 */
@@ -1629,7 +1663,7 @@ setup_depend(FILE *cmdfd)
 		 */
 		"INSERT INTO pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' "
 		" FROM pg_namespace "
-		"    WHERE nspname LIKE 'pg%';\n\n",
+		"    WHERE nspname ~ '^(pg_|gp_)';\n\n",
 
 		"INSERT INTO pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' "
 		" FROM pg_ts_parser;\n\n",
@@ -1643,6 +1677,19 @@ setup_depend(FILE *cmdfd)
 		" FROM pg_collation;\n\n",
 		"INSERT INTO pg_shdepend SELECT 0,0,0,0, tableoid,oid, 'p' "
 		" FROM pg_authid;\n\n",
+
+		/* GPDB additions */
+		"INSERT INTO pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' "
+		" FROM pg_foreign_data_wrapper;\n\n",
+		"INSERT INTO pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' "
+		" FROM pg_foreign_server;\n\n",
+		"INSERT INTO pg_shdepend SELECT 0,0,0,0, tableoid,oid, 'p' "
+		" FROM pg_resgroup;\n\n",
+		"INSERT INTO pg_shdepend SELECT 0,0,0,0, tableoid,oid, 'p' "
+		" FROM pg_resourcetype;\n\n",
+		"INSERT INTO pg_shdepend SELECT 0,0,0,0, tableoid,oid, 'p' "
+		" FROM pg_resqueue;\n\n",
+
 		NULL
 	};
 
@@ -1727,8 +1774,14 @@ setup_description(FILE *cmdfd)
 	PG_CMD_PUTS("DROP TABLE tmp_pg_shdescription;\n\n");
 }
 
+#if 0
 /*
  * populate pg_collation
+ *
+ * GPDB: Do not create collations at database initialization time. Instead,
+ * the system administrator is expected to run pg_import_system_collations() on
+ * every database that needs them. This ensures that collations are synchronized
+ * on all segments.
  */
 static void
 setup_collation(FILE *cmdfd)
@@ -1745,6 +1798,7 @@ setup_collation(FILE *cmdfd)
 	/* Now import all collations we can find in the operating system */
 	PG_CMD_PUTS("SELECT pg_import_system_collations('pg_catalog');\n\n");
 }
+#endif
 
 /*
  * load extra dictionaries (Snowball stemmers)
@@ -1994,6 +2048,110 @@ setup_schema(FILE *cmdfd)
 				   escape_quotes(features_file));
 }
 
+static int
+cmpstringp(const void *p1, const void *p2)
+{
+	return strcmp(* (char * const *) p1, * (char * const *) p2);
+}
+
+/*
+ * Load GPDB additions to the schema.
+ *
+ * These are contained in directory "cdb_init.d". We load all .sql files
+ * from that directory, in alphabetical order. This modular design allows
+ * extensions to put their install scripts under cdb_init.d, and have them
+ * automatically installed directly in the template databases of every new
+ * cluster.
+ */
+static void
+setup_cdb_schema(FILE *cmdfd)
+{
+	DIR		   *dir;
+	struct dirent *file;
+	int			nscripts;
+	char	  **scriptnames = NULL;
+	int			i;
+
+	dir = opendir(cdb_init_d_dir);
+
+	if (!dir)
+	{
+		pg_log_error("could not open cdb_init.d directory: %m");
+		exit(1);
+	}
+
+	/* Collect all files with .sql suffix in array. */
+	nscripts = 0;
+	while ((file = readdir(dir)) != NULL)
+	{
+		int			namelen = strlen(file->d_name);
+
+		if (namelen > 4 &&
+			strcmp(".sql", file->d_name + namelen - 4) == 0)
+		{
+			scriptnames = pg_realloc(scriptnames,
+									 sizeof(char *) * (nscripts + 1));
+			scriptnames[nscripts++] = pg_strdup(file->d_name);
+		}
+	}
+
+#ifdef WIN32
+	/*
+	 * This fix is in mingw cvs (runtime/mingwex/dirent.c rev 1.4), but not in
+	 * released version
+	 */
+	if (GetLastError() == ERROR_NO_MORE_FILES)
+		errno = 0;
+#endif
+
+	closedir(dir);
+
+	if (errno != 0)
+	{
+		/* some kind of I/O error? */
+		pg_log_error("error while reading cdb_init.d directory: %m");
+		exit(1);
+	}
+
+	/*
+	 * Sort the array. This allows simple dependencies between scripts, by
+	 * naming them like "01_before.sql" and "02_after.sql"
+	 */
+	if (nscripts > 0)
+	{
+		qsort(scriptnames, nscripts, sizeof(char *), cmpstringp);
+	}
+
+	/*
+	 * Now execute each script.
+	 */
+	for (i = 0; i < nscripts; i++)
+	{
+		char	  **line;
+		char	  **lines;
+		char	   *path;
+		size_t	    len;
+
+		len = strlen(share_path) + strlen("cdb_init.d") + strlen(scriptnames[i]) + 3;
+		path = pg_malloc(len);
+		snprintf(path, len, "%s/cdb_init.d/%s", share_path, scriptnames[i]);
+
+		lines = readfile(path);
+
+		/* Reset any GUCs that the previous script might have created. Notably, search_path */
+		PG_CMD_PUTS("RESET ALL;\n");
+
+		for (line = lines; *line != NULL; line++)
+		{
+			PG_CMD_PUTS(*line);
+			free(*line);
+		}
+
+		free(lines);
+		free(path);
+	}
+}
+
 /*
  * load PL/pgSQL server-side language
  */
@@ -2061,6 +2219,16 @@ make_postgres(FILE *cmdfd)
 	static const char *const postgres_setup[] = {
 		"CREATE DATABASE postgres;\n\n",
 		"COMMENT ON DATABASE postgres IS 'default administrative connection database';\n\n",
+		/*
+		 * Make 'postgres' a template database
+		 */
+		"UPDATE pg_database SET "
+		"	datistemplate = 't' "
+		"    WHERE datname = 'postgres';\n\n",
+		/*
+		 * Clean out dead rows in pg_database
+		 */
+		"VACUUM FULL pg_database;\n\n",
 		NULL
 	};
 
@@ -2347,6 +2515,72 @@ setlocales(void)
 }
 
 /*
+ * Try to parse value as an integer.  The accepted formats are the
+ * usual decimal, octal, or hexadecimal formats.
+ */
+static long
+parse_long(const char *value, bool blckszUnit, const char *optname)
+{
+    long    val;
+    char   *endptr;
+    double  m;
+
+    errno = 0;
+    val = strtol(value, &endptr, 0);
+
+    if (errno ||
+        endptr == value)
+        goto err;
+
+    if (blckszUnit && endptr[0])
+    {
+        switch (endptr[0])
+        {
+            case 'k':
+            case 'K':
+                m = 1024;
+                break;
+
+            case 'm':
+            case 'M':
+                m = 1024*1024;
+                break;
+
+            case 'g':
+            case 'G':
+                m = 1024*1024*1024;
+                break;
+
+            default:
+                goto err;
+        }
+
+        if (endptr[1] != 'b' &&
+            endptr[1] != 'B')
+            goto err;
+
+        endptr += 2;
+        val = (long)(m * val / BLCKSZ);
+	}
+
+    /* error if extra trailing chars */
+    if (endptr[0])
+        goto err;
+
+    return val;
+
+err:
+	if (blckszUnit)
+		pg_log_error("%s: '%s=%s' invalid; requires an integer value, "
+					 "optionally followed by kB/MB/GB suffix",
+					 progname, optname, value);
+	else
+		pg_log_error("%s: '%s=%s' invalid; requires an integer value",
+					 progname, optname, value);
+	exit(1);
+}                               /* parse_long */
+
+/*
  * print help text
  */
 static void
@@ -2375,6 +2609,10 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
+	printf(_("\nShared memory allocation:\n"));
+	printf(_("  --max_connections=MAX-CONNECT  maximum number of allowed connections\n"));
+	printf(_("  --shared_buffers=NBUFFERS number of shared buffers; or, amount of memory for\n"
+			 "                            shared buffers if kB/MB/GB suffix is appended\n"));
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
 	printf(_("  -k, --data-checksums      use data page checksums\n"));
@@ -2385,10 +2623,11 @@ usage(const char *progname)
 	printf(_("  -S, --sync-only           only sync data directory\n"));
 	printf(_("\nOther options:\n"));
 	printf(_("  -V, --version             output version information, then exit\n"));
+	printf(_("      --gp-version          output Greenplum version information, then exit\n"));
 	printf(_("  -?, --help                show this help, then exit\n"));
 	printf(_("\nIf the data directory is not specified, the environment variable PGDATA\n"
 			 "is used.\n"));
-	printf(_("\nReport bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("\nReport bugs to <bugs@greenplum.org>.\n"));
 }
 
 static void
@@ -2624,6 +2863,8 @@ setup_data_file_paths(void)
 	set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
 	set_input(&system_views_file, "system_views.sql");
+
+	set_input(&cdb_init_d_dir, "cdb_init.d");
 
 	if (show_setting || debug)
 	{
@@ -2958,7 +3199,8 @@ initialize_data_directory(void)
 	write_version_file(NULL);
 
 	/* Select suitable configuration settings */
-	set_null_conf();
+	set_null_conf("postgresql.conf");
+	set_null_conf(GP_INTERNAL_AUTO_CONF_FILE_NAME);
 	test_config_settings();
 
 	/* Now create all the text config files */
@@ -2999,7 +3241,9 @@ initialize_data_directory(void)
 
 	setup_description(cmdfd);
 
+#if 0
 	setup_collation(cmdfd);
+#endif
 
 	setup_dictionary(cmdfd);
 
@@ -3008,6 +3252,9 @@ initialize_data_directory(void)
 	setup_schema(cmdfd);
 
 	load_plpgsql(cmdfd);
+
+	/* sets up the Greenplum Database admin schema */
+	setup_cdb_schema(cmdfd);
 
 	vacuum_db(cmdfd);
 
@@ -3054,6 +3301,8 @@ main(int argc, char *argv[])
 		{"waldir", required_argument, NULL, 'X'},
 		{"wal-segsize", required_argument, NULL, 12},
 		{"data-checksums", no_argument, NULL, 'k'},
+        {"max_connections", required_argument, NULL, 1001},     /*CDB*/
+        {"shared_buffers", required_argument, NULL, 1003},      /*CDB*/
 		{"allow-group-access", no_argument, NULL, 'g'},
 		{NULL, 0, NULL, 0}
 	};
@@ -3063,7 +3312,6 @@ main(int argc, char *argv[])
 	 * their short version value
 	 */
 	int			c;
-	int			option_index;
 	char	   *effective_user;
 	PQExpBuffer start_db_cmd;
 	char		pg_ctl_path[MAXPGPATH];
@@ -3089,14 +3337,19 @@ main(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("initdb (PostgreSQL) " PG_VERSION);
+			puts("initdb (Greenplum Database) " PG_VERSION);
+			exit(0);
+		}
+		if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			puts("initdb (Greenplum Database) " GP_VERSION);
 			exit(0);
 		}
 	}
 
 	/* process command-line options */
 
-	while ((c = getopt_long(argc, argv, "dD:E:kL:nNU:WA:sST:X:g", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "dD:E:kL:nNU:WA:sST:X:g", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -3186,6 +3439,12 @@ main(int argc, char *argv[])
 				break;
 			case 'X':
 				xlog_dir = pg_strdup(optarg);
+				break;
+			case 1001:
+				n_connections = parse_long(optarg, false, "max_connection");
+				break;
+			case 1003:
+				n_buffers = parse_long(optarg, true, "shared_buffers");
 				break;
 			case 12:
 				str_wal_segment_size_mb = pg_strdup(optarg);

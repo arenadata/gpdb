@@ -91,6 +91,10 @@ ExecRecursiveUnion(PlanState *pstate)
 			slot = ExecProcNode(outerPlan);
 			if (TupIsNull(slot))
 				break;
+			/*
+			 * RECURSIVE_CTE_FIXME: It suppose plan->numCols should be 0 if we don't
+			 * support recursive union. QP should fix this later.
+			 */
 			if (plan->numCols > 0)
 			{
 				/* Find or build hashtable entry for this tuple's group */
@@ -124,6 +128,11 @@ ExecRecursiveUnion(PlanState *pstate)
 
 			/* intermediate table becomes working table */
 			node->working_table = node->intermediate_table;
+			for (int k = 1; k < node->refcount; k++)
+			{
+				/* The work table hasn't been scanned yet, it must be at start, don't need to rescan here */
+				tuplestore_alloc_read_pointer(node->working_table, EXEC_FLAG_REWIND);
+			}
 
 			/* create new empty intermediate table */
 			node->intermediate_table = tuplestore_begin_heap(false, false,
@@ -138,6 +147,10 @@ ExecRecursiveUnion(PlanState *pstate)
 			continue;
 		}
 
+		/*
+		 * RECURSIVE_CTE_FIXME: It suppose plan->numCols should be 0 if we don't
+		 * support recursive union. QP should fix this later.
+		 */
 		if (plan->numCols > 0)
 		{
 			/* Find or build hashtable entry for this tuple's group */
@@ -191,12 +204,16 @@ ExecInitRecursiveUnion(RecursiveUnion *node, EState *estate, int eflags)
 	rustate->intermediate_empty = true;
 	rustate->working_table = tuplestore_begin_heap(false, false, work_mem);
 	rustate->intermediate_table = tuplestore_begin_heap(false, false, work_mem);
+	rustate->refcount = 0;
 
 	/*
 	 * If hashing, we need a per-tuple memory context for comparisons, and a
 	 * longer-lived context to store the hash table.  The table can't just be
 	 * kept in the per-query context because we want to be able to throw it
 	 * away when rescanning.
+	 *
+	 * RECURSIVE_CTE_FIXME: It suppose plan->numCols should be 0 if we don't
+	 * support recursive union. QP should fix this later.
 	 */
 	if (node->numCols > 0)
 	{
@@ -244,11 +261,14 @@ ExecInitRecursiveUnion(RecursiveUnion *node, EState *estate, int eflags)
 	 * initialize child nodes
 	 */
 	outerPlanState(rustate) = ExecInitNode(outerPlan(node), estate, eflags);
-	innerPlanState(rustate) = ExecInitNode(innerPlan(node), estate, eflags);
+	innerPlanState(rustate) = ExecInitNode(innerPlan(node), estate, eflags | EXEC_FLAG_REWIND);
 
 	/*
 	 * If hashing, precompute fmgr lookup data for inner loop, and create the
 	 * hash table.
+	 *
+	 * RECURSIVE_CTE_FIXME: It suppose plan->numCols should be 0 if we don't
+	 * support recursive union. QP should fix this later.
 	 */
 	if (node->numCols > 0)
 	{
@@ -272,8 +292,10 @@ void
 ExecEndRecursiveUnion(RecursiveUnionState *node)
 {
 	/* Release tuplestores */
-	tuplestore_end(node->working_table);
-	tuplestore_end(node->intermediate_table);
+	if (node->working_table != NULL)
+		tuplestore_end(node->working_table);
+	if (node->intermediate_table != NULL)
+		tuplestore_end(node->intermediate_table);
 
 	/* free subsidiary stuff including hashtable */
 	if (node->tempContext)
@@ -319,7 +341,11 @@ ExecReScanRecursiveUnion(RecursiveUnionState *node)
 	if (node->tableContext)
 		MemoryContextResetAndDeleteChildren(node->tableContext);
 
-	/* Empty hashtable if needed */
+	/* And rebuild empty hashtable if needed */
+	/*
+	 * RECURSIVE_CTE_FIXME: It suppose plan->numCols should be 0 if we don't
+	 * support recursive union. QP should fix this later.
+	 */
 	if (plan->numCols > 0)
 		ResetTupleHashTable(node->hashtable);
 
@@ -328,4 +354,14 @@ ExecReScanRecursiveUnion(RecursiveUnionState *node)
 	node->intermediate_empty = true;
 	tuplestore_clear(node->working_table);
 	tuplestore_clear(node->intermediate_table);
+}
+
+void
+ExecSquelchRecursiveUnion(RecursiveUnionState *node)
+{
+	tuplestore_clear(node->working_table);
+	tuplestore_clear(node->intermediate_table);
+
+	ExecSquelchNode(outerPlanState(node));
+	ExecSquelchNode(innerPlanState(node));
 }

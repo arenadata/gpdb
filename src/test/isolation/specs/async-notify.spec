@@ -32,7 +32,10 @@ step "notifys1"	{
 	COMMIT;
 }
 step "usage"	{ SELECT pg_notification_queue_usage() > 0 AS nonzero; }
-step "bignotify"	{ SELECT count(pg_notify('c1', s::text)) FROM generate_series(1, 1000) s; }
+# GPDB: use more rows than in upstream, because Greenplum is compiled with a
+# larger SLRU block size, and we need to fill at least one page to make
+# pg_notification_queue_usage() non-zero.
+step "bignotify"	{ SELECT count(pg_notify('c1', s::text)) FROM generate_series(1, 10000) s; }
 teardown		{ UNLISTEN *; }
 
 # The listener session is used for cross-backend notify checks.

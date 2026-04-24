@@ -12,11 +12,19 @@ subdir = src/backend/utils/misc
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
+SUBDIRS     := fstream
+
+
 override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 
 OBJS = guc.o help_config.o pg_config.o pg_controldata.o pg_rusage.o \
        ps_status.o queryenvironment.o rls.o sampling.o superuser.o \
        timeout.o tzparser.o
+
+OBJS += gpexpand.o string_utils.o \
+       faultinjector.o faultinjector_warnings.o uriparser.o \
+       bitstream.o bitmap_compression.o guc_gp.o backend_cancel.o
+
 
 # This location might depend on the installation directories. Therefore
 # we can't substitute it into pg_config.h.

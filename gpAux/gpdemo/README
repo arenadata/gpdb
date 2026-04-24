@@ -1,0 +1,116 @@
+******************************************************************
+ABOUT GP DEMO
+******************************************************************
+
+The GP demo program will setup a virtual Greenplum Database system
+on a single host. It creates and starts a GP coordinator instance and
+three segment instances (three primary and three mirror segments)
+within the same directory. Running GP demo is a good way to test
+your initial installation before deploying the Greenplum Database
+software on a multi-host array. It is also a good way to become
+familiar with the system without investing the time involved in a
+multi-host setup.
+
+******************************************************************
+BEFORE YOU BEGIN
+******************************************************************
+
+Before running GP demo, you must at least have 700 MB of free disk
+space, and have the TCP ports defined in gpAux/gpdemo/Makefile free.
+
+* Verify that your $USER environment variable is set. 
+
+* Greenplum Database recommends using the bash shell to run the
+  GP demo programs.
+
+******************************************************************
+RUNNING GP DEMO
+******************************************************************
+
+1. Login as the Greenplum designated user (i.e. 'gpadmin').
+
+	su - gpadmin
+
+2. Go into the gpdemo directory:
+
+	cd gpAux/gpdemo
+
+3. Source greenplum_path.sh
+
+	. /usr/local/gpdb/greenplum_path.sh
+
+   Note: There is a space between the dot and the slash.
+
+   The "." will source the greenplum_path.sh into the current
+   shell, instead of starting a subprocess.
+
+4. Create the cluster:
+
+	make cluster
+
+5. Source gpAux/gpdemo/gpdemo-env.sh
+
+6. If setup completes correctly, you will have a virtual Greenplum
+   Database system running on the local host. You can connect to it
+   using the psql client program as follows:
+
+	psql postgres
+
+7. To exit the psql client program:
+
+	\q
+
+8. See the Greenplum Database User Guide for more information on
+   using your Greenplum Database system.
+
+
+******************************************************************
+REMOVING GP DEMO
+******************************************************************
+
+1. From the gpdemo directory run make clean:
+
+	make clean
+
+2. This will stop all Greenplum Database demo server processes
+   and remove all files and directories created by the GP demo
+   program.
+
+
+******************************************************************
+MODIFYING GP DEMO SETTINGS
+******************************************************************
+
+Certain parameters of the demo cluster are adjustable by setting
+environment variables before initializing the cluster:
+
+* Coordinator and segments TCP port:
+
+	export PORT_BASE=<new TCP port number>
+
+  The cluster will use the PORT_BASE as coordinator port and following
+  ports as segment ports.
+
+* Number of segments:
+
+	export NUM_PRIMARY_MIRROR_PAIRS=<number segments>
+
+  It is recommended to specify an odd number of segments, in order
+  to catch problems with data distribution.
+
+* Data directory:
+
+	export DATADIRS=<path to directory>
+
+  The data directories for the coordinator and the segments will be
+  created under the specified directory path.
+
+* Turn fsync off:
+
+	export BLDWRAP_POSTGRES_CONF_ADDONS="fsync=off"
+
+  A temporary cluster might not need all the ACID data protection,
+  therefore fsync can be turned off to speed up the disk I/O.
+
+  Note: NEVER turn off fsync if you intend to run the cluster
+        in production!

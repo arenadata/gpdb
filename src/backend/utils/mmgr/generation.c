@@ -150,7 +150,7 @@ static void *GenerationAlloc(MemoryContext context, Size size);
 static void GenerationFree(MemoryContext context, void *pointer);
 static void *GenerationRealloc(MemoryContext context, void *pointer, Size size);
 static void GenerationReset(MemoryContext context);
-static void GenerationDelete(MemoryContext context);
+static void GenerationDelete(MemoryContext context, MemoryContext parent);
 static Size GenerationGetChunkSpace(MemoryContext context, void *pointer);
 static bool GenerationIsEmpty(MemoryContext context);
 static void GenerationStats(MemoryContext context,
@@ -297,6 +297,8 @@ GenerationReset(MemoryContext context)
 
 		dlist_delete(miter.cur);
 
+		context->mem_allocated -= block->blksize;
+
 #ifdef CLOBBER_FREED_MEMORY
 		wipe_mem(block, block->blksize);
 #endif
@@ -314,7 +316,7 @@ GenerationReset(MemoryContext context)
  *		Free all memory which is allocated in the given context.
  */
 static void
-GenerationDelete(MemoryContext context)
+GenerationDelete(MemoryContext context, MemoryContext parent)
 {
 	/* Reset to release all the GenerationBlocks */
 	GenerationReset(context);
@@ -351,6 +353,8 @@ GenerationAlloc(MemoryContext context, Size size)
 		block = (GenerationBlock *) malloc(blksize);
 		if (block == NULL)
 			return NULL;
+
+		context->mem_allocated += blksize;
 
 		/* block with a single (used) chunk */
 		block->blksize = blksize;
@@ -406,6 +410,8 @@ GenerationAlloc(MemoryContext context, Size size)
 
 		if (block == NULL)
 			return NULL;
+
+		context->mem_allocated += blksize;
 
 		block->blksize = blksize;
 		block->nchunks = 0;
@@ -522,6 +528,7 @@ GenerationFree(MemoryContext context, void *pointer)
 	if (set->block == block)
 		set->block = NULL;
 
+	context->mem_allocated -= block->blksize;
 	free(block);
 }
 
@@ -746,6 +753,7 @@ GenerationCheck(MemoryContext context)
 	GenerationContext *gen = (GenerationContext *) context;
 	const char *name = context->name;
 	dlist_iter	iter;
+	int64		total_allocated = 0;
 
 	/* walk all blocks in this context */
 	dlist_foreach(iter, &gen->blocks)
@@ -754,6 +762,8 @@ GenerationCheck(MemoryContext context)
 		int			nfree,
 					nchunks;
 		char	   *ptr;
+
+		total_allocated += block->blksize;
 
 		/*
 		 * nfree > nchunks is surely wrong, and we don't expect to see
@@ -833,6 +843,8 @@ GenerationCheck(MemoryContext context)
 			elog(WARNING, "problem in Generation %s: number of free chunks %d in block %p does not match header %d",
 				 name, nfree, block, block->nfree);
 	}
+
+	Assert(total_allocated == context->mem_allocated);
 }
 
 #endif							/* MEMORY_CONTEXT_CHECKING */

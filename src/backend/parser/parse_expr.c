@@ -106,6 +106,7 @@ static Node *transformSubLink(ParseState *pstate, SubLink *sublink);
 static Node *transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 								Oid array_type, Oid element_type, int32 typmod);
 static Node *transformRowExpr(ParseState *pstate, RowExpr *r, bool allowDefault);
+static Node *transformTableValueExpr(ParseState *pstate, TableValueExpr *t);
 static Node *transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c);
 static Node *transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m);
 static Node *transformSQLValueFunction(ParseState *pstate,
@@ -133,6 +134,7 @@ static void emit_precedence_warnings(ParseState *pstate,
 									 int opgroup, const char *opname,
 									 Node *lchild, Node *rchild,
 									 int location);
+static bool isWhenIsNotDistinctFromExpr(Node *warg);
 
 
 /*
@@ -273,6 +275,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			result = transformGroupingFunc(pstate, (GroupingFunc *) expr);
 			break;
 
+		case T_GroupId:
+			result = transformGroupId(pstate, (GroupId *) expr);
+			break;
+
 		case T_NamedArgExpr:
 			{
 				NamedArgExpr *na = (NamedArgExpr *) expr;
@@ -292,6 +298,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_RowExpr:
 			result = transformRowExpr(pstate, (RowExpr *) expr, false);
+			break;
+
+		case T_TableValueExpr:
+			result = transformTableValueExpr(pstate, (TableValueExpr *) expr);
 			break;
 
 		case T_CoalesceExpr:
@@ -362,6 +372,17 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			 * references, which seems expensively pointless.  So allow it.
 			 */
 		case T_CaseTestExpr:
+		/*
+		 * AlterPartitionCmd still transform a already-transformed expression
+		 * and re-transform expressions in many places, better to keep T_Const here. 
+		 */
+		case T_Const:
+		/*
+		 * DefineDomain() dispatch a already-transformed statement to the QEs and
+		 * QEs will re-transform the T_CoerceToDomain/T_CoerceToDomainValue again.
+		 */
+		case T_CoerceToDomain:
+		case T_CoerceToDomainValue:
 		case T_Var:
 			{
 				result = (Node *) expr;
@@ -571,6 +592,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 		case EXPR_KIND_CALL_ARGUMENT:
 		case EXPR_KIND_COPY_WHERE:
 		case EXPR_KIND_GENERATED_COLUMN:
+		case EXPR_KIND_SCATTER_BY:
 			/* okay */
 			break;
 
@@ -1558,6 +1580,30 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 							 fn->location);
 }
 
+/*
+ * Check if this is CASE x WHEN IS NOT DISTINCT FROM y:
+ *
+ * From the raw grammar output, we produce a boolean NOT expression
+ * which has one A_Expr list element of AEXPR_DISTINCT kind which has
+ * its lexpr = NULL
+ */
+static bool
+isWhenIsNotDistinctFromExpr(Node *warg)
+{
+	if (IsA(warg, BoolExpr))
+	{
+		BoolExpr *bexpr = (BoolExpr *) warg;
+		Node *arg = linitial(bexpr->args);
+		if (bexpr->boolop == NOT_EXPR && IsA(arg, A_Expr))
+		{
+			A_Expr *expr = (A_Expr *) arg;
+			if (expr->kind == AEXPR_DISTINCT && expr->lexpr == NULL)
+				return true;
+		}
+	}
+	return false;
+}
+
 static Node *
 transformMultiAssignRef(ParseState *pstate, MultiAssignRef *maref)
 {
@@ -1764,11 +1810,35 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 		warg = (Node *) w->expr;
 		if (placeholder)
 		{
-			/* shorthand form was specified, so expand... */
-			warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
-											 (Node *) placeholder,
-											 warg,
-											 w->location);
+			/* 
+			 * CASE placeholder WHEN IS NOT DISTINCT FROM warg:
+			 * 	set the first list element: expr->lexpr = placeholder
+			 */
+			if (isWhenIsNotDistinctFromExpr(warg))
+			{
+				/*
+				 * Make a copy before we change warg.
+				 * In transformation we don't want to change source (BoolExpr* Node).
+				 * Always create new node and do the transformation
+				 */
+				warg = copyObject(warg);
+				A_Expr *expr = (A_Expr *) linitial(((BoolExpr *) warg)->args);
+				expr->lexpr = (Node *) placeholder;
+			}
+			else
+				warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+													(Node *) placeholder,
+													 warg,
+													 w->location);
+		}
+		else
+		{
+			if (isWhenIsNotDistinctFromExpr(warg))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("syntax error at or near \"NOT\""),
+						 errhint("Missing <operand> for \"CASE <operand> WHEN IS NOT DISTINCT FROM ...\""),
+						 parser_errposition(pstate, exprLocation((Node *) warg))));
 		}
 		neww->expr = (Expr *) transformExprRecurse(pstate, warg);
 
@@ -1916,6 +1986,9 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 		case EXPR_KIND_TRIGGER_WHEN:
 			err = _("cannot use subquery in trigger WHEN condition");
 			break;
+		case EXPR_KIND_SCATTER_BY:
+			/* okay */
+			break;
 		case EXPR_KIND_PARTITION_BOUND:
 			err = _("cannot use subquery in partition bound");
 			break;
@@ -1951,7 +2024,7 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 	/*
 	 * OK, let's transform the sub-SELECT.
 	 */
-	qtree = parse_sub_analyze(sublink->subselect, pstate, NULL, false, true);
+	qtree = parse_sub_analyze(sublink->subselect, pstate, NULL, NULL, true);
 
 	/*
 	 * Check that we got a SELECT.  Anything else should be impossible given
@@ -2266,6 +2339,14 @@ transformRowExpr(ParseState *pstate, RowExpr *r, bool allowDefault)
 	newr->args = transformExpressionList(pstate, r->args,
 										 pstate->p_expr_kind, allowDefault);
 
+	/* Disallow more columns than will fit in a tuple */
+	if (list_length(newr->args) > MaxTupleAttributeNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_COLUMNS),
+				 errmsg("ROW expressions can have at most %d entries",
+						MaxTupleAttributeNumber),
+				 parser_errposition(pstate, r->location)));
+
 	/* Barring later casting, we consider the type RECORD */
 	newr->row_typeid = RECORDOID;
 	newr->row_format = COERCE_IMPLICIT_CAST;
@@ -2281,6 +2362,57 @@ transformRowExpr(ParseState *pstate, RowExpr *r, bool allowDefault)
 	newr->location = r->location;
 
 	return (Node *) newr;
+}
+
+static Node *
+transformTableValueExpr(ParseState *pstate, TableValueExpr *t)
+{
+	Query		*query;
+
+	/* If we already transformed this node, do nothing */
+	if (IsA(t->subquery, Query))
+		return (Node*) t;
+
+	/* 
+	 * Table Value Expressions are subselects that can occur as parameters to
+	 * functions.  One result of this is that this code shares a lot with
+	 * transformRangeSubselect due to the nature of subquery resolution.
+	 */
+	pstate->p_hasTblValueExpr = true;
+
+	/* Analyze and transform the subquery */
+	query = parse_sub_analyze(t->subquery, pstate, NULL, NULL, true);
+
+	query->isTableValueSelect = true;
+
+	/* 
+	 * Check that we got something reasonable.  Most of these conditions
+	 * are probably impossible given restrictions in the grammar.
+	 */
+	if (query == NULL || !IsA(query, Query))
+		elog(ERROR, "unexpected non-SELECT command in TableValueExpr");
+	if (query->commandType != CMD_SELECT)
+		elog(ERROR, "unexpected non-SELECT command in TableValueExpr");
+	if (query->utilityStmt != NULL &&
+		IsA(query->utilityStmt, CreateTableAsStmt))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("subquery in TABLE value expression cannot have SELECT INTO"),
+				 parser_errposition(pstate, t->location)));
+	t->subquery = (Node*) query;
+
+	/*
+	 * Insist that the TABLE value expression does not contain references to the outer
+	 * range table, this would be an unsupported correlated TABLE value expression.
+	 */
+	if (contain_vars_of_level_or_above((Node *) query, 1))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+				 errmsg("subquery in TABLE value expression may not refer "
+						"to relation of another query level"),
+				 parser_errposition(pstate, t->location)));
+
+	return (Node*) t;
 }
 
 static Node *
@@ -2651,12 +2783,22 @@ transformCurrentOfExpr(ParseState *pstate, CurrentOfExpr *cexpr)
 {
 	int			sublevels_up;
 
+	/*
+	 * The target RTE must be simply updatable. If not, we error out
+	 * early here to avoid having to deal with error cases later:
+	 * rewriting/planning against views, for example.
+	 */
+	Assert(pstate->p_target_rangetblentry != NULL);
+	(void) isSimplyUpdatableRelation(pstate->p_target_rangetblentry->relid, false);
+
 	/* CURRENT OF can only appear at top level of UPDATE/DELETE */
 	Assert(pstate->p_target_rangetblentry != NULL);
 	cexpr->cvarno = RTERangeTablePosn(pstate,
 									  pstate->p_target_rangetblentry,
 									  &sublevels_up);
 	Assert(sublevels_up == 0);
+
+	cexpr->target_relid = pstate->p_target_rangetblentry->relid;
 
 	/*
 	 * Check to see if the cursor name matches a parameter of type REFCURSOR.
@@ -3561,6 +3703,8 @@ ParseExprKindName(ParseExprKind exprKind)
 			return "WHERE";
 		case EXPR_KIND_GENERATED_COLUMN:
 			return "GENERATED AS";
+		case EXPR_KIND_SCATTER_BY:
+			return "SCATTER BY";
 
 			/*
 			 * There is intentionally no default: case here, so that the

@@ -404,6 +404,12 @@ for_each_cell_setup(List *lst, ListCell *initcell)
 	return r;
 }
 
+#define foreach_with_count(cell, list, counter) \
+	for ((cell) = list_head(list), (counter)=0; \
+	     (cell) != NULL; \
+	     (cell) = lnext(list, cell), ++(counter))
+
+
 /*
  * forboth -
  *	  a convenience macro for advancing through two linked lists
@@ -568,6 +574,8 @@ extern void list_free_deep(List *list);
 extern List *list_copy(const List *list);
 extern List *list_copy_tail(const List *list, int nskip);
 extern List *list_copy_deep(const List *oldlist);
+
+extern void *list_nth_replace(List *list, int n, void *new_data);
 
 typedef int (*list_sort_comparator) (const ListCell *a, const ListCell *b);
 extern void list_sort(List *list, list_sort_comparator cmp);

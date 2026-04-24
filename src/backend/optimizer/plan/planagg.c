@@ -17,6 +17,8 @@
  * scan all the rows anyway.
  *
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -46,6 +48,11 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+
+#include "cdb/cdbpath.h"
+#include "cdb/cdbsetop.h"
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
 
 
 static bool find_minmax_aggs_walker(Node *node, List **context);
@@ -99,6 +106,12 @@ preprocess_minmax_aggregates(PlannerInfo *root)
 	 */
 	if (parse->groupClause || list_length(parse->groupingSets) > 1 ||
 		parse->hasWindowFuncs)
+		return;
+
+	/*
+	 * Reject if disabled by caller.
+	 */
+	if (!root->config->gp_enable_minmax_optimization)
 		return;
 
 	/*
@@ -478,6 +491,30 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	sorted_path = apply_projection_to_path(subroot, final_rel, sorted_path,
 										   create_pathtarget(subroot,
 															 subroot->processed_tlist));
+
+	/*
+	 * Need to gather the results to a single node, if it's not already
+	 * like that. Otherwise, we won't get the single min/max row, but
+	 * one min/max row from every segment.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && CdbPathLocus_IsPartitioned(sorted_path->locus))
+	{
+		CdbPathLocus singleQE;
+		List	   *pathkeys;
+
+		CdbPathLocus_MakeSingleQE(&singleQE, getgpsegmentCount());
+
+		pathkeys = sorted_path->pathkeys;
+		sorted_path = cdbpath_create_motion_path(root, sorted_path, sorted_path->pathkeys,
+												 false, singleQE);
+		/*
+		 * Sanity check that order was preserved. (Given how cdbpath_create_motion_path() is
+		 * implemented, pointer equality is enough here, but in principle we should be
+		 * using something more sophisticated for the comparison.)
+		 */
+		if (sorted_path->pathkeys != pathkeys)
+			elog(ERROR, "could not create an order-preserving gather motion for min/max path");
+	}
 
 	/*
 	 * Determine cost to get just the first row of the presorted path.

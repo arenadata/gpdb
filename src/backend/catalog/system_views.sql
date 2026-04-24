@@ -1,6 +1,8 @@
 /*
  * PostgreSQL System Views
  *
+ * Portions Copyright (c) 2006-2010, Greenplum inc.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Copyright (c) 1996-2019, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_views.sql
@@ -28,7 +30,12 @@ CREATE VIEW pg_roles AS
         rolvaliduntil,
         rolbypassrls,
         setconfig as rolconfig,
-        pg_authid.oid
+		rolresqueue,
+        pg_authid.oid,
+        rolcreaterextgpfd,
+        rolcreaterexthttp,
+        rolcreatewextgpfd,
+        rolresgroup
     FROM pg_authid LEFT JOIN pg_db_role_setting s
     ON (pg_authid.oid = setrole AND setdatabase = 0);
 
@@ -549,7 +556,7 @@ REVOKE EXECUTE ON FUNCTION pg_config() FROM PUBLIC;
 
 -- Statistics views
 
-CREATE VIEW pg_stat_all_tables AS
+CREATE VIEW pg_stat_all_tables_internal AS
     SELECT
             C.oid AS relid,
             N.nspname AS schemaname,
@@ -579,6 +586,72 @@ CREATE VIEW pg_stat_all_tables AS
          LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
     WHERE C.relkind IN ('r', 't', 'm')
     GROUP BY C.oid, N.nspname, C.relname;
+
+-- Gather data from segments on user tables, and use data on coordinator on system tables.
+
+CREATE VIEW pg_stat_all_tables AS
+SELECT
+    s.relid,
+    s.schemaname,
+    s.relname,
+    m.seq_scan,
+    m.seq_tup_read,
+    m.idx_scan,
+    m.idx_tup_fetch,
+    m.n_tup_ins,
+    m.n_tup_upd,
+    m.n_tup_del,
+    m.n_tup_hot_upd,
+    m.n_live_tup,
+    m.n_dead_tup,
+    m.n_mod_since_analyze,
+    s.last_vacuum,
+    s.last_autovacuum,
+    s.last_analyze,
+    s.last_autoanalyze,
+    s.vacuum_count,
+    s.autovacuum_count,
+    s.analyze_count,
+    s.autoanalyze_count
+FROM
+    (SELECT
+         relid,
+         schemaname,
+         relname,
+         case when d.policytype = 'r' then (sum(seq_scan)/d.numsegments)::bigint else sum(seq_scan) end seq_scan,
+         case when d.policytype = 'r' then (sum(seq_tup_read)/d.numsegments)::bigint else sum(seq_tup_read) end seq_tup_read,
+         case when d.policytype = 'r' then (sum(idx_scan)/d.numsegments)::bigint else sum(idx_scan) end idx_scan,
+         case when d.policytype = 'r' then (sum(idx_tup_fetch)/d.numsegments)::bigint else sum(idx_tup_fetch) end idx_tup_fetch,
+         case when d.policytype = 'r' then (sum(n_tup_ins)/d.numsegments)::bigint else sum(n_tup_ins) end n_tup_ins,
+         case when d.policytype = 'r' then (sum(n_tup_upd)/d.numsegments)::bigint else sum(n_tup_upd) end n_tup_upd,
+         case when d.policytype = 'r' then (sum(n_tup_del)/d.numsegments)::bigint else sum(n_tup_del) end n_tup_del,
+         case when d.policytype = 'r' then (sum(n_tup_hot_upd)/d.numsegments)::bigint else sum(n_tup_hot_upd) end n_tup_hot_upd,
+         case when d.policytype = 'r' then (sum(n_live_tup)/d.numsegments)::bigint else sum(n_live_tup) end n_live_tup,
+         case when d.policytype = 'r' then (sum(n_dead_tup)/d.numsegments)::bigint else sum(n_dead_tup) end n_dead_tup,
+         case when d.policytype = 'r' then (sum(n_mod_since_analyze)/d.numsegments)::bigint else sum(n_mod_since_analyze) end n_mod_since_analyze,
+         max(last_vacuum) as last_vacuum,
+         max(last_autovacuum) as last_autovacuum,
+         max(last_analyze) as last_analyze,
+         max(last_autoanalyze) as last_autoanalyze,
+         max(vacuum_count) as vacuum_count,
+         max(autovacuum_count) as autovacuum_count,
+         max(analyze_count) as analyze_count,
+         max(autoanalyze_count) as autoanalyze_count
+     FROM
+         gp_dist_random('pg_stat_all_tables_internal'), gp_distribution_policy as d
+     WHERE
+             relid >= 16384 and relid = d.localoid
+     GROUP BY relid, schemaname, relname, d.policytype, d.numsegments
+
+     UNION ALL
+
+     SELECT
+         *
+     FROM
+         pg_stat_all_tables_internal
+     WHERE
+             relid < 16384) m, pg_stat_all_tables_internal s
+WHERE m.relid = s.relid;
 
 CREATE VIEW pg_stat_xact_all_tables AS
     SELECT
@@ -655,7 +728,7 @@ CREATE VIEW pg_statio_user_tables AS
     WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND
           schemaname !~ '^pg_toast';
 
-CREATE VIEW pg_stat_all_indexes AS
+CREATE VIEW pg_stat_all_indexes_internal AS
     SELECT
             C.oid AS relid,
             I.oid AS indexrelid,
@@ -670,6 +743,44 @@ CREATE VIEW pg_stat_all_indexes AS
             pg_class I ON I.oid = X.indexrelid
             LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
     WHERE C.relkind IN ('r', 't', 'm');
+
+-- Gather data from segments on user tables, and use data on coordinator on system tables.
+
+CREATE VIEW pg_stat_all_indexes AS
+SELECT
+    s.relid,
+    s.indexrelid,
+    s.schemaname,
+    s.relname,
+    s.indexrelname,
+    m.idx_scan,
+    m.idx_tup_read,
+    m.idx_tup_fetch
+FROM
+    (SELECT
+         relid,
+         indexrelid,
+         schemaname,
+         relname,
+         indexrelname,
+         sum(idx_scan) as idx_scan,
+         sum(idx_tup_read) as idx_tup_read,
+         sum(idx_tup_fetch) as idx_tup_fetch
+     FROM
+         gp_dist_random('pg_stat_all_indexes_internal')
+     WHERE
+             relid >= 16384
+     GROUP BY relid, indexrelid, schemaname, relname, indexrelname
+
+     UNION ALL
+
+     SELECT
+         *
+     FROM
+         pg_stat_all_indexes_internal
+     WHERE
+             relid < 16384) m, pg_stat_all_indexes_internal s
+WHERE m.relid = s.relid;
 
 CREATE VIEW pg_stat_sys_indexes AS
     SELECT * FROM pg_stat_all_indexes
@@ -734,6 +845,7 @@ CREATE VIEW pg_stat_activity AS
             S.datid AS datid,
             D.datname AS datname,
             S.pid,
+            S.sess_id,
             S.usesysid,
             U.rolname AS usename,
             S.application_name,
@@ -750,7 +862,10 @@ CREATE VIEW pg_stat_activity AS
             S.backend_xid,
             s.backend_xmin,
             S.query,
-            S.backend_type
+            S.backend_type,
+
+            S.rsgid,
+            S.rsgname
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
         LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid);
@@ -780,6 +895,63 @@ CREATE VIEW pg_stat_replication AS
     FROM pg_stat_get_activity(NULL) AS S
         JOIN pg_stat_get_wal_senders() AS W ON (S.pid = W.pid)
         LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid);
+
+CREATE FUNCTION gp_stat_get_master_replication() RETURNS SETOF RECORD AS
+$$
+    SELECT pg_catalog.gp_execution_segment() AS gp_segment_id, *
+    FROM pg_catalog.pg_stat_replication
+$$
+LANGUAGE SQL EXECUTE ON MASTER;
+
+CREATE FUNCTION gp_stat_get_segment_replication() RETURNS SETOF RECORD AS
+$$
+    SELECT pg_catalog.gp_execution_segment() AS gp_segment_id, *
+    FROM pg_catalog.pg_stat_replication
+$$
+LANGUAGE SQL EXECUTE ON ALL SEGMENTS;
+
+CREATE FUNCTION gp_stat_get_segment_replication_error() RETURNS SETOF RECORD AS
+$$
+    SELECT pg_catalog.gp_execution_segment() AS gp_segment_id, pg_catalog.gp_replication_error() as sync_error
+$$
+LANGUAGE SQL EXECUTE ON ALL SEGMENTS;
+
+CREATE VIEW gp_stat_replication AS
+    SELECT *, pg_catalog.gp_replication_error() AS sync_error
+    FROM pg_catalog.gp_stat_get_master_replication() AS R
+    (gp_segment_id integer, pid integer, usesysid oid,
+     usename name, application_name text, client_addr inet, client_hostname text,
+     client_port integer, backend_start timestamptz, backend_xmin xid, state text,
+     sent_lsn pg_lsn, write_lsn pg_lsn, flush_lsn pg_lsn, replay_lsn pg_lsn,
+     write_lag interval, flush_lag interval, replay_lag interval,
+     sync_priority int4, sync_state text, reply_time timestamptz)
+    UNION ALL
+    (
+        SELECT G.gp_segment_id
+            , R.pid, R.usesysid, R.usename, R.application_name, R.client_addr
+            , R.client_hostname, R.client_port, R.backend_start, R.backend_xmin, R.state
+            , R.sent_lsn, R.write_lsn, R.flush_lsn, R.replay_lsn
+            , R.write_lag, R.flush_lag, R.replay_lag
+            , R.sync_priority, R.sync_state, R.reply_time
+            , G.sync_error
+        FROM (
+            SELECT E.*
+            FROM pg_catalog.gp_segment_configuration C
+            JOIN pg_catalog.gp_stat_get_segment_replication_error()
+        AS E (gp_segment_id integer, sync_error text)
+            ON c.content = E.gp_segment_id
+            WHERE C.role = 'm'
+        ) G
+        LEFT OUTER JOIN pg_catalog.gp_stat_get_segment_replication() AS R
+        (gp_segment_id integer, pid integer, usesysid oid,
+         usename name, application_name text, client_addr inet,
+         client_hostname text, client_port integer, backend_start timestamptz,
+         backend_xmin xid, state text,
+         sent_lsn pg_lsn, write_lsn pg_lsn, flush_lsn pg_lsn, replay_lsn pg_lsn,
+         write_lag interval, flush_lag interval, replay_lag interval,
+         sync_priority int4, sync_state text, reply_time timestamptz)
+         ON G.gp_segment_id = R.gp_segment_id
+    );
 
 CREATE VIEW pg_stat_wal_receiver AS
     SELECT
@@ -885,6 +1057,219 @@ CREATE VIEW pg_stat_database AS
         UNION ALL
         SELECT oid, datname FROM pg_database
     ) D;
+
+CREATE VIEW pg_stat_resqueues AS
+	SELECT
+		Q.oid AS queueid,
+		Q.rsqname AS queuename,
+		pg_stat_get_queue_num_exec(Q.oid) AS n_queries_exec,
+		pg_stat_get_queue_num_wait(Q.oid) AS n_queries_wait,
+		pg_stat_get_queue_elapsed_exec(Q.oid) AS elapsed_exec,
+		pg_stat_get_queue_elapsed_wait(Q.oid) AS elapsed_wait
+	FROM pg_resqueue AS Q;
+
+-- Resource queue views
+
+CREATE VIEW pg_resqueue_status AS
+	SELECT 
+			q.rsqname, 
+			q.rsqcountlimit, 
+			s.queuecountvalue AS rsqcountvalue,
+			q.rsqcostlimit, 
+			s.queuecostvalue AS rsqcostvalue,
+			s.queuewaiters AS rsqwaiters,
+			s.queueholders AS rsqholders
+	FROM pg_resqueue AS q 
+			INNER JOIN pg_resqueue_status() AS s 
+			(	queueid oid, 
+	 			queuecountvalue float4, 
+				queuecostvalue float4,
+				queuewaiters int4,
+				queueholders int4)
+			ON (s.queueid = q.oid);
+			
+-- External table views
+
+CREATE VIEW pg_max_external_files AS
+    SELECT   address::name as hostname, count(*) as maxfiles
+    FROM     gp_segment_configuration
+    WHERE    content >= 0 
+    AND      role='p'
+    GROUP BY address;
+
+-- metadata tracking
+CREATE VIEW pg_stat_operations
+AS
+SELECT 
+'pg_authid' AS classname, 
+a.rolname AS objname, 
+c.objid, NULL AS schemaname,
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename)
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime 
+FROM 
+pg_authid a, 
+(pg_authid b FULL JOIN
+pg_stat_last_shoperation c ON ((b.oid = c.stasysid))) WHERE ((a.oid
+= c.objid) AND (c.classid = (SELECT pg_class.oid FROM pg_class WHERE
+(pg_class.relname = 'pg_authid'::name))))
+UNION 
+SELECT 
+'pg_class' AS classname, 
+a.relname AS objname, 
+c.objid,  N.nspname AS schemaname,
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename) 
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime 
+FROM pg_class
+a, pg_namespace n, (pg_authid b FULL JOIN 
+pg_stat_last_operation c ON ((b.oid =
+c.stasysid))) WHERE 
+a.relnamespace = n.oid AND
+((a.oid = c.objid) AND (c.classid = (SELECT
+pg_class.oid FROM pg_class WHERE ((pg_class.relname =
+'pg_class'::name) AND (pg_class.relnamespace = (SELECT
+pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
+'pg_catalog'::name)))))))
+UNION
+SELECT
+'pg_namespace' AS classname, a.nspname AS objname, 
+c.objid,  NULL AS schemaname,
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename)
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime
+FROM pg_namespace a, (pg_authid b FULL JOIN pg_stat_last_operation c ON
+((b.oid = c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid =
+(SELECT pg_class.oid FROM pg_class WHERE ((pg_class.relname =
+'pg_namespace'::name) AND (pg_class.relnamespace = (SELECT
+pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
+'pg_catalog'::name)))))))
+UNION
+SELECT
+'pg_database' AS classname, a.datname AS objname, 
+c.objid,  NULL AS schemaname,
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename)
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime
+FROM pg_database a, (pg_authid b FULL JOIN pg_stat_last_shoperation c ON
+((b.oid = c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid =
+(SELECT pg_class.oid FROM pg_class WHERE ((pg_class.relname =
+'pg_database'::name) AND (pg_class.relnamespace = (SELECT
+pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
+'pg_catalog'::name)))))))
+UNION 
+SELECT
+'pg_tablespace' AS classname, a.spcname AS objname, 
+c.objid,  NULL AS schemaname,
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename)
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime
+FROM pg_tablespace a, (pg_authid b FULL JOIN pg_stat_last_shoperation c ON
+((b.oid = c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid =
+(SELECT pg_class.oid FROM pg_class WHERE ((pg_class.relname =
+'pg_tablespace'::name) AND (pg_class.relnamespace = (SELECT
+pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
+'pg_catalog'::name)))))))
+UNION
+SELECT 'pg_resqueue' AS classname,
+a.rsqname as objname,
+c.objid, NULL AS schemaname,
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename)
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime 
+FROM pg_resqueue a, (pg_authid
+b FULL JOIN pg_stat_last_shoperation c ON ((b.oid = c.stasysid)))
+WHERE ((a.oid = c.objid) AND (c.classid = (SELECT pg_class.oid FROM
+pg_class WHERE ((pg_class.relname = 'pg_resqueue'::name) AND
+(pg_class.relnamespace = (SELECT pg_namespace.oid FROM pg_namespace
+WHERE (pg_namespace.nspname = 'pg_catalog'::name))))))) ORDER BY 9;
+
+-- MPP-7807: show all resqueue attributes
+CREATE VIEW pg_resqueue_attributes AS
+SELECT rsqname, 'active_statements' AS resname,
+rsqcountlimit::text AS ressetting,
+1 AS restypid FROM pg_resqueue
+UNION
+SELECT rsqname, 'max_cost' AS resname,
+rsqcostlimit::text AS ressetting,
+2 AS restypid FROM pg_resqueue
+UNION
+SELECT rsqname, 'cost_overcommit' AS resname,
+case when rsqovercommit then '1'
+else '0' end AS ressetting,
+4 AS restypid FROM pg_resqueue
+UNION
+SELECT rsqname, 'min_cost' AS resname,
+rsqignorecostlimit::text AS ressetting,
+3 AS restypid FROM pg_resqueue
+UNION
+SELECT rq.rsqname , rt.resname, rc.ressetting,
+rt.restypid AS restypid FROM
+pg_resqueue rq, pg_resourcetype rt,
+pg_resqueuecapability rc WHERE
+rq.oid=rc.resqueueid AND rc.restypid = rt.restypid
+ORDER BY rsqname, restypid
+;
 
 CREATE VIEW pg_stat_database_conflicts AS
     SELECT
@@ -1232,6 +1617,7 @@ LANGUAGE INTERNAL
 STRICT IMMUTABLE PARALLEL SAFE
 AS 'jsonb_set';
 
+
 CREATE OR REPLACE FUNCTION
   parse_ident(str text, strict boolean DEFAULT true)
 RETURNS text[]
@@ -1338,6 +1724,13 @@ REVOKE EXECUTE ON FUNCTION pg_ls_dir(text) FROM public;
 REVOKE EXECUTE ON FUNCTION pg_ls_dir(text,boolean,boolean) FROM public;
 
 --
+-- GPDB: These GPDB-specific catalog functions need to have their
+-- default permissions changed as well.
+--
+REVOKE EXECUTE ON FUNCTION gp_create_restore_point(text) FROM public;
+REVOKE EXECUTE ON FUNCTION gp_switch_wal() FROM public;
+
+--
 -- We also set up some things as accessible to standard roles.
 --
 GRANT EXECUTE ON FUNCTION pg_ls_logdir() TO pg_monitor;
@@ -1349,3 +1742,50 @@ GRANT EXECUTE ON FUNCTION pg_ls_tmpdir(oid) TO pg_monitor;
 GRANT pg_read_all_settings TO pg_monitor;
 GRANT pg_read_all_stats TO pg_monitor;
 GRANT pg_stat_scan_tables TO pg_monitor;
+
+create or replace function brin_summarize_range(t regclass, block_number int8) returns setof bigint as 
+$$
+  -- brin_summarize_range_internal is marked as EXECUTE ON ALL SEGMENTS.
+  select sum(n.brin_summarize_range_internal) from (select brin_summarize_range_internal(t, block_number)) as n;
+$$
+LANGUAGE SQL READS SQL DATA EXECUTE ON COORDINATOR;
+
+create or replace function brin_summarize_new_values(t regclass) returns setof bigint as
+$$
+  -- brin_summarize_new_values_internal is marked as EXECUTE ON ALL SEGMENTS.
+  select sum(n) from brin_summarize_new_values_internal(t) as n;
+$$
+LANGUAGE sql READS SQL DATA EXECUTE ON COORDINATOR;
+
+CREATE OR REPLACE VIEW gp_stat_archiver AS
+    SELECT -1 AS gp_segment_id, * FROM pg_stat_archiver
+    UNION
+    SELECT gp_execution_segment() AS gp_segment_id, * FROM gp_dist_random('pg_stat_archiver');
+
+CREATE FUNCTION gp_get_session_endpoints (OUT gp_segment_id int, OUT auth_token text,
+									  OUT cursorname text, OUT sessionid int, OUT hostname varchar(64),
+									  OUT port int, OUT username text, OUT state text,
+									  OUT endpointname text)
+RETURNS SETOF RECORD AS
+$$
+   SELECT * FROM pg_catalog.gp_get_endpoints()
+	WHERE sessionid = (SELECT setting FROM pg_settings WHERE name = 'gp_session_id')::int4
+$$
+LANGUAGE SQL EXECUTE ON COORDINATOR;
+
+COMMENT ON FUNCTION pg_catalog.gp_get_session_endpoints() IS 'All endpoints in this session that are visible to the current user.';
+
+CREATE VIEW pg_catalog.gp_endpoints AS
+    SELECT * FROM pg_catalog.gp_get_endpoints();
+
+CREATE VIEW pg_catalog.gp_segment_endpoints AS
+    SELECT * FROM pg_catalog.gp_get_segment_endpoints();
+
+CREATE VIEW pg_catalog.gp_session_endpoints AS
+    SELECT * FROM pg_catalog.gp_get_session_endpoints();
+
+-- Dispatch and Aggregate the backends information of subtransactions overflowed
+CREATE VIEW gp_suboverflowed_backend(segid, pids) AS
+  SELECT -1, gp_get_suboverflowed_backends()
+UNION ALL
+  SELECT gp_segment_id, gp_get_suboverflowed_backends() FROM gp_dist_random('gp_id') order by 1;

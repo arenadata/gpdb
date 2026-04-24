@@ -1,3 +1,9 @@
+-- start_matchsubs
+-- m/NOTICE:  One or more columns in the following table\(s\) do not have statistics: /
+-- s/.//gs
+-- m/HINT:  For non-partitioned tables, run analyze .+\. For partitioned tables, run analyze rootpartition .+\. See log for columns missing statistics\./
+-- s/.//gs
+-- end_matchsubs
 -- Creating an index on a partitioned table makes the partitions
 -- automatically get the index
 create table idxpart (a int, b int, c text) partition by range (a);
@@ -318,6 +324,7 @@ create table idxpart (col1 int, a int, col2 int, b int) partition by range (a);
 create table idxpart1 (b int, col1 int, col2 int, col3 int, a int);
 alter table idxpart drop column col1, drop column col2;
 alter table idxpart1 drop column col1, drop column col2, drop column col3;
+alter table idxpart1 set distributed randomly; -- GPDB: distribution key must match parent
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 create index idxpart_1_idx on only idxpart (b, a);
 create index idxpart1_1_idx on idxpart1 (b, a);
@@ -343,10 +350,12 @@ create table idxpart (a int, b int, c text) partition by range (a);
 create index idxparti on idxpart (a);
 create index idxparti2 on idxpart (c, b);
 create table idxpart1 (c text, a int, b int);
+alter table idxpart1 set distributed by (a); -- GPDB: distribution key must match parent
 alter table idxpart attach partition idxpart1 for values from (0) to (10);
 create table idxpart2 (c text, a int, b int);
 create index on idxpart2 (a);
 create index on idxpart2 (c, b);
+alter table idxpart2 set distributed by (a); -- GPDB: distribution key must match parent
 alter table idxpart attach partition idxpart2 for values from (10) to (20);
 select c.relname, pg_get_indexdef(indexrelid)
   from pg_class c join pg_index i on c.oid = i.indexrelid
@@ -391,6 +400,7 @@ drop table idxpart;
 
 -- Column number mapping: dropped columns in the partition
 create table idxpart1 (drop_1 int, drop_2 int, col_keep int, drop_3 int);
+alter table idxpart1 set distributed by (col_keep); -- GPDB: distribution key must match parent
 alter table idxpart1 drop column drop_1;
 alter table idxpart1 drop column drop_2;
 alter table idxpart1 drop column drop_3;
@@ -411,6 +421,7 @@ alter table idxpart drop column drop_1;
 alter table idxpart drop column drop_2;
 alter table idxpart drop column drop_3;
 create table idxpart1 (col_keep int);
+alter table idxpart1 set distributed randomly; -- GPDB: distribution key must match parent
 create index on idxpart1 (col_keep);
 create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
@@ -429,6 +440,9 @@ drop table idxpart;
 create table idxpart (a int primary key, b int) partition by range (a);
 \d idxpart
 -- multiple primary key on child should fail
+-- GPDB: the error mesage is a bit surprising. It's complaing because "b" is not
+-- included in the constraint that's inherited from the parent, which includes
+-- only "a".
 create table failpart partition of idxpart (b primary key) for values from (0) to (100);
 drop table idxpart;
 -- primary key on child is okay if there's no PK in the parent, though
@@ -483,6 +497,7 @@ create table idxpart2 partition of idxpart for values from (10, 10) to (20, 20)
 create table idxpart21 partition of idxpart2 for values from (10) to (15);
 create table idxpart22 partition of idxpart2 for values from (15) to (20);
 create table idxpart3 (b int not null, a int not null);
+alter table idxpart3 set distributed by (a, b); -- GPDB: distribution key must match parent
 alter table idxpart attach partition idxpart3 for values from (20, 20) to (30, 30);
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
@@ -500,6 +515,7 @@ drop table idxpart;
 create table idxpart (a int unique, b int) partition by range (a);
 create table idxpart1 (a int not null, b int, unique (a, b))
   partition by range (a, b);
+alter table idxpart1 set distributed by (a); -- GPDB: distribution key must match parent
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
 DROP TABLE idxpart, idxpart1;
 
@@ -549,9 +565,10 @@ ALTER TABLE idxpart ATTACH PARTITION idxpart1 FOR VALUES FROM (100) TO (200);
 DROP TABLE idxpart, idxpart1;
 
 -- Ditto if there is some distance between the PKs (subpartitioning)
+-- GPDB: distribution keys must be the same in all parts of the partition hierarchy
 create table idxpart (a int, b int, primary key (a)) partition by range (a);
 create table idxpart1 (a int not null, b int) partition by range (a);
-create table idxpart11 (a int not null, b int primary key);
+create table idxpart11 (a int not null, b int, primary key (b, a)) distributed by (a);
 alter table idxpart1 attach partition idxpart11 for values from (0) to (1000);
 alter table idxpart attach partition idxpart1 for values from (0) to (10000);
 drop table idxpart, idxpart1, idxpart11;
@@ -616,8 +633,10 @@ drop table idxpart;
 
 -- Test that unique constraints are working
 create table idxpart (a int, b text, primary key (a, b)) partition by range (a);
+alter table idxpart set distributed by (a);
 create table idxpart1 partition of idxpart for values from (0) to (100000);
 create table idxpart2 (c int, like idxpart);
+alter table idxpart2 set distributed by (a);
 insert into idxpart2 (c, a, b) values (42, 572814, 'inserted first');
 alter table idxpart2 drop column c;
 create unique index on idxpart (a);
@@ -646,6 +665,7 @@ create index on idxpart (a);
 create table idxpart_another (a int, b int, primary key (a, b)) partition by range (a);
 create table idxpart_another_1 partition of idxpart_another for values from (0) to (100);
 create table idxpart3 (c int, b int, a int) partition by range (a);
+alter table idxpart3 set distributed by (a); -- GPDB: distribution key must match parent
 alter table idxpart3 drop column b, drop column c;
 create table idxpart31 partition of idxpart3 for values from (1000) to (1200);
 create table idxpart32 partition of idxpart3 for values from (1200) to (1400);
@@ -658,6 +678,7 @@ set search_path to regress_indexing;
 create table pk (a int primary key) partition by range (a);
 create table pk1 partition of pk for values from (0) to (1000);
 create table pk2 (b int, a int);
+alter table pk2 set distributed by (a); -- GPDB: distribution key must match parent
 alter table pk2 drop column b;
 alter table pk2 alter a set not null;
 alter table pk attach partition pk2 for values from (1000) to (2000);
@@ -678,17 +699,25 @@ create table covidxpart2 partition of covidxpart for values in (2);
 insert into covidxpart values (1, 1);
 insert into covidxpart values (1, 1);
 create table covidxpart3 (b int, c int, a int);
+alter table covidxpart3 set distributed by (a); -- GPDB: distribution key must match parent
 alter table covidxpart3 drop c;
 alter table covidxpart attach partition covidxpart3 for values in (3);
 insert into covidxpart values (3, 1);
 insert into covidxpart values (3, 1);
 create table covidxpart4 (b int, a int);
+alter table covidxpart4 set distributed by (a);
 create unique index on covidxpart4 (a) include (b);
 create unique index on covidxpart4 (a);
 alter table covidxpart attach partition covidxpart4 for values in (4);
 insert into covidxpart values (4, 1);
 insert into covidxpart values (4, 1);
 create unique index on covidxpart (b) include (a); -- should fail
+
+-- In GPDB, the previous command fails because the distribution key is not
+-- included in the index. That's OK, but it's a different error condition than
+-- in upstream. Run another test to exercise the same check as in upstream.
+create table covidxpart_x (a int, b int) partition by list (a) distributed by (b);
+create unique index on covidxpart_x (b) include (a); -- should fail
 
 -- check that detaching a partition also detaches the primary key constraint
 create table parted_pk_detach_test (a int primary key) partition by list (a);
@@ -703,3 +732,24 @@ alter table parted_uniq_detach_test1 drop constraint parted_uniq_detach_test1_a_
 alter table parted_uniq_detach_test detach partition parted_uniq_detach_test1;
 alter table parted_uniq_detach_test1 drop constraint parted_uniq_detach_test1_a_key;
 drop table parted_uniq_detach_test, parted_uniq_detach_test1;
+
+-- check that dropping a column takes with it any partitioned indexes
+-- depending on it.
+create table parted_index_col_drop(a int, b int, c int)
+  partition by list (a);
+create table parted_index_col_drop1 partition of parted_index_col_drop
+  for values in (1) partition by list (a);
+-- leave this partition without children.
+create table parted_index_col_drop2 partition of parted_index_col_drop
+  for values in (2) partition by list (a);
+create table parted_index_col_drop11 partition of parted_index_col_drop1
+  for values in (1);
+create index on parted_index_col_drop (b);
+create index on parted_index_col_drop (c);
+create index on parted_index_col_drop (b, c);
+alter table parted_index_col_drop drop column c;
+\d parted_index_col_drop
+\d parted_index_col_drop1
+\d parted_index_col_drop2
+\d parted_index_col_drop11
+drop table parted_index_col_drop;

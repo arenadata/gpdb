@@ -100,7 +100,7 @@ CREATE TYPE default_test_row AS (f1 text_w_default, f2 int42);
 
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
   SELECT * FROM default_test;
-' LANGUAGE SQL;
+' LANGUAGE SQL READS SQL DATA;
 
 SELECT * FROM get_default_test();
 
@@ -154,3 +154,12 @@ select format_type('varchar'::regtype, 42);
 select format_type('bpchar'::regtype, null);
 -- this behavior difference is intentional
 select format_type('bpchar'::regtype, -1);
+
+-- Create & Drop type as non-superuser
+CREATE USER user_bob;
+SET SESSION AUTHORIZATION user_bob;
+CREATE TYPE shell; -- not allowed
+CREATE TYPE compfoo as (f1 int, f2 text);
+DROP TYPE compfoo;
+RESET SESSION AUTHORIZATION;
+DROP USER user_bob;

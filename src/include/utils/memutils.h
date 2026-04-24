@@ -7,6 +7,8 @@
  *	  of the API of the memory management subsystem.
  *
  *
+ * Portions Copyright (c) 2007-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -45,6 +47,34 @@
 
 #define AllocHugeSizeIsValid(size)	((Size) (size) <= MaxAllocHugeSize)
 
+/*
+ * All chunks allocated by any memory context manager are required to be
+ * preceded by a StandardChunkHeader at a spacing of STANDARDCHUNKHEADERSIZE.
+ * A currently-allocated chunk must contain a backpointer to its owning
+ * context as well as the allocated size of the chunk.  The backpointer is
+ * used by pfree() and repalloc() to find the context to call.  The allocated
+ * size is not absolutely essential, but it's expected to be needed by any
+ * reasonable implementation.
+ */
+typedef struct StandardChunkHeader
+{
+	MemoryContext context;		/* owning context */
+	Size		size;			/* size of data space allocated in chunk */
+#ifdef MEMORY_CONTEXT_CHECKING
+	/* when debugging memory usage, also store actual requested size */
+	Size		requested_size;
+#endif
+
+#ifdef CDB_PALLOC_TAGS
+	const char  *alloc_tag;
+	int 		alloc_n;
+	void *prev_chunk;
+	void *next_chunk;
+#endif
+} StandardChunkHeader;
+
+#define STANDARDCHUNKHEADERSIZE  MAXALIGN(sizeof(StandardChunkHeader))
+
 
 /*
  * Standard top-level memory contexts.
@@ -59,6 +89,9 @@ extern PGDLLIMPORT MemoryContext CacheMemoryContext;
 extern PGDLLIMPORT MemoryContext MessageContext;
 extern PGDLLIMPORT MemoryContext TopTransactionContext;
 extern PGDLLIMPORT MemoryContext CurTransactionContext;
+extern PGDLLIMPORT MemoryContext DispatcherContext;
+extern PGDLLIMPORT MemoryContext InterconnectContext;
+extern PGDLLIMPORT MemoryContext OptimizerMemoryContext;
 
 /* This is a transient link to the active portal's memory context: */
 extern PGDLLIMPORT MemoryContext PortalContext;
@@ -72,7 +105,6 @@ extern PGDLLIMPORT MemoryContext PortalContext;
  */
 extern void MemoryContextInit(void);
 extern void MemoryContextReset(MemoryContext context);
-extern void MemoryContextDelete(MemoryContext context);
 extern void MemoryContextResetOnly(MemoryContext context);
 extern void MemoryContextResetChildren(MemoryContext context);
 extern void MemoryContextDeleteChildren(MemoryContext context);
@@ -82,6 +114,17 @@ extern void MemoryContextSetParent(MemoryContext context,
 extern Size GetMemoryChunkSpace(void *pointer);
 extern MemoryContext MemoryContextGetParent(MemoryContext context);
 extern bool MemoryContextIsEmpty(MemoryContext context);
+
+/* Statistics */
+extern void MemoryContextDeclareAccountingRoot(MemoryContext context);
+extern Size MemoryContextGetCurrentSpace(MemoryContext context);
+extern Size MemoryContextGetPeakSpace(MemoryContext context);
+extern Size MemoryContextSetPeakSpace(MemoryContext context, Size nbytes);
+
+#define MemoryContextDelete(context)    (MemoryContextDeleteImpl(context, __FILE__, PG_FUNCNAME_MACRO, __LINE__))
+extern void MemoryContextDeleteImpl(MemoryContext context, const char* sfile, const char *func, int sline);
+
+extern int64 MemoryContextMemAllocated(MemoryContext context, bool recurse);
 extern void MemoryContextStats(MemoryContext context);
 extern void MemoryContextStatsDetail(MemoryContext context, int max_children);
 extern void MemoryContextAllowInCriticalSection(MemoryContext context,
@@ -91,6 +134,13 @@ extern void MemoryContextAllowInCriticalSection(MemoryContext context,
 extern void MemoryContextCheck(MemoryContext context);
 #endif
 extern bool MemoryContextContains(MemoryContext context, void *pointer);
+extern bool MemoryContextContainsGenericAllocation(MemoryContext context, void *pointer);
+
+extern void MemoryContextError(int errorcode, MemoryContext context,
+                               const char *sfile, int sline,
+                               const char *fmt, ...)
+                              pg_attribute_noreturn()
+                              pg_attribute_printf(5, 6);
 
 /* Handy macro for copying and assigning context ID ... but note double eval */
 #define MemoryContextCopyAndSetIdentifier(cxt, id) \
@@ -170,6 +220,8 @@ extern MemoryContext AllocSetContextCreateInternal(MemoryContext parent,
 	AllocSetContextCreateInternal
 #endif
 
+extern bool AllocSetContains(MemoryContext context, void *pointer);
+
 /* slab.c */
 extern MemoryContext SlabContextCreate(MemoryContext parent,
 									   const char *name,
@@ -180,6 +232,23 @@ extern MemoryContext SlabContextCreate(MemoryContext parent,
 extern MemoryContext GenerationContextCreate(MemoryContext parent,
 											 const char *name,
 											 Size blockSize);
+
+/* this function should be only called by MemoryContextSetParent() */
+extern void AllocSetTransferAccounting(MemoryContext context,
+									   MemoryContext new_parent);
+
+/* mpool.c */
+typedef struct MPool MPool;
+extern MPool *mpool_create_with_context(MemoryContext parent, MemoryContext context);
+
+#define mpool_create(parent, name) \
+	(mpool_create_with_context((parent), AllocSetContextCreate((parent), (name), ALLOCSET_DEFAULT_SIZES)))
+
+extern void *mpool_alloc(MPool *mpool, Size size);
+extern void mpool_reset(MPool *mpool);
+extern void mpool_delete(MPool *mpool);
+extern uint64 mpool_total_bytes_allocated(MPool *mpool);
+extern uint64 mpool_bytes_used(MPool *mpool);
 
 /*
  * Recommended default alloc parameters, suitable for "ordinary" contexts

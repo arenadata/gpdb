@@ -13,6 +13,7 @@
 #include "fe_utils/string_utils.h"
 #include "pg_upgrade.h"
 
+#include "greenplum/pg_upgrade_greenplum.h"
 
 static PGconn *get_db_conn(ClusterInfo *cluster, const char *db_name);
 
@@ -70,6 +71,12 @@ get_db_conn(ClusterInfo *cluster, const char *db_name)
 		appendPQExpBufferStr(&conn_opts, " host=");
 		appendConnStrVal(&conn_opts, cluster->sockdir);
 	}
+
+	appendPQExpBuffer(&conn_opts, " options=");
+	appendConnStrVal(&conn_opts,
+				(GET_MAJOR_VERSION(cluster->major_version) < 1200) ?
+					"-c gp_session_role=utility" :
+					"-c gp_role=utility");
 
 	conn = PQconnectdb(conn_opts.data);
 	termPQExpBuffer(&conn_opts);
@@ -206,6 +213,7 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	if (!exit_hook_registered)
 	{
 		atexit(stop_postmaster_atexit);
+		atexit(close_progress);
 		exit_hook_registered = true;
 	}
 
@@ -241,15 +249,31 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	 * crash, the new cluster has to be recreated anyway.  fsync=off is a big
 	 * win on ext4.
 	 */
+	char *version_opts = "";
+	if (GET_MAJOR_VERSION(cluster->major_version) >= 904)
+		version_opts = "-c synchronous_standby_names='' --xid_warn_limit=10000000";
+	else
+	{
+		if (is_greenplum_dispatcher_mode())
+			version_opts =
+				"-c gp_dbid=1 -c gp_contentid=-1 -c gp_num_contents_in_cluster=1";
+		else
+			version_opts =
+				"-c gp_dbid=1 -c gp_contentid=0 -c gp_num_contents_in_cluster=1";
+	}
+
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d%s%s %s%s\" start",
+			 "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d -c %s %s%s %s%s %s\" start",
 			 cluster->bindir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
+			 (GET_MAJOR_VERSION(cluster->major_version) < 1200) ?
+			 "gp_session_role=utility" :
+			 "gp_role=utility",
 			 (cluster->controldata.cat_ver >=
 			  BINARY_UPGRADE_SERVER_FLAG_CAT_VER) ? " -b" :
 			 " -c autovacuum=off -c autovacuum_freeze_max_age=2000000000",
 			 (cluster == &new_cluster) ?
 			 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off" : "",
-			 cluster->pgopts ? cluster->pgopts : "", socket_string);
+			 cluster->pgopts ? cluster->pgopts : "", socket_string, version_opts);
 
 	/*
 	 * Don't throw an error right away, let connecting throw the error because

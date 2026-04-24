@@ -117,7 +117,7 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 		(att_isnull((attnum)-1, (char *)(tup) + sizeof(IndexTupleData))) ? \
 		( \
 			*(isnull) = true, \
-			(Datum)NULL \
+			(Datum)0 \
 		) \
 		: \
 		( \

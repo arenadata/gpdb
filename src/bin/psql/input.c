@@ -85,7 +85,6 @@ gets_interactive(const char *prompt, PQExpBuffer query_buf)
 
 		/* Make current query_buf available to tab completion callback */
 		tab_completion_query_buf = query_buf;
-
 		/* Enable SIGINT to longjmp to sigint_interrupt_jmp */
 		sigint_interrupt_enabled = true;
 

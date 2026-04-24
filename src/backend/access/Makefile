@@ -11,4 +11,11 @@ include $(top_builddir)/src/Makefile.global
 SUBDIRS	    = brin common gin gist hash heap index nbtree rmgrdesc spgist \
 			  table tablesample transam
 
+# GPDB specific subdirs are added here to maintain
+# alignment with upstream
+SUBDIRS	  += external   \
+	     bitmap     \
+	     appendonly \
+	     aocs
+
 include $(top_srcdir)/src/backend/common.mk

@@ -565,7 +565,7 @@ make_copy_attnamelist(LogicalRepRelMapEntry *rel)
  * connection and passes the data back to our local COPY.
  */
 static int
-copy_read_data(void *outbuf, int minread, int maxread)
+copy_read_data(void *outbuf, int minread, int maxread, void *extra)
 {
 	int			bytesread = 0;
 	int			avail;
@@ -788,7 +788,9 @@ copy_table(Relation rel)
 								  NULL, false, false);
 
 	attnamelist = make_copy_attnamelist(relmapentry);
-	cstate = BeginCopyFrom(pstate, rel, NULL, false, copy_read_data, attnamelist, NIL);
+	cstate = BeginCopyFrom(pstate, rel, NULL, false, copy_read_data,
+						   NULL /* callback extra data */,
+						   attnamelist, NIL);
 
 	/* Do the copy */
 	(void) CopyFrom(cstate);

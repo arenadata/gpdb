@@ -4,6 +4,8 @@
  *	  prototypes for functions in backend/catalog/heap.c
  *
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -28,11 +30,22 @@ typedef struct RawColumnDefault
 	AttrNumber	attnum;			/* attribute to attach default to */
 	Node	   *raw_default;	/* default value (untransformed parse tree) */
 	bool		missingMode;	/* true if part of add column processing */
+	bool		hasCookedMissingVal;
+	Datum		missingVal;
+	bool		missingIsNull;
 	char		generated;		/* attgenerated setting */
 } RawColumnDefault;
 
 typedef struct CookedConstraint
 {
+	/*
+	 * In PostgreSQL, this struct is only during CREATE TABLE processing, but
+	 * in GPDB, we create these in the QD and dispatch pre-built
+	 * CookedConstraints to the QE nodes, in the CreateStmt. That's why we
+	 * need to have a node tag and copy/out/read function support for this
+	 * in GPDB.
+	 */
+	NodeTag		type;
 	ConstrType	contype;		/* CONSTR_DEFAULT or CONSTR_CHECK */
 	Oid			conoid;			/* constr OID if created, otherwise Invalid */
 	char	   *name;			/* name, or NULL if none */
@@ -43,6 +56,10 @@ typedef struct CookedConstraint
 	int			inhcount;		/* number of times constraint is inherited */
 	bool		is_no_inherit;	/* constraint has local def and cannot be
 								 * inherited */
+	/*
+	 * Remember to update copy/out/read functions if new fields are added
+	 * here!
+	 */
 } CookedConstraint;
 
 extern Relation heap_create(const char *relname,
@@ -75,12 +92,14 @@ extern Oid	heap_create_with_catalog(const char *relname,
 									 bool shared_relation,
 									 bool mapped_relation,
 									 OnCommitAction oncommit,
+									 const struct GpPolicy *policy,    /* MPP */
 									 Datum reloptions,
 									 bool use_user_acl,
 									 bool allow_system_table_mods,
 									 bool is_internal,
 									 Oid relrewrite,
-									 ObjectAddress *typaddress);
+									 ObjectAddress *typaddress,
+									 bool valid_opts);
 
 extern void heap_drop_with_catalog(Oid relid);
 
@@ -109,12 +128,19 @@ extern List *AddRelationNewConstraints(Relation rel,
 									   bool is_local,
 									   bool is_internal,
 									   const char *queryString);
+extern List *AddRelationConstraints(Relation rel,
+						  List *rawColDefaults,
+						  List *constraints);
 
 extern void RelationClearMissing(Relation rel);
 extern void SetAttrMissing(Oid relid, char *attname, char *value);
 
 extern Oid	StoreAttrDefault(Relation rel, AttrNumber attnum,
-							 Node *expr, bool is_internal,
+							 Node *expr,
+							 bool *cookedMissingVal,
+							 Datum *missingval_p,
+							 bool *missingIsNull_p,
+							 bool is_internal,
 							 bool add_column_mode);
 
 extern Node *cookDefault(ParseState *pstate,
@@ -156,5 +182,25 @@ extern void StorePartitionKey(Relation rel,
 extern void RemovePartitionKeyByRelId(Oid relid);
 extern void StorePartitionBound(Relation rel, Relation parent,
 								PartitionBoundSpec *bound);
+
+/* MPP-6929: metadata tracking */
+extern void MetaTrackAddObject(Oid		classid, 
+							   Oid		objoid, 
+							   Oid		relowner,
+							   char*	actionname,
+							   char*	subtype);
+extern void MetaTrackUpdObject(Oid		classid, 
+							   Oid		objoid, 
+							   Oid		relowner,
+							   char*	actionname,
+							   char*	subtype);
+extern void MetaTrackDropObject(Oid		classid, 
+								Oid		objoid);
+
+#define MetaTrackValidRelkind(relkind) \
+		(((relkind) == RELKIND_RELATION) \
+		|| ((relkind) == RELKIND_INDEX) \
+		|| ((relkind) == RELKIND_SEQUENCE) \
+		|| ((relkind) == RELKIND_VIEW)) 
 
 #endif							/* HEAP_H */

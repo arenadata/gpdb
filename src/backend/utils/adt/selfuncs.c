@@ -10,6 +10,8 @@
  *	  Index cost functions are located via the index AM's API struct,
  *	  which is obtained from the handler function registered in pg_am.
  *
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -108,6 +110,7 @@
 #include "access/visibilitymap.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_collation.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
@@ -128,6 +131,7 @@
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datum.h"
+#include "utils/faultinjector.h"
 #include "utils/fmgroids.h"
 #include "utils/index_selfuncs.h"
 #include "utils/lsyscache.h"
@@ -141,6 +145,10 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 
+#include "cdb/cdbgroup.h" /* cdbpathlocus_collocates_expressions */
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
+#include "optimizer/restrictinfo.h"
 
 /* Hooks for plugins to get control when we ask for stats */
 get_relation_stats_hook_type get_relation_stats_hook = NULL;
@@ -187,8 +195,6 @@ static double convert_one_bytea_to_scalar(unsigned char *value, int valuelen,
 										  int rangelo, int rangehi);
 static char *convert_string_datum(Datum value, Oid typid, Oid collid,
 								  bool *failure);
-static double convert_timevalue_to_scalar(Datum value, Oid typid,
-										  bool *failure);
 static void examine_simple_variable(PlannerInfo *root, Var *var,
 									VariableStatData *vardata);
 static bool get_variable_range(PlannerInfo *root, VariableStatData *vardata,
@@ -207,6 +213,11 @@ static bool get_actual_variable_endpoint(Relation heapRel,
 										 MemoryContext outercontext,
 										 Datum *endpointDatum);
 static RelOptInfo *find_join_input_rel(PlannerInfo *root, Relids relids);
+
+static void try_fetch_rel_stats(RangeTblEntry *rte, const char *attname,
+								VariableStatData* vardata);
+static void try_fetch_largest_child_stats(PlannerInfo *root, Index parent_rti,
+										  const char *attname, VariableStatData* vardata);
 
 
 /*
@@ -1300,13 +1311,15 @@ booltestsel(PlannerInfo *root, BoolTestType booltesttype, Node *arg,
 
 	examine_variable(root, arg, varRelid, &vardata);
 
-	if (HeapTupleIsValid(vardata.statsTuple))
+	if (HeapTupleIsValid(getStatsTuple(&vardata)))
 	{
 		Form_pg_statistic stats;
 		double		freq_null;
 		AttStatsSlot sslot;
 
-		stats = (Form_pg_statistic) GETSTRUCT(vardata.statsTuple);
+		HeapTuple	tp = getStatsTuple(&vardata);
+
+		stats = (Form_pg_statistic) GETSTRUCT(tp);
 		freq_null = stats->stanullfrac;
 
 		if (get_attstatsslot(&sslot, vardata.statsTuple,
@@ -1422,13 +1435,15 @@ booltestsel(PlannerInfo *root, BoolTestType booltesttype, Node *arg,
 			case IS_NOT_FALSE:
 				selec = (double) clause_selectivity(root, arg,
 													varRelid,
-													jointype, sjinfo);
+													jointype, sjinfo,
+													false /* use_damping */);
 				break;
 			case IS_FALSE:
 			case IS_NOT_TRUE:
 				selec = 1.0 - (double) clause_selectivity(root, arg,
 														  varRelid,
-														  jointype, sjinfo);
+														  jointype, sjinfo,
+														  false /* use_damping */);
 				break;
 			default:
 				elog(ERROR, "unrecognized booltesttype: %d",
@@ -1456,14 +1471,31 @@ nulltestsel(PlannerInfo *root, NullTestType nulltesttype, Node *arg,
 	VariableStatData vardata;
 	double		selec;
 
+	/*
+	 * GPDB_84_MERGE_NOTE: Following hack is removed in the upstream commit e006a24a.
+	 * However, removing this causes cost differences for some ICG queries.
+	 * Hence, keeping the hack in GPDB
+	 * Special hack: an IS NULL test being applied at an outer join should not
+	 * be taken at face value, since it's very likely being used to select the
+	 * outer-side rows that don't have a match, and thus its selectivity has
+	 * nothing whatever to do with the statistics of the original table
+	 * column.	We do not have nearly enough context here to determine its
+	 * true selectivity, so for the moment punt and guess at 0.5.  Eventually
+	 * the planner should be made to provide enough info about the clause's
+	 * context to let us do better.
+	 */
+	if (IS_OUTER_JOIN(jointype) && nulltesttype == IS_NULL)
+		return (Selectivity) 0.5;
+
 	examine_variable(root, arg, varRelid, &vardata);
 
-	if (HeapTupleIsValid(vardata.statsTuple))
+	if (HeapTupleIsValid(getStatsTuple(&vardata)))
 	{
 		Form_pg_statistic stats;
+		HeapTuple tp = getStatsTuple(&vardata);
 		double		freq_null;
 
-		stats = (Form_pg_statistic) GETSTRUCT(vardata.statsTuple);
+		stats = (Form_pg_statistic) GETSTRUCT(tp);
 		freq_null = stats->stanullfrac;
 
 		switch (nulltesttype)
@@ -2069,6 +2101,7 @@ eqjoinsel(PG_FUNCTION_ARGS)
 			break;
 		case JOIN_SEMI:
 		case JOIN_ANTI:
+		case JOIN_LASJ_NOTIN:
 
 			/*
 			 * Look up the join's inner relation.  min_righthand is sufficient
@@ -2877,18 +2910,22 @@ mergejoinscansel(PlannerInfo *root, Node *clause,
 	if (nulls_first)
 	{
 		Form_pg_statistic stats;
+		HeapTuple leftStatsTuple;
+		HeapTuple rightStatsTuple;
 
-		if (HeapTupleIsValid(leftvar.statsTuple))
+		leftStatsTuple = getStatsTuple(&leftvar);
+		if (HeapTupleIsValid(leftStatsTuple))
 		{
-			stats = (Form_pg_statistic) GETSTRUCT(leftvar.statsTuple);
+			stats = (Form_pg_statistic) GETSTRUCT(leftStatsTuple);
 			*leftstart += stats->stanullfrac;
 			CLAMP_PROBABILITY(*leftstart);
 			*leftend += stats->stanullfrac;
 			CLAMP_PROBABILITY(*leftend);
 		}
-		if (HeapTupleIsValid(rightvar.statsTuple))
+		rightStatsTuple = getStatsTuple(&rightvar);
+		if (HeapTupleIsValid(rightStatsTuple))
 		{
-			stats = (Form_pg_statistic) GETSTRUCT(rightvar.statsTuple);
+			stats = (Form_pg_statistic) GETSTRUCT(rightStatsTuple);
 			*rightstart += stats->stanullfrac;
 			CLAMP_PROBABILITY(*rightstart);
 			*rightend += stats->stanullfrac;
@@ -3115,7 +3152,7 @@ estimate_num_groups(PlannerInfo *root, List *groupExprs, double input_rows,
 		 * complicated.
 		 */
 		examine_variable(root, groupexpr, 0, &vardata);
-		if (HeapTupleIsValid(vardata.statsTuple) || vardata.isunique)
+		if (HeapTupleIsValid(getStatsTuple(&vardata)) || vardata.isunique)
 		{
 			varinfos = add_unique_group_var(root, varinfos,
 											groupexpr, &vardata);
@@ -3449,12 +3486,12 @@ estimate_hash_bucket_stats(PlannerInfo *root, Node *hashkey, double nbuckets,
 		return;
 	}
 
-	/* Get fraction that are null */
-	if (HeapTupleIsValid(vardata.statsTuple))
+	if (HeapTupleIsValid(getStatsTuple(&vardata)))
 	{
+		HeapTuple tp = getStatsTuple(&vardata);
 		Form_pg_statistic stats;
 
-		stats = (Form_pg_statistic) GETSTRUCT(vardata.statsTuple);
+		stats = (Form_pg_statistic) GETSTRUCT(tp);
 		stanullfrac = stats->stanullfrac;
 	}
 	else
@@ -3525,16 +3562,8 @@ double
 estimate_hashagg_tablesize(Path *path, const AggClauseCosts *agg_costs,
 						   double dNumGroups)
 {
-	Size		hashentrysize;
-
-	/* Estimate per-hash-entry space at tuple width... */
-	hashentrysize = MAXALIGN(path->pathtarget->width) +
-		MAXALIGN(SizeofMinimalTupleHeader);
-
-	/* plus space for pass-by-ref transition values... */
-	hashentrysize += agg_costs->transitionSpace;
-	/* plus the per-hash-entry overhead */
-	hashentrysize += hash_agg_entry_size(agg_costs->numAggs);
+	Size		hashentrysize = hash_agg_entry_size(
+		agg_costs->numAggs, path->pathtarget->width, agg_costs->transitionSpace);
 
 	/*
 	 * Note that this disregards the effect of fill-factor and growth policy
@@ -3573,9 +3602,21 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
 	Oid			statOid = InvalidOid;
 	MVNDistinct *stats;
 	Bitmapset  *matched = NULL;
+	RangeTblEntry		*rte;
 
 	/* bail out immediately if the table has no extended statistics */
 	if (!rel->statlist)
+		return false;
+
+	/*
+	 * When dealing with regular inheritance trees, ignore extended stats
+	 * (which were built without data from child rels, and thus do not
+	 * represent them). For partitioned tables data there's no data in the
+	 * non-leaf relations, so we build stats only for the inheritance tree.
+	 * So for partitioned tables we do consider extended stats.
+	 */
+	rte = planner_rt_fetch(rel->relid, root);
+	if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
 		return false;
 
 	/* Determine the attnums we're looking for */
@@ -3694,9 +3735,10 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
  * "double" values.  (NUMERIC values that are outside the range of "double"
  * are clamped to +/- HUGE_VAL.)
  *
- * String datatypes are converted by convert_string_to_scalar(),
- * which is explained below.  The reason why this routine deals with
- * three values at a time, not just one, is that we need it for strings.
+ * String datatypes are converted to have hi and lo bound be constants, with
+ *    the scaledvalue equally either hi or lo, depending on the value of isgt
+ *    (done so that the caller will include the entire bucket in the final
+ *     computed selectivity, even after inverting for the isgt case)
  *
  * The bytea datatype is just enough different from strings that it has
  * to be treated separately.
@@ -3709,6 +3751,7 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
  *
  * The several datatypes representing relative times (intervals) are all
  * converted to measurements expressed in seconds.
+ *
  */
 static bool
 convert_to_scalar(Datum value, Oid valuetypid, Oid collid, double *scaledvalue,
@@ -4134,7 +4177,7 @@ convert_string_datum(Datum value, Oid typid, Oid collid, bool *failure)
 /*
  * Do convert_to_scalar()'s work for any bytea data type.
  *
- * Very similar to convert_string_to_scalar except we can't assume
+ * Very similar to the old convert_string_to_scalar except we can't assume
  * null-termination and therefore pass explicit lengths around.
  *
  * Also, assumptions about likely "normal" ranges of characters have been
@@ -4233,7 +4276,7 @@ convert_one_bytea_to_scalar(unsigned char *value, int valuelen,
  * On failure (e.g., unsupported typid), set *failure to true;
  * otherwise, that variable is not changed.
  */
-static double
+double
 convert_timevalue_to_scalar(Datum value, Oid typid, bool *failure)
 {
 	switch (typid)
@@ -4383,6 +4426,118 @@ get_join_variables(PlannerInfo *root, List *args, SpecialJoinInfo *sjinfo,
 }
 
 /*
+ * This method returns a pointer to the largest child relation for an inherited (incl partitioned)
+ * relation. If there are multiple levels in the hierarchy, we delve down recursively till we
+ * find the largest (as determined from the path structure).
+ * Input: a partitioned table
+ * Output: largest child partition. If there are no child partition because all of them have been eliminated, then
+ *         returns NULL.
+ */
+static RelOptInfo *
+largest_child_relation(PlannerInfo *root, Path *path, bool recursing)
+{
+	List	   *subpaths;
+	ListCell   *subpath_lc;
+	RelOptInfo *largest_child_in_subpath = NULL;
+	double		max_rows = -1.0;
+
+	/* Guard against stack overflow due to overly complex inheritance trees */
+	check_stack_depth();
+
+	while (IsA(path, ProjectionPath))
+		path = ((ProjectionPath *) path)->subpath;
+
+	/*
+	 * Add the children of an Append or MergeAppend path to the list
+	 * of paths to process.
+	 */
+	if (IsA(path, AppendPath))
+	{
+		subpaths = ((AppendPath *) path)->subpaths;
+	}
+	else if (IsA(path, MergeAppendPath))
+	{
+		subpaths = ((MergeAppendPath *) path)->subpaths;
+	}
+	else
+	{
+		if (recursing)
+			return path->parent;
+		else
+			return NULL;
+	}
+
+	foreach(subpath_lc, subpaths)
+	{
+		Path	   *subpath = lfirst(subpath_lc);
+		RelOptInfo *candidate_child;
+
+		candidate_child = largest_child_relation(root, subpath, true);
+
+		if (candidate_child && candidate_child->rows > max_rows)
+		{
+			max_rows = candidate_child->rows;
+			largest_child_in_subpath = candidate_child;
+		}
+	}
+
+	return largest_child_in_subpath;
+}
+
+/*
+ * The purpose of this method is to make the statistics (on a specific column) of a child partition
+ * representative of the parent relation. This entails the following assumptions:
+ * 1.  if ndistinct<=-1.0 in child partition, the column is a unique column in the child partition. We
+ * 	   expect the column to remain distinct in the master as well.
+ * 2.  if -1.0 < ndistinct < 0.0, the absolute number of ndistinct values in the child partition is a fraction
+ *     of the number of rows in the partition. We expect that the absolute number of ndistinct in the master
+ *     to stay the same. Therefore, we convert this to a positive number.
+ *     The method get_variable_numdistinct will multiply this by the number of tuples in the master relation.
+ * 3.  if ndistinct is positive, it indicates a small absolute number of distinct values. We expect these
+ * 	   values to be repeated in all partitions. Therefore, we expect no change in the ndistinct in the master.
+ *
+ * Input:
+ * 	   statsTuple, which is a heaptuple representing statistics on a child relation. It expects statstuple to be non-null.
+ * 	   scalefactor, which is in the range (0.0,1.0]
+ *
+ * Output:
+ * 	   This method modifies the tuple passed to it.
+ */
+static void inline adjust_partition_table_statistic_for_parent(HeapTuple statsTuple, double childtuples)
+{
+	Form_pg_statistic stats;
+
+	Assert(HeapTupleIsValid(statsTuple));
+
+	stats = (Form_pg_statistic) GETSTRUCT(statsTuple);
+
+	if (stats->stadistinct <= -1.0)
+	{
+		/*
+		 * Case 1 as described above.
+		 */
+
+		return;
+	}
+	else if (stats->stadistinct < 0.0)
+	{
+		/*
+		 * Case 2 as described above.
+		 */
+
+		stats->stadistinct = ((double) -1.0) * stats->stadistinct * childtuples;
+	}
+	else
+	{
+		/**
+		 * Case 3 as described above.
+		 */
+
+		return;
+	}
+}
+
+/*
  * examine_variable
  *		Try to look up statistical data about an expression.
  *		Fill in a VariableStatData struct to describe the expression.
@@ -4430,6 +4585,8 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 
 	/* Save the exposed type of the expression */
 	vardata->vartype = exprType(node);
+
+	vardata->numdistinctFromPrimaryKey = -1.0; /* ignore by default*/
 
 	/* Look inside any binary-compatible relabeling */
 
@@ -4629,7 +4786,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 					indexpr_item = lnext(index->indexprs, indexpr_item);
 				}
 			}
-			if (vardata->statsTuple)
+			if (HeapTupleIsValid(getStatsTuple(vardata)))
 				break;
 		}
 	}
@@ -4652,6 +4809,37 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 
 	Assert(IsA(rte, RangeTblEntry));
 
+	/*
+	 * If this attribute has a foreign key relationship, then first look
+	 * at primary key statistics. If there exist stats on that attribute,
+	 * we utilize those. If not, continue.
+	 */
+
+	if (gp_statistics_use_fkeys)
+	{
+		Oid         pkrelid = InvalidOid;
+		AttrNumber  pkattno = -1;
+
+		if (ConstraintGetPrimaryKeyOf(rte->relid, var->varattno, &pkrelid, &pkattno))
+		{
+			HeapTuple	pkStatsTuple;
+
+			/* SELECT reltuples FROM pg_class */
+
+			pkStatsTuple = SearchSysCache1(RELOID, ObjectIdGetDatum(pkrelid));
+			if (HeapTupleIsValid(pkStatsTuple))
+			{
+				Form_pg_class classForm = (Form_pg_class) GETSTRUCT(pkStatsTuple);
+				if (classForm->reltuples > 0)
+				{
+					vardata->numdistinctFromPrimaryKey = classForm->reltuples;
+				}
+			}
+
+			ReleaseSysCache(pkStatsTuple);
+		}
+	} 
+
 	if (get_relation_stats_hook &&
 		(*get_relation_stats_hook) (root, rte, var->varattno, vardata))
 	{
@@ -4669,11 +4857,35 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 		 * Plain table or parent of an inheritance appendrel, so look up the
 		 * column in pg_statistic
 		 */
-		vardata->statsTuple = SearchSysCache3(STATRELATTINH,
-											  ObjectIdGetDatum(rte->relid),
-											  Int16GetDatum(var->varattno),
-											  BoolGetDatum(rte->inh));
-		vardata->freefunc = ReleaseSysCache;
+		vardata->statsTuple = NULL;
+
+		if (rte->inh && gp_statistics_pullup_from_child_partition)
+		{
+			/*
+			 * GPDB: #13467
+			 * If var->varattno is 0 (e.g.,SELECT DISTINCT <Table_name> FROM <Table_name>),
+			 * we will get an ERROR when we invoke get_attname with missing_ok == false,
+			 * so the NULL string is all we need.
+			 */
+			bool missing_ok = var->varattno == 0 ? true : false;
+			const char *attname  = get_attname(rte->relid, var->varattno, missing_ok);
+
+			/*
+			 * The GUC gp_statistics_pullup_from_child_partition is
+			 * set false defaultly. If it is true, we always try
+			 * to use largest child's stat.
+			 */
+			try_fetch_largest_child_stats(root, var->varno, attname, vardata);
+		}
+
+		if (vardata->statsTuple == NULL)
+		{
+			vardata->statsTuple = SearchSysCache3(STATRELATTINH,
+												  ObjectIdGetDatum(rte->relid),
+												  Int16GetDatum(var->varattno),
+												  BoolGetDatum(rte->inh));
+			vardata->freefunc = ReleaseSysCache;
+		}
 
 		if (HeapTupleIsValid(vardata->statsTuple))
 		{
@@ -4859,18 +5071,28 @@ get_variable_numdistinct(VariableStatData *vardata, bool *isdefault)
 
 	*isdefault = false;
 
+	/**
+	 * If we have an estimate from the primary key, then that is the most accurate value.
+	 */
+	if (gp_statistics_use_fkeys &&
+			vardata->numdistinctFromPrimaryKey > 0.0)
+	{
+		return vardata->numdistinctFromPrimaryKey;
+	}
+
 	/*
 	 * Determine the stadistinct value to use.  There are cases where we can
 	 * get an estimate even without a pg_statistic entry, or can get a better
 	 * value than is in pg_statistic.  Grab stanullfrac too if we can find it
 	 * (otherwise, assume no nulls, for lack of any better idea).
 	 */
-	if (HeapTupleIsValid(vardata->statsTuple))
+	if (HeapTupleIsValid(getStatsTuple(vardata)))
 	{
 		/* Use the pg_statistic entry */
 		Form_pg_statistic stats;
+		HeapTuple tp = getStatsTuple(vardata);
 
-		stats = (Form_pg_statistic) GETSTRUCT(vardata->statsTuple);
+		stats = (Form_pg_statistic) GETSTRUCT(tp);
 		stadistinct = stats->stadistinct;
 		stanullfrac = stats->stanullfrac;
 	}
@@ -4910,6 +5132,9 @@ get_variable_numdistinct(VariableStatData *vardata, bool *isdefault)
 					break;
 				case TableOidAttributeNumber:
 					stadistinct = 1.0;	/* only 1 value */
+					break;
+				case GpSegmentIdAttributeNumber:   /*CDB*/
+					stadistinct = getgpsegmentCount();
 					break;
 				default:
 					stadistinct = 0.0;	/* means "unknown" */
@@ -4994,6 +5219,7 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata, Oid sortop,
 	Oid			opfuncoid;
 	AttStatsSlot sslot;
 	int			i;
+	HeapTuple	tp = getStatsTuple(vardata);
 
 	/*
 	 * XXX It's very tempting to try to use the actual column min and max, if
@@ -5007,7 +5233,7 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata, Oid sortop,
 		return true;
 #endif
 
-	if (!HeapTupleIsValid(vardata->statsTuple))
+	if (!HeapTupleIsValid(tp))
 	{
 		/* no stats available, so default result */
 		return false;
@@ -5037,6 +5263,20 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata, Oid sortop,
 						 STATISTIC_KIND_HISTOGRAM, sortop,
 						 ATTSTATSSLOT_VALUES))
 	{
+		/*
+		 * GPDB: GPDB allows users to modify pg_statistics.stavalues with
+		 * UPDATEs (PostgreSQL complaints about the table row type not
+		 * matching). So just in case that the type of the values in
+		 * pg_statistics isn't what we'd expect, give an error rather than
+		 * crash. That shouldn't happen, but better safe than sorry.
+		 *
+		 * GPDB_91_MERGE_FIXME: this is the second place we've added this. Does
+		 * it need to be pulled into get_attstatsslot() itself?
+		 */
+		if (!IsBinaryCoercible(sslot.valuetype, vardata->atttype))
+			elog(ERROR, "invalid histogram of type %s, for attribute of type %s",
+				 format_type_be(sslot.valuetype), format_type_be(vardata->atttype));
+
 		if (sslot.nvalues > 0)
 		{
 			tmin = datumCopy(sslot.values[0], typByVal, typLen);
@@ -5068,6 +5308,13 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata, Oid sortop,
 		FmgrInfo	opproc;
 
 		fmgr_info(opfuncoid, &opproc);
+
+		/*
+		 * GPDB: See the identical check, above, for histogram data.
+		 */
+		if (!IsBinaryCoercible(sslot.valuetype, vardata->atttype))
+			elog(ERROR, "invalid MCV array of type %s, for attribute of type %s",
+				 format_type_be(sslot.valuetype), format_type_be(vardata->atttype));
 
 		for (i = 0; i < sslot.nvalues; i++)
 		{
@@ -5587,7 +5834,8 @@ genericcostestimate(PlannerInfo *root,
 	indexSelectivity = clauselist_selectivity(root, selectivityQuals,
 											  index->rel->relid,
 											  JOIN_INNER,
-											  NULL);
+											  NULL,
+											  false /* use_damping */);
 
 	/*
 	 * If caller didn't give us an estimate, estimate the number of index
@@ -5921,7 +6169,8 @@ btcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 		btreeSelectivity = clauselist_selectivity(root, selectivityQuals,
 												  index->rel->relid,
 												  JOIN_INNER,
-												  NULL);
+												  NULL,
+												  false /* use_damping */);
 		numIndexTuples = btreeSelectivity * index->rel->tuples;
 
 		/*
@@ -6641,7 +6890,8 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	*indexSelectivity = clauselist_selectivity(root, selectivityQuals,
 											   index->rel->relid,
 											   JOIN_INNER,
-											   NULL);
+											   NULL,
+											   false);
 
 	/* fetch estimated page cost for tablespace containing index */
 	get_tablespace_page_costs(index->reltablespace,
@@ -6835,6 +7085,73 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	*indexPages = dataPagesFetched;
 }
 
+void
+bmcostestimate(struct PlannerInfo *root,
+			   struct IndexPath *path,
+			   double loop_count,
+			   Cost *indexStartupCost,
+			   Cost *indexTotalCost,
+			   Selectivity *indexSelectivity,
+			   double *indexCorrelation,
+			   double *indexPages)
+{
+	IndexOptInfo *index = path->indexinfo;
+	RelOptInfo *baserel = index->rel;
+	RangeTblEntry *rte PG_USED_FOR_ASSERTS_ONLY = planner_rt_fetch(baserel->relid, root);
+	GenericCosts costs;
+
+	Assert(rte->rtekind == RTE_RELATION);
+	Assert(rte->relid != InvalidOid);
+
+	/*
+	 * Now do generic index cost estimation.
+	 */
+	MemSet(&costs, 0, sizeof(costs));
+
+	/*
+	 * We create a LOV for each distinct key in bitmap index. And the LOV point
+	 * to the bitmap vector pages. Since each bitmap vector has the same length,
+	 * although we do compress for the bits, but we can assume each distinct
+	 * key has approximately same number of bitmap vector pages(although there
+	 * must be some counterexamples). So the indexPages should be:
+	 * selectedDistinctValues / numDistinctValues * index->pages.
+	 *
+	 * But the issue is we can't estimate both of the distinct values from stats
+	 * through estimate_num_groups since it produces larger estimates. Especially
+	 * for selectedDistinctValues.
+	 *
+	 * Image below cases:
+	 * 1. indexSelectivity also correspond to how may distinct values get selected.
+	 * Then the result of genericcostestimate's indexPages will be accurate.
+	 * 2. indexSelectivity is high but only match a small number of distinct values.
+	 * This means the bitmap vector is sparse. So the total index pages number should
+	 * be small.
+	 * 3. indexSelectivity is low but match lots of distinct values. This also means
+	 * the bitmap vector is sparse, and the total index pages number should be small.
+	 *
+	 * The estimate in genericcostestimate should works fine for above cases although
+	 * it's not accurate.
+	 */
+
+	genericcostestimate(root, path, loop_count, &costs);
+
+	*indexStartupCost = costs.indexStartupCost;
+	*indexTotalCost = costs.indexTotalCost;
+	#ifdef FAULT_INJECTOR
+		/* Simulate an bitmapAnd plan by changing bitmap cost. */
+		if (FaultInjector_InjectFaultIfSet("simulate_bitmap_and",
+									DDLNotSpecified,
+									"",
+									"") == FaultInjectorTypeSkip)
+		{
+			*indexTotalCost = 0;
+		}
+	#endif
+	*indexSelectivity = costs.indexSelectivity;
+	*indexCorrelation = costs.indexCorrelation;
+	*indexPages = costs.numIndexPages;
+}
+
 /*
  * BRIN has search behavior completely different from other index types
  */
@@ -6973,7 +7290,8 @@ brincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 
 	qualSelectivity = clauselist_selectivity(root, indexQuals,
 											 baserel->relid,
-											 JOIN_INNER, NULL);
+											 JOIN_INNER, NULL,
+											 false /* use_damping */);
 
 	/* work out the actual number of ranges in the index */
 	indexRanges = Max(ceil((double) baserel->pages / statsData.pagesPerRange),
@@ -7036,4 +7354,87 @@ brincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 		statsData.pagesPerRange;
 
 	*indexPages = index->pages;
+}
+
+/*
+ * estimate_num_groups_on_segment
+ *
+ *   - groupNum   : the number of groups globally
+ *   - rows       : the number of tuples globally
+ *   - locus      : how are the groups distributed?
+ *
+ * Estimate how many groups are on each segment, when the group keys do not contain
+ * distribution keys. Understand such condition, we can consider data is roughly
+ * random-distributed among all segments. The accurate formula to compute the
+ * expectation is (1-((numsegments-1)/numsegments)^(rows/groupNum))*groupNum.
+ *
+ * The above formula can be deduced using indicate-variable method. Let's focus on
+ * one specific segment, say seg0, and let Xi be a random variable:
+ *   - Xi = 1, seg0 contains tuple from group i
+ *   - Xi = 0, seg0 does not contain tuple from group i
+ * E(X1+X2+...+X_groupNum) is just what we want to compute. Thus the formula
+ * is easy to prove.
+ */
+double
+estimate_num_groups_on_segment(double dNumGroupsTotal, double rows, CdbPathLocus locus)
+{
+	if (CdbPathLocus_IsPartitioned(locus))
+	{
+		double		numsegments = CdbPathLocus_NumSegments(locus);
+		double		totalrows = rows * numsegments;
+		double		numPerGroup = totalrows / dNumGroupsTotal;
+		double		group_num;
+
+		group_num = (1-pow((numsegments-1)/numsegments, numPerGroup))*dNumGroupsTotal;
+		group_num = clamp_row_est(group_num);
+		return group_num;
+	}
+	else
+		return dNumGroupsTotal;
+}
+
+static void
+try_fetch_rel_stats(RangeTblEntry *rte, const char *attname, VariableStatData* vardata)
+{
+	AttrNumber attno;
+
+	Assert(rte != NULL);
+
+	/* attname may be NULL when 'SELECT DISTINCT <table_name> from <table_name>', and attno is set zero directly */
+	if (attname == NULL)
+		attno = InvalidAttrNumber;
+	else
+		attno = get_attnum(rte->relid, attname);
+	vardata->statsTuple = SearchSysCache3(STATRELATTINH,
+										  ObjectIdGetDatum(rte->relid),
+										  Int16GetDatum(attno),
+										  BoolGetDatum(rte->inh));
+	vardata->freefunc = ReleaseSysCache;
+}
+
+static void
+try_fetch_largest_child_stats(PlannerInfo *root, Index parent_rti,
+							  const char *attname, VariableStatData* vardata)
+{
+	RelOptInfo *parent_rel;
+	RelOptInfo *child_rel;
+
+	parent_rel = find_base_rel(root, parent_rti);
+
+	if (parent_rel->cheapest_total_path == NULL)
+		return;
+
+	child_rel = largest_child_relation(root, parent_rel->cheapest_total_path, false);
+	if (child_rel)
+	{
+		RangeTblEntry *child_rte = NULL;
+
+		child_rte = root->simple_rte_array[child_rel->relid];
+		try_fetch_rel_stats(child_rte, attname, vardata);
+		if (vardata->statsTuple != NULL)
+		{
+			adjust_partition_table_statistic_for_parent(vardata->statsTuple,
+														child_rel->tuples);
+		}
+	}
 }

@@ -1,0 +1,6 @@
+CREATE READABLE EXTERNAL TABLE s3regress_noprefix (date text, time text, open float, high float,
+        low float, volume int) LOCATION('s3://s3-ap-northeast-1.amazonaws.com/ap-northeast-1.s3test.pivotal.io config=@config_file@') FORMAT 'csv';
+
+SELECT round(sum(open)) FROM s3regress_noprefix;
+
+DROP EXTERNAL TABLE s3regress_noprefix;

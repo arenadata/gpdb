@@ -22,6 +22,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_enum.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "storage/lmgr.h"
 #include "miscadmin.h"
 #include "nodes/value.h"
@@ -32,9 +33,8 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
+#include "catalog/oid_dispatch.h"
 
-/* Potentially set by pg_upgrade_support functions */
-Oid			binary_upgrade_next_pg_enum_oid = InvalidOid;
 
 /*
  * Hash table of enum value OIDs created during the current transaction by
@@ -90,22 +90,40 @@ EnumValuesCreate(Oid enumTypeOid, List *vals)
 	 */
 	oids = (Oid *) palloc(num_elems * sizeof(Oid));
 
-	for (elemno = 0; elemno < num_elems; elemno++)
+	elemno = 0;
+	foreach(lc, vals)
 	{
 		/*
 		 * We assign even-numbered OIDs to all the new enum labels.  This
 		 * tells the comparison functions the OIDs are in the correct sort
 		 * order and can be compared directly.
 		 */
+		char	   *lab = strVal(lfirst(lc));
 		Oid			new_oid;
 
 		do
 		{
+			/*
+			 * In QE node, however, use the OIDs assigned by the master (they are delivered
+			 * out-of-band, see oid_dispatch.c.
+			 */
+			if (Gp_role == GP_ROLE_EXECUTE)
+			{
+				new_oid = GetPreassignedOidForEnum(enumTypeOid, lab);
+				break;
+			}
+
 			new_oid = GetNewOidWithIndex(pg_enum, EnumOidIndexId,
 										 Anum_pg_enum_oid);
 		} while (new_oid & 1);
 		oids[elemno] = new_oid;
+
+		if (Gp_role == GP_ROLE_DISPATCH)
+			RememberAssignedOidForEnum(enumTypeOid, lab, new_oid);
+
+		elemno++;
 	}
+	Assert(elemno == num_elems);
 
 	/* sort them, just in case OID counter wrapped from high to low */
 	qsort(oids, num_elems, sizeof(Oid), oid_cmp);
@@ -372,25 +390,12 @@ restart:
 	}
 
 	/* Get a new OID for the new label */
-	if (IsBinaryUpgrade)
+	if (Gp_role == GP_ROLE_EXECUTE || IsBinaryUpgrade)
 	{
-		if (!OidIsValid(binary_upgrade_next_pg_enum_oid))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("pg_enum OID value not set when in binary upgrade mode")));
-
 		/*
-		 * Use binary-upgrade override for pg_enum.oid, if supplied. During
-		 * binary upgrade, all pg_enum.oid's are set this way so they are
-		 * guaranteed to be consistent.
+		 * In QE, the dispatcher has already allocated the OID for us.
 		 */
-		if (neighbor != NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("ALTER TYPE ADD BEFORE/AFTER is incompatible with binary upgrade")));
-
-		newOid = binary_upgrade_next_pg_enum_oid;
-		binary_upgrade_next_pg_enum_oid = InvalidOid;
+		newOid = GetPreassignedOidForEnum(enumTypeOid, newVal);
 	}
 	else
 	{
@@ -473,6 +478,8 @@ restart:
 				 */
 			}
 		}
+		if (Gp_role == GP_ROLE_DISPATCH)
+			RememberAssignedOidForEnum(enumTypeOid, newVal, newOid);
 	}
 
 	/* Done with info about existing members */

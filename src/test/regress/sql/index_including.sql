@@ -73,14 +73,17 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 INSERT INTO tbl SELECT 1, NULL, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,300) AS x;
+-- GPDB: Dial down random_page_cost to get the same plan as in upstream.
+set random_page_cost=1.0;
 explain (costs off)
 select * from tbl where (c1,c2,c3) < (2,5,1);
 select * from tbl where (c1,c2,c3) < (2,5,1);
+reset random_page_cost;
 -- row comparison that compares high key at page boundary
 SET enable_seqscan = off;
 explain (costs off)
-select * from tbl where (c1,c2,c3) < (262,1,1) limit 1;
-select * from tbl where (c1,c2,c3) < (262,1,1) limit 1;
+select * from tbl where (c1,c2,c3) < (262,1,1) order by 1 limit 1;
+select * from tbl where (c1,c2,c3) < (262,1,1) order by 1 limit 1;
 DROP TABLE tbl;
 RESET enable_seqscan;
 

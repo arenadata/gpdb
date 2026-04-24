@@ -107,6 +107,17 @@ our @EXPORT = qw(
 our ($use_tcp, $test_localhost, $test_pghost, $last_host_assigned,
 	$last_port_assigned, @all_nodes, $died);
 
+our ($last_dbid);
+
+# Windows path to virtual file system root
+
+our $vfs_path = '';
+if ($Config{osname} eq 'msys')
+{
+	$vfs_path = `cd / && pwd -W`;
+	chomp $vfs_path;
+}
+
 INIT
 {
 
@@ -121,6 +132,8 @@ INIT
 
 	# Tracking of last port value assigned to accelerate free port lookup.
 	$last_port_assigned = int(rand() * 16384) + 49152;
+
+	$last_dbid			= 0
 }
 
 =pod
@@ -143,9 +156,14 @@ sub new
 	my ($class, $name, $pghost, $pgport) = @_;
 	my $testname = basename($0);
 	$testname =~ s/\.[^.]+$//;
+
+	# GPDB needs unique dbid for each node for certain operations
+	$last_dbid = $last_dbid + 1;
+
 	my $self = {
 		_port    => $pgport,
 		_host    => $pghost,
+		_dbid    => $last_dbid,
 		_basedir => "$TestLib::tmp_check/t_${testname}_${name}_data",
 		_name    => $name,
 		_logfile_generation => 0,
@@ -193,6 +211,20 @@ sub host
 {
 	my ($self) = @_;
 	return $self->{_host};
+}
+
+=pod
+
+=item $node->dbid()
+
+Return the dbid for this instance.
+
+=cut
+
+sub dbid
+{
+	my ($self) = @_;
+	return $self->{_dbid};
 }
 
 =pod
@@ -423,6 +455,9 @@ sub init
 	my $port   = $self->port;
 	my $pgdata = $self->data_dir;
 	my $host   = $self->host;
+	my $dbid   = $self->dbid;
+
+	print "####### HOST = $host\n";
 
 	$params{allows_streaming} = 0 unless defined $params{allows_streaming};
 	$params{has_archiving}    = 0 unless defined $params{has_archiving};
@@ -443,6 +478,12 @@ sub init
 	print $conf "log_statement = all\n";
 	print $conf "log_replication_commands = on\n";
 	print $conf "wal_retrieve_retry_interval = '500ms'\n";
+
+	# In GPBB, logging_collector is enabled by default. Disable it, so that
+	# upstream tests behave the same as in PostgreSQL. In particular, the
+	# issues_sql_like() doesn't work if logging_collector is enabled.
+	# Individual tests can override this.
+	print $conf "logging_collector = off\n";
 
 	# If a setting tends to affect whether tests pass or fail, print it after
 	# TEMP_CONFIG.  Otherwise, print it before TEMP_CONFIG, thereby permitting
@@ -467,11 +508,13 @@ sub init
 		}
 		print $conf "max_wal_senders = 5\n";
 		print $conf "max_replication_slots = 5\n";
-		print $conf "max_wal_size = 128MB\n";
+		# PG sets this to 128MB but that makes checkpoint too frequent for GPDB. 
+		# 512MB corresponds to the ratio of GPDB seg size (64) over PG seg size (16).
+		print $conf "max_wal_size = 512MB\n";
 		print $conf "shared_buffers = 1MB\n";
 		print $conf "wal_log_hints = on\n";
 		print $conf "hot_standby = on\n";
-		print $conf "max_connections = 10\n";
+		print $conf "max_connections = 20\n";
 	}
 	else
 	{
@@ -490,6 +533,10 @@ sub init
 		print $conf "unix_socket_directories = '$host'\n";
 		print $conf "listen_addresses = ''\n";
 	}
+
+	# GPDB: Enable Global Deadlock Detector
+	print $conf "gp_enable_global_deadlock_detector = on\n";
+
 	close $conf;
 
 	chmod($self->group_access ? 0640 : 0600, "$pgdata/postgresql.conf")
@@ -497,6 +544,18 @@ sub init
 
 	$self->set_replication_conf if $params{allows_streaming};
 	$self->enable_archiving     if $params{has_archiving};
+
+	# We have to specify the master's dbid explicitly because initdb
+	# only creates an empty file. gpconfigurenewseg is tasked with
+	# populating the master's dbid.
+	open $conf, '>>', "$pgdata/internal.auto.conf";
+	print $conf "\n# Added by PostgresNode.pm\n";
+	print $conf "gp_dbid=$dbid\n";
+	close $conf;
+
+	chmod($self->group_access ? 0640 : 0600, "$pgdata/internal.auto.conf")
+	  or die("unable to set permissions for $pgdata/internal.auto.conf");
+
 	return;
 }
 
@@ -548,7 +607,7 @@ sub backup
 
 	print "# Taking pg_basebackup $backup_name from node \"$name\"\n";
 	TestLib::system_or_bail('pg_basebackup', '-D', $backup_path, '-h',
-		$self->host, '-p', $self->port, '--no-sync');
+		$self->host, '-p', $self->port, '--no-sync', '--target-gp-dbid', 99);
 	print "# Backup finished\n";
 	return;
 }
@@ -649,6 +708,9 @@ Restoring WAL segments from archives using restore_command can be enabled
 by passing the keyword parameter has_restoring => 1. This is disabled by
 default.
 
+If has_restoring is used, standby mode is used by default.  To use
+recovery mode instead, pass the keyword parameter standby => 0.
+
 The backup is copied, leaving the original unmodified. pg_hba.conf is
 unconditionally set to enable replication connections.
 
@@ -665,6 +727,7 @@ sub init_from_backup
 
 	$params{has_streaming} = 0 unless defined $params{has_streaming};
 	$params{has_restoring} = 0 unless defined $params{has_restoring};
+	$params{standby}       = 1 unless defined $params{standby};
 
 	print
 	  "# Initializing node \"$node_name\" from backup \"$backup_name\" of node \"$root_name\"\n";
@@ -695,7 +758,8 @@ port = $port
 			"unix_socket_directories = '$host'");
 	}
 	$self->enable_streaming($root_node) if $params{has_streaming};
-	$self->enable_restoring($root_node) if $params{has_restoring};
+	$self->enable_restoring($root_node, $params{standby})
+	  if $params{has_restoring};
 	return;
 }
 
@@ -759,7 +823,8 @@ sub start
 		# Note: We set the cluster_name here, not in postgresql.conf (in
 		# sub init) so that it does not get copied to standbys.
 		$ret = TestLib::system_log('pg_ctl', '-D', $self->data_dir, '-l',
-			$self->logfile, '-o', "--cluster-name=$name", 'start');
+		$self->logfile, '-o', "--cluster-name=$name -c gp_role=utility --gp_dbid=$self->{_dbid} --gp_contentid=0",
+			'start');
 	}
 
 	if ($ret != 0)
@@ -771,6 +836,7 @@ sub start
 	}
 
 	$self->_update_pid(1);
+	$ENV{PGOPTIONS}      = '-c gp_role=utility';
 	return 1;
 }
 
@@ -935,7 +1001,7 @@ primary_conninfo='$root_connstr'
 # Internal routine to enable archive recovery command on a standby node
 sub enable_restoring
 {
-	my ($self, $root_node) = @_;
+	my ($self, $root_node, $standby) = @_;
 	my $path = TestLib::perl2host($root_node->archive_dir);
 	my $name = $self->name;
 
@@ -957,7 +1023,30 @@ sub enable_restoring
 		'postgresql.conf', qq(
 restore_command = '$copy_command'
 ));
-	$self->set_standby_mode();
+	if ($standby)
+	{
+		$self->set_standby_mode();
+	}
+	else
+	{
+		$self->set_recovery_mode();
+	}
+	return;
+}
+
+=pod
+
+
+=item $node->set_recovery_mode()
+
+Place recovery.signal file.
+=cut
+
+sub set_recovery_mode
+{
+	my ($self) = @_;
+
+	$self->append_conf('recovery.signal', '');
 	return;
 }
 
@@ -1012,6 +1101,9 @@ sub _update_pid
 {
 	my ($self, $is_running) = @_;
 	my $name = $self->name;
+
+	#GPDB_12_MERGE_FIXME: somehow without this fails to find the pid file
+	sleep(1);
 
 	# If we can open the PID file, read its first line and that's the PID we
 	# want.
@@ -1365,6 +1457,9 @@ sub psql
 	my $stderr            = $params{stderr};
 	my $timeout           = undef;
 	my $timeout_exception = 'psql timed out';
+
+	local $ENV{PGOPTIONS} = '-c gp_role=utility';
+
 	my @psql_params =
 	  ('psql', '-XAtq', '-d', $self->connstr($dbname), '-f', '-');
 

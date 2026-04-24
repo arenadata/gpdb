@@ -148,6 +148,7 @@ extern int	SimpleLruReadPage_ReadOnly(SlruCtl ctl, int pageno,
 extern void SimpleLruWritePage(SlruCtl ctl, int slotno);
 extern void SimpleLruFlush(SlruCtl ctl, bool allow_redirtied);
 extern void SimpleLruTruncate(SlruCtl ctl, int cutoffPage);
+extern void SimpleLruTruncateWithLock(SlruCtl ctl, int cutoffPage);
 extern bool SimpleLruDoesPhysicalPageExist(SlruCtl ctl, int pageno);
 
 typedef bool (*SlruScanCallback) (SlruCtl ctl, char *filename, int segpage,

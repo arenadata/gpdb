@@ -1280,7 +1280,6 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 		/* there won't be any state to cleanup */
 		return false;
 	}
-
 	/*
 	 * c) transition from START to BUILDING_SNAPSHOT.
 	 *

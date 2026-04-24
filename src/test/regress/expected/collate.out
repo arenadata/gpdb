@@ -38,6 +38,7 @@ CREATE TABLE collate_test_like (
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
  b      | text    | C         | not null | 
+Distributed by: (a)
 
 CREATE TABLE collate_test2 (
     a int,
@@ -235,7 +236,13 @@ SELECT a, lower(coalesce(x, 'foo')), lower(coalesce(y, 'foo')) FROM collate_test
  2 | hij   | hij
 (2 rows)
 
-SELECT a, b, greatest(b, 'CCC') FROM collate_test1 ORDER BY 3;
+-- Current test frame work does not sort the output of
+-- `select order by` statement. This is not enough.
+-- Because there are tuples with the same order-by key
+-- but different other cols. Their order is important
+-- to the correctness of cases. So we add more order-by
+-- keys here.
+SELECT * FROM (SELECT a, b, greatest(b, 'CCC') FROM collate_test1 ORDER BY 3) r order by 3,1;
  a |  b  | greatest 
 ---+-----+----------
  2 | Abc | CCC
@@ -244,7 +251,7 @@ SELECT a, b, greatest(b, 'CCC') FROM collate_test1 ORDER BY 3;
  3 | bbc | bbc
 (4 rows)
 
-SELECT a, b, greatest(b, 'CCC') FROM collate_test2 ORDER BY 3;
+SELECT * FROM (SELECT a, b, greatest(b, 'CCC') FROM collate_test2 ORDER BY 3) r order by 3,1;
  a |  b  | greatest 
 ---+-----+----------
  2 | Abc | CCC
@@ -500,7 +507,7 @@ SELECT a, b, a < b as lt FROM
 
 -- collation mismatch in subselects
 SELECT * FROM collate_test10 WHERE (x, y) NOT IN (SELECT y, x FROM collate_test10);
-ERROR:  could not determine which collation to use for string hashing
+ERROR:  could not determine which collation to use for string comparison  (seg1 slice1 127.0.0.1:40001 pid=24086)
 HINT:  Use the COLLATE clause to set the collation explicitly.
 -- now it works with overrides
 SELECT * FROM collate_test10 WHERE (x COLLATE "POSIX", y COLLATE "C") NOT IN (SELECT y, x FROM collate_test10);
@@ -606,13 +613,11 @@ INSERT INTO collate_test20 VALUES ('foo'), ('bar');
 CREATE TABLE collate_test21 (f2 text COLLATE "POSIX" REFERENCES collate_test20);
 INSERT INTO collate_test21 VALUES ('foo'), ('bar');
 INSERT INTO collate_test21 VALUES ('baz'); -- fail
-ERROR:  insert or update on table "collate_test21" violates foreign key constraint "collate_test21_f2_fkey"
-DETAIL:  Key (f2)=(baz) is not present in table "collate_test20".
+-- Passes in GPDB, because we don't check foreign keys
 CREATE TABLE collate_test22 (f2 text COLLATE "POSIX");
 INSERT INTO collate_test22 VALUES ('foo'), ('bar'), ('baz');
 ALTER TABLE collate_test22 ADD FOREIGN KEY (f2) REFERENCES collate_test20; -- fail
-ERROR:  insert or update on table "collate_test22" violates foreign key constraint "collate_test22_f2_fkey"
-DETAIL:  Key (f2)=(baz) is not present in table "collate_test20".
+-- Passes in GPDB, because we don't check foreign keys
 DELETE FROM collate_test22 WHERE f2 = 'baz';
 ALTER TABLE collate_test22 ADD FOREIGN KEY (f2) REFERENCES collate_test20;
 RESET enable_seqscan;
@@ -621,21 +626,27 @@ RESET enable_nestloop;
 -- EXPLAIN
 EXPLAIN (COSTS OFF)
   SELECT * FROM collate_test10 ORDER BY x, y;
-                  QUERY PLAN                  
-----------------------------------------------
- Sort
-   Sort Key: x COLLATE "C", y COLLATE "POSIX"
-   ->  Seq Scan on collate_test10
-(3 rows)
+                     QUERY PLAN                     
+----------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: x, y
+   ->  Sort
+         Sort Key: x COLLATE "C", y COLLATE "POSIX"
+         ->  Seq Scan on collate_test10
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 EXPLAIN (COSTS OFF)
   SELECT * FROM collate_test10 ORDER BY x DESC, y COLLATE "C" ASC NULLS FIRST;
-                        QUERY PLAN                         
------------------------------------------------------------
- Sort
-   Sort Key: x COLLATE "C" DESC, y COLLATE "C" NULLS FIRST
-   ->  Seq Scan on collate_test10
-(3 rows)
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: x, y
+   ->  Sort
+         Sort Key: x COLLATE "C" DESC, y COLLATE "C" NULLS FIRST
+         ->  Seq Scan on collate_test10
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 -- CREATE/DROP COLLATION
 CREATE COLLATION mycoll1 FROM "C";

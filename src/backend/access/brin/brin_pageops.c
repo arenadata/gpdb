@@ -57,7 +57,7 @@ brin_doupdate(Relation idxrel, BlockNumber pagesPerRange,
 			  Buffer oldbuf, OffsetNumber oldoff,
 			  const BrinTuple *origtup, Size origsz,
 			  const BrinTuple *newtup, Size newsz,
-			  bool samepage)
+			  bool samepage, bool skipextend)
 {
 	Page		oldpage;
 	ItemId		oldlp;
@@ -80,7 +80,8 @@ brin_doupdate(Relation idxrel, BlockNumber pagesPerRange,
 	}
 
 	/* make sure the revmap is long enough to contain the entry we need */
-	brinRevmapExtend(revmap, heapBlk);
+	if (!skipextend)
+		brinRevmapExtend(revmap, heapBlk);
 
 	if (!samepage)
 	{
@@ -485,7 +486,7 @@ brin_page_init(Page page, uint16 type)
  * Initialize a new BRIN index's metapage.
  */
 void
-brin_metapage_init(Page page, BlockNumber pagesPerRange, uint16 version)
+brin_metapage_init(Page page, BlockNumber pagesPerRange, uint16 version, bool isAo)
 {
 	BrinMetaPageData *metadata;
 
@@ -496,6 +497,7 @@ brin_metapage_init(Page page, BlockNumber pagesPerRange, uint16 version)
 	metadata->brinMagic = BRIN_META_MAGIC;
 	metadata->brinVersion = version;
 	metadata->pagesPerRange = pagesPerRange;
+	metadata->isAo = isAo;
 
 	/*
 	 * Note we cheat here a little.  0 is not a valid revmap block number
@@ -590,7 +592,7 @@ brin_evacuate_page(Relation idxRel, BlockNumber pagesPerRange,
 			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 
 			if (!brin_doupdate(idxRel, pagesPerRange, revmap, tup->bt_blkno,
-							   buf, off, tup, sz, tup, sz, false))
+							   buf, off, tup, sz, tup, sz, false, true))
 				off--;			/* retry */
 
 			LockBuffer(buf, BUFFER_LOCK_SHARE);
@@ -649,7 +651,8 @@ brin_page_cleanup(Relation idxrel, Buffer buf)
 
 	/* Nothing to be done for non-regular index pages */
 	if (BRIN_IS_META_PAGE(BufferGetPage(buf)) ||
-		BRIN_IS_REVMAP_PAGE(BufferGetPage(buf)))
+		BRIN_IS_REVMAP_PAGE(BufferGetPage(buf)) ||
+		BRIN_IS_UPPER_PAGE(BufferGetPage(buf)))
 		return;
 
 	/* Measure free space and record it */

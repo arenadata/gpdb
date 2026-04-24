@@ -45,6 +45,11 @@ CATALOG(pg_ts_config,3602,TSConfigRelationId)
 	Oid			cfgparser BKI_LOOKUP(pg_ts_parser);
 } FormData_pg_ts_config;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(cfgnamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(cfgowner REFERENCES pg_authid(oid));
+FOREIGN_KEY(cfgparser REFERENCES pg_ts_parser(oid));
+
 typedef FormData_pg_ts_config *Form_pg_ts_config;
 
 #endif							/* PG_TS_CONFIG_H */

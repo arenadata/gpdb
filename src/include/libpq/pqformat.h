@@ -168,6 +168,10 @@ pq_sendbyte(StringInfo buf, uint8 byt)
  *
  * This function is deprecated; prefer use of the functions above.
  */
+#ifdef UNITTEST
+extern void
+pq_sendint(StringInfo buf, uint32 i, int b);
+#else
 static inline void
 pq_sendint(StringInfo buf, uint32 i, int b)
 {
@@ -187,6 +191,7 @@ pq_sendint(StringInfo buf, uint32 i, int b)
 			break;
 	}
 }
+#endif
 
 
 extern void pq_begintypsend(StringInfo buf);

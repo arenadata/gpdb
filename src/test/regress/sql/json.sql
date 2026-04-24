@@ -656,10 +656,10 @@ INSERT INTO foo VALUES (847001,'t15','GE1043');
 INSERT INTO foo VALUES (847002,'t16','GE1043');
 INSERT INTO foo VALUES (847003,'sub-alpha','GESS90');
 
-SELECT json_build_object('turbines',json_object_agg(serial_num,json_build_object('name',name,'type',type)))
+SELECT json_build_object('turbines',json_object_agg(serial_num,json_build_object('name',name,'type',type) order by serial_num))
 FROM foo;
 
-SELECT json_object_agg(name, type) FROM foo;
+SELECT json_object_agg(name, type order by type, name) FROM foo;
 
 INSERT INTO foo VALUES (999999, NULL, 'bar');
 SELECT json_object_agg(name, type) FROM foo;
@@ -710,7 +710,6 @@ select json_object('{a,b,NULL,"d e f"}','{1,2,3,"a b c"}');
 -- empty key is allowed
 
 select json_object('{a,b,"","d e f"}','{1,2,3,"a b c"}');
-
 
 -- json_to_record and json_to_recordset
 
@@ -823,3 +822,8 @@ select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": 
 select ts_headline('null'::json, tsquery('aaa & bbb'));
 select ts_headline('{}'::json, tsquery('aaa & bbb'));
 select ts_headline('[]'::json, tsquery('aaa & bbb'));
+
+-- checking proisstrict settings
+select '[{"a":1}]'::json->0->'b';
+select '[{"a":1}]'::json->1;
+select '[{"a":1}]'::json->1->'a';

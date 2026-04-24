@@ -5,7 +5,8 @@ CREATE USER regress_dep_user;
 CREATE USER regress_dep_user2;
 CREATE USER regress_dep_user3;
 CREATE GROUP regress_dep_group;
-CREATE TABLE deptest (f1 serial primary key, f2 text);
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+CREATE TABLE deptest (f1 serial primary key, f2 text) DISTRIBUTED BY (f1);
 GRANT SELECT ON TABLE deptest TO GROUP regress_dep_group;
 GRANT ALL ON TABLE deptest TO regress_dep_user, regress_dep_user2;
 -- can't drop neither because they have privileges somewhere
@@ -56,10 +57,10 @@ REASSIGN OWNED BY regress_dep_user1 TO regress_dep_user0;
 ERROR:  permission denied to reassign objects
 -- this one is allowed
 DROP OWNED BY regress_dep_user0;
-CREATE TABLE deptest1 (f1 int unique);
+CREATE TABLE deptest1 (f1 int unique) DISTRIBUTED BY (f1);
 GRANT ALL ON deptest1 TO regress_dep_user1 WITH GRANT OPTION;
 SET SESSION AUTHORIZATION regress_dep_user1;
-CREATE TABLE deptest (a serial primary key, b text);
+CREATE TABLE deptest (a serial primary key, b text) DISTRIBUTED BY (a);
 GRANT ALL ON deptest1 TO regress_dep_user2;
 RESET SESSION AUTHORIZATION;
 \z deptest1
@@ -112,10 +113,10 @@ FROM pg_type JOIN pg_class c ON typrelid = c.oid WHERE typname = 'deptest_t';
 RESET SESSION AUTHORIZATION;
 REASSIGN OWNED BY regress_dep_user1 TO regress_dep_user2;
 \dt deptest
-              List of relations
- Schema |  Name   | Type  |       Owner       
---------+---------+-------+-------------------
- public | deptest | table | regress_dep_user2
+                   List of relations
+ Schema |  Name   | Type  |       Owner       | Storage 
+--------+---------+-------+-------------------+---------
+ public | deptest | table | regress_dep_user2 | heap
 (1 row)
 
 SELECT typowner = relowner

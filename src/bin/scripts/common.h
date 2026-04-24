@@ -58,6 +58,9 @@ extern void splitTableColumnsSpec(const char *spec, int encoding,
 extern void appendQualifiedRelation(PQExpBuffer buf, const char *name,
 									PGconn *conn, bool echo);
 
+extern void appendQualifiedRelation(PQExpBuffer buf, const char *name,
+						PGconn *conn, const char *progname, bool echo);
+
 extern bool yesno_prompt(const char *question);
 
 extern void setup_cancel_handler(void);

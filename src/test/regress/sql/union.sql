@@ -1,3 +1,4 @@
+set optimizer_trace_fallback = on;
 --
 -- UNION (also INTERSECT, EXCEPT)
 --
@@ -162,11 +163,11 @@ SELECT q1 FROM int8_tbl INTERSECT SELECT q2 FROM int8_tbl UNION ALL SELECT q2 FR
 
 SELECT q1 FROM int8_tbl INTERSECT (((SELECT q2 FROM int8_tbl UNION ALL SELECT q2 FROM int8_tbl))) ORDER BY 1;
 
-(((SELECT q1 FROM int8_tbl INTERSECT SELECT q2 FROM int8_tbl ORDER BY 1))) UNION ALL SELECT q2 FROM int8_tbl;
+(((SELECT q1 FROM int8_tbl INTERSECT SELECT q2 FROM int8_tbl ORDER BY 1))) UNION ALL SELECT q2 FROM int8_tbl ORDER BY 1;
 
 SELECT q1 FROM int8_tbl UNION ALL SELECT q2 FROM int8_tbl EXCEPT SELECT q1 FROM int8_tbl ORDER BY 1;
 
-SELECT q1 FROM int8_tbl UNION ALL (((SELECT q2 FROM int8_tbl EXCEPT SELECT q1 FROM int8_tbl ORDER BY 1)));
+SELECT q1 FROM int8_tbl UNION ALL (((SELECT q2 FROM int8_tbl EXCEPT SELECT q1 FROM int8_tbl ORDER BY 1))); --order none
 
 (((SELECT q1 FROM int8_tbl UNION ALL SELECT q2 FROM int8_tbl))) EXCEPT SELECT q1 FROM int8_tbl ORDER BY 1;
 
@@ -257,6 +258,8 @@ CREATE INDEX t1_ab_idx on t1 ((a || b));
 CREATE TEMP TABLE t2 (ab text primary key);
 INSERT INTO t1 VALUES ('a', 'b'), ('x', 'y');
 INSERT INTO t2 VALUES ('ab'), ('xy');
+ANALYZE t1;
+ANALYZE t2;
 
 set enable_seqscan = off;
 set enable_indexscan = on;
@@ -290,6 +293,8 @@ CREATE INDEX t1c_ab_idx on t1c ((a || b));
 
 set enable_seqscan = on;
 set enable_indexonlyscan = off;
+-- Coerce GPDB to produce same plan as in upstream
+set enable_sort=off;
 
 explain (costs off)
   SELECT * FROM
@@ -307,8 +312,12 @@ explain (costs off)
 reset enable_seqscan;
 reset enable_indexscan;
 reset enable_bitmapscan;
+reset enable_sort;
 
 -- This simpler variant of the above test has been observed to fail differently
+
+-- Coerce GPDB to produce same plan as in upstream
+set enable_seqscan=off;
 
 create table events (event_id int primary key);
 create table other_events (event_id int primary key);
@@ -320,6 +329,8 @@ select event_id
        union all
        select event_id from other_events) ss
  order by event_id;
+
+reset enable_seqscan;
 
 drop table events_child, events, other_events;
 
@@ -440,3 +451,5 @@ select * from
    union all
    select *, 1 as x from int8_tbl b) ss
 where (x = 0) or (q1 >= q2 and q1 <= q2);
+
+reset optimizer_trace_fallback;

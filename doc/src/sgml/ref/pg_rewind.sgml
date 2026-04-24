@@ -43,8 +43,8 @@ PostgreSQL documentation
   <para>
    <application>pg_rewind</application> is a tool for synchronizing a PostgreSQL cluster
    with another copy of the same cluster, after the clusters' timelines have
-   diverged. A typical scenario is to bring an old master server back online
-   after failover as a standby that follows the new master.
+   diverged. A typical scenario is to bring an old coordinator server back online
+   after failover as a standby that follows the new coordinator.
   </para>
 
   <para>
@@ -161,6 +161,19 @@ PostgreSQL documentation
         used by <application>pg_rewind</application> on the source server
         (see Notes section for details) or a superuser role.  This option
         requires the source server to be running and not in recovery mode.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-R</option></term>
+      <term><option>--write-recovery-conf</option></term>
+      <listitem>
+       <para>
+        Create <filename>standby.signal</filename> and append connection
+        settings to <filename>postgresql.auto.conf</filename> in the output
+        directory.  <literal>--source-server</literal> is mandatory with
+        this option.
        </para>
       </listitem>
      </varlistentry>

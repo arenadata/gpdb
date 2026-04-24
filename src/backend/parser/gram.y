@@ -6,6 +6,8 @@
  * gram.y
  *	  POSTGRESQL BISON rules/actions
  *
+ * Portions Copyright (c) 2006-2010, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -52,6 +54,7 @@
 #include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_foreign_server.h"
 #include "catalog/pg_trigger.h"
 #include "commands/defrem.h"
 #include "commands/trigger.h"
@@ -65,6 +68,10 @@
 #include "utils/datetime.h"
 #include "utils/numeric.h"
 #include "utils/xml.h"
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
+
+#include "utils/guc.h"
 
 
 /*
@@ -189,6 +196,12 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 			   bool *no_inherit, core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
+static Node *makeIsNotDistinctFromNode(Node *expr, int position);
+
+static bool isSetWithReorganize(List **options);
+static char *greenplumLegacyAOoptions(const char *accessMethod, List **options);
+static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_t yyscanner);
+
 %}
 
 %pure-parser
@@ -242,6 +255,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PartitionSpec		*partspec;
 	PartitionBoundSpec	*partboundspec;
 	RoleSpec			*rolespec;
+	DistributionKeyElem *dkelem;
 }
 
 %type <node>	stmt schema_stmt
@@ -283,6 +297,16 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateMatViewStmt RefreshMatViewStmt CreateAmStmt
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
+		RetrieveStmt
+
+/* GPDB-specific commands */
+%type <node>	AlterTypeStmt AlterQueueStmt AlterResourceGroupStmt
+		CreateExternalStmt
+		CreateQueueStmt CreateResourceGroupStmt
+		DropQueueStmt DropResourceGroupStmt
+		ExtTypedesc OptSingleRowErrorHandling ExtSingleRowErrorHandling
+
+%type <node>    deny_login_role deny_interval deny_point deny_day_specifier
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
@@ -296,6 +320,11 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
 
+%type <node>	alter_table_partition_cmd alter_table_partition_id_spec
+				alter_table_partition_id_spec_with_opt_default
+%type <list>	part_values_clause multi_spec_value_list part_values_single
+%type <ival>	opt_table_partition_exchange_validate
+
 %type <dbehavior>	opt_drop_behavior
 
 %type <list>	createdb_opt_list createdb_opt_items copy_opt_list
@@ -304,6 +333,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <defelt>	createdb_opt_item copy_opt_item
 				transaction_mode_item
 				create_extension_opt_item alter_extension_opt_item
+
+%type <list>	ext_on_clause_list format_opt format_opt_list format_def_list
+				ext_options ext_options_opt ext_options_list
+				ext_opt_encoding_list
+%type <defelt>	ext_on_clause_item format_opt_item format_def_item
+				ext_options_item
+				ext_opt_encoding_item
 
 %type <ival>	opt_lock lock_type cast_context
 %type <str>		vac_analyze_option_name
@@ -318,10 +354,18 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <list>	OptRoleList AlterOptRoleList
 %type <defelt>	CreateOptRoleElem AlterOptRoleElem
+%type <defelt>	AlterOnlyOptRoleElem
 
 %type <str>		opt_type
 %type <str>		foreign_server_version opt_foreign_server_version
 %type <str>		opt_in_database
+%type <str>		opt_coordinatoronly
+
+%type <list>	OptQueueList
+%type <defelt>	OptQueueElem
+
+%type <list>	OptResourceGroupList
+%type <defelt>	OptResourceGroupElem
 
 %type <str>		OptSchemaName
 %type <list>	OptSchemaEltList
@@ -376,6 +420,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <list>	stmtblock stmtmulti
 				OptTableElementList TableElementList OptInherit definition
+				OptExtTableElementList ExtTableElementList
 				OptTypedTableElementList TypedTableElementList
 				reloptions opt_reloptions
 				OptWith distinct_clause opt_all_clause opt_definition func_args func_args_list
@@ -384,11 +429,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				func_as createfunc_opt_list alterfunc_opt_list
 				old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
+				cdb_string_list
 				opt_column_list columnList opt_name_list
+				exttab_auth_list keyvalue_list
 				sort_clause opt_sort_clause sortby_list index_params
 				opt_include opt_c_include index_including_params
 				name_list role_list from_clause from_list opt_array_bounds
-				qualified_name_list any_name any_name_list type_name_list
+				qualified_name_list qualified_name_list_with_only any_name any_name_list type_name_list
 				any_operator expr_list attrs
 				target_list opt_target_list insert_column_list set_target_list
 				set_clause_list set_clause
@@ -400,6 +447,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				prep_type_clause
 				execute_param_clause using_clause returning_clause
 				opt_enum_val_list enum_val_list table_func_column_list
+				scatter_clause
 				create_generic_options alter_generic_options
 				relation_expr_list dostmt_opt_list
 				transform_element_list transform_type_list
@@ -413,6 +461,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	opt_publication_for_tables publication_for_tables
 %type <value>	publication_name_item
 
+%type <node>    table_value_select_clause
+
 %type <list>	opt_fdw_options fdw_options
 %type <defelt>	fdw_option
 
@@ -423,6 +473,10 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <fun_param> func_arg func_arg_with_default table_func_column aggr_arg
 %type <fun_param_mode> arg_class
 %type <typnam>	func_return func_type
+
+%type <boolean>  OptWeb OptWritable OptSrehLimitType
+
+%type <chr>		OptLogErrorTable ExtLogErrorTable
 
 %type <boolean>  opt_trusted opt_restart_seqs
 %type <ival>	 OptTemp
@@ -446,6 +500,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> opt_instead
 %type <boolean> opt_unique opt_concurrently opt_verbose opt_full
 %type <boolean> opt_freeze opt_analyze opt_default opt_recheck
+%type <boolean> opt_dxl
 %type <defelt>	opt_binary copy_delimiter
 
 %type <boolean> copy_from opt_program
@@ -472,7 +527,10 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <node>	TableElement TypedTableElement ConstraintElem TableFuncElement
 %type <node>	columnDef columnOptions
-%type <defelt>	def_elem reloption_elem old_aggr_elem operator_def_elem
+%type <defelt>	def_elem reloption_elem old_aggr_elem keyvalue_pair operator_def_elem
+%type <node>	ExtTableElement
+%type <node>	ExtcolumnDef
+%type <node>	cdb_string
 %type <node>	def_arg columnElem where_clause where_or_current_clause
 				a_expr b_expr c_expr AexprConst indirection_el opt_slice_bound
 				columnref in_expr having_clause func_table xmltable array_expr
@@ -483,8 +541,10 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>	func_arg_list
 %type <node>	func_arg_expr
 %type <list>	row explicit_row implicit_row type_list array_expr_list
-%type <node>	case_expr case_arg when_clause case_default
+%type <node>	case_expr case_arg when_clause when_operand case_default
 %type <list>	when_clause_list
+%type <node>	decode_expr search_result decode_default
+%type <list>	search_result_list
 %type <ival>	sub_type opt_materialized
 %type <value>	NumericOnly
 %type <list>	NumericOnly_list
@@ -529,8 +589,11 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <ival>	Iconst SignedIconst
 %type <str>		Sconst comment_text notify_payload
 %type <str>		RoleId opt_boolean_or_string
+%type <str>		QueueId
 %type <list>	var_list
-%type <str>		ColId ColLabel var_name type_function_name param_name
+%type <str>		ColId ColLabel ColLabelNoAs var_name type_function_name param_name
+%type <keyword> PartitionIdentKeyword	
+%type <str>		PartitionColId
 %type <str>		NonReservedWord NonReservedWord_or_Sconst
 %type <str>		createdb_opt_name
 %type <node>	var_value zone_value
@@ -538,6 +601,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <keyword> unreserved_keyword type_func_name_keyword
 %type <keyword> col_name_keyword reserved_keyword
+%type <keyword> keywords_ok_in_alias_no_as
 
 %type <node>	TableConstraint TableLikeClause
 %type <ival>	TableLikeOptionList TableLikeOption
@@ -551,7 +615,32 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace
 %type <rolespec> OptTableSpaceOwner
+%type <node>    DistributedBy OptDistributedBy 
+%type <ival>	OptTabPartitionRangeInclusive
+%type <node>	TabSubPartitionBy TabSubPartition
+				tab_part_val tab_part_val_no_paran
+%type <node>	opt_list_subparts
 %type <ival>	opt_check_option
+%type <node>	OptTabPartitionSpec OptTabSubPartitionSpec TabSubPartitionTemplate      /* PartitionSpec */
+%type <list>	TabPartitionElemList TabSubPartitionElemList /* list of PartitionElem */
+
+%type <node> 	TabPartitionElem TabSubPartitionElem  /* PartitionElem */
+
+%type <node> 	TabPartitionBoundarySpec OptTabPartitionBoundarySpec  /* PartitionBoundSpec */
+%type <node>    TabAddPartitionBoundarySpec OptTabAddPartitionBoundarySpec  /* AddPartitionBoundSpec */
+%type <list> 	TabPartitionBoundarySpecValList
+				part_values_or_spec_list
+%type <node> 	TabPartitionBoundarySpecStart TabPartitionBoundarySpecEnd
+				OptTabPartitionBoundarySpecEnd  /* GpPartitionRangeItem */
+%type <list>	OptTabPartitionBoundarySpecEvery
+%type <str> 	TabPartitionNameDecl TabSubPartitionNameDecl
+				TabPartitionDefaultNameDecl TabSubPartitionDefaultNameDecl 
+%type <node>	opt_table_partition_split_into
+%type <node>	opt_time
+
+%type <node>	column_reference_storage_directive
+%type <list>	opt_storage_encoding OptTabPartitionColumnEncList
+				TabPartitionColumnEncList
 
 %type <str>		opt_provider security_label
 
@@ -580,9 +669,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				opt_frame_clause frame_extent frame_bound
 %type <ival>	opt_window_exclusion_clause
 %type <str>		opt_existing_window_name
+
+%type <list>	distributed_by_list
+%type <dkelem>	distributed_by_elem
+
 %type <boolean> opt_if_not_exists
 %type <ival>	generated_when override_kind
-%type <partspec>	PartitionSpec OptPartitionSpec
+%type <partspec>	PartitionSpec OptFirstPartitionSpec OptSecondPartitionSpec
 %type <str>			part_strategy
 %type <partelem>	part_elem
 %type <list>		part_params
@@ -623,6 +716,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
+	CONCURRENCY
 	CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE
 	CROSS CSV CUBE CURRENT_P
 	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
@@ -633,7 +727,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	DETACH DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P
 	DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT EXCEPT
+	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENDPOINT ENUM_P ESCAPE EVENT EXCEPT
 	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN
 	EXTENSION EXTERNAL EXTRACT
 
@@ -657,7 +751,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
-	MAPPING MATCH MATERIALIZED MAXVALUE METHOD MINUTE_P MINVALUE MODE MONTH_P MOVE
+	MAPPING MATCH MATERIALIZED MAXVALUE MEMORY_LIMIT MEMORY_SHARED_QUOTA MEMORY_SPILL_RATIO
+	METHOD MINUTE_P MINVALUE MODE MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NONE
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
@@ -675,7 +770,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
-	RESET RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
+	RESET RESTART RESTRICT RETRIEVE RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWS RULE
 
 	SAVEPOINT SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE SEQUENCES
@@ -704,6 +799,52 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	ZONE
 
+
+/* GPDB-added keywords, in alphabetical order */
+%token <keyword>
+	ACTIVE
+
+	CONTAINS COORDINATOR CPUSET CPU_RATE_LIMIT
+
+	CREATEEXTTABLE
+
+	DECODE DENY DISTRIBUTED DXL
+
+	ERRORS EVERY EXCHANGE EXPAND
+
+	FIELDS FILL FORMAT
+
+	FULLSCAN
+
+	GROUP_ID
+
+	HASH HOST
+
+	IGNORE_P INCLUSIVE INITPLAN
+
+	LIST LOG_P
+
+	MASTER MEDIAN MISSING MODIFIES
+
+	NEWLINE NOCREATEEXTTABLE NOOVERCOMMIT
+
+	ORDERED OVERCOMMIT
+
+	PARTITIONS PERCENT PERSISTENTLY PROTOCOL
+
+	QUEUE
+
+	RANDOMLY READABLE READS REJECT_P REPLICATED RESOURCE
+	ROOTPARTITION
+
+	SCATTER SEGMENT SEGMENTS SPLIT SUBPARTITION
+
+	THRESHOLD
+
+	VALIDATION
+
+	WEB WRITABLE
+
 /*
  * The grammar thinks these are keywords, but they are not in the kwlist.h
  * list and so can never be entered directly.  The filter in parser.c
@@ -715,6 +856,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  * NULLS_LA and WITH_LA are needed to make the grammar LALR(1).
  */
 %token		NOT_LA NULLS_LA WITH_LA
+%token		PARTITION_TAIL
 
 
 /* Precedence: lowest to highest */
@@ -758,6 +900,313 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 %nonassoc	UNBOUNDED		/* ideally should have same precedence as IDENT */
 %nonassoc	IDENT GENERATED NULL_P PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
+
+/*
+ * This is a bit ugly... To allow these to be column aliases without
+ * the "AS" keyword, and not conflict with PostgreSQL's non-standard
+ * suffix operators, we need to give these a precedence.
+ */
+%nonassoc   ABORT_P
+			%nonassoc ABSOLUTE_P
+			%nonassoc ACCESS
+			%nonassoc ACTION
+			%nonassoc ACTIVE
+			%nonassoc ADD_P
+			%nonassoc ADMIN
+			%nonassoc AFTER
+			%nonassoc AGGREGATE
+			%nonassoc ALSO
+			%nonassoc ALTER
+			%nonassoc ASSERTION
+			%nonassoc ASSIGNMENT
+			%nonassoc BACKWARD
+			%nonassoc BEFORE
+			%nonassoc BEGIN_P
+			%nonassoc BY
+			%nonassoc CACHE
+			%nonassoc CALLED
+			%nonassoc CASCADE
+			%nonassoc CASCADED
+			%nonassoc CHAIN
+			%nonassoc CHARACTERISTICS
+			%nonassoc CHECKPOINT
+			%nonassoc CLASS
+			%nonassoc CLOSE
+			%nonassoc CLUSTER
+			%nonassoc COMMENT
+			%nonassoc COMMIT
+			%nonassoc COMMITTED
+			%nonassoc CONCURRENCY
+			%nonassoc CONCURRENTLY
+			%nonassoc CONNECTION
+			%nonassoc CONSTRAINTS
+			%nonassoc CONTAINS
+			%nonassoc CONTENT_P
+			%nonassoc CONTINUE_P
+			%nonassoc CONVERSION_P
+			%nonassoc COPY
+			%nonassoc COST
+			%nonassoc CPUSET
+			%nonassoc CPU_RATE_LIMIT
+			%nonassoc CREATEEXTTABLE
+			%nonassoc CSV
+			%nonassoc CURRENT_P
+			%nonassoc CURSOR
+			%nonassoc CYCLE
+			%nonassoc DATA_P
+			%nonassoc DATABASE
+			%nonassoc DAY_P
+			%nonassoc DEALLOCATE
+			%nonassoc DECLARE
+			%nonassoc DEFAULTS
+			%nonassoc DEFERRED
+			%nonassoc DEFINER
+			%nonassoc DELETE_P
+			%nonassoc DELIMITER
+			%nonassoc DELIMITERS
+			%nonassoc DISABLE_P
+			%nonassoc DOMAIN_P
+			%nonassoc DOUBLE_P
+			%nonassoc DROP
+			%nonassoc EACH
+			%nonassoc ENABLE_P
+			%nonassoc ENCODING
+			%nonassoc ENCRYPTED
+			%nonassoc END_P
+			%nonassoc ENDPOINT
+			%nonassoc ENUM_P
+			%nonassoc ERRORS
+			%nonassoc EVERY
+			%nonassoc EXCHANGE
+			%nonassoc EXCLUDING
+			%nonassoc EXCLUSIVE
+			%nonassoc EXECUTE
+			%nonassoc EXPLAIN
+			%nonassoc EXTERNAL
+			%nonassoc FETCH
+			%nonassoc FIELDS
+			%nonassoc FILL
+			%nonassoc FIRST_P
+			%nonassoc FORCE
+			%nonassoc FORMAT
+			%nonassoc FORWARD
+			%nonassoc FUNCTION
+			%nonassoc GLOBAL
+			%nonassoc GRANTED
+			%nonassoc HANDLER
+			%nonassoc HASH
+			%nonassoc HEADER_P
+			%nonassoc HOLD
+			%nonassoc HOST
+			%nonassoc HOUR_P
+			%nonassoc IF_P
+			%nonassoc IMMEDIATE
+			%nonassoc IMMUTABLE
+			%nonassoc IMPLICIT_P
+			%nonassoc INCLUDING
+			%nonassoc INCLUSIVE
+			%nonassoc INCREMENT
+			%nonassoc INDEX
+			%nonassoc INDEXES
+			%nonassoc INHERIT
+			%nonassoc INHERITS
+			%nonassoc INPUT_P
+			%nonassoc INSENSITIVE
+			%nonassoc INSERT
+			%nonassoc INSTEAD
+			%nonassoc INVOKER
+			%nonassoc ISOLATION
+			%nonassoc KEY
+			%nonassoc LANGUAGE
+			%nonassoc LARGE_P
+			%nonassoc LAST_P
+			%nonassoc LEVEL
+			%nonassoc LIST
+			%nonassoc LISTEN
+			%nonassoc LOAD
+			%nonassoc LOCAL
+			%nonassoc LOCATION
+			%nonassoc LOCK_P
+			%nonassoc MASTER
+			%nonassoc MATCH
+			%nonassoc MAXVALUE
+			%nonassoc MEMORY_LIMIT
+			%nonassoc MEMORY_SHARED_QUOTA
+			%nonassoc MEMORY_SPILL_RATIO
+			%nonassoc MINUTE_P
+			%nonassoc MINVALUE
+			%nonassoc MISSING
+			%nonassoc MODE
+			%nonassoc MODIFIES
+			%nonassoc MONTH_P
+			%nonassoc MOVE
+			%nonassoc NAME_P
+			%nonassoc NAMES
+			%nonassoc NEWLINE
+			%nonassoc NEXT
+			%nonassoc NO
+			%nonassoc NOCREATEEXTTABLE
+			%nonassoc NOOVERCOMMIT
+			%nonassoc NOTHING
+			%nonassoc NOTIFY
+			%nonassoc NOWAIT
+			%nonassoc NULLS_P
+			%nonassoc OBJECT_P
+			%nonassoc OF
+			%nonassoc OIDS
+			%nonassoc OPTION
+			%nonassoc OPTIONS
+			%nonassoc OTHERS
+			%nonassoc OVER
+			%nonassoc OVERCOMMIT
+			%nonassoc OWNED
+			%nonassoc OWNER
+			%nonassoc PARALLEL
+			%nonassoc PARTIAL
+			%nonassoc PARTITIONS
+			%nonassoc PASSWORD
+			%nonassoc PERCENT
+			%nonassoc PERSISTENTLY
+			%nonassoc PREPARE
+			%nonassoc PREPARED
+			%nonassoc PRIOR
+			%nonassoc PRIVILEGES
+			%nonassoc PROCEDURAL
+			%nonassoc PROCEDURE
+			%nonassoc PROTOCOL
+			%nonassoc QUEUE
+			%nonassoc QUOTE
+			%nonassoc RANDOMLY
+			%nonassoc READ
+			%nonassoc READABLE
+			%nonassoc READS
+			%nonassoc REASSIGN
+			%nonassoc RECHECK
+			%nonassoc RECURSIVE
+			%nonassoc REINDEX
+			%nonassoc REJECT_P
+			%nonassoc RELATIVE_P
+			%nonassoc RELEASE
+			%nonassoc RENAME
+			%nonassoc REPEATABLE
+			%nonassoc REPLACE
+			%nonassoc RESET
+			%nonassoc RESOURCE
+			%nonassoc RESTART
+			%nonassoc RESTRICT
+			%nonassoc RETRIEVE
+			%nonassoc RETURNS
+			%nonassoc REVOKE
+			%nonassoc ROLE
+			%nonassoc ROLLBACK
+			%nonassoc RULE
+			%nonassoc SAVEPOINT
+			%nonassoc SCHEMA
+			%nonassoc SCROLL
+			%nonassoc SEARCH
+			%nonassoc SECOND_P
+			%nonassoc SECURITY
+			%nonassoc SEGMENT
+			%nonassoc SEGMENTS
+			%nonassoc SEQUENCE
+			%nonassoc SERIALIZABLE
+			%nonassoc SESSION
+			%nonassoc SHARE
+			%nonassoc SHOW
+			%nonassoc SIMPLE
+			%nonassoc SPLIT
+			%nonassoc STABLE
+			%nonassoc START
+			%nonassoc STATEMENT
+			%nonassoc STATISTICS
+			%nonassoc STDIN
+			%nonassoc STDOUT
+			%nonassoc STORAGE
+			%nonassoc SUBPARTITION
+			%nonassoc SYSID
+			%nonassoc SYSTEM_P
+			%nonassoc STRICT_P
+			%nonassoc TABLESPACE
+			%nonassoc TEMP
+			%nonassoc TEMPLATE
+			%nonassoc TEMPORARY
+			%nonassoc THRESHOLD
+			%nonassoc TIES
+			%nonassoc TRANSACTION
+			%nonassoc TRIGGER
+			%nonassoc TRUNCATE
+			%nonassoc TRUSTED
+			%nonassoc TYPE_P
+			%nonassoc UNCOMMITTED
+			%nonassoc UNENCRYPTED
+			%nonassoc UNLISTEN
+			%nonassoc UNTIL
+			%nonassoc UPDATE
+			%nonassoc VACUUM
+			%nonassoc VALID
+			%nonassoc VALIDATION
+			%nonassoc VALIDATOR
+			%nonassoc VALUE_P
+			%nonassoc VARYING
+			%nonassoc VERSION_P
+			%nonassoc VIEW
+			%nonassoc VOLATILE
+			%nonassoc WEB
+			%nonassoc WITH
+			%nonassoc WITHIN
+			%nonassoc WITHOUT
+			%nonassoc WORK
+			%nonassoc WRITABLE
+			%nonassoc WRITE
+			%nonassoc YEAR_P
+			%nonassoc BIGINT
+			%nonassoc BIT
+			%nonassoc BOOLEAN_P
+			%nonassoc CHAR_P
+			%nonassoc CHARACTER
+			%nonassoc COALESCE
+			%nonassoc DEC
+			%nonassoc DECIMAL_P
+			%nonassoc EXISTS
+			%nonassoc EXTRACT
+			%nonassoc FLOAT_P
+			%nonassoc GREATEST
+			%nonassoc INOUT
+			%nonassoc INT_P
+			%nonassoc INTEGER
+			%nonassoc INTERVAL
+			%nonassoc LEAST
+			%nonassoc MEDIAN
+			%nonassoc NATIONAL
+			%nonassoc NCHAR
+			%nonassoc NONE
+			%nonassoc NULLIF
+			%nonassoc NUMERIC
+			%nonassoc OUT_P
+			%nonassoc OVERLAY
+			%nonassoc POSITION
+			%nonassoc PRECISION
+			%nonassoc REAL
+			%nonassoc ROW
+			%nonassoc SETOF
+			%nonassoc SETS
+			%nonassoc SMALLINT
+			%nonassoc SUBSTRING
+			%nonassoc TIME
+			%nonassoc TIMESTAMP
+			%nonassoc TREAT
+			%nonassoc TRIM
+			%nonassoc VALUES
+			%nonassoc VARCHAR
+			%nonassoc AUTHORIZATION
+			%nonassoc BINARY
+			%nonassoc FREEZE
+			%nonassoc LOG_P
+			%nonassoc OUTER_P
+			%nonassoc VERBOSE
+			%nonassoc UNKNOWN
+			%nonassoc ZONE
+
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -843,6 +1292,8 @@ stmt :
 			| AlterOwnerStmt
 			| AlterOperatorStmt
 			| AlterPolicyStmt
+			| AlterQueueStmt
+			| AlterResourceGroupStmt
 			| AlterSeqStmt
 			| AlterSystemStmt
 			| AlterTableStmt
@@ -854,6 +1305,7 @@ stmt :
 			| AlterSubscriptionStmt
 			| AlterTSConfigurationStmt
 			| AlterTSDictionaryStmt
+			| AlterTypeStmt
 			| AlterUserMappingStmt
 			| AnalyzeStmt
 			| CallStmt
@@ -870,6 +1322,7 @@ stmt :
 			| CreateConversionStmt
 			| CreateDomainStmt
 			| CreateExtensionStmt
+			| CreateExternalStmt
 			| CreateFdwStmt
 			| CreateForeignServerStmt
 			| CreateForeignTableStmt
@@ -882,6 +1335,8 @@ stmt :
 			| AlterOpFamilyStmt
 			| CreatePolicyStmt
 			| CreatePLangStmt
+			| CreateQueueStmt
+			| CreateResourceGroupStmt
 			| CreateSchemaStmt
 			| CreateSeqStmt
 			| CreateStmt
@@ -906,6 +1361,8 @@ stmt :
 			| DropOpFamilyStmt
 			| DropOwnedStmt
 			| DropPLangStmt
+			| DropQueueStmt
+			| DropResourceGroupStmt
 			| DropStmt
 			| DropSubscriptionStmt
 			| DropTableSpaceStmt
@@ -947,8 +1404,228 @@ stmt :
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+			| RetrieveStmt
 			| /*EMPTY*/
 				{ $$ = NULL; }
+		;
+
+/*****************************************************************************
+ *
+ * Create a new Postgres Resource Queue
+ *
+ *****************************************************************************/
+
+CreateQueueStmt:
+			CREATE RESOURCE QUEUE QueueId OptQueueList
+				{
+					CreateQueueStmt *n = makeNode(CreateQueueStmt);
+					DefElem         *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *)makeInteger(true), @5);
+					n->queue = $4;
+					n->options = list_concat(lappend($5, def1), NULL); 
+					$$ = (Node *)n;
+				}
+			| CREATE RESOURCE QUEUE QueueId OptQueueList WITH definition
+				{
+					CreateQueueStmt *n    = makeNode(CreateQueueStmt);
+					DefElem         *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *)makeInteger(true), @5);
+					n->queue = $4;
+					n->options = list_concat(lappend($5, def1), $7); 
+					$$ = (Node *)n;
+				}
+		;
+
+/*
+ * Options for CREATE and ALTER RESOURCE QUEUE 
+ */
+OptQueueList:
+			OptQueueList OptQueueElem				{ $$ = lappend($1, $2); }
+			| /*EMPTY*/								{ $$ = NIL; }
+		;
+
+OptQueueElem:
+			ACTIVE THRESHOLD NumericOnly
+				{
+					/* was "activelimit" */
+					$$ = makeDefElem("active_statements", (Node *) $3, @1);
+				}
+			| COST THRESHOLD NumericOnly /* enforce float type in queue.c */
+				{
+					/* was "costlimit" */
+					$$ = makeDefElem("max_cost", (Node *) $3, @1);
+				}
+			| IGNORE_P THRESHOLD NumericOnly /* enforce float type in queue.c */
+				{
+					/* was "ignorecostlimit" */
+					$$ = makeDefElem("min_cost", (Node *) $3, @1);
+				}
+			| OVERCOMMIT
+				{
+					/* was "overcommit" */
+					$$ = makeDefElem("cost_overcommit", (Node *) makeInteger(true), @1);
+				}
+			| NOOVERCOMMIT
+				{
+					/* was "overcommit" */
+					$$ = makeDefElem("cost_overcommit", (Node *) makeInteger(false), @1);
+				}
+		;
+
+/*****************************************************************************
+ *
+ * Alter a postgres Resource Queue
+ *
+ *****************************************************************************/
+
+AlterQueueStmt:
+			ALTER RESOURCE QUEUE QueueId OptQueueList
+				 {
+					AlterQueueStmt *n = makeNode(AlterQueueStmt);
+					n->queue = $4;
+					n->options = $5;
+					$$ = (Node *)n;
+				 }
+			| ALTER RESOURCE QUEUE QueueId OptQueueList WITH definition
+				 {
+					AlterQueueStmt *n    = makeNode(AlterQueueStmt);
+					DefElem        *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *) makeInteger(true), @6);
+					DefElem        *def2 = /* mark start of WITHOUT items */
+						makeDefElem("withoutliststart", 
+									(Node *) makeInteger(true), @6);
+					n->queue = $4;
+					n->options = list_concat(lappend($5, def1), $7); 
+					n->options = lappend(n->options, def2); 
+					$$ = (Node *)n;
+				 }
+			| ALTER RESOURCE QUEUE QueueId OptQueueList WITHOUT definition
+				 {
+					AlterQueueStmt *n    = makeNode(AlterQueueStmt);
+					DefElem        *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *) makeInteger(true), @6);
+					DefElem        *def2 = /* mark start of WITHOUT items */
+						makeDefElem("withoutliststart", 
+									(Node *) makeInteger(true), @6);
+					n->queue = $4;
+					n->options = lappend($5, def1); 
+					n->options = list_concat(lappend(n->options, def2), $7); 
+					$$ = (Node *)n;
+				 }
+			| ALTER RESOURCE QUEUE QueueId OptQueueList WITH definition 
+			  WITHOUT definition
+				 {
+					AlterQueueStmt *n    = makeNode(AlterQueueStmt);
+					DefElem        *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *) makeInteger(true), @6);
+					DefElem        *def2 = /* mark start of WITHOUT items */
+						makeDefElem("withoutliststart", 
+									(Node *) makeInteger(true), @6);
+					n->queue = $4;
+					n->options = list_concat(lappend($5, def1), $7); 
+					n->options = list_concat(lappend(n->options, def2), $9);
+					$$ = (Node *)n;
+				 }
+		;
+
+/*****************************************************************************
+ *
+ * Drop a postgres Resource Queue
+ *
+ *****************************************************************************/
+
+DropQueueStmt:
+			DROP RESOURCE QUEUE QueueId
+				 {
+					DropQueueStmt *n = makeNode(DropQueueStmt);
+					n->queue = $4;
+					$$ = (Node *)n;
+				 }
+		;
+
+/*****************************************************************************
+ *
+ * Create a new GPDB Resource Group
+ *
+ *****************************************************************************/
+
+CreateResourceGroupStmt:
+			CREATE RESOURCE GROUP_P name WITH definition
+				{
+					CreateResourceGroupStmt *n = makeNode(CreateResourceGroupStmt);
+					n->name = $4;
+					n->options = $6;
+					$$ = (Node *)n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ * Drop a GPDB Resource Group
+ *
+ *****************************************************************************/
+
+DropResourceGroupStmt:
+			DROP RESOURCE GROUP_P name
+				 {
+					DropResourceGroupStmt *n = makeNode(DropResourceGroupStmt);
+					n->name = $4;
+					$$ = (Node *)n;
+				 }
+		;
+
+/*****************************************************************************
+ *
+ * Alter a GPDB Resource Group
+ *
+ *****************************************************************************/
+AlterResourceGroupStmt:
+			ALTER RESOURCE GROUP_P name SET OptResourceGroupList
+				 {
+					AlterResourceGroupStmt *n = makeNode(AlterResourceGroupStmt);
+					n->name = $4;
+					n->options = $6;
+					$$ = (Node *)n;
+				 }
+		;
+
+/*
+ * Option for ALTER RESOURCE GROUP
+ */
+OptResourceGroupList: OptResourceGroupElem			{ $$ = list_make1($1); }
+		;
+
+OptResourceGroupElem:
+			CONCURRENCY SignedIconst
+				{
+					/* was "concurrency" */
+					$$ = makeDefElem("concurrency", (Node *) makeInteger($2), @1);
+				}
+			| CPU_RATE_LIMIT SignedIconst
+				{
+					$$ = makeDefElem("cpu_rate_limit", (Node *) makeInteger($2), @1);
+				}
+			| CPUSET Sconst
+				{
+					$$ = makeDefElem("cpuset", (Node *) makeString($2), @1);
+				}
+			| MEMORY_SHARED_QUOTA SignedIconst
+				{
+					$$ = makeDefElem("memory_shared_quota", (Node *) makeInteger($2), @1);
+				}
+			| MEMORY_LIMIT SignedIconst
+				{
+					$$ = makeDefElem("memory_limit", (Node *) makeInteger($2), @1);
+				}
+			| MEMORY_SPILL_RATIO SignedIconst
+				{
+					$$ = makeDefElem("memory_spill_ratio", (Node *) makeInteger($2), @1);
+				}
 		;
 
 /*****************************************************************************
@@ -999,8 +1676,19 @@ OptRoleList:
 		;
 
 AlterOptRoleList:
-			AlterOptRoleList AlterOptRoleElem		{ $$ = lappend($1, $2); }
+			AlterOptRoleList AlterOnlyOptRoleElem	{ $$ = lappend($1, $2); }
 			| /* EMPTY */							{ $$ = NIL; }
+		;
+
+/*
+ * GPDB: Options that are allowed in ALTER ROLE, but *not* CREATE ROLE.
+ * AlterOptRoleElem is for elements that are allowed in either.
+ *
+ * At the moment this applies only to ALTER ROLE ... DROP DENY.
+ */
+AlterOnlyOptRoleElem:
+			AlterOptRoleElem			{ $$ = $1; }
+			| DROP DENY FOR deny_point	{ $$ = makeDefElem("drop_deny", $4, @1); }
 		;
 
 AlterOptRoleElem:
@@ -1043,10 +1731,30 @@ AlterOptRoleElem:
 				{
 					$$ = makeDefElem("validUntil", (Node *)makeString($3), @1);
 				}
+			| RESOURCE QUEUE any_name
+				{
+					$$ = makeDefElem("resourceQueue", (Node *) $3, @1);
+				}
+			| RESOURCE GROUP_P any_name
+				{
+					$$ = makeDefElem("resourceGroup", (Node *) $3, @1);
+				}
+			| CREATEEXTTABLE exttab_auth_list
+				{
+					$$ = makeDefElem("exttabauth", (Node *) $2, @1);
+				}
+			| NOCREATEEXTTABLE exttab_auth_list
+				{
+					$$ = makeDefElem("exttabnoauth", (Node *) $2, @1);
+				}
 		/*	Supported but not documented for roles, for use by ALTER GROUP. */
 			| USER role_list
 				{
-					$$ = makeDefElem("rolemembers", (Node *)$2, @1);
+					$$ = makeDefElem("rolemembers", (Node *) $2, @1);
+				}
+			| deny_login_role
+				{
+					$$ = makeDefElem("deny", (Node *) $1, @1);
 				}
 			| IDENT
 				{
@@ -1118,6 +1826,53 @@ CreateOptRoleElem:
 				{
 					$$ = makeDefElem("addroleto", (Node *)$3, @1);
 				}
+		;
+
+deny_login_role: DENY deny_interval { $$ = (Node *)$2; }
+			| DENY deny_point { $$ = (Node *)$2; }
+		;
+
+deny_interval: BETWEEN deny_point AND deny_point
+				{
+					DenyLoginInterval *n = makeNode(DenyLoginInterval);
+					n->start = (DenyLoginPoint *)$2;
+					n->end = (DenyLoginPoint *)$4;
+					$$ = (Node *)n;
+				}
+		;
+
+deny_day_specifier: Sconst { $$ = (Node *)makeString($1); }
+			| Iconst { $$ = (Node *)makeInteger($1); }
+		;
+
+deny_point: DAY_P deny_day_specifier opt_time
+				{
+					DenyLoginPoint *n = makeNode(DenyLoginPoint);
+					n->day = (Value *)$2;
+					n->time = (Value *)$3;
+					$$ = (Node *)n;
+				}
+		;
+
+opt_time: TIME Sconst { $$ = (Node *)makeString($2); }
+		| /* nothing */ { $$ = NULL; }
+		;
+
+exttab_auth_list:
+		'(' keyvalue_list ')'	{ $$ = $2; }
+		| /*EMPTY*/				{ $$ = NIL; }
+		;
+
+keyvalue_list:
+		keyvalue_pair						{ $$ = list_make1($1); }
+		| keyvalue_list ',' keyvalue_pair	{ $$ = lappend($1, $3); }
+		;
+
+keyvalue_pair:
+		ColLabel '=' Sconst
+		{
+			$$ = makeDefElem($1, (Node *) makeString($3), @1);
+		}
 		;
 
 
@@ -1602,7 +2357,7 @@ opt_boolean_or_string:
  * - an integer or floating point number
  * - a time interval per SQL99
  * ColId gives reduce/reduce errors against ConstInterval and LOCAL,
- * so use IDENT (meaning we reject anything that is a key word).
+ * so use IDENT and reject anything which is a reserved word.
  */
 zone_value:
 			Sconst
@@ -1884,6 +2639,15 @@ AlterTableStmt:
 					n->nowait = $13;
 					$$ = (Node *)n;
 				}
+		|	ALTER EXTERNAL TABLE relation_expr alter_table_cmds
+				{
+					AlterTableStmt *n = makeNode(AlterTableStmt);
+					n->relation = $4;
+					n->cmds = $5;
+					n->relkind = OBJECT_FOREIGN_TABLE;
+					n->missing_ok = false;
+					$$ = (Node *)n;
+				}
 		|	ALTER INDEX qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
@@ -2146,6 +2910,18 @@ alter_table_cmd:
 					n->subtype = AT_SetStatistics;
 					n->num = (int16) $3;
 					n->def = (Node *) makeInteger($6);
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> ALTER COLUMN <column> SET ENCODING <coldef> */
+			| ALTER opt_column ColId SET ENCODING definition
+				{
+					ColumnReferenceStorageDirective *c =
+						makeNode(ColumnReferenceStorageDirective);
+					c->column = $3;
+					c->encoding = $6;
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_SetColumnEncoding;
+					n->def = (Node *)c;
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET ( column_parameter = value [, ... ] ) */
@@ -2462,6 +3238,63 @@ alter_table_cmd:
 					n->def = (Node *) $3;
 					$$ = (Node *)n;
 				}
+			/* ALTER TABLE <name> SET [WITH] [DISTRIBUTED BY] */
+			/* distro only */
+			| SET DistributedBy
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_SetDistributedBy;
+					n->def = (Node *) list_make2(NULL, $2);
+					$$ = (Node *)n;
+				}
+			/* storage and distro */
+			| SET WITH definition DistributedBy
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_SetDistributedBy;
+					n->def = (Node *) list_make2($3, $4);
+					$$ = (Node *)n;
+				}
+			/* table storage type  or reorganize only */
+			| SET WITH definition
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					if (isSetWithReorganize(&$3))
+					{
+						n->subtype = AT_SetDistributedBy;
+						n->def = (Node *) list_make2($3, NULL);
+					}
+					else
+					{
+						n->subtype = AT_SetAccessMethod;
+						n->name = greenplumLegacyAOoptions(n->name, &$3);
+						if (!n->name)
+							ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("invalid storage type"),
+								 parser_errposition(@3)));
+						n->def = (Node *) $3;
+					}
+					$$ = (Node *)n;
+				}
+			| alter_table_partition_cmd
+				{
+					$$ = $1;
+				}
+			/* ALTER TABLE <name> EXPAND TABLE*/
+			| EXPAND TABLE
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_ExpandTable;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> EXPAND PARTITION PREPARE*/
+			| EXPAND PARTITION PREPARE
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_ExpandPartitionTablePrepare;
+					$$ = (Node *)n;
+				}
 			/* ALTER TABLE <name> OF <type_name> */
 			| OF any_name
 				{
@@ -2485,6 +3318,38 @@ alter_table_cmd:
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_ChangeOwner;
 					n->newowner = $3;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> SET ACCESS METHOD <amname> WITH (<reloptions>) */
+			| SET ACCESS METHOD name OptWith
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					char *witham = greenplumLegacyAOoptions(n->name, &$5);
+					n->subtype = AT_SetAccessMethod;
+					n->name = $4;
+					/*
+					 * If there's any legacy AO options specified in the WITH
+					 * clause such as 'appendonly' or 'appendoptimized', it has
+					 * to match with the AM name.
+					 */
+					if (witham) 
+					{
+						if (strlen(witham) != strlen(n->name) || 
+							strncmp(n->name, witham, strlen(n->name)) != 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+									 errmsg("ACCESS METHOD is specified as \"%s\" but "
+										"the WITH option indicates it to be \"%s\"",
+										n->name, witham),
+									 parser_errposition(@5)));
+						else
+							ereport(NOTICE,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("Redundant clauses are used to indicate the access method."),
+									 errhint("Only one of these is needed to indicate access method: the "
+										"SET ACCESS METHOD clause or the options in the WITH clause.")));
+					}
+					n->def = (Node *) $5;
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> SET TABLESPACE <tablespacename> */
@@ -2793,6 +3658,493 @@ hash_partbound:
 			}
 		;
 
+
+
+/*****************************************************************************
+ *
+ *	ALTER TABLE legacy GPDB partition manipulation subcommands.
+ *
+ *****************************************************************************/
+opt_table_partition_split_into: 
+			INTO '(' 
+            alter_table_partition_id_spec_with_opt_default ','
+            alter_table_partition_id_spec_with_opt_default ')'	
+				{
+                    /* re-use alterpartitioncmd struct here... */
+					GpAlterPartitionCmd *pc = makeNode(GpAlterPartitionCmd);
+					pc->partid = (GpAlterPartitionId *)$3;
+					if (pc->partid->idtype != AT_AP_IDName)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("INTO can only have first partition by name"),
+								 parser_errposition(@3)));
+					pc->arg = (Node *)$5;
+					pc->location = @5;
+					$$ = (Node *)pc;
+                }
+			| /*EMPTY*/						{ $$ = NULL; /* default */ }
+		;
+
+opt_table_partition_exchange_validate: 
+			WITH VALIDATION
+			{
+				$$ = +1;
+				ereport(NOTICE,
+						(errmsg("specifying \"WITH VALIDATION\" acts as no operation. "
+								"If the new partition is a regular table, validation is performed "
+								"to make sure all the rows obey partition constraint. "
+								"If the new partition is external or foreign table, no validation is performed.")));
+			}
+			| WITHOUT VALIDATION
+			{
+				$$ = +0;
+				ereport(NOTICE,
+						(errmsg("specifying \"WITHOUT VALIDATION\" acts as no operation. "
+								"If the new partition is a regular table, validation is performed "
+								"to make sure all the rows obey partition constraint. "
+								"If the new partition is external or foreign table, no validation is performed.")));
+			}
+			| /*EMPTY*/							{ $$ = +1; /* default */ }
+		;
+
+alter_table_partition_id_spec: 
+			PartitionColId
+				{
+					GpAlterPartitionId *n = makeNode(GpAlterPartitionId);
+					n->idtype = AT_AP_IDName;
+                    n->partiddef = (Node *)makeString($1);
+                    n->location  = @1;
+					$$ = (Node *)n;
+				}
+            | FOR 
+            '(' TabPartitionBoundarySpecValList ')'	
+				{
+					GpAlterPartitionId *n = makeNode(GpAlterPartitionId);
+					n->idtype = AT_AP_IDValue;
+                    n->partiddef = (Node *)$3;
+                    n->location  = @3;
+					$$ = (Node *)n;
+				}
+			/*
+			 * In GPDB 6 and below, we supported addressing partitions by
+			 * their position among siblings:
+			 *
+			 * FOR '(' RANK '(' NumericOnly ')' ')'
+			 *
+			 * We don't support that anymore, but recognize the syntax to
+			 * give a better error message.
+			 *
+			 * But we don't want to make RANK a reserved keyword. Also,
+			 * just replacing RANK with IDENT creates a conflict with this
+			 * AexprConst rule:
+			 *
+			 * func_name '(' func_arg_list opt_sort_clause ')' Sconst
+			 *
+			 * I.e. after the parser has shifted "func_name '('", it doesn't
+			 * know whether there's the Sconst at the end, which implies an
+			 * AexprConst, or not.
+			 *
+			 * To avoid that conflict, this rule (after FOR '(') matches
+			 * exactly the AexprConst rule except for the final Sconst.
+			 * That way, the parser doesn't need to decide which one this is,
+			 * until it has shifted the whole thing. Then we check in the
+			 * code that func_name was RANK, and that the expr_list was a
+			 * NumericOnly.
+ 			 */
+           | FOR '(' func_name '(' func_arg_list opt_sort_clause ')' ')'
+				{
+					Node		   *arg;
+					Value		   *val;
+					Node		   *fname;
+
+                    /* allow RANK only */
+					if (list_length($3) != 1)
+                        parser_yyerror("syntax error");
+					fname = linitial($3);
+					if (!(strcmp(strVal(linitial($3)), "rank") == 0))
+                        parser_yyerror("syntax error");
+
+					/* expr_list must be a single numeric constant */
+					if (list_length($5) != 1)
+						parser_yyerror("syntax error");
+
+					arg = linitial($5);
+					if (!IsA(arg, A_Const))
+						parser_yyerror("syntax error");
+					val = &((A_Const *) arg)->val;
+					if (!IsA(val, Integer) && !IsA(val, Float))
+						parser_yyerror("syntax error");
+
+					/* we don't want a sort clause */
+					if ($6)
+						parser_yyerror("syntax error");
+
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("addressing partition by RANK is no longer supported"),
+							 errhint("Use partition name or FOR (<partition key value>) instead."),
+							 parser_errposition(@3)));
+				}
+		;
+
+alter_table_partition_id_spec_with_opt_default:
+			PARTITION alter_table_partition_id_spec
+				{
+					GpAlterPartitionId *n = (GpAlterPartitionId*)$2;
+                    $$ = (Node *)n;
+				}
+			| DEFAULT PARTITION alter_table_partition_id_spec
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("cannot specify a name, rank, or value for a DEFAULT partition in this context")));
+				}
+			| DEFAULT PARTITION 
+				{
+					GpAlterPartitionId *n = makeNode(GpAlterPartitionId);
+					n->idtype = AT_AP_IDDefault;
+                    n->partiddef = NULL;
+                    n->location  = @1;
+					$$ = (Node *)n;
+				}
+		;
+
+alter_table_partition_cmd:
+			ADD_P PARTITION 
+            OptTabAddPartitionBoundarySpec
+			OptWith
+			OptTableSpace
+			OptTabSubPartitionSpec
+           
+				{
+					GpAlterPartitionId  *pid   = makeNode(GpAlterPartitionId);
+					GpAlterPartitionCmd *pc = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd     *n     = makeNode(AlterTableCmd);
+					GpPartDefElem     *pelem = makeNode(GpPartDefElem);
+
+					pid->idtype = AT_AP_IDNone;
+					pid->location = @3;
+					pid->partiddef = NULL;
+
+					pc->partid = (GpAlterPartitionId *) pid;
+
+					pelem->partName  = NULL;
+					pelem->boundSpec = $3;
+					pelem->subSpec   = $6;
+					pelem->location  = @3;
+					pelem->isDefault = false; /* not default */
+					pelem->options = $4;
+					pelem->accessMethod = greenplumLegacyAOoptions(NULL, &pelem->options);
+					pelem->tablespacename = $5;
+
+					pc->arg = (Node *) pelem;
+					pc->location = @3;
+
+					n->subtype = AT_PartAdd;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| ADD_P DEFAULT PARTITION 
+			alter_table_partition_id_spec
+			OptWith
+			OptTableSpace
+			OptTabSubPartitionSpec 
+				{
+					GpAlterPartitionId  *pid   = (GpAlterPartitionId *)$4;
+					GpAlterPartitionCmd *pc = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd     *n     = makeNode(AlterTableCmd);
+					GpPartDefElem     *pelem = makeNode(GpPartDefElem);
+
+					if (pid->idtype != AT_AP_IDName)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("can only ADD a partition by name")));
+
+					pc->partid = (GpAlterPartitionId *) pid;
+
+					pelem->partName  = strVal(pid->partiddef);
+					pelem->subSpec   = $7;
+					pelem->location  = @5;
+					pelem->isDefault = true;
+					pelem->options = $5;
+					pelem->accessMethod = greenplumLegacyAOoptions(NULL, &pelem->options);
+					pelem->tablespacename = $6;
+
+					pc->arg = (Node *) pelem;
+					pc->location = @5;
+
+					n->subtype = AT_PartAdd;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| ADD_P PARTITION 
+			alter_table_partition_id_spec
+			OptTabAddPartitionBoundarySpec
+			OptWith
+			OptTableSpace
+			OptTabSubPartitionSpec
+				{
+					GpAlterPartitionId  *pid   = (GpAlterPartitionId *)$3;
+					GpAlterPartitionCmd *pc    = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd     *n     = makeNode(AlterTableCmd);
+					GpPartDefElem     *pelem = makeNode(GpPartDefElem);
+
+                    if (pid->idtype != AT_AP_IDName)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("can only ADD a partition by name")));
+
+					pc->partid = (GpAlterPartitionId *) pid;
+
+					pelem->partName  = strVal(pid->partiddef);
+					pelem->boundSpec = $4;
+					pelem->subSpec   = $7;
+					pelem->location  = @4;
+					pelem->isDefault = false;
+					pelem->options = $5;
+					pelem->accessMethod = greenplumLegacyAOoptions(NULL, &pelem->options);
+					pelem->tablespacename = $6;
+
+					pc->arg = (Node *) pelem;
+					pc->location = @4;
+
+					n->subtype = AT_PartAdd;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| ALTER 
+            alter_table_partition_id_spec_with_opt_default
+            alter_table_cmd
+				{
+					/*
+					 * NOTE: only allow a subset of valid ALTER TABLE
+					 * cmds for partitions.
+					 */
+					GpAlterPartitionCmd *pc    = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					pc->partid = (GpAlterPartitionId *)$2;
+					pc->arg = (Node *)$3;
+					pc->location = @3;
+
+					n->subtype = AT_PartAlter;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| DROP PARTITION IF_P EXISTS 
+            alter_table_partition_id_spec	 
+            opt_drop_behavior
+				{
+					GpDropPartitionCmd *dpc = makeNode(GpDropPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					dpc->partid = (Node *) $5;
+					dpc->behavior = $6;
+					dpc->missing_ok = true;
+
+					n->subtype = AT_PartDrop;
+					n->def = (Node *) dpc;
+					$$ = (Node *) n;
+
+				}
+			| DROP DEFAULT PARTITION IF_P EXISTS 
+            opt_drop_behavior
+				{
+					GpAlterPartitionId *id = makeNode(GpAlterPartitionId);
+					GpDropPartitionCmd *dpc = makeNode(GpDropPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					id->idtype = AT_AP_IDDefault;
+					id->partiddef = NULL;
+					id->location  = @1;
+
+					dpc->partid = (Node *) id;
+					dpc->behavior = $6;
+					dpc->missing_ok = true;
+
+					n->subtype = AT_PartDrop;
+					n->def = (Node *) dpc;
+					$$ = (Node *) n;
+				}
+			| DROP 
+            alter_table_partition_id_spec_with_opt_default
+            opt_drop_behavior
+				{
+					GpDropPartitionCmd *dpc = makeNode(GpDropPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					dpc->partid = $2;
+					dpc->behavior = $3;
+
+					n->subtype = AT_PartDrop;
+					n->def = (Node *) dpc;
+					$$ = (Node *) n;
+				}
+			| EXCHANGE 
+            alter_table_partition_id_spec_with_opt_default 
+            WITH TABLE qualified_name
+            opt_table_partition_exchange_validate	
+				{
+					GpAlterPartitionCmd *pc = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					pc->partid = (GpAlterPartitionId *)$2;
+					pc->arg = (Node *)$5;
+					pc->location = @5;
+
+					n->subtype = AT_PartExchange;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| RENAME 
+            alter_table_partition_id_spec_with_opt_default TO IDENT	
+				{
+					GpAlterPartitionCmd *pc = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pc->partid = (GpAlterPartitionId *) $2;
+                    pc->arg = (Node *)makeString($4);
+                    pc->location = @4;
+
+					n->subtype = AT_PartRename;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| SET TabSubPartitionTemplate
+				{
+					GpAlterPartitionCmd *pc = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					pc->partid = NULL;
+					pc->arg = $2;
+					pc->location = @2;
+
+					n->subtype = AT_PartSetTemplate;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| SET SUBPARTITION TEMPLATE
+            '('  ')' 
+				{
+					GpAlterPartitionCmd *pc = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					pc->partid = NULL;
+					pc->arg = NULL;
+					pc->location = @4;
+
+					n->subtype = AT_PartSetTemplate;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| SPLIT 
+			DEFAULT PARTITION TabPartitionBoundarySpecStart
+			TabPartitionBoundarySpecEnd
+			opt_table_partition_split_into
+				{
+					GpSplitPartitionCmd *pc = makeNode(GpSplitPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					GpAlterPartitionId *pid = makeNode(GpAlterPartitionId);
+
+					pid->idtype = AT_AP_IDDefault;
+					pid->partiddef = NULL;
+					pid->location  = @2;
+
+					pc->partid = pid;
+					pc->start = (GpPartitionRangeItem *)$4;
+					pc->end = (GpPartitionRangeItem *)$5;
+					pc->at = NULL;
+					pc->arg2 = (GpAlterPartitionCmd *)$6;
+					pc->location = @5;
+
+					n->subtype = AT_PartSplit;
+					n->def = (Node *)pc;
+
+					$$ = (Node *)n;
+				}
+			| SPLIT
+			DEFAULT PARTITION AT
+			'(' part_values_or_spec_list ')'
+			opt_table_partition_split_into
+				{
+					GpSplitPartitionCmd *pc = makeNode(GpSplitPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					GpAlterPartitionId *pid = makeNode(GpAlterPartitionId);
+
+					pid->idtype = AT_AP_IDDefault;
+					pid->partiddef = NULL;
+					pid->location  = @2;
+
+					pc->partid = pid;
+					pc->start = NULL;
+					pc->end = NULL;
+					pc->at = $6;
+					pc->arg2 = (GpAlterPartitionCmd *)$8;
+					pc->location = @6;
+
+					n->subtype = AT_PartSplit;
+					n->def = (Node *)pc;
+
+					$$ = (Node *)n;
+				}
+			| SPLIT 
+			PARTITION alter_table_partition_id_spec AT
+			'(' part_values_or_spec_list ')'
+			opt_table_partition_split_into
+				{
+					GpSplitPartitionCmd *pc = makeNode(GpSplitPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					GpAlterPartitionCmd *into;
+
+					pc->partid = (GpAlterPartitionId*) $3;
+					pc->start = NULL;
+					pc->end = NULL;
+					pc->at = $6;
+					pc->arg2 = (GpAlterPartitionCmd *)$8;
+					pc->location = @6;
+
+					n->subtype = AT_PartSplit;
+					n->def = (Node *)pc;
+
+					into = (GpAlterPartitionCmd *)pc->arg2;
+					if (into)
+					{
+						GpAlterPartitionId *part2 = (GpAlterPartitionId *) into->arg;
+						if (part2->idtype != AT_AP_IDName)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("INTO can only have second partition by name"),
+									 parser_errposition(@8)));
+					}
+					$$ = (Node *)n;
+				}
+			| TRUNCATE 
+            alter_table_partition_id_spec_with_opt_default
+            opt_drop_behavior
+				{
+					GpAlterPartitionCmd *pc = makeNode(GpAlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					TruncateStmt *ts = makeNode(TruncateStmt);
+
+					/*
+					 * build an (incomplete) truncate statement. Fill in the
+					 * rest after the Fill in the rest after the partition id
+					 * spec is validated.
+					 */
+					ts->relations = NULL;
+					ts->behavior = $3;
+
+					pc->partid = (GpAlterPartitionId *) $2;
+					pc->arg = (Node *) ts;
+					pc->location = @2;
+
+					n->subtype = AT_PartTruncate;
+					n->def = (Node *) pc;
+					$$ = (Node *) n;
+				}
+		;
+
+
 /*****************************************************************************
  *
  *	ALTER TYPE
@@ -2916,7 +4268,7 @@ ClosePortalStmt:
 
 CopyStmt:	COPY opt_binary qualified_name opt_column_list
 			copy_from opt_program copy_file_name copy_delimiter opt_with
-			copy_options where_clause
+			copy_options where_clause OptSingleRowErrorHandling
 				{
 					CopyStmt *n = makeNode(CopyStmt);
 					n->relation = $3;
@@ -2926,12 +4278,13 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list
 					n->is_program = $6;
 					n->filename = $7;
 					n->whereClause = $11;
+					n->sreh = $12;
 
 					if (n->is_program && n->filename == NULL)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("STDIN/STDOUT not allowed with PROGRAM"),
-								 parser_errposition(@8)));
+								 parser_errposition(@7)));
 
 					if (!n->is_from && n->whereClause != NULL)
 						ereport(ERROR,
@@ -2967,6 +4320,15 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list
 								 parser_errposition(@5)));
 
 					$$ = (Node *)n;
+					/*
+					 * GPDB_96_MERGE_FIXME: The above statement changed in
+					 * upstream commit 92e38182d7c from select_with_parens to
+					 * '(' PreparableStmt ')'. This syntax was not supported in
+					 * ecpg upstream. It was supported and untested in GPDB. If
+					 * it is needed to be added back, then
+					 * preparable_stmt_with_parens should be added as ecpg does
+					 * not fair very well with \' or \( \) chars.
+					 */
 				}
 		;
 
@@ -3054,6 +4416,26 @@ copy_opt_item:
 				{
 					$$ = makeDefElem("encoding", (Node *)makeString($2), @1);
 				}
+			| FILL MISSING FIELDS
+				{
+					$$ = makeDefElem("fill_missing_fields", (Node *)makeInteger(true), @1);
+				}
+			| NEWLINE opt_as Sconst
+				{
+					$$ = makeDefElem("newline", (Node *)makeString($3), @1);
+				}	
+			| ON SEGMENT
+				{
+					$$ = makeDefElem("on_segment", (Node *)makeInteger(true), @1);
+				}
+			| IGNORE_P EXTERNAL PARTITIONS
+				{
+					$$ = makeDefElem("skip_foreign_partitions", (Node *)makeInteger(true), @1);
+				}
+			| IGNORE_P FOREIGN PARTITIONS
+				{
+					$$ = makeDefElem("skip_foreign_partitions", (Node *)makeInteger(true), @1);
+				}
 		;
 
 /* The following exist for backward compatibility with very old versions */
@@ -3131,15 +4513,21 @@ copy_generic_opt_arg_list_item:
  *****************************************************************************/
 
 CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
-			OptInherit OptPartitionSpec table_access_method_clause OptWith
+			OptInherit OptFirstPartitionSpec table_access_method_clause OptWith
 			OnCommitOption OptTableSpace
+			OptDistributedBy OptSecondPartitionSpec
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$4->relpersistence = $2;
 					n->relation = $4;
 					n->tableElts = $6;
 					n->inhRelations = $8;
-					n->partspec = $9;
+					if ($9 && $15)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("only one PARTITION BY clause is allowed"),
+								 parser_errposition(@15)));
+					n->partspec = $9 ? $9 : $15;
 					n->ofTypename = NULL;
 					n->constraints = NIL;
 					n->accessMethod = $10;
@@ -3147,18 +4535,30 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $12;
 					n->tablespacename = $13;
 					n->if_not_exists = false;
+					n->gp_style_alter_part = false;
+					n->distributedBy = (DistributedBy *) $14;
+					n->relKind = RELKIND_RELATION;
+
+					n->accessMethod = greenplumLegacyAOoptions(n->accessMethod, &n->options);
+
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '('
-			OptTableElementList ')' OptInherit OptPartitionSpec table_access_method_clause
+			OptTableElementList ')' OptInherit OptFirstPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
+			OptDistributedBy OptSecondPartitionSpec
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$7->relpersistence = $2;
 					n->relation = $7;
 					n->tableElts = $9;
 					n->inhRelations = $11;
-					n->partspec = $12;
+					if ($12 && $18)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("only one PARTITION BY clause is allowed"),
+								 parser_errposition(@18)));
+					n->partspec = $12 ? $12 : $18;
 					n->ofTypename = NULL;
 					n->constraints = NIL;
 					n->accessMethod = $13;
@@ -3166,18 +4566,30 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $15;
 					n->tablespacename = $16;
 					n->if_not_exists = true;
+					n->gp_style_alter_part = false;
+					n->distributedBy = (DistributedBy *) $17;
+					n->relKind = RELKIND_RELATION;
+
+					n->accessMethod = greenplumLegacyAOoptions(n->accessMethod, &n->options);
+
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE qualified_name OF any_name
-			OptTypedTableElementList OptPartitionSpec table_access_method_clause
+			OptTypedTableElementList OptFirstPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
+			OptDistributedBy OptSecondPartitionSpec
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$4->relpersistence = $2;
 					n->relation = $4;
 					n->tableElts = $7;
 					n->inhRelations = NIL;
-					n->partspec = $8;
+					if ($8 && $14)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("only one PARTITION BY clause is allowed"),
+								 parser_errposition(@14)));
+					n->partspec = $8 ? $8 : $14;
 					n->ofTypename = makeTypeNameFromNameList($6);
 					n->ofTypename->location = @6;
 					n->constraints = NIL;
@@ -3186,18 +4598,30 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $11;
 					n->tablespacename = $12;
 					n->if_not_exists = false;
+					n->gp_style_alter_part = false;
+					n->distributedBy = (DistributedBy *) $13;
+					n->relKind = RELKIND_RELATION;
+
+					n->accessMethod = greenplumLegacyAOoptions(n->accessMethod, &n->options);
+
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name
-			OptTypedTableElementList OptPartitionSpec table_access_method_clause
+			OptTypedTableElementList OptFirstPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
+			OptDistributedBy OptSecondPartitionSpec
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$7->relpersistence = $2;
 					n->relation = $7;
 					n->tableElts = $10;
 					n->inhRelations = NIL;
-					n->partspec = $11;
+					if ($11 && $17)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("only one PARTITION BY clause is allowed"),
+								 parser_errposition(@17)));
+					n->partspec = $11 ? $11 : $17;
 					n->ofTypename = makeTypeNameFromNameList($9);
 					n->ofTypename->location = @9;
 					n->constraints = NIL;
@@ -3206,11 +4630,18 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $14;
 					n->tablespacename = $15;
 					n->if_not_exists = true;
+					n->gp_style_alter_part = false;
+					n->distributedBy = (DistributedBy *) $16;
+					n->relKind = RELKIND_RELATION;
+
+					n->accessMethod = greenplumLegacyAOoptions(n->accessMethod, &n->options);
+
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE qualified_name PARTITION OF qualified_name
-			OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
+			OptTypedTableElementList PartitionBoundSpec OptFirstPartitionSpec
 			table_access_method_clause OptWith OnCommitOption OptTableSpace
+			OptSecondPartitionSpec
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$4->relpersistence = $2;
@@ -3218,7 +4649,12 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tableElts = $8;
 					n->inhRelations = list_make1($7);
 					n->partbound = $9;
-					n->partspec = $10;
+					if ($10 && $15)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("only one PARTITION BY clause is allowed"),
+								 parser_errposition(@15)));
+					n->partspec = $10 ? $10 : $15;
 					n->ofTypename = NULL;
 					n->constraints = NIL;
 					n->accessMethod = $11;
@@ -3226,11 +4662,18 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $13;
 					n->tablespacename = $14;
 					n->if_not_exists = false;
+					n->gp_style_alter_part = false;
+					n->distributedBy = NULL;
+					n->relKind = RELKIND_RELATION;
+
+					n->accessMethod = greenplumLegacyAOoptions(n->accessMethod, &n->options);
+
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF
-			qualified_name OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
+			qualified_name OptTypedTableElementList PartitionBoundSpec OptFirstPartitionSpec
 			table_access_method_clause OptWith OnCommitOption OptTableSpace
+			OptSecondPartitionSpec
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$7->relpersistence = $2;
@@ -3238,7 +4681,12 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tableElts = $11;
 					n->inhRelations = list_make1($10);
 					n->partbound = $12;
-					n->partspec = $13;
+					if ($13 && $18)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("only one PARTITION BY clause is allowed"),
+								 parser_errposition(@18)));
+					n->partspec = $13 ? $13 : $18;
 					n->ofTypename = NULL;
 					n->constraints = NIL;
 					n->accessMethod = $14;
@@ -3246,6 +4694,12 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $16;
 					n->tablespacename = $17;
 					n->if_not_exists = true;
+					n->gp_style_alter_part = false;
+					n->distributedBy = NULL;
+					n->relKind = RELKIND_RELATION;
+
+					n->accessMethod = greenplumLegacyAOoptions(n->accessMethod, &n->options);
+
 					$$ = (Node *)n;
 				}
 		;
@@ -3319,6 +4773,7 @@ TableElement:
 			columnDef							{ $$ = $1; }
 			| TableLikeClause					{ $$ = $1; }
 			| TableConstraint					{ $$ = $1; }
+			| column_reference_storage_directive { $$ = $1; }
 		;
 
 TypedTableElement:
@@ -3326,13 +4781,36 @@ TypedTableElement:
 			| TableConstraint					{ $$ = $1; }
 		;
 
-columnDef:	ColId Typename create_generic_options ColQualList
+column_reference_storage_directive:
+			COLUMN ColId ENCODING definition
+				{
+					ColumnReferenceStorageDirective *n =
+						makeNode(ColumnReferenceStorageDirective);
+
+					n->column = $2;
+					n->encoding = $4;
+					$$ = (Node *)n;
+				}
+			| DEFAULT COLUMN ENCODING definition
+				{
+					ColumnReferenceStorageDirective *n =
+						makeNode(ColumnReferenceStorageDirective);
+
+					n->deflt = true;
+					n->encoding = $4;
+
+					$$ = (Node *)n;
+				}
+		;
+
+columnDef:	ColId Typename create_generic_options ColQualList opt_storage_encoding
 				{
 					ColumnDef *n = makeNode(ColumnDef);
 					n->colname = $1;
 					n->typeName = $2;
 					n->inhcount = 0;
 					n->is_local = true;
+					n->encoding = $5;
 					n->is_not_null = false;
 					n->is_from_type = false;
 					n->storage = 0;
@@ -3413,6 +4891,10 @@ ColConstraint:
 					n->location = @1;
 					$$ = (Node *) n;
 				}
+		;
+
+opt_storage_encoding: ENCODING definition { $$ = $2; }
+			| /* nothing */ { $$ = NIL; }
 		;
 
 /* DEFAULT NULL is already the default for Postgres.
@@ -3769,6 +5251,37 @@ columnElem: ColId
 				}
 		;
 
+distributed_by_list:
+			distributed_by_elem						{ $$ = list_make1($1); }
+			| distributed_by_list ',' distributed_by_elem
+				{
+					DistributionKeyElem *newelem = $3;
+					ListCell *lc;
+
+					foreach(lc, $1)
+					{
+						DistributionKeyElem  *oldelem = (DistributionKeyElem *) lfirst(lc);
+
+						if (strcmp(oldelem->name, newelem->name) == 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_DUPLICATE_COLUMN),
+									 errmsg("duplicate column in DISTRIBUTED BY clause"),
+									 parser_errposition(@3)));
+					}
+
+					$$ = lappend($1, newelem);
+				}
+			;
+
+distributed_by_elem: ColId opt_class
+				{
+					$$ = makeNode(DistributionKeyElem);
+					$$->name = $1;
+					$$->opclass = $2;
+					$$->location = @1;
+				}
+			;
+
 opt_c_include:	INCLUDE '(' columnList ')'			{ $$ = $3; }
 			 |		/* EMPTY */						{ $$ = NIL; }
 		;
@@ -3854,12 +5367,88 @@ OptInherit: INHERITS '(' qualified_name_list ')'	{ $$ = $3; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
-/* Optional partition key specification */
-OptPartitionSpec: PartitionSpec	{ $$ = $1; }
-			| /*EMPTY*/			{ $$ = NULL; }
+/*
+ * For historical reasons, in GPDB the PARTITION BY clause can also be given
+ * at the end of CREATE TABLE. OptTailPartitionSpec is identical to
+ * OptPartitionSpec, but it's used at the end of CreateStmt rules,
+ * after all the other options. We have to play some bison tricks to avoid
+ * shift/reduce conflicts.
+ *
+ * The CREATE TABLE syntax looks like this:
+ *
+ * CREATE TABLE name (...)
+ *   [PARTITION BY ...] [optional WITH/USING/INHERITS clauses] [PARTITION BY ...]
+ *
+ * This produces a shift/reduce conflict: if there are no WITH/USING/INHERITS
+ * options, it is ambiguous which [PARTITION BY ...] rule should capture the
+ * PARTITION BY clause.
+ *
+ * To work around that, we set the 'tail_partition_tie_in' flag before doing
+ * lookahead. It instructs the scanner to return the special PARTITION_TAIL
+ * token if the next word is "PARTITION", instead of the usual PARTITION
+ * token. This allows us to avoid ambiguity in the CreateStmt rules: as far
+ * as bison is concerned, "PARTITION BY" and "PARTITION_TAIL BY" look
+ * different, even though the actual user-visible syntax is the same.
+ *
+ * I think the proper way to solve this would be to play with %prec
+ * declarations. However, I couldn't get it to work. Furthermore, since this
+ * is a GPDB extension, it's good to avoid changing the upstream rules,
+ * because that always makes merging with upstream harder. This is a fairly
+ * isolated work-around, even if it's a bit ugly.
+ */
+
+/* Optional partition key specification (at the position where PostgreSQL has it) */
+OptFirstPartitionSpec: PartitionSpec opt_list_subparts OptTabPartitionSpec
+				{
+					$1->gpPartDef = (GpPartitionDefinition *) $3;
+					$1->subPartSpec = (PartitionSpec *) $2;
+					/*
+					 * Only if GPDB legacy partition syntax, check for expression in partition
+					 * key. If gpPartDef is present then only its legacy syntax.
+					 */
+					if ($1->gpPartDef)
+						check_expressions_in_partition_key($1, yyscanner);
+					$$ = $1;
+
+					pg_yyget_extra(yyscanner)->tail_partition_magic = true;
+				}
+			| /*EMPTY*/
+				{
+					$$ = NULL;
+
+					pg_yyget_extra(yyscanner)->tail_partition_magic = true;
+				}
 		;
 
-PartitionSpec: PARTITION BY part_strategy '(' part_params ')'
+OptSecondPartitionSpec:
+			PARTITION_TAIL BY part_strategy '(' part_params ')' opt_list_subparts OptTabPartitionSpec
+				{
+					PartitionSpec *n = makeNode(PartitionSpec);
+
+					n->strategy = $3;
+					n->partParams = $5;
+					n->gpPartDef = (GpPartitionDefinition *) $8;
+					n->subPartSpec = (PartitionSpec *) $7;
+					n->location = @1;
+					/*
+					 * Only if GPDB legacy partition syntax, check for expression in partition
+					 * key. If gpPartDef is present then only its legacy syntax.
+					 */
+					if (n->gpPartDef)
+						check_expressions_in_partition_key(n, yyscanner);
+					$$ = n;
+
+					pg_yyget_extra(yyscanner)->tail_partition_magic = false;
+				}
+			| /*EMPTY*/
+				{
+					$$ = NULL;
+
+					pg_yyget_extra(yyscanner)->tail_partition_magic = false;
+				}
+		;
+
+PartitionSpec: PARTITION  BY part_strategy '(' part_params ')'
 				{
 					PartitionSpec *n = makeNode(PartitionSpec);
 
@@ -3943,6 +5532,509 @@ OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 ExistingIndex:   USING INDEX index_name				{ $$ = $3; }
 		;
 
+DistributedBy:   DISTRIBUTED BY  '(' distributed_by_list ')'
+			{
+				DistributedBy *distributedBy = makeNode(DistributedBy);
+				distributedBy->ptype = POLICYTYPE_PARTITIONED;
+				distributedBy->numsegments = -1;
+				distributedBy->keyCols = $4;
+				$$ = (Node *)distributedBy;
+			}
+			| DISTRIBUTED RANDOMLY
+			{
+				DistributedBy *distributedBy = makeNode(DistributedBy);
+				distributedBy->ptype = POLICYTYPE_PARTITIONED;
+				distributedBy->numsegments = -1;
+				distributedBy->keyCols = NIL;
+				$$ = (Node *)distributedBy;
+			}
+			| DISTRIBUTED REPLICATED
+			{
+				DistributedBy *distributedBy = makeNode(DistributedBy);
+				distributedBy->ptype = POLICYTYPE_REPLICATED;
+				distributedBy->numsegments = -1;
+				distributedBy->keyCols = NIL;
+				$$ = (Node *)distributedBy;
+			}
+		;
+
+OptDistributedBy:   DistributedBy			{ $$ = $1; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+/* START GPDB LEGACY PARTITION SYNTAX RULES */
+
+OptTabPartitionColumnEncList: TabPartitionColumnEncList { $$ = $1; }
+			| /*EMPTY*/ { $$ = NULL; }
+	;
+
+TabPartitionColumnEncList:
+	column_reference_storage_directive { $$ = list_make1($1); }
+	| TabPartitionColumnEncList column_reference_storage_directive
+				{
+					$$ = lappend($1, $2);
+				}
+	;
+
+OptTabPartitionSpec: '(' TabPartitionElemList ')'
+				{
+					GpPartitionDefinition *n = makeNode(GpPartitionDefinition);
+					n->partDefElems  = $2;
+					n->fromCatalog = false;
+					n->location  = @2;
+					$$ = (Node *) n;
+				}
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+OptTabSubPartitionSpec: 
+            '(' TabSubPartitionElemList ')' 
+				{
+					GpPartitionDefinition *n = makeNode(GpPartitionDefinition);
+					n->partDefElems  = $2;
+					n->fromCatalog = false;
+					n->location  = @2;
+					$$ = (Node *) n;
+				}
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+TabPartitionElemList:
+            TabPartitionElem						{ $$ = list_make1($1); }
+			| TabPartitionElemList ',' 
+              TabPartitionElem						{ $$ = lappend($1, $3); }
+		;
+TabSubPartitionElemList:
+            TabSubPartitionElem						{ $$ = list_make1($1); }
+			| TabSubPartitionElemList ',' 
+              TabSubPartitionElem					{ $$ = lappend($1, $3); }
+		;
+
+tab_part_val_no_paran: AexprConst { $$ = $1; }
+			| CAST '(' tab_part_val AS Typename ')'
+				{ 
+					$$ = makeTypeCast($3, $5, @4);
+				}
+			| tab_part_val_no_paran TYPECAST Typename
+				{ 
+					$$ = makeTypeCast($1, $3, @2); 
+				}
+			| '-' tab_part_val_no_paran { $$ = doNegate($2, @1); }
+		;
+
+tab_part_val: tab_part_val_no_paran { $$ = $1; }
+			| '(' tab_part_val_no_paran ')' { $$ = $2; }
+			| '(' tab_part_val_no_paran ')' TYPECAST Typename
+				{ 
+					$$ = makeTypeCast($2, $5, @4); 
+				}
+		; 
+
+TabPartitionBoundarySpecValList:
+              tab_part_val				{ $$ = list_make1($1); }
+			| TabPartitionBoundarySpecValList ',' 
+              tab_part_val				{ $$ = lappend($1, $3); }
+		;
+
+/*
+ * In PostgreSQL, the RANGE FROM is always inclusive and the RANGE TO
+ * exclusive, but the old Greenplum syntax with START/END is more
+ * flexible.
+ */
+OptTabPartitionRangeInclusive:
+			INCLUSIVE			{ $$ = PART_EDGE_INCLUSIVE; }
+			| EXCLUSIVE			{ $$ = PART_EDGE_EXCLUSIVE; }
+			| /*EMPTY*/			{ $$ = PART_EDGE_UNSPECIFIED; }
+		;
+
+TabPartitionBoundarySpecStart:
+			START 
+			'(' expr_list ')'
+			OptTabPartitionRangeInclusive
+				{
+					GpPartitionRangeItem *n = makeNode(GpPartitionRangeItem);
+					n->val = $3;
+					if (($5))
+						n->edge = $5;
+					else
+						n->edge = PART_EDGE_INCLUSIVE;
+					n->location = @1;
+					$$ = (Node *)n;
+				}
+			;
+
+TabPartitionBoundarySpecEnd:
+			END_P 
+			'(' expr_list ')'
+			OptTabPartitionRangeInclusive
+				{
+					GpPartitionRangeItem *n = makeNode(GpPartitionRangeItem);
+					n->val = $3;
+					if (($5))
+						n->edge = $5;
+					else
+						n->edge = PART_EDGE_EXCLUSIVE;
+					n->location = @1;
+					$$ = (Node *)n;
+				}
+			;
+
+OptTabPartitionBoundarySpecEvery:
+			EVERY '(' expr_list ')'					{ $$ = $3; }
+			| /*EMPTY*/								{ $$ = NULL; }
+            ;
+
+OptTabPartitionBoundarySpecEnd:
+			TabPartitionBoundarySpecEnd             { $$ = $1; }
+			| /*EMPTY*/                             { $$ = NULL; }
+		;
+
+/* VALUES for LIST, start..end for RANGE. */
+TabPartitionBoundarySpec:
+			part_values_clause
+				{
+					GpPartitionListSpec *n = makeNode(GpPartitionListSpec);
+
+					n->partValues = $1;
+					n->location  = @1;
+					$$ = (Node *)n;
+				}
+			| TabPartitionBoundarySpecStart
+			  OptTabPartitionBoundarySpecEnd
+			  OptTabPartitionBoundarySpecEvery
+				{
+					GpPartitionRangeSpec *n = makeNode(GpPartitionRangeSpec);
+					n->partStart = (GpPartitionRangeItem *)$1;
+					n->partEnd   = (GpPartitionRangeItem *)$2;
+					n->partEvery = $3;
+					n->location  = @1;
+					$$ = (Node *)n;
+				}
+			| TabPartitionBoundarySpecEnd
+			  OptTabPartitionBoundarySpecEvery
+				{
+					GpPartitionRangeSpec *n = makeNode(GpPartitionRangeSpec);
+					n->partStart = NULL;
+					n->partEnd   = (GpPartitionRangeItem *)$1;
+					n->partEvery = $2;
+					n->location  = @1;
+					$$ = (Node *)n;
+				}
+            ;
+
+OptTabPartitionBoundarySpec:
+            TabPartitionBoundarySpec				{ $$ = $1; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+
+/* VALUES for LIST, start..end for RANGE. */
+TabAddPartitionBoundarySpec:
+			part_values_clause
+				{
+					GpPartitionListSpec *n = makeNode(GpPartitionListSpec);
+
+					n->partValues = $1;
+					n->location  = @1;
+					$$ = (Node *)n;
+				}
+			| TabPartitionBoundarySpecStart
+			  OptTabPartitionBoundarySpecEnd
+				{
+					GpPartitionRangeSpec *n = makeNode(GpPartitionRangeSpec);
+					n->partStart = (GpPartitionRangeItem *)$1;
+					n->partEnd   = (GpPartitionRangeItem *)$2;
+					n->location  = @1;
+					$$ = (Node *)n;
+				}
+			| TabPartitionBoundarySpecEnd
+				{
+					GpPartitionRangeSpec *n = makeNode(GpPartitionRangeSpec);
+					n->partStart = NULL;
+					n->partEnd   = (GpPartitionRangeItem *)$1;
+					n->location  = @1;
+					$$ = (Node *)n;
+				}
+            ;
+
+OptTabAddPartitionBoundarySpec:
+            TabAddPartitionBoundarySpec				{ $$ = $1; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+multi_spec_value_list: '(' part_values_single ')'
+				{
+					ListCell *lc;
+					List *out = NIL;
+
+					foreach(lc, $2)
+						out = lappend(out, linitial(lfirst(lc)));
+
+					$$ = list_make1(out);
+				}
+			| multi_spec_value_list ',' '(' part_values_single ')'
+				{
+					ListCell *lc;
+					List *out = NIL;
+
+					foreach(lc, $4)
+						out = lappend(out, linitial(lfirst(lc)));
+
+					$$ = lappend($1, out);
+				}
+		;
+
+part_values_single: tab_part_val_no_paran
+				{
+					$$ = list_make1(list_make1($1));
+				}
+			| part_values_single ',' tab_part_val_no_paran
+				{
+					$$ = lappend($1, list_make1($3));
+				}
+		;
+
+part_values_clause:
+			VALUES '(' part_values_single ')'
+				{
+					$$ = $3;
+				}
+			| VALUES '(' multi_spec_value_list ')'
+				{
+					$$ = $3;
+				}
+		;
+
+part_values_or_spec_list: TabPartitionBoundarySpecValList { $$ = $1; }
+			| part_values_clause { $$ = $1; }
+		;
+
+/* a "Partition Element" closely corresponds to a "Partition Declaration" */
+TabPartitionElem: 
+			TabPartitionNameDecl
+			OptTabPartitionBoundarySpec	OptWith OptTableSpace
+			OptTabPartitionColumnEncList
+			OptTabSubPartitionSpec 
+				{
+						GpPartDefElem *n = makeNode(GpPartDefElem);
+						n->partName  = $1;
+						n->boundSpec = $2;
+						n->subSpec   = $6;
+						n->location  = @1;
+						n->isDefault = 0;
+						n->options = $3;
+						n->accessMethod = greenplumLegacyAOoptions(NULL, &n->options);
+						n->tablespacename = $4;
+						n->colencs   = $5;
+						$$ = (Node *)n;
+				}
+
+			| TabPartitionDefaultNameDecl 
+			  OptWith
+			  OptTableSpace
+			  OptTabPartitionColumnEncList
+			  OptTabSubPartitionSpec 
+				{
+						GpPartDefElem *n = makeNode(GpPartDefElem);
+						n->partName  = $1;
+						n->subSpec   = $5;
+						n->location  = @1;
+						n->isDefault = true;
+						n->options = $2;
+						n->accessMethod = greenplumLegacyAOoptions(NULL, &n->options);
+						n->tablespacename = $3;
+						n->colencs   = $4;
+						$$ = (Node *)n;
+				}
+			| TabPartitionBoundarySpec 
+			  OptWith
+			  OptTableSpace
+			  OptTabPartitionColumnEncList
+			  OptTabSubPartitionSpec 
+				{
+						GpPartDefElem *n = makeNode(GpPartDefElem);
+						n->partName  = NULL;
+						n->boundSpec = $1;
+						n->subSpec   = $5;
+						n->location  = @1;
+						n->isDefault = 0;
+						n->options = $2;
+						n->accessMethod = greenplumLegacyAOoptions(NULL, &n->options);
+						n->tablespacename = $3;
+						n->colencs   = $4;
+						$$ = (Node *)n;
+				}
+			| column_reference_storage_directive
+				{
+					$$ = (Node *)$1;
+				}
+            ;
+
+TabSubPartitionElem: 
+			TabSubPartitionNameDecl OptTabPartitionBoundarySpec
+			OptWith
+			OptTableSpace
+			OptTabPartitionColumnEncList
+			OptTabSubPartitionSpec
+				{
+						GpPartDefElem *n = makeNode(GpPartDefElem);
+						n->partName  = $1;
+						n->boundSpec = $2;
+						n->subSpec   = $6;
+						n->location  = @1;
+						n->isDefault = 0;
+						n->options = $3;
+						n->accessMethod = greenplumLegacyAOoptions(NULL, &n->options);
+						n->tablespacename = $4;
+						n->colencs   = $5;
+						$$ = (Node *)n;
+				}
+
+			| TabSubPartitionDefaultNameDecl
+			  OptWith
+			  OptTableSpace
+			  OptTabPartitionColumnEncList
+			  OptTabSubPartitionSpec
+				{
+						GpPartDefElem *n = makeNode(GpPartDefElem);
+						n->partName  = $1;
+						n->boundSpec = NULL;
+						n->subSpec   = $5;
+						n->location  = @1;
+						n->isDefault = true;
+						n->options = $2;
+						n->accessMethod = greenplumLegacyAOoptions(NULL, &n->options);
+						n->tablespacename = $3;
+						n->colencs   = $4;
+						$$ = (Node *)n;
+				}
+			| TabPartitionBoundarySpec
+			  OptWith
+			  OptTableSpace
+			  OptTabPartitionColumnEncList
+ 			  OptTabSubPartitionSpec	
+				{
+						GpPartDefElem *n = makeNode(GpPartDefElem);
+						n->partName  = NULL;
+						n->boundSpec = $1;
+						n->subSpec   = $5;
+						n->location  = @1;
+						n->isDefault = false;
+						n->colencs   = $4;
+						n->options = $2;
+						n->accessMethod = greenplumLegacyAOoptions(NULL, &n->options);
+						n->tablespacename = $3;
+						$$ = (Node *)n;
+				}
+			| column_reference_storage_directive
+				{
+					$$ = (Node *)$1;
+				}
+			;
+
+TabPartitionNameDecl: PARTITION PartitionColId
+				{
+					$$ = $2;
+				}
+		;
+TabPartitionDefaultNameDecl: DEFAULT PARTITION PartitionColId
+				{
+					$$ = $3;
+				}
+		;
+
+TabSubPartitionNameDecl: SUBPARTITION PartitionColId
+				{
+					$$ = $2;
+				}
+		;
+
+TabSubPartitionDefaultNameDecl: DEFAULT SUBPARTITION PartitionColId
+				{
+					$$ = $3;
+				}
+		;
+
+TabSubPartitionTemplate:
+			SUBPARTITION TEMPLATE
+			'(' TabSubPartitionElemList ')'
+				{
+					GpPartitionDefinition *n = makeNode(GpPartitionDefinition);
+					n->partDefElems  = $4;
+					n->isTemplate  = true;
+					n->fromCatalog = false;
+					n->location  = @3;
+					$$ = (Node *)n;
+
+					/* a little (temporary?) syntax check on templates */
+					if (n->partDefElems)
+					{
+						List *elems;
+						ListCell *lc;
+						Assert(IsA(n->partDefElems, List));
+
+						elems = (List *)n->partDefElems;
+						foreach(lc, elems)
+						{
+							GpPartDefElem *e = lfirst(lc);
+
+							if (!IsA(e, GpPartDefElem)) continue;
+
+							if (e->subSpec)
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("template cannot contain specification for child partition")));
+						}
+					}
+				}
+		;
+
+opt_list_subparts: TabSubPartition { $$ = $1; }
+			| /*EMPTY*/ { $$ = NULL; }
+		;
+
+
+TabSubPartitionBy: SUBPARTITION BY
+			part_strategy '(' part_params ')'
+				{
+					PartitionSpec *n = makeNode(PartitionSpec);
+
+					n->strategy = $3;
+					n->partParams = $5;
+					n->location = @1;
+
+					check_expressions_in_partition_key(n, yyscanner);
+					$$ = (Node *)n;
+				}
+			;
+
+TabSubPartition:
+			TabSubPartitionBy TabSubPartitionTemplate
+				{
+					PartitionSpec *n = (PartitionSpec *) $1;
+					n->gpPartDef = (GpPartitionDefinition *) $2;
+
+					$$ = $1;
+				}
+			| TabSubPartitionBy { $$ = $1; }
+			| TabSubPartitionBy TabSubPartition
+				{
+					PartitionSpec *n = (PartitionSpec *) $1;
+					n->subPartSpec = (PartitionSpec *) $2;
+
+					$$ = $1;
+				}
+			| TabSubPartitionBy TabSubPartitionTemplate TabSubPartition
+				{
+					PartitionSpec *n = (PartitionSpec *) $1;
+					n->gpPartDef = (GpPartitionDefinition *) $2;
+					n->subPartSpec = (PartitionSpec *) $3;
+
+					$$ = $1;
+				}
+		;
+/* END GPDB LEGACY PARTITION SYNTAX RULES */
+
 /*****************************************************************************
  *
  *		QUERY :
@@ -3995,9 +6087,13 @@ CreateStatsStmt:
  *****************************************************************************/
 
 CreateAsStmt:
-		CREATE OptTemp TABLE create_as_target AS SelectStmt opt_with_data
+		CREATE OptTemp TABLE create_as_target AS SelectStmt opt_with_data OptDistributedBy OptFirstPartitionSpec
 				{
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
+
+					/* reset the hack set in OptFirstPartitionSpec */
+					pg_yyget_extra(yyscanner)->tail_partition_magic = false;
+
 					ctas->query = $6;
 					ctas->into = $4;
 					ctas->relkind = OBJECT_TABLE;
@@ -4005,6 +6101,14 @@ CreateAsStmt:
 					ctas->if_not_exists = false;
 					/* cram additional flags into the IntoClause */
 					$4->rel->relpersistence = $2;
+					ctas->into->distributedBy = $8;
+
+					if ($9)
+						ereport(ERROR,
+                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("cannot create a partitioned table using CREATE TABLE AS SELECT"),
+								 errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead.")));
+
 					$4->skipData = !($7);
 					$$ = (Node *) ctas;
 				}
@@ -4036,6 +6140,8 @@ create_as_target:
 					$$->tableSpaceName = $6;
 					$$->viewQuery = NULL;
 					$$->skipData = false;		/* might get changed later */
+
+					$$->accessMethod = greenplumLegacyAOoptions($$->accessMethod, &$$->options);
 				}
 		;
 
@@ -4045,6 +6151,390 @@ opt_with_data:
 			| /*EMPTY*/								{ $$ = true; }
 		;
 
+/*****************************************************************************
+ *
+ *		QUERY :
+ *				CREATE EXTERNAL [WEB] TABLE relname
+ *
+ *****************************************************************************/
+	
+CreateExternalStmt:	CREATE OptWritable EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
+					ExtTypedesc FORMAT Sconst format_opt ext_options_opt ext_opt_encoding_list ExtSingleRowErrorHandling OptDistributedBy
+						{
+							CreateExternalStmt *n = makeNode(CreateExternalStmt);
+							n->iswritable = $2;
+							n->isweb = $4;
+							$7->relpersistence = $5;
+							n->relation = $7;
+							n->tableElts = $9;
+							n->exttypedesc = (ExtTableTypeDesc *) $11;
+							n->format = $13;
+							n->formatOpts = $14;
+							n->extOptions = $15;
+							n->encoding = $16;
+							n->sreh = $17;
+							n->distributedBy = (DistributedBy *) $18;
+							
+							/* various syntax checks for EXECUTE external table */
+							if(((ExtTableTypeDesc *) n->exttypedesc)->exttabletype == EXTTBL_TYPE_EXECUTE)
+							{
+								ExtTableTypeDesc *extdesc = (ExtTableTypeDesc *) n->exttypedesc;
+								
+								if(!n->isweb)
+									ereport(ERROR,
+											(errcode(ERRCODE_SYNTAX_ERROR),
+										 	 errmsg("EXECUTE may not be used with a regular external table"),
+											 errhint("Use CREATE EXTERNAL WEB TABLE instead.")));
+								
+								/* if no ON clause specified, default to "ON ALL" */
+								if(extdesc->on_clause == NIL)
+								{									
+									extdesc->on_clause = lappend(extdesc->on_clause, 
+										   				   		 makeDefElem("all", (Node *)makeInteger(true), @1));
+								}
+								else if(n->iswritable)
+								{
+									ereport(ERROR,
+											(errcode(ERRCODE_SYNTAX_ERROR),
+											 errmsg("ON clause may not be used with a writable external table")));
+								}
+							}
+
+							if(n->sreh && n->iswritable)
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("single row error handling may not be used with a writable external table")));
+							
+							$$ = (Node *)n;							
+						}
+						;
+
+OptWritable:	WRITABLE				{ $$ = true; }
+				| READABLE				{ $$ = false; }
+				| /*EMPTY*/				{ $$ = false; }
+				;
+
+OptWeb:		WEB						{ $$ = true; }
+			| /*EMPTY*/				{ $$ = false; }
+			;
+
+ExtTypedesc:
+			LOCATION '(' cdb_string_list ')' ext_on_clause_list
+			{
+				ExtTableTypeDesc *n = makeNode(ExtTableTypeDesc);
+				n->exttabletype = EXTTBL_TYPE_LOCATION;
+				n->location_list = $3;
+				n->on_clause = $5;
+				n->command_string = NULL;
+				$$ = (Node *)n;
+	
+			}
+			| EXECUTE Sconst ext_on_clause_list
+			{
+				ExtTableTypeDesc *n = makeNode(ExtTableTypeDesc);
+				n->exttabletype = EXTTBL_TYPE_EXECUTE;
+				n->location_list = NIL;
+				n->command_string = $2;
+				n->on_clause = $3; /* default will get set later if needed */
+						
+				$$ = (Node *)n;
+			}
+			;
+
+ext_on_clause_list:
+			ext_on_clause_list ext_on_clause_item		{ $$ = lappend($1, $2); }
+			| /*EMPTY*/									{ $$ = NIL; }
+			;
+	
+ext_on_clause_item:
+			ON ALL	
+			{
+				$$ = makeDefElem("all", (Node *)makeInteger(true), @1);
+			}
+			| ON HOST Sconst
+			{
+				$$ = makeDefElem("hostname", (Node *)makeString($3), @1);
+			}
+			| ON HOST
+			{
+				$$ = makeDefElem("eachhost", (Node *)makeInteger(true), @1);
+			}
+			| ON MASTER
+			{
+				$$ = makeDefElem("coordinator", (Node *)makeInteger(true), @1);
+			}
+			| ON COORDINATOR
+			{
+				$$ = makeDefElem("coordinator", (Node *)makeInteger(true), @1);
+			}
+			| ON SEGMENT Iconst
+			{
+				$$ = makeDefElem("segment", (Node *)makeInteger($3), @1);
+			}
+			| ON Iconst
+			{
+				$$ = makeDefElem("random", (Node *)makeInteger($2), @1);
+			}
+			;
+
+format_opt: 
+			  '(' format_opt_list ')'			{ $$ = $2; }
+			| '(' format_def_list ')'			{ $$ = $2; }
+			| '(' ')'							{ $$ = NIL; }
+			| /*EMPTY*/							{ $$ = NIL; }
+			;
+
+format_opt_list:
+			format_opt_item		
+			{ 
+				$$ = list_make1($1);
+			}
+			| format_opt_list format_opt_item		
+			{ 
+				$$ = lappend($1, $2); 
+			}
+			;
+
+format_def_list:
+			format_def_item		
+			{ 
+				$$ = list_make1($1);
+			} 
+			| format_def_list ',' format_def_item
+			{
+				$$ = lappend($1, $3);
+			}
+			;
+
+format_def_item:
+    		ColLabel '=' def_arg
+			{
+				$$ = makeDefElem($1, $3, @1);
+			}
+			| ColLabel '=' '(' columnList ')'
+			{
+				$$ = makeDefElem($1, (Node *) $4, @1);
+			}
+			;
+
+format_opt_item:
+			DELIMITER opt_as Sconst
+			{
+				$$ = makeDefElem("delimiter", (Node *)makeString($3), @1);
+			}
+			| NULL_P opt_as Sconst
+			{
+				$$ = makeDefElem("null", (Node *)makeString($3), @1);
+			}
+			| CSV
+			{
+				$$ = makeDefElem("csv", (Node *)makeInteger(true), @1);
+			}
+			| HEADER_P
+			{
+				$$ = makeDefElem("header", (Node *)makeInteger(true), @1);
+			}
+			| QUOTE opt_as Sconst
+			{
+				$$ = makeDefElem("quote", (Node *)makeString($3), @1);
+			}
+			| ESCAPE opt_as Sconst
+			{
+				$$ = makeDefElem("escape", (Node *)makeString($3), @1);
+			}
+			| FORCE NOT NULL_P columnList
+			{
+				$$ = makeDefElem("force_not_null", (Node *)$4, @1);
+			}
+			| FORCE QUOTE columnList
+			{
+				$$ = makeDefElem("force_quote", (Node *)$3, @1);
+			}
+			| FORCE QUOTE '*'
+			{
+				$$ = makeDefElem("force_quote", (Node *)makeNode(A_Star), @1);
+			}
+			| FILL MISSING FIELDS
+			{
+				$$ = makeDefElem("fill_missing_fields", (Node *)makeInteger(true), @1);
+			}
+			| NEWLINE opt_as Sconst
+			{
+				$$ = makeDefElem("newline", (Node *)makeString($3), @1);
+			}
+			;
+
+ext_options_opt:
+			OPTIONS ext_options					{ $$ = $2; }
+			| /*EMPTY*/                         { $$ = NIL; }
+			;
+
+ext_options:
+			'(' ext_options_list ')'           { $$ = $2; }
+			| '(' ')'                           { $$ = NIL; }
+			;
+
+ext_options_list:
+			ext_options_item
+			{
+				$$ = list_make1($1);
+			}
+			| ext_options_list ',' ext_options_item
+			{
+				$$ = lappend($1, $3);
+			}
+			;
+
+ext_options_item:
+			ColLabel Sconst
+			{
+				$$ = makeDefElem($1, (Node *)makeString($2), @1);
+			}
+			;
+
+OptExtTableElementList:
+			ExtTableElementList				{ $$ = $1; }
+			| /*EMPTY*/						{ $$ = NIL; }
+			;
+
+ExtTableElementList:
+			ExtTableElement
+			{
+				$$ = list_make1($1);
+			}
+			| ExtTableElementList ',' ExtTableElement
+			{
+				$$ = lappend($1, $3);
+			}
+			;
+
+ExtTableElement:
+			ExtcolumnDef					{ $$ = $1; }
+			| TableLikeClause				{ $$ = $1; }
+			;
+
+/* column def for ext table - doesn't have room for constraints */
+ExtcolumnDef:	ColId Typename
+		{
+			ColumnDef *n = makeNode(ColumnDef);
+			n->colname = $1;
+			n->typeName = $2;
+			n->is_local = true;
+			n->is_not_null = false;
+			n->constraints = NIL;
+			$$ = (Node *)n;
+		}
+		;
+	
+/*
+ * Single row error handling SQL
+ */
+OptSingleRowErrorHandling:
+		OptLogErrorTable SEGMENT REJECT_P LIMIT Iconst OptSrehLimitType
+		{
+			SingleRowErrorDesc *n = makeNode(SingleRowErrorDesc);
+			n->log_error_type = $1;
+			n->rejectlimit = $5;
+			n->is_limit_in_rows = $6; /* true for ROWS false for PERCENT */
+
+			/* PERCENT value check */
+			if(!n->is_limit_in_rows && (n->rejectlimit < 1 || n->rejectlimit > 100))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid PERCENT value. Should be (1 - 100)")));
+			
+			/* ROW values check */
+			if(n->is_limit_in_rows && n->rejectlimit < 2)
+			   ereport(ERROR,
+					   (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("invalid (ROWS) reject limit. Should be 2 or larger")));
+
+			$$ = (Node *)n;
+		}
+		| /*EMPTY*/		{ $$ = NULL; }
+		;
+
+OptLogErrorTable:
+		LOG_P ERRORS INTO qualified_name
+		{
+			if (gp_ignore_error_table) /* ignore the [INTO error-table] clause for backward compatibility */
+			{
+			ereport(WARNING,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("error table is not supported"),
+					 errhint("Use gp_read_error_log() and gp_truncate_error_log() to view and manage the internal error log associated with your table.")));
+			}
+			else
+			{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("error table is not supported"),
+					 errhint("Set gp_ignore_error_table to ignore the [INTO error-table] clause for backward compatibility."),
+					 parser_errposition(@3)));
+			}
+			$$ = 't';
+		}
+		| LOG_P ERRORS						{ $$ = 't'; }
+		| /*EMPTY*/							{ $$ = 'f'; }
+		;
+
+/*
+ * External table Single row error handling SQL
+ */
+ExtSingleRowErrorHandling:
+		ExtLogErrorTable SEGMENT REJECT_P LIMIT Iconst OptSrehLimitType
+		{
+			SingleRowErrorDesc *n = makeNode(SingleRowErrorDesc);
+			n->log_error_type = $1;
+			n->rejectlimit = $5;
+			n->is_limit_in_rows = $6; /* true for ROWS false for PERCENT */
+
+			/* PERCENT value check */
+			if(!n->is_limit_in_rows && (n->rejectlimit < 1 || n->rejectlimit > 100))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid PERCENT value. Should be (1 - 100)")));
+
+			/* ROW values check */
+			if(n->is_limit_in_rows && n->rejectlimit < 2)
+			   ereport(ERROR,
+					   (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("invalid (ROWS) reject limit. Should be 2 or larger")));
+
+			$$ = (Node *)n;
+		}
+		| /*EMPTY*/		{ $$ = NULL; }
+		;
+
+ExtLogErrorTable:
+		OptLogErrorTable					{ $$ = $1; }
+		| LOG_P ERRORS PERSISTENTLY			{ $$ = 'p'; }
+		;
+	
+OptSrehLimitType:		
+		ROWS					{ $$ = true; }
+		| PERCENT				{ $$ = false; }
+		| /* default is ROWS */	{ $$ = true; }
+		;
+
+/*
+ * ENCODING. (we cheat a little and use a list, even though it's 1 item max).
+ */
+ext_opt_encoding_list:
+		ext_opt_encoding_list ext_opt_encoding_item		{ $$ = lappend($1, $2); }
+		| /*EMPTY*/										{ $$ = NIL; }
+		;
+	
+ext_opt_encoding_item:
+		ENCODING opt_equal Sconst
+		{
+			$$ = makeDefElem("encoding", (Node *)makeString($3), @1);
+		}
+		| ENCODING opt_equal Iconst
+		{
+			$$ = makeDefElem("encoding", (Node *)makeInteger($3), @1);
+		}
+		;
 
 /*****************************************************************************
  *
@@ -4054,7 +6544,7 @@ opt_with_data:
  *****************************************************************************/
 
 CreateMatViewStmt:
-		CREATE OptNoLog MATERIALIZED VIEW create_mv_target AS SelectStmt opt_with_data
+		CREATE OptNoLog MATERIALIZED VIEW create_mv_target AS SelectStmt opt_with_data OptDistributedBy
 				{
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $7;
@@ -4065,6 +6555,8 @@ CreateMatViewStmt:
 					/* cram additional flags into the IntoClause */
 					$5->rel->relpersistence = $2;
 					$5->skipData = !($8);
+					ctas->into->distributedBy = $9;
+
 					$$ = (Node *) ctas;
 				}
 		| CREATE OptNoLog MATERIALIZED VIEW IF_P NOT EXISTS create_mv_target AS SelectStmt opt_with_data
@@ -4094,6 +6586,8 @@ create_mv_target:
 					$$->tableSpaceName = $5;
 					$$->viewQuery = NULL;		/* filled at analysis time */
 					$$->skipData = false;		/* might get changed later */
+
+					$$->accessMethod = greenplumLegacyAOoptions($$->accessMethod, &$$->options);
 				}
 		;
 
@@ -4965,7 +7459,7 @@ AlterForeignServerStmt: ALTER SERVER name foreign_server_version alter_generic_o
 CreateForeignTableStmt:
 		CREATE FOREIGN TABLE qualified_name
 			'(' OptTableElementList ')'
-			OptInherit SERVER name create_generic_options
+			OptInherit SERVER name create_generic_options OptDistributedBy
 				{
 					CreateForeignTableStmt *n = makeNode(CreateForeignTableStmt);
 					$4->relpersistence = RELPERSISTENCE_PERMANENT;
@@ -4981,6 +7475,13 @@ CreateForeignTableStmt:
 					/* FDW-specific data */
 					n->servername = $10;
 					n->options = $11;
+					n->distributedBy = (DistributedBy *) $12;
+					if (strcmp(n->servername, GP_EXTTABLE_SERVER_NAME) != 0 && n->distributedBy)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("DISTRIBUTED BY clause is only supported by FOREIGN SERVER \"%s\"", GP_EXTTABLE_SERVER_NAME)));
+					 }
 					$$ = (Node *) n;
 				}
 		| CREATE FOREIGN TABLE IF_P NOT EXISTS qualified_name
@@ -5461,11 +7962,9 @@ TriggerForSpec:
 				}
 			| /* EMPTY */
 				{
-					/*
-					 * If ROW/STATEMENT not specified, default to
-					 * STATEMENT, per SQL
-					 */
-					$$ = false;
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("Triggers for statements are not yet supported")));
 				}
 		;
 
@@ -5476,7 +7975,12 @@ TriggerForOptEach:
 
 TriggerForType:
 			ROW										{ $$ = true; }
-			| STATEMENT								{ $$ = false; }
+			| STATEMENT
+			{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("Triggers for statements are not yet supported")));
+			}
 		;
 
 TriggerWhen:
@@ -5644,27 +8148,27 @@ CreateAssertionStmt:
  *****************************************************************************/
 
 DefineStmt:
-			CREATE opt_or_replace AGGREGATE func_name aggr_args definition
+			CREATE opt_or_replace opt_ordered AGGREGATE func_name aggr_args definition
 				{
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_AGGREGATE;
 					n->oldstyle = false;
 					n->replace = $2;
-					n->defnames = $4;
-					n->args = $5;
-					n->definition = $6;
+					n->defnames = $5;
+					n->args = $6;
+					n->definition = $7;
 					$$ = (Node *)n;
 				}
-			| CREATE opt_or_replace AGGREGATE func_name old_aggr_definition
+			| CREATE opt_or_replace opt_ordered AGGREGATE func_name old_aggr_definition
 				{
 					/* old-style (pre-8.2) syntax for CREATE AGGREGATE */
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_AGGREGATE;
 					n->oldstyle = true;
 					n->replace = $2;
-					n->defnames = $4;
+					n->defnames = $5;
 					n->args = NIL;
-					n->definition = $5;
+					n->definition = $6;
 					$$ = (Node *)n;
 				}
 			| CREATE OPERATOR any_operator definition
@@ -5705,6 +8209,27 @@ DefineStmt:
 					/* can't use qualified_name, sigh */
 					n->typevar = makeRangeVarFromAnyName($3, @3, yyscanner);
 					n->coldeflist = $6;
+					$$ = (Node *)n;
+				}
+			| CREATE opt_or_replace opt_trusted PROTOCOL name definition
+				{
+					/*
+					 * The opt_or_replace is here just to avoid a grammar conflict.
+					 * It's not actually supported.
+					 */
+					if ($2)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("syntax error"),
+								 parser_errposition(@2)));
+
+					DefineStmt *n = makeNode(DefineStmt);
+					n->kind = OBJECT_EXTPROTOCOL;
+					n->oldstyle = false;
+					n->trusted = $3;
+					n->defnames = list_make1(makeString($5));
+					n->args = NIL;
+					n->definition = $6;
 					$$ = (Node *)n;
 				}
 			| CREATE TYPE_P any_name AS ENUM_P '(' opt_enum_val_list ')'
@@ -5797,6 +8322,10 @@ DefineStmt:
 				}
 		;
 
+opt_ordered:	ORDERED
+			| /*EMPTY*/
+		;
+
 definition: '(' def_list ')'						{ $$ = $2; }
 		;
 
@@ -5816,6 +8345,8 @@ def_elem:	ColLabel '=' def_arg
 
 /* Note: any simple identifier will be returned as a type name! */
 def_arg:	func_type						{ $$ = (Node *)$1; }
+			/* MPP-6685: allow unquoted ROW keyword as "orientation" option */
+			| ROW							{ $$ = (Node *)makeString(pstrdup("row")); }
 			| reserved_keyword				{ $$ = (Node *)makeString(pstrdup($1)); }
 			| qual_all_Op					{ $$ = (Node *)$1; }
 			| NumericOnly					{ $$ = (Node *)$1; }
@@ -6291,6 +8822,8 @@ drop_type_any_name:
 			| MATERIALIZED VIEW						{ $$ = OBJECT_MATVIEW; }
 			| INDEX									{ $$ = OBJECT_INDEX; }
 			| FOREIGN TABLE							{ $$ = OBJECT_FOREIGN_TABLE; }
+			| EXTERNAL TABLE						{ $$ = OBJECT_FOREIGN_TABLE; }
+			| EXTERNAL WEB TABLE					{ $$ = OBJECT_FOREIGN_TABLE; }	
 			| COLLATION								{ $$ = OBJECT_COLLATION; }
 			| CONVERSION_P							{ $$ = OBJECT_CONVERSION; }
 			| STATISTICS							{ $$ = OBJECT_STATISTIC_EXT; }
@@ -6309,6 +8842,7 @@ drop_type_name:
 			| PUBLICATION							{ $$ = OBJECT_PUBLICATION; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
 			| SERVER								{ $$ = OBJECT_FOREIGN_SERVER; }
+			| PROTOCOL								{ $$ = OBJECT_EXTPROTOCOL; }
 		;
 
 /* object types attached to a table */
@@ -6584,6 +9118,8 @@ comment_type_name:
 			| SERVER							{ $$ = OBJECT_FOREIGN_SERVER; }
 			| SUBSCRIPTION						{ $$ = OBJECT_SUBSCRIPTION; }
 			| TABLESPACE						{ $$ = OBJECT_TABLESPACE; }
+			| RESOURCE QUEUE                    { $$ = OBJECT_RESQUEUE; }
+			| RESOURCE GROUP_P					{ $$ = OBJECT_RESGROUP; }
 		;
 
 comment_text:
@@ -7007,7 +9543,7 @@ privilege:	SELECT opt_column_list
  * opt_table.  You're going to get conflicts.
  */
 privilege_target:
-			qualified_name_list
+			qualified_name_list_with_only
 				{
 					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
 					n->targtype = ACL_TARGET_OBJECT;
@@ -7015,7 +9551,7 @@ privilege_target:
 					n->objs = $1;
 					$$ = n;
 				}
-			| TABLE qualified_name_list
+			| TABLE qualified_name_list_with_only
 				{
 					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
 					n->targtype = ACL_TARGET_OBJECT;
@@ -7119,6 +9655,14 @@ privilege_target:
 					n->objs = $2;
 					$$ = n;
 				}
+			| PROTOCOL name_list
+				{
+					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					n->targtype = ACL_TARGET_OBJECT;
+					n->objtype = OBJECT_EXTPROTOCOL;
+					n->objs = $2;
+					$$ = n;
+				}			
 			| TYPE_P any_name_list
 				{
 					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
@@ -7364,6 +9908,12 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->transformed = false;
 					n->if_not_exists = false;
 					n->reset_default_tblspc = false;
+
+					if (n->concurrent)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("CREATE INDEX CONCURRENTLY is not supported")));
+
 					$$ = (Node *)n;
 				}
 			| CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS index_name
@@ -7392,6 +9942,12 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->transformed = false;
 					n->if_not_exists = true;
 					n->reset_default_tblspc = false;
+
+					if (n->concurrent)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("CREATE INDEX CONCURRENTLY is not supported")));
+
 					$$ = (Node *)n;
 				}
 		;
@@ -7501,6 +10057,7 @@ opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
 CreateFunctionStmt:
 			CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			RETURNS func_return createfunc_opt_list
+			opt_definition
 				{
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
 					n->is_procedure = false;
@@ -7509,10 +10066,12 @@ CreateFunctionStmt:
 					n->parameters = $5;
 					n->returnType = $7;
 					n->options = $8;
+					n->options = list_concat(n->options, $9);
 					$$ = (Node *)n;
 				}
 			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			  RETURNS TABLE '(' table_func_column_list ')' createfunc_opt_list
+			  opt_definition
 				{
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
 					n->is_procedure = false;
@@ -7522,10 +10081,12 @@ CreateFunctionStmt:
 					n->returnType = TableFuncTypeName($9);
 					n->returnType->location = @7;
 					n->options = $11;
+					n->options = list_concat(n->options, $12);
 					$$ = (Node *)n;
 				}
 			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			  createfunc_opt_list
+			  opt_definition
 				{
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
 					n->is_procedure = false;
@@ -7534,6 +10095,7 @@ CreateFunctionStmt:
 					n->parameters = $5;
 					n->returnType = NULL;
 					n->options = $6;
+					n->options = list_concat(n->options, $7);
 					$$ = (Node *)n;
 				}
 			| CREATE opt_or_replace PROCEDURE func_name func_args_with_defaults
@@ -7903,6 +10465,42 @@ common_func_opt_item:
 			| PARALLEL ColId
 				{
 					$$ = makeDefElem("parallel", (Node *)makeString($2), @1);
+				}
+			| NO SQL_P
+				{
+					$$ = makeDefElem("data_access", (Node *)makeString("none"), @1);
+				}
+			| CONTAINS SQL_P
+				{
+					$$ = makeDefElem("data_access", (Node *)makeString("contains"), @1);
+				}
+			| READS SQL_P DATA_P
+				{
+					$$ = makeDefElem("data_access", (Node *)makeString("reads"), @1);
+				}
+			| MODIFIES SQL_P DATA_P
+				{
+					$$ = makeDefElem("data_access", (Node *)makeString("modifies"), @1);
+				}
+			| EXECUTE ON ANY
+				{
+					$$ = makeDefElem("exec_location", (Node *)makeString("any"), @1);
+				}
+			| EXECUTE ON MASTER
+				{
+					$$ = makeDefElem("exec_location", (Node *)makeString("coordinator"), @1);
+				}
+			| EXECUTE ON COORDINATOR
+				{
+					$$ = makeDefElem("exec_location", (Node *)makeString("coordinator"), @1);
+				}
+			| EXECUTE ON INITPLAN
+				{
+					$$ = makeDefElem("exec_location", (Node *)makeString("initplan"), @1);
+				}
+			| EXECUTE ON ALL SEGMENTS
+				{
+					$$ = makeDefElem("exec_location", (Node *)makeString("all_segments"), @1);
 				}
 		;
 
@@ -8339,6 +10937,12 @@ ReindexStmt:
 					n->relation = $4;
 					n->name = NULL;
 					n->options = 0;
+
+					if (n->concurrent)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("REINDEX CONCURRENTLY is not supported")));
+
 					$$ = (Node *)n;
 				}
 			| REINDEX reindex_target_multitable opt_concurrently name
@@ -8349,6 +10953,12 @@ ReindexStmt:
 					n->name = $4;
 					n->relation = NULL;
 					n->options = 0;
+
+					if (n->concurrent)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("REINDEX CONCURRENTLY is not supported")));
+
 					$$ = (Node *)n;
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_type opt_concurrently qualified_name
@@ -8359,6 +10969,12 @@ ReindexStmt:
 					n->relation = $7;
 					n->name = NULL;
 					n->options = $3;
+
+					if (n->concurrent)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("REINDEX CONCURRENTLY is not supported")));
+
 					$$ = (Node *)n;
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_multitable opt_concurrently name
@@ -8369,6 +10985,12 @@ ReindexStmt:
 					n->name = $7;
 					n->relation = NULL;
 					n->options = $3;
+
+					if (n->concurrent)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("REINDEX CONCURRENTLY is not supported")));
+
 					$$ = (Node *)n;
 				}
 		;
@@ -8387,6 +11009,21 @@ reindex_option_list:
 		;
 reindex_option_elem:
 			VERBOSE	{ $$ = REINDEXOPT_VERBOSE; }
+		;
+
+/*
+ * ALTER TYPE ... SET DEFAULT ENCODING
+ *
+ * Used to set storage parameter defaults for types.
+ */
+AlterTypeStmt: ALTER TYPE_P any_name SET DEFAULT ENCODING definition
+				{
+					AlterTypeStmt *n = makeNode(AlterTypeStmt);
+
+					n->typeName = $3;
+					n->encoding = $7;
+					$$ = (Node *)n;
+				}
 		;
 
 /*****************************************************************************
@@ -8931,6 +11568,15 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
+			| ALTER PROTOCOL name RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_EXTPROTOCOL;
+					n->object = (Node *) makeString($3);
+					n->newname = $6;
+					n->missing_ok = false;
+					$$ = (Node *)n;
+				}
 		;
 
 opt_column: COLUMN									{ $$ = COLUMN; }
@@ -9425,6 +12071,14 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_STATISTIC_EXT;
 					n->object = (Node *) $3;
+					n->newowner = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER PROTOCOL name OWNER TO RoleSpec
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_EXTPROTOCOL;
+					n->object = (Node *) makeString($3);
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
@@ -10551,6 +13205,59 @@ AnalyzeStmt: analyze_keyword opt_verbose opt_vacuum_relation_list
 					n->is_vacuumcmd = false;
 					$$ = (Node *) n;
 				}
+			/*
+			 * GPDB-specific ROOTPARTITION / FULLSCAN options.
+			 * These cannot be rolled into the above rules without making
+			 * ROOTPARTITION and FULLSCAN keywords reserved, because it is
+			 * ambiguous whether "ANALYZE ROOTPARTITION" means "all relations
+			 * with ROOTPARTITION option", or "one relation called
+			 * ROOTPARTITION". So with these options, you must specify a
+			 * relation name/list. For database-wide operation, you can do
+			 * ANALYZE ROOTPARTITION ALL, which is special cased here. There is
+			 * not ANALYZE FULLSCAN ALL, though.
+			 *
+			 * The modern syntax with parens doesn't have these problems, so
+			 * you can do "ANALYZE (FULLSCAN)".
+			 */
+			| analyze_keyword opt_verbose ROOTPARTITION vacuum_relation_list
+				{
+					VacuumStmt *n = makeNode(VacuumStmt);
+					n->options = NIL;
+					if ($2)
+						n->options = lappend(n->options,
+											 makeDefElem("verbose", NULL, @2));
+					n->options = lappend(n->options,
+										 makeDefElem("rootpartition", NULL, @3));
+					n->rels = $4;
+					n->is_vacuumcmd = false;
+					$$ = (Node *)n;
+				}
+			| analyze_keyword opt_verbose ROOTPARTITION ALL
+				{
+					VacuumStmt *n = makeNode(VacuumStmt);
+					n->options = NIL;
+					if ($2)
+						n->options = lappend(n->options,
+											 makeDefElem("verbose", NULL, @2));
+					n->options = lappend(n->options,
+										 makeDefElem("rootpartition", NULL, @3));
+					n->rels = NIL;
+					n->is_vacuumcmd = false;
+					$$ = (Node *)n;
+				}
+			| analyze_keyword opt_verbose FULLSCAN vacuum_relation_list
+				{
+					VacuumStmt *n = makeNode(VacuumStmt);
+					n->options = NIL;
+					if ($2)
+						n->options = lappend(n->options,
+											 makeDefElem("verbose", NULL, @2));
+					n->options = lappend(n->options,
+										 makeDefElem("fullscan", NULL, @3));
+					n->rels = $4;
+					n->is_vacuumcmd = false;
+					$$ = (Node *)n;
+				}
 		;
 
 vac_analyze_option_list:
@@ -10646,21 +13353,27 @@ ExplainStmt:
 					n->options = NIL;
 					$$ = (Node *) n;
 				}
-		| EXPLAIN analyze_keyword opt_verbose ExplainableStmt
+		| EXPLAIN analyze_keyword opt_verbose opt_dxl ExplainableStmt
 				{
 					ExplainStmt *n = makeNode(ExplainStmt);
-					n->query = $4;
+					n->query = $5;
 					n->options = list_make1(makeDefElem("analyze", NULL, @2));
 					if ($3)
 						n->options = lappend(n->options,
 											 makeDefElem("verbose", NULL, @3));
+					if ($4)
+						n->options = lappend(n->options,
+											 makeDefElem("dxl", NULL, @4));
 					$$ = (Node *) n;
 				}
-		| EXPLAIN VERBOSE ExplainableStmt
+		| EXPLAIN VERBOSE opt_dxl ExplainableStmt
 				{
 					ExplainStmt *n = makeNode(ExplainStmt);
-					n->query = $3;
+					n->query = $4;
 					n->options = list_make1(makeDefElem("verbose", NULL, @2));
+					if ($3)
+						n->options = lappend(n->options,
+											 makeDefElem("dxl", NULL, @3));
 					$$ = (Node *) n;
 				}
 		| EXPLAIN '(' explain_option_list ')' ExplainableStmt
@@ -10682,6 +13395,17 @@ ExplainableStmt:
 			| CreateMatViewStmt
 			| RefreshMatViewStmt
 			| ExecuteStmt					/* by default all are $$=$1 */
+			| CreateStmt
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot EXPLAIN CREATE TABLE without AS "
+							 		"clause")));
+				}
+		;
+
+opt_dxl:	DXL										{ $$ = true; }
+			| /*EMPTY*/								{ $$ = false; }
 		;
 
 explain_option_list:
@@ -10826,6 +13550,34 @@ DeallocateStmt: DEALLOCATE name
 						n->name = NULL;
 						$$ = (Node *) n;
 					}
+		;
+
+/*****************************************************************************
+ *
+ */
+
+
+
+
+cdb_string_list:
+			cdb_string							{ $$ = list_make1($1); }
+			| cdb_string_list ',' cdb_string
+				{
+					if (list_member($1, $3))
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("duplicate location uri"),
+								 parser_errposition(@3)));
+					$$ = lappend($1, $3);
+				}
+		;
+
+
+cdb_string:
+			Sconst
+				{
+					$$ = (Node *) makeString($1);
+				}
 		;
 
 /*****************************************************************************
@@ -11012,13 +13764,25 @@ using_clause:
  *
  *****************************************************************************/
 
-LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
+LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait opt_coordinatoronly
 				{
 					LockStmt *n = makeNode(LockStmt);
 
 					n->relations = $3;
 					n->mode = $4;
 					n->nowait = $5;
+					if ($6 != NULL)
+						n->coordinatoronly = true;
+					else
+						n->coordinatoronly = false;
+					if (n->coordinatoronly && n->mode != AccessShareLock)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("provided lock mode is not supported for %s", $6),
+							 	errhint("Only ACCESS SHARE mode is supported for %s.", $6),
+								parser_errposition(@4)));
+					}
 					$$ = (Node *)n;
 				}
 		;
@@ -11047,6 +13811,10 @@ opt_nowait_or_skip:
 			| /*EMPTY*/						{ $$ = LockWaitBlock; }
 		;
 
+opt_coordinatoronly: MASTER ONLY					{ $$ = pstrdup("MASTER ONLY"); }
+		| COORDINATOR ONLY				{ $$ = pstrdup("COORDINATOR ONLY"); }
+		| /*EMPTY*/					{ $$ = NULL; }
+		;
 
 /*****************************************************************************
  *
@@ -11148,6 +13916,7 @@ cursor_options: /*EMPTY*/					{ $$ = 0; }
 			| cursor_options SCROLL			{ $$ = $1 | CURSOR_OPT_SCROLL; }
 			| cursor_options BINARY			{ $$ = $1 | CURSOR_OPT_BINARY; }
 			| cursor_options INSENSITIVE	{ $$ = $1 | CURSOR_OPT_INSENSITIVE; }
+			| cursor_options PARALLEL RETRIEVE	{ $$ = $1 | CURSOR_OPT_PARALLEL_RETRIEVE; }
 		;
 
 opt_hold: /* EMPTY */						{ $$ = 0; }
@@ -11202,6 +13971,24 @@ opt_hold: /* EMPTY */						{ $$ = 0; }
 
 SelectStmt: select_no_parens			%prec UMINUS
 			| select_with_parens		%prec UMINUS
+		;
+
+RetrieveStmt:
+			RETRIEVE SignedIconst FROM ENDPOINT name
+				{
+					RetrieveStmt *n = makeNode(RetrieveStmt);
+					n->endpoint_name = $5;
+					n->count = $2;
+					$$ = (Node *)n;
+				}
+			| RETRIEVE ALL FROM ENDPOINT name
+				{
+					RetrieveStmt *n = makeNode(RetrieveStmt);
+					n->endpoint_name = $5;
+					n->count = -1;
+					n->is_all = true;
+					$$ = (Node *)n;
+				}
 		;
 
 select_with_parens:
@@ -13499,6 +16286,8 @@ c_expr:		columnref								{ $$ = $1; }
 				{ $$ = $1; }
 			| func_expr
 				{ $$ = $1; }
+			| decode_expr
+				{ $$ = $1; }
 			| select_with_parens			%prec UMINUS
 				{
 					SubLink *n = makeNode(SubLink);
@@ -13563,6 +16352,13 @@ c_expr:		columnref								{ $$ = $1; }
 					n->location = @1;
 					$$ = (Node *)n;
 				}
+            | TABLE '(' table_value_select_clause ')'
+				{
+					TableValueExpr *n = makeNode(TableValueExpr);
+					n->subquery = $3;
+					n->location = @1;
+					$$ = (Node *)n;
+				}
 			| explicit_row
 				{
 					RowExpr *r = makeNode(RowExpr);
@@ -13590,7 +16386,28 @@ c_expr:		columnref								{ $$ = $1; }
 				  g->location = @1;
 				  $$ = (Node *)g;
 			  }
+			| GROUP_ID '(' ')'
+			  {
+				  GroupId *g = makeNode(GroupId);
+				  g->location = @1;
+				  $$ = (Node *)g;
+			  }
 		;
+
+scatter_clause:
+		/* EMPTY */						{ $$ = NIL; }
+		| SCATTER RANDOMLY				{ $$ = list_make1(NULL); }
+		| SCATTER BY expr_list 			{ $$ = $3; }
+  		;
+
+table_value_select_clause:
+		SelectStmt scatter_clause
+		{
+			SelectStmt	*s	 = (SelectStmt *) $1;
+			s->scatterClause = $2;
+			$$ = (Node *) s;
+		}
+  		;
 
 func_application: func_name '(' ')'
 				{
@@ -13624,6 +16441,9 @@ func_application: func_name '(' ')'
 					 * "must be an aggregate", but there's no provision
 					 * for that in FuncCall at the moment.
 					 */
+					n->func_variadic = false;
+					n->location = @1;
+					n->over = NULL;
 					$$ = (Node *)n;
 				}
 			| func_name '(' DISTINCT func_arg_list opt_sort_clause ')'
@@ -13869,6 +16689,48 @@ func_expr_common_subexpr:
 					v->location = @1;
 					$$ = (Node *)v;
 				}
+			| MEDIAN '(' a_expr ')'
+				{
+					/*
+					 * MEDIAN is parsed as an alias to percentile_cont(0.5).
+					 * We keep track of original expression to deparse
+					 * it later in views, etc.
+					 */
+					FuncCall   *n;
+					SortBy	   *sortby;
+
+					n = makeNode(FuncCall);
+					n->funcname = SystemFuncName("median");
+					n->args = list_make1(makeAConst(makeFloat(pstrdup("0.5")), @1));
+
+					sortby = makeNode(SortBy);
+					sortby->node = $3;
+					sortby->sortby_dir = SORTBY_DEFAULT;
+					sortby->sortby_nulls = SORTBY_NULLS_DEFAULT;
+					sortby->useOp = NIL;
+					sortby->location = -1;		/* no operator */
+					n->agg_order = list_make1(sortby);
+
+					n->agg_within_group = true;
+					n->agg_filter = NULL;
+					n->over = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| DECODE '(' a_expr ',' a_expr ')'
+				{
+					FuncCall *n = makeNode(FuncCall);
+					n->funcname = list_make1(makeString("decode"));
+					n->args = list_make2($3, $5);
+                    n->agg_order = NIL;
+					n->agg_star = false;
+					n->agg_distinct = false;
+					n->func_variadic = false;
+					n->agg_filter = NULL;
+					n->location = @1;
+					n->over = NULL;
+					$$ = (Node *)n;
+				}
 			| XMLCONCAT '(' expr_list ')'
 				{
 					$$ = makeXmlExpr(IS_XMLCONCAT, NULL, NIL, $3, @1);
@@ -13894,6 +16756,27 @@ func_expr_common_subexpr:
 					/* xmlexists(A PASSING [BY REF] B [BY REF]) is
 					 * converted to xmlexists(A, B)*/
 					$$ = (Node *) makeFuncCall(SystemFuncName("xmlexists"), list_make2($3, $4), @1);
+				}
+			/*
+			 * GPDB: In versions 4.3 of GPDB, we had the xmlexists(text, xml)
+			 * function, but not this syntactic sugar, and XMLEXISTS was not
+			 * a keyword. So there might be applications out there calling
+			 * it like "SELECT xmlexists(foo, bar)", which will fail in
+			 * PostgreSQL because XMLEXISTS is a keyword. Support that
+			 * old syntax, for backwards-compatibiltiy.
+			 */
+			| XMLEXISTS '(' a_expr ',' a_expr ')'
+				{
+					FuncCall *n = makeNode(FuncCall);
+					n->funcname = SystemFuncName("xmlexists");
+					n->args = list_make2($3, $5);
+					n->agg_order = NIL;
+					n->agg_star = false;
+					n->agg_distinct = false;
+					n->func_variadic = false;
+					n->over = NULL;
+					n->location = @1;
+					$$ = (Node *)n;
 				}
 			| XMLFOREST '(' xml_attribute_list ')'
 				{
@@ -14098,8 +16981,8 @@ opt_existing_window_name: ColId						{ $$ = $1; }
 			| /*EMPTY*/				%prec Op		{ $$ = NULL; }
 		;
 
-opt_partition_clause: PARTITION BY expr_list		{ $$ = $3; }
-			| /*EMPTY*/								{ $$ = NIL; }
+opt_partition_clause: PARTITION BY expr_list { $$ = $3; }
+			| /*EMPTY*/ { $$ = NIL; }
 		;
 
 /*
@@ -14548,7 +17431,7 @@ when_clause_list:
 		;
 
 when_clause:
-			WHEN a_expr THEN a_expr
+			WHEN when_operand THEN a_expr
 				{
 					CaseWhen *w = makeNode(CaseWhen);
 					w->expr = (Expr *) $2;
@@ -14556,6 +17439,11 @@ when_clause:
 					w->location = @1;
 					$$ = (Node *)w;
 				}
+			;
+
+when_operand:
+			a_expr							{ $$ = $1; }
+			| IS NOT DISTINCT FROM a_expr	{ $$ = makeIsNotDistinctFromNode($5,@2); }
 		;
 
 case_default:
@@ -14566,6 +17454,50 @@ case_default:
 case_arg:	a_expr									{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
+
+
+/*
+ * Oracle-compatible DECODE function:
+ * DECODE(lhs, rhs, res [, rhs2, res2 ]... [, def_res]): 
+ * 		returns resX if lhs = rhsX, or def_res if no match found
+ * It is transformed into: 
+ *		CASE lhs WHEN IS NOT DISTINCT FROM rhs THEN res
+ *				[WHEN IS NOT DISTINCT FROM rhs2 THEN res2] ... 
+ *			ELSE def_res END
+ */
+decode_expr:	
+			DECODE '(' a_expr search_result_list decode_default ')'
+				{
+					CaseExpr *c = makeNode(CaseExpr);
+					c->casetype = InvalidOid; /* not analyzed yet */
+					c->arg = (Expr *) $3;
+					c->args = $4;
+					c->defresult = (Expr *) $5;
+					$$ = (Node *) c;
+				}
+		;
+			
+search_result_list: 
+			search_result							{ $$ = list_make1($1); }
+			| search_result_list search_result		{ $$ = lappend($1, $2); }
+		;
+
+search_result:
+			',' a_expr ',' a_expr
+				{
+					Node *n = makeIsNotDistinctFromNode($2,@2);
+					CaseWhen *w = makeNode(CaseWhen);
+					w->expr = (Expr *) n;
+					w->result = (Expr *) $4;
+					$$ = (Node *) w;
+				}
+		;
+				
+decode_default: 	
+			',' a_expr	 					{ $$ = $2; }
+			| /*EMPTY*/						{ $$ = NULL; }
+		;
+
 
 columnref:	ColId
 				{
@@ -14648,14 +17580,28 @@ target_el:	a_expr AS ColLabel
 					$$->location = @1;
 				}
 			/*
-			 * We support omitting AS only for column labels that aren't
+			 * Postgres supports omitting AS only for column labels that aren't
 			 * any known keyword.  There is an ambiguity against postfix
 			 * operators: is "a ! b" an infix expression, or a postfix
 			 * expression and a column label?  We prefer to resolve this
 			 * as an infix expression, which we accomplish by assigning
 			 * IDENT a precedence higher than POSTFIXOP.
+			 *
+			 * In GPDB, we extend this to allow most unreserved_keywords by
+			 * also assigning them a precedence.  There are certain keywords
+			 * that can't work without the as: reserved_keywords, the date
+			 * modifier suffixes (DAY, MONTH, YEAR, etc) and a few other
+			 * obscure cases.
 			 */
 			| a_expr IDENT
+				{
+					$$ = makeNode(ResTarget);
+					$$->name = $2;
+					$$->indirection = NIL;
+					$$->val = (Node *)$1;
+					$$->location = @1;
+				}
+			| a_expr ColLabelNoAs
 				{
 					$$ = makeNode(ResTarget);
 					$$->name = $2;
@@ -14695,6 +17641,27 @@ target_el:	a_expr AS ColLabel
 qualified_name_list:
 			qualified_name							{ $$ = list_make1($1); }
 			| qualified_name_list ',' qualified_name { $$ = lappend($1, $3); }
+		;
+
+qualified_name_list_with_only:
+			qualified_name
+				{
+					$$ = list_make1($1);
+				}
+			| ONLY qualified_name
+				{ 
+					$2->inh = false; 
+					$$ = list_make1($2);
+				}
+			| qualified_name_list ',' qualified_name
+				{
+					$$ = lappend($1, $3);
+				}
+			| qualified_name_list ',' ONLY qualified_name
+				{
+					$4->inh = false; 
+					$$ = lappend($1, $4);
+				}
 		;
 
 /*
@@ -14881,6 +17848,8 @@ SignedIconst: Iconst								{ $$ = $1; }
 			| '-' Iconst							{ $$ = - $2; }
 		;
 
+QueueId:	NonReservedWord							{ $$ = $1; };
+
 /* Role specifications */
 RoleId:		RoleSpec
 				{
@@ -15022,6 +17991,7 @@ unreserved_keyword:
 			| ABSOLUTE_P
 			| ACCESS
 			| ACTION
+			| ACTIVE
 			| ADD_P
 			| ADMIN
 			| AFTER
@@ -15055,15 +18025,21 @@ unreserved_keyword:
 			| COMMENTS
 			| COMMIT
 			| COMMITTED
+			| CONCURRENCY
 			| CONFIGURATION
 			| CONFLICT
 			| CONNECTION
 			| CONSTRAINTS
+			| CONTAINS
 			| CONTENT_P
 			| CONTINUE_P
 			| CONVERSION_P
+			| COORDINATOR
 			| COPY
 			| COST
+			| CPUSET
+			| CPU_RATE_LIMIT
+			| CREATEEXTTABLE
 			| CSV
 			| CUBE
 			| CURRENT_P
@@ -15080,6 +18056,7 @@ unreserved_keyword:
 			| DELETE_P
 			| DELIMITER
 			| DELIMITERS
+			| DENY
 			| DEPENDS
 			| DETACH
 			| DICTIONARY
@@ -15089,26 +18066,34 @@ unreserved_keyword:
 			| DOMAIN_P
 			| DOUBLE_P
 			| DROP
+			| DXL
 			| EACH
 			| ENABLE_P
 			| ENCODING
 			| ENCRYPTED
+			| ENDPOINT
 			| ENUM_P
+			| ERRORS
 			| ESCAPE
 			| EVENT
-			| EXCLUDE
+			| EVERY
+			| EXCHANGE
 			| EXCLUDING
 			| EXCLUSIVE
 			| EXECUTE
+			| EXPAND
 			| EXPLAIN
 			| EXTENSION
 			| EXTERNAL
 			| FAMILY
+			| FIELDS
+			| FILL
 			| FILTER
 			| FIRST_P
-			| FOLLOWING
 			| FORCE
+			| FORMAT
 			| FORWARD
+			| FULLSCAN
 			| FUNCTION
 			| FUNCTIONS
 			| GENERATED
@@ -15116,22 +18101,27 @@ unreserved_keyword:
 			| GRANTED
 			| GROUPS
 			| HANDLER
+			| HASH
 			| HEADER_P
 			| HOLD
+			| HOST
 			| HOUR_P
 			| IDENTITY_P
 			| IF_P
+			| IGNORE_P
 			| IMMEDIATE
 			| IMMUTABLE
 			| IMPLICIT_P
 			| IMPORT_P
 			| INCLUDE
 			| INCLUDING
+			| INCLUSIVE
 			| INCREMENT
 			| INDEX
 			| INDEXES
 			| INHERIT
 			| INHERITS
+			| INITPLAN
 			| INLINE_P
 			| INPUT_P
 			| INSENSITIVE
@@ -15146,6 +18136,7 @@ unreserved_keyword:
 			| LAST_P
 			| LEAKPROOF
 			| LEVEL
+			| LIST
 			| LISTEN
 			| LOAD
 			| LOCAL
@@ -15154,20 +18145,29 @@ unreserved_keyword:
 			| LOCKED
 			| LOGGED
 			| MAPPING
+			| MASTER
 			| MATCH
 			| MATERIALIZED
 			| MAXVALUE
+			| MEMORY_LIMIT
+			| MEMORY_SHARED_QUOTA
+			| MEMORY_SPILL_RATIO
 			| METHOD
 			| MINUTE_P
 			| MINVALUE
+			| MISSING
 			| MODE
+			| MODIFIES
 			| MONTH_P
 			| MOVE
 			| NAME_P
 			| NAMES
 			| NEW
+			| NEWLINE
 			| NEXT
 			| NO
+			| NOCREATEEXTTABLE
+			| NOOVERCOMMIT
 			| NOTHING
 			| NOTIFY
 			| NOWAIT
@@ -15180,21 +18180,24 @@ unreserved_keyword:
 			| OPERATOR
 			| OPTION
 			| OPTIONS
+			| ORDERED
 			| ORDINALITY
 			| OTHERS
 			| OVER
+			| OVERCOMMIT
 			| OVERRIDING
 			| OWNED
 			| OWNER
 			| PARALLEL
 			| PARSER
 			| PARTIAL
-			| PARTITION
+			| PARTITIONS
 			| PASSING
 			| PASSWORD
+			| PERCENT
+			| PERSISTENTLY
 			| PLANS
 			| POLICY
-			| PRECEDING
 			| PREPARE
 			| PREPARED
 			| PRESERVE
@@ -15204,10 +18207,15 @@ unreserved_keyword:
 			| PROCEDURE
 			| PROCEDURES
 			| PROGRAM
+			| PROTOCOL
 			| PUBLICATION
+			| QUEUE
 			| QUOTE
+			| RANDOMLY /* gp */
 			| RANGE
 			| READ
+			| READABLE
+			| READS
 			| REASSIGN
 			| RECHECK
 			| RECURSIVE
@@ -15215,20 +18223,25 @@ unreserved_keyword:
 			| REFERENCING
 			| REFRESH
 			| REINDEX
+			| REJECT_P /* gp */
 			| RELATIVE_P
 			| RELEASE
 			| RENAME
 			| REPEATABLE
 			| REPLACE
 			| REPLICA
+			| REPLICATED
 			| RESET
+			| RESOURCE
 			| RESTART
 			| RESTRICT
+			| RETRIEVE
 			| RETURNS
 			| REVOKE
 			| ROLE
 			| ROLLBACK
 			| ROLLUP
+			| ROOTPARTITION
 			| ROUTINE
 			| ROUTINES
 			| ROWS
@@ -15240,6 +18253,8 @@ unreserved_keyword:
 			| SEARCH
 			| SECOND_P
 			| SECURITY
+			| SEGMENT
+			| SEGMENTS
 			| SEQUENCE
 			| SEQUENCES
 			| SERIALIZABLE
@@ -15252,6 +18267,7 @@ unreserved_keyword:
 			| SIMPLE
 			| SKIP
 			| SNAPSHOT
+			| SPLIT
 			| SQL_P
 			| STABLE
 			| STANDALONE_P
@@ -15264,6 +18280,7 @@ unreserved_keyword:
 			| STORED
 			| STRICT_P
 			| STRIP_P
+			| SUBPARTITION
 			| SUBSCRIPTION
 			| SUPPORT
 			| SYSID
@@ -15274,6 +18291,7 @@ unreserved_keyword:
 			| TEMPLATE
 			| TEMPORARY
 			| TEXT_P
+			| THRESHOLD
 			| TIES
 			| TRANSACTION
 			| TRANSFORM
@@ -15282,7 +18300,6 @@ unreserved_keyword:
 			| TRUSTED
 			| TYPE_P
 			| TYPES_P
-			| UNBOUNDED
 			| UNCOMMITTED
 			| UNENCRYPTED
 			| UNKNOWN
@@ -15293,6 +18310,7 @@ unreserved_keyword:
 			| VACUUM
 			| VALID
 			| VALIDATE
+			| VALIDATION /* gp */
 			| VALIDATOR
 			| VALUE_P
 			| VARYING
@@ -15300,17 +18318,325 @@ unreserved_keyword:
 			| VIEW
 			| VIEWS
 			| VOLATILE
+			| WEB /* gp */
 			| WHITESPACE_P
 			| WITHIN
 			| WITHOUT
 			| WORK
 			| WRAPPER
+			| WRITABLE
 			| WRITE
 			| XML_P
 			| YEAR_P
 			| YES_P
 			| ZONE
 		;
+
+/*
+ * ColLabelNoAs is used for SELECT element aliases that don't have the
+ * AS keyword.  We always allow IDENT, so anything in double-quotes is
+ * also OK.  Beyond that, any keywords listed here can be a column
+ * alias even when you omit the AS keyword.
+ *
+ * We could add some of the reserved_keywords to this list, but I'm
+ * reluctant to do so because it might restrict future enhancements to
+ * the grammar.
+ */
+
+ColLabelNoAs:   keywords_ok_in_alias_no_as   { $$=pstrdup($1); }
+				;
+
+keywords_ok_in_alias_no_as: PartitionIdentKeyword
+			| TABLESPACE
+			| ADD_P
+			| ALTER
+			| AT
+			;
+
+PartitionColId: PartitionIdentKeyword { $$ = pstrdup($1); }
+			| IDENT { $$ = pstrdup($1); }
+			;
+
+/*
+ * GPDB_12_MERGE_FIXME: need to update this list to reflect new keywords added
+ * as part of merge like NEW, OLD,.....
+ */
+PartitionIdentKeyword: ABORT_P
+			| ABSOLUTE_P
+			| ACCESS
+			| ACTION
+			| ACTIVE
+			| ADMIN
+			| AFTER
+			| AGGREGATE
+			| ALSO
+			| ASSERTION
+			| ASSIGNMENT
+			| BACKWARD
+			| BEFORE
+			| BEGIN_P
+			| BY
+			| CACHE
+			| CALLED
+			| CASCADE
+			| CASCADED
+			| CHAIN
+			| CHARACTERISTICS
+			| CHECKPOINT
+			| CLASS
+			| CLOSE
+			| CLUSTER
+			| COMMENT
+			| COMMIT
+			| COMMITTED
+			| CONCURRENCY
+			| CONNECTION
+			| CONSTRAINTS
+			| CONTAINS
+			| CONTENT_P
+			| CONVERSION_P
+			| COPY
+			| COST
+			| CPUSET
+			| CPU_RATE_LIMIT
+			| CREATEEXTTABLE
+			| CSV
+			| CUBE
+			| CURSOR
+			| CYCLE
+			| DATABASE
+			| DEALLOCATE
+			| DECLARE
+			| DEFAULTS
+			| DEFERRED
+			| DEFINER
+			| DELETE_P
+			| DELIMITER
+			| DELIMITERS
+			| DISABLE_P
+			| DOMAIN_P
+			| DOUBLE_P
+			| DROP
+			| EACH
+			| ENABLE_P
+			| ENCODING
+			| ENCRYPTED
+			| ENDPOINT
+			| ERRORS
+			| ENUM_P
+			| ESCAPE
+			| EVERY
+			| EXCHANGE
+			| EXCLUDING
+			| EXCLUSIVE
+			| EXECUTE
+			| EXPLAIN
+			| EXTERNAL
+			| FIELDS
+			| FILL
+			| FIRST_P
+			| FORCE
+			| FORMAT
+			| FORWARD
+			| FUNCTION
+			| GLOBAL
+			| GRANTED
+			| HANDLER
+			| HASH
+			| HEADER_P
+			| HOLD
+			| HOST
+			| IF_P
+			| IMMEDIATE
+			| IMMUTABLE
+			| IMPLICIT_P
+			| INCLUDING
+			| INCLUSIVE
+			| INCREMENT
+			| INDEX
+			| INDEXES
+			| INHERIT
+			| INHERITS
+			| INPUT_P
+			| INSENSITIVE
+			| INSERT
+			| INSTEAD
+			| INVOKER
+			| ISOLATION
+			| KEY
+			| LANGUAGE
+			| LARGE_P
+			| LAST_P
+			| LEVEL
+			| LIST
+			| LISTEN
+			| LOAD
+			| LOCAL
+			| LOCATION
+			| LOCK_P
+			| MASTER
+			| MATCH
+			| MAXVALUE
+			| MEMORY_LIMIT
+			| MEMORY_SHARED_QUOTA
+			| MEMORY_SPILL_RATIO
+			| MINVALUE
+			| MISSING
+			| MODE
+			| MODIFIES
+			| MOVE
+			| NAME_P
+			| NAMES
+			| NEWLINE
+			| NEXT
+			| NO
+			| NOOVERCOMMIT
+			| NOTHING
+			| NOTIFY
+			| NOWAIT
+			| NULLS_P
+			| OBJECT_P
+			| OF
+			| OIDS
+			| OPERATOR
+			| OPTION
+			| OPTIONS
+			| OTHERS
+			| OVERCOMMIT
+			| OWNED
+			| OWNER
+			| PARALLEL
+			| PARTIAL
+			| PARTITIONS
+			| PASSWORD
+			| PERCENT
+			| PERSISTENTLY
+			| PREPARE
+			| PREPARED
+			| PRESERVE
+			| PRIOR
+			| PRIVILEGES
+			| PROCEDURAL
+			| PROCEDURE
+			| PROTOCOL
+			| QUEUE
+			| QUOTE
+			| RANGE
+			| READ
+			| REASSIGN
+			| RECHECK
+			| REINDEX
+			| RELATIVE_P
+			| RELEASE
+			| RENAME
+			| REPEATABLE
+			| REPLACE
+			| RESET
+			| RESOURCE
+			| RESTART
+			| RESTRICT
+			| RETURNS
+			| REVOKE
+			| ROLE
+			| ROLLBACK
+			| ROLLUP
+			| ROWS
+			| RULE
+			| SAVEPOINT
+			| SCHEMA
+			| SCROLL
+			| SEARCH
+			| SECURITY
+			| SEGMENT
+			| SEGMENTS
+			| SEQUENCE
+			| SERIALIZABLE
+			| SESSION
+			| SET
+			| SHARE
+			| SHOW
+			| SIMPLE
+			| SPLIT
+			| STABLE
+			| START
+			| STATEMENT
+			| STATISTICS
+			| STDIN
+			| STDOUT
+			| STORAGE
+			| STRICT_P
+			| SUBPARTITION
+			| SYSID
+			| SYSTEM_P
+			| TEMP
+			| TEMPLATE
+			| TEMPORARY
+			| THRESHOLD
+			| TIES
+			| TRANSACTION
+			| TRIGGER
+			| TRUNCATE
+			| TRUSTED
+			| TYPE_P
+			| UNCOMMITTED
+			| UNENCRYPTED
+			| UNKNOWN
+			| UNLISTEN
+			| UNTIL
+			| UPDATE
+			| VACUUM
+			| VALID
+			| VALIDATOR
+			| VERSION_P
+			| VIEW
+			| VALUE_P
+			| VOLATILE
+			| WORK
+			| WRITE
+			| ZONE
+			| BIGINT
+			| BIT
+			| BOOLEAN_P
+			| COALESCE
+			| DEC
+			| DECIMAL_P
+			| EXISTS
+			| EXTRACT
+			| FLOAT_P
+			| GREATEST
+			| INOUT
+			| INT_P
+			| INTEGER
+			| INTERVAL
+			| LEAST
+			| NATIONAL
+			| NCHAR
+			| NONE
+			| NULLIF
+			| NUMERIC
+			| OUT_P
+			| OVERLAY
+			| POSITION
+			| PRECISION
+			| REAL
+			| ROW
+			| SETOF
+			| SETS
+			| SMALLINT
+			| SUBSTRING
+			| TIME
+			| TIMESTAMP
+			| TREAT
+			| TRIM
+			| VALUES
+			| VARCHAR
+			| AUTHORIZATION
+			| BINARY
+			| FREEZE
+			| LOG_P
+			| OUTER_P
+			| VERBOSE
+			;
 
 /* Column identifier --- keywords that can be column, table, etc names.
  *
@@ -15337,11 +18663,13 @@ col_name_keyword:
 			| FLOAT_P
 			| GREATEST
 			| GROUPING
+			| GROUP_ID
 			| INOUT
 			| INT_P
 			| INTEGER
 			| INTERVAL
 			| LEAST
+			| MEDIAN
 			| NATIONAL
 			| NCHAR
 			| NONE
@@ -15401,6 +18729,7 @@ type_func_name_keyword:
 			| JOIN
 			| LEFT
 			| LIKE
+			| LOG_P
 			| NATURAL
 			| NOTNULL
 			| OUTER_P
@@ -15441,16 +18770,20 @@ reserved_keyword:
 			| CURRENT_TIME
 			| CURRENT_TIMESTAMP
 			| CURRENT_USER
+			| DECODE
 			| DEFAULT
 			| DEFERRABLE
 			| DESC
 			| DISTINCT
+			| DISTRIBUTED /* gp */
 			| DO
 			| ELSE
 			| END_P
 			| EXCEPT
+			| EXCLUDE 
 			| FALSE_P
 			| FETCH
+			| FOLLOWING
 			| FOR
 			| FOREIGN
 			| FROM
@@ -15473,10 +18806,13 @@ reserved_keyword:
 			| ONLY
 			| OR
 			| ORDER
+			| PARTITION
 			| PLACING
+			| PRECEDING
 			| PRIMARY
 			| REFERENCES
 			| RETURNING
+			| SCATTER  /* gp */
 			| SELECT
 			| SESSION_USER
 			| SOME
@@ -15486,6 +18822,7 @@ reserved_keyword:
 			| TO
 			| TRAILING
 			| TRUE_P
+			| UNBOUNDED
 			| UNION
 			| UNIQUE
 			| USER
@@ -16100,10 +19437,28 @@ mergeTableFuncParameters(List *func_args, List *columns)
 	{
 		FunctionParameter *p = (FunctionParameter *) lfirst(lc);
 
-		if (p->mode != FUNC_PARAM_IN && p->mode != FUNC_PARAM_VARIADIC)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("OUT and INOUT arguments aren't allowed in TABLE functions")));
+		switch (p->mode)
+		{
+			/* Input modes */
+			case FUNC_PARAM_IN:
+			case FUNC_PARAM_VARIADIC:
+				break;  
+
+			/* Output modes */
+			case FUNC_PARAM_TABLE:
+				elog(ERROR, "TABLE arguments aren't allowed in TABLE functions"); /* not feasible */
+				break;
+			case FUNC_PARAM_OUT:
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("OUT arguments aren't allowed in TABLE functions")));
+				break;
+			case FUNC_PARAM_INOUT:
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("INOUT arguments aren't allowed in TABLE functions")));
+				break;
+		}
 	}
 
 	return list_concat(func_args, columns);
@@ -16130,6 +19485,19 @@ TableFuncTypeName(List *columns)
 	result->setof = true;
 
 	return result;
+}
+
+/*
+ * Create the IS_NOT_DISTINCT_FROM expression node
+ *     used by CASE x WHEN IS NOT DISTINCT FROM and DECODE()
+ */
+static Node*
+makeIsNotDistinctFromNode(Node *expr, int position)
+{
+	Node *n = makeNotExpr((Node *) makeSimpleA_Expr(AEXPR_DISTINCT,
+													"=", NULL, expr, position),
+													position);
+	return n;
 }
 
 /*
@@ -16341,6 +19709,127 @@ makeRecursiveViewSelect(char *relname, List *aliases, Node *query)
 	s->fromClause = list_make1(makeRangeVar(NULL, relname, -1));
 
 	return (Node *) s;
+}
+
+static bool
+isSetWithReorganize(List **options)
+{
+	ListCell *lc;
+	foreach (lc, *options)
+	{
+		DefElem *elem = lfirst(lc);
+
+		if (strcmp(elem->defname, "reorganize") == 0)
+		{
+			if (list_length(*options) == 1)
+				return true;
+			else
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("reorganize isn't supported with other options in SET WITH")));
+		}
+	}
+	return false;
+}
+
+
+/*
+ * Greenplum: a thin wax off layer to keep compatibility with the legacy syntax
+ * for appendoptimized options. Before the introduction of the tableam in
+ * postgres, appendoptimized and column orientated tables were expressed in the
+ * options list which corresponded to StdRelOptions.
+ *
+ * These specific options now are removed from the options list in favour for
+ * the corresponding accessMethod. The accessMethod takes precedence.
+ */
+static char *
+greenplumLegacyAOoptions(const char *accessMethod, List **options)
+{
+	List	 *amendedOptions = NIL;
+	ListCell *lc;
+	bool	  appendoptimized = false;
+	bool	  is_column_oriented = false;
+	bool	  appendoptimized_found = false;
+	bool	  is_column_oriented_found = false;
+
+	foreach (lc, *options)
+	{
+		DefElem *elem = lfirst(lc);
+
+		if (strcmp(elem->defname, "appendoptimized") == 0 ||
+				strcmp(elem->defname, "appendonly") == 0)
+		{
+			if (appendoptimized_found)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("parameter \"appendonly\" specified more than once")));
+			appendoptimized = defGetBoolean(elem);
+			appendoptimized_found = true;
+		}
+		else if (strcmp(elem->defname, "orientation") == 0)
+		{
+			const char *value = defGetString(elem);
+
+			if (is_column_oriented_found)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("parameter \"orientation\" specified more than once")));
+
+			if (strcmp(value, "column") && strcmp(value, "row"))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid parameter value for \"orientation\": \"%s\"", value)));
+
+			is_column_oriented = strcmp(value, "column") == 0;
+			is_column_oriented_found = true;
+		}
+		else
+			amendedOptions = lappend(amendedOptions, elem);
+	}
+	*options = amendedOptions;
+
+	if (!appendoptimized && is_column_oriented_found)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("invalid option \"orientation\" for base relation"),
+				 errhint("Table orientation only valid for Append Optimized relations, create an AO relation to use table orientation.")));
+
+	/* access_method takes precedence */
+	if (accessMethod)
+		return (char *)accessMethod;
+
+	if (appendoptimized && is_column_oriented)
+		return pstrdup("ao_column");
+
+	if (appendoptimized)
+		return pstrdup("ao_row");
+
+	/*
+	 * appendonly=false is different from appendonly option not existing in
+	 * WITH clause. Hence, explicitly if this exists means heap is
+	 * intended. Returning NULL will let the table creation use the default
+	 * options or parents options which is not the intent.
+	 */
+	if (appendoptimized_found)
+		return pstrdup("heap");
+
+	return NULL;
+}
+
+static void
+check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_t yyscanner)
+{
+	ListCell *lc;
+	foreach(lc, spec->partParams)
+	{
+		PartitionElem *e = lfirst(lc);
+
+		if (e->expr)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("expressions in partition key not supported in legacy GPDB partition syntax"),
+					 parser_errposition(e->location)));
+	}
 }
 
 /* parser_init()

@@ -15,6 +15,7 @@ SELECT text 'this is a text string' = text 'this is a text strin' AS false;
 
 CREATE TABLE TEXT_TBL (f1 text);
 INSERT INTO TEXT_TBL VALUES ('doh!');
+ANALYZE TEXT_TBL;
 INSERT INTO TEXT_TBL VALUES ('hi de ho neighbor');
 SELECT '' AS two, * FROM TEXT_TBL;
  two |        f1         
@@ -51,6 +52,34 @@ ERROR:  operator does not exist: integer || numeric
 LINE 1: select 3 || 4.0;
                  ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+--
+-- TEXT CASTING TO/FROM ANY TYPE
+--
+SELECT '1'::bool::text;
+ text 
+------
+ true
+(1 row)
+
+SELECT array[1,2]::text;
+ array 
+-------
+ {1,2}
+(1 row)
+
+SELECT '{1,2}'::text::integer[];
+ int4  
+-------
+ {1,2}
+(1 row)
+
+CREATE TYPE usr_define_type as (id int, name text);
+SELECT '(1,abc)'::text::usr_define_type;
+ usr_define_type 
+-----------------
+ (1,abc)
+(1 row)
+
 /*
  * various string functions
  */

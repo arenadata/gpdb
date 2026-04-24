@@ -8,6 +8,8 @@
  * doesn't actually run the executor for them.
  *
  *
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -27,6 +29,11 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
+
+#include "cdb/cdbendpoint.h"
+#include "cdb/ml_ipc.h"
+#include "utils/resource_manager.h"
+#include "utils/resscheduler.h"
 
 /*
  * Estimate of the maximum number of open portals a user would have,
@@ -185,7 +192,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_CURSOR),
 					 errmsg("cursor \"%s\" already exists", name)));
-		if (!dupSilent)
+		if (!dupSilent && Gp_role != GP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errcode(ERRCODE_DUPLICATE_CURSOR),
 					 errmsg("closing existing cursor \"%s\"",
@@ -216,6 +223,19 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	portal->atEnd = true;		/* disallow fetches until query is set */
 	portal->visible = true;
 	portal->creation_time = GetCurrentStatementStartTimestamp();
+
+	if (IsResQueueEnabled())
+	{
+		/* Only QD needs to set portal id if have enabled resource scheduling */
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			portal->portalId = ResCreatePortalId(name);
+			portal->queueId = GetResQueueId();
+		}
+		else if (Gp_role == GP_ROLE_EXECUTE)
+			portal->queueId = GetResQueueId();
+	}
+	portal->is_extended_query = false; /* default value */
 
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);
@@ -253,7 +273,7 @@ CreateNewPortal(void)
  * PortalDefineQuery
  *		A simple subroutine to establish a portal's query.
  *
- * Notes: as of PG 8.4, caller MUST supply a sourceText string; it is not
+ * Notes: as of PG 8.4 (this part backported to GPDB already), caller MUST supply a sourceText string; it is not
  * allowed anymore to pass NULL.  (If you really don't have source text,
  * you can pass a constant string, perhaps "(query not available)".)
  *
@@ -281,6 +301,7 @@ void
 PortalDefineQuery(Portal portal,
 				  const char *prepStmtName,
 				  const char *sourceText,
+				  NodeTag	  sourceTag,
 				  const char *commandTag,
 				  List *stmts,
 				  CachedPlan *cplan)
@@ -293,6 +314,7 @@ PortalDefineQuery(Portal portal,
 
 	portal->prepStmtName = prepStmtName;
 	portal->sourceText = sourceText;
+	portal->sourceTag = sourceTag;
 	portal->commandTag = commandTag;
 	portal->stmts = stmts;
 	portal->cplan = cplan;
@@ -507,6 +529,11 @@ PortalDrop(Portal portal, bool isTopCommit)
 	 * infinite error-recovery loop.
 	 */
 	PortalHashTableDelete(portal);
+
+	if (IsResQueueLockedForPortal(portal))
+	{
+		ResUnLockPortal(portal);
+	}
 
 	/* drop cached plan reference, if any */
 	PortalReleaseCachedPlan(portal);
@@ -787,6 +814,12 @@ AtAbort_Portals(void)
 		if (portal->status == PORTAL_ACTIVE && shmem_exit_inprogress)
 			MarkPortalFailed(portal);
 
+		if (portal->is_extended_query && portal->queryDesc != NULL)
+		{
+			Assert(portal->queryDesc->estate != NULL);
+			portal->queryDesc->estate->cancelUnfinished = true;
+		}
+
 		/*
 		 * Do nothing else to cursors held over from a previous transaction.
 		 */
@@ -802,6 +835,16 @@ AtAbort_Portals(void)
 			continue;
 
 		/*
+		 * GPDB_90_MERGE_FIXME: This was added in commit 7981c342, to prevent
+		 * ExecutorEnd from running in failed transactions. That's fine and dandy,
+		 * but unfortunately GPDB relies on ExecutorEnd to for some cleanup
+		 * work, like terminating the Gang. So we in GPDB, we must run ExecutorEnd.
+		 * We really should refactor the resource management in dispatcher and
+		 * gangs, e.g. to use ResourceOwners instead. But until that's done,
+		 * we cannot skip ExecutorEnd.
+		 */
+#if 0
+		/*
 		 * If it was created in the current transaction, we can't do normal
 		 * shutdown on a READY portal either; it might refer to objects
 		 * created in the failed transaction.  See comments in
@@ -809,6 +852,7 @@ AtAbort_Portals(void)
 		 */
 		if (portal->status == PORTAL_READY)
 			MarkPortalFailed(portal);
+#endif
 
 		/*
 		 * Allow portalcmds.c to clean up the state it knows about, if we
@@ -989,6 +1033,13 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 				portal->activeSubid = parentSubid;
 
 				/*
+				 * GPDB_96_MERGE_FIXME: We had this different comment here in GPDB.
+				 * Does this scenario happen in GPDB for some reason?
+				 *
+				 * Upper-level portals that failed while running in this
+				 * subtransaction must be forced into FAILED state, for the
+				 * same reasons discussed below.
+				 *
 				 * A MarkPortalActive() caller ran an upper-level portal in
 				 * this subtransaction and left the portal ACTIVE.  This can't
 				 * happen, but force the portal into FAILED state for the same
@@ -1037,7 +1088,8 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 		 * happen here.  If it does happen, dispose the portal like existing
 		 * MarkPortalActive() callers would.
 		 */
-		if (portal->status == PORTAL_READY ||
+		// GPDB_90_MERGE_FIXME: Not in READY portals. See comment in AtAbort_Portals.
+		if (//portal->status == PORTAL_READY ||
 			portal->status == PORTAL_ACTIVE)
 			MarkPortalFailed(portal);
 
@@ -1115,6 +1167,85 @@ AtSubCleanup_Portals(SubTransactionId mySubid)
 	}
 }
 
+/*
+ * At exit ensure all resource locks get released (holdable cursors).
+ */
+void
+AtExitCleanup_ResPortals(void)
+{
+	HASH_SEQ_STATUS status;
+	PortalHashEnt *hentry;
+
+	if (PortalHashTable == NULL)
+		return;
+
+	hash_seq_init(&status, PortalHashTable);
+
+	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Portal		portal = hentry->portal;
+
+		if (IsResQueueLockedForPortal(portal))
+			ResUnLockPortal(portal);
+
+	}
+}
+
+
+/*
+ * TotalResPortalIncrements --  Calculate increment totals and count of portals
+ * for all my portals with a given queueid.
+ *
+ * Note:
+ *	Requires the ResQueueLock to be held before calling.
+ *	We are deliberately obscure about the type of totalIncrements as
+ *	don't want portal.h to need to include resscheuler.h.
+ */
+void
+TotalResPortalIncrements(int pid, Oid queueid, Cost *totalIncrements, int *num)
+{
+	HASH_SEQ_STATUS 	status;
+	PortalHashEnt		*hentry;
+	ResPortalIncrement	*incrementSet;
+	ResPortalTag		portalTag;
+
+	int					i;
+
+	/* ensure the total is initialized to zero */
+	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
+		totalIncrements[i] = 0;
+
+	hash_seq_init(&status, PortalHashTable);
+
+	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Portal		portal = hentry->portal;
+
+
+		if (portal->queueId == queueid)
+		{
+			/*
+			 * Get the increment for this portal, skip if we can't find an
+			 * increment, as that portal is uninteresting.
+			 */
+			MemSet(&portalTag, 0, sizeof(ResPortalTag));
+			portalTag.pid = pid;
+			portalTag.portalId = portal->portalId;
+
+			incrementSet = ResIncrementFind(&portalTag);
+			if (!incrementSet)
+				continue;
+
+			/* Count it. */
+			(*num)++;
+
+			/* Add its increments to the total. */
+			for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
+				totalIncrements[i] += incrementSet->increments[i];
+		}
+	}
+}
+
 /* Find all available cursors */
 Datum
 pg_cursor(PG_FUNCTION_ARGS)
@@ -1146,7 +1277,7 @@ pg_cursor(PG_FUNCTION_ARGS)
 	 * build tupdesc for result tuples. This must match the definition of the
 	 * pg_cursors view in system_views.sql
 	 */
-	tupdesc = CreateTemplateTupleDesc(6);
+	tupdesc = CreateTemplateTupleDesc(7);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
 					   TEXTOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "statement",
@@ -1159,6 +1290,8 @@ pg_cursor(PG_FUNCTION_ARGS)
 					   BOOLOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "creation_time",
 					   TIMESTAMPTZOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "is_parallel",
+					   BOOLOID, -1, 0);
 
 	/*
 	 * We put all the tuples into a tuplestore in one scan of the hashtable.
@@ -1175,8 +1308,8 @@ pg_cursor(PG_FUNCTION_ARGS)
 	while ((hentry = hash_seq_search(&hash_seq)) != NULL)
 	{
 		Portal		portal = hentry->portal;
-		Datum		values[6];
-		bool		nulls[6];
+		Datum		values[7];
+		bool		nulls[7];
 
 		/* report only "visible" entries */
 		if (!portal->visible)
@@ -1190,6 +1323,7 @@ pg_cursor(PG_FUNCTION_ARGS)
 		values[3] = BoolGetDatum(portal->cursorOptions & CURSOR_OPT_BINARY);
 		values[4] = BoolGetDatum(portal->cursorOptions & CURSOR_OPT_SCROLL);
 		values[5] = TimestampTzGetDatum(portal->creation_time);
+		values[6] = BoolGetDatum(PortalIsParallelRetrieveCursor(portal));
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

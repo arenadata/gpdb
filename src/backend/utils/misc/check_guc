@@ -23,6 +23,22 @@ session_authorization trace_lock_oidmin trace_lock_table trace_locks trace_lwloc
 trace_notify trace_userlocks transaction_isolation transaction_read_only \
 zero_damaged_pages"
 
+## PostgreSQL's check_guc should add these to its ignored list...
+INTENTIONALLY_NOT_INCLUDED="$INTENTIONALLY_NOT_INCLUDED debug_assertions \
+log_btree_build_stats trace_sort wal_debug integer_datetimes \
+allow_system_table_mods ignore_system_indexes post_auth_delay \
+max_function_args max_index_keys max_identifier_length block_size \
+server_version_num config_file"
+
+## greenplum db additions to the ignored list
+INTENTIONALLY_NOT_INCLUDED="$INTENTIONALLY_NOT_INCLUDED geqo \
+gp_enable_agg_distinct gp_enable_preunique mpp_enable_explain_allstat \
+mpp_enable_motion_deadlock_sanity mpp_is_primary mpp_is_writer \
+mpp_write_shared_snapshot mpp_use_snapshop_during_callback mpp_is_callback \
+geqo_threshold geqo_effort geqo_pool_size geqo_generations mpp_command_count \
+mpp_debug_linger mpp_segment mpp_sort_flags mpp_session_id mpp_qd_proc_offset \
+geqo_selection_bias mpp_session_role mpp_role mpp_qd_callback_info"
+
 ### What options are listed in postgresql.conf.sample, but don't appear
 ### in guc.c?
 

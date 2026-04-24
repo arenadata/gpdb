@@ -1,6 +1,8 @@
 drop table ìÞÙ¸æñÕè;
 ERROR:  table "ìÞÙ¸æñÕè" does not exist
 create table ìÞÙ¸æñÕè (ÈçäÆÉ± text, ÄüÆ³Íñó¤ varchar, ÇâÉß varchar(16));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'ÈçäÆÉ±' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 create index ìÞÙ¸æñÕèindex1 on ìÞÙ¸æñÕè using btree (ÈçäÆÉ±);
 create index ìÞÙ¸æñÕèindex2 on ìÞÙ¸æñÕè using hash (ÄüÆ³Íñó¤);
 insert into ìÞÙ¸æñÕè values ('çÙæªäÆ', 'ç®ç®ÒïÊÀ', 'Æ¡A01Äî');

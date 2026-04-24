@@ -43,12 +43,22 @@ CATALOG(pg_namespace,2615,NamespaceRelationId)
 #endif
 } FormData_pg_namespace;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(nspowner REFERENCES pg_authid(oid));
+
 /* ----------------
  *		Form_pg_namespace corresponds to a pointer to a tuple with
  *		the format of pg_namespace relation.
  * ----------------
  */
 typedef FormData_pg_namespace *Form_pg_namespace;
+
+#define IsBuiltInNameSpace(namespaceId) \
+	(namespaceId == PG_CATALOG_NAMESPACE || \
+	 namespaceId == PG_TOAST_NAMESPACE || \
+	 namespaceId == PG_BITMAPINDEX_NAMESPACE || \
+	 namespaceId == PG_PUBLIC_NAMESPACE || \
+	 namespaceId == PG_AOSEGMENT_NAMESPACE)
 
 /*
  * prototypes for functions in pg_namespace.c

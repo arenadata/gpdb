@@ -146,6 +146,13 @@ WHERE p1.typinput = p2.oid AND
     (p2.oid = 'array_in'::regproc)
 ORDER BY 1;
 
+-- Make sure typarray points to a varlena array type of our own base
+SELECT p1.oid, p1.typname as basetype, p2.typname as arraytype,
+       p2.typelem, p2.typlen
+FROM   pg_type p1 LEFT JOIN pg_type p2 ON (p1.typarray = p2.oid)
+WHERE  p1.typarray <> 0 AND
+       (p2.oid IS NULL OR p2.typelem <> p1.oid OR p2.typlen <> -1);
+
 -- typinput routines should not be volatile
 SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
@@ -220,6 +227,13 @@ WHERE p1.typreceive = p2.oid AND
     (p1.typelem != 0 AND p1.typlen < 0) AND NOT
     (p2.oid = 'array_recv'::regproc)
 ORDER BY 1;
+
+-- Array types should have same typdelim as their element types
+SELECT p1.oid, p1.typname, p2.oid, p2.typname
+FROM pg_type p1, pg_type p2
+WHERE p1.typelem = p2.oid and p1.typdelim != p2.typdelim
+  AND p1.typname like E'\\_%';
+
 
 -- Suspicious if typreceive doesn't take same number of args as typinput
 SELECT p1.oid, p1.typname, p2.oid, p2.proname, p3.oid, p3.proname
@@ -418,6 +432,14 @@ WHERE p1.relnatts != (SELECT count(*) FROM pg_attribute AS p2
 -- Cross-check against pg_type entry
 -- NOTE: we allow attstorage to be 'plain' even when typstorage is not;
 -- this is mainly for toast tables.
+-- UNDONE: Turn this off until we can figure out why the new system columns cause a bunch of rows to be generated here???
+-- SELECT p1.attrelid, p1.attname, p2.oid, p2.typname
+-- FROM pg_attribute AS p1, pg_type AS p2
+-- WHERE p1.atttypid = p2.oid AND
+--    (p1.attlen != p2.typlen OR
+--     p1.attalign != p2.typalign OR
+--     p1.attbyval != p2.typbyval OR
+--     (p1.attstorage != p2.typstorage AND p1.attstorage != 'p'));
 
 SELECT p1.attrelid, p1.attname, p2.oid, p2.typname
 FROM pg_attribute AS p1, pg_type AS p2

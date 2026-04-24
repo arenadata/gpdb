@@ -50,6 +50,13 @@ typedef struct base_yy_extra_type
 	char		lookahead_hold_char;	/* to be put back at *lookahead_end */
 
 	/*
+	 * GPDB lexical tie-in hack to allow PARTITION BY to be specified in two
+	 * different places in CREATE TABLE. When set, the scanner returns the
+	 * PARTITION keyword as special PARTITION_TAIL token.
+	 */
+	bool		tail_partition_magic;
+
+	/*
 	 * State variables that belong to the grammar.
 	 */
 	List	   *parsetree;		/* final parse result is delivered here */

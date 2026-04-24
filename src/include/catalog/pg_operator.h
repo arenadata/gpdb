@@ -76,6 +76,18 @@ CATALOG(pg_operator,2617,OperatorRelationId)
 	regproc		oprjoin BKI_DEFAULT(-) BKI_LOOKUP(pg_proc);
 } FormData_pg_operator;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(oprnamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(oprowner REFERENCES pg_authid(oid));
+FOREIGN_KEY(oprleft REFERENCES pg_type(oid));
+FOREIGN_KEY(oprright REFERENCES pg_type(oid));
+FOREIGN_KEY(oprresult REFERENCES pg_type(oid));
+FOREIGN_KEY(oprcom REFERENCES pg_operator(oid));
+FOREIGN_KEY(oprnegate REFERENCES pg_operator(oid));
+FOREIGN_KEY(oprcode REFERENCES pg_proc(oid));
+FOREIGN_KEY(oprrest REFERENCES pg_proc(oid));
+FOREIGN_KEY(oprjoin REFERENCES pg_proc(oid));
+
 /* ----------------
  *		Form_pg_operator corresponds to a pointer to a tuple with
  *		the format of pg_operator relation.

@@ -41,6 +41,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "access/htup_details.h"
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "libpq/pqsignal.h"
@@ -1288,8 +1289,9 @@ AbsorbSyncRequests(void)
 	CheckpointerRequest *request;
 	int			n;
 
-	if (!AmCheckpointerProcess())
-		return;
+	if (IsUnderPostmaster && !AmStartupProcess() && !AmCheckpointerProcess())
+		elog(ERROR, "AbsorbFsyncRequests() called in process %d (type %d)",
+			 MyProcPid, MyAuxProcType);
 
 	LWLockAcquire(CheckpointerCommLock, LW_EXCLUSIVE);
 

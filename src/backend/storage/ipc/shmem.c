@@ -65,12 +65,17 @@
 
 #include "postgres.h"
 
+#ifdef MPROTECT_BUFFERS
+#include <unistd.h>
+#endif
+
 #include "access/transam.h"
 #include "miscadmin.h"
 #include "storage/lwlock.h"
 #include "storage/pg_shmem.h"
 #include "storage/shmem.h"
 #include "storage/spin.h"
+#include <unistd.h>
 
 
 /* shared memory global variables */
@@ -86,6 +91,7 @@ slock_t    *ShmemLock;			/* spinlock for shared memory and LWLock
 
 static HTAB *ShmemIndex = NULL; /* primary index hashtable for shmem */
 
+static int ShmemSystemPageSize = 0;   /* system's page size */
 
 /*
  *	InitShmemAccess() --- set up basic pointers to shared memory.
@@ -116,6 +122,18 @@ InitShmemAllocation(void)
 
 	Assert(shmhdr != NULL);
 
+#ifdef WIN32
+    ShmemSystemPageSize = 4096;  /* Need a way to get this on Win32 */
+#else
+	ShmemSystemPageSize = sysconf(_SC_PAGESIZE);
+#endif
+	if ( ShmemSystemPageSize <= 1 ||
+		(ShmemSystemPageSize & ( ShmemSystemPageSize - 1)))  // checks for power of 2
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize)));
+	}
 	/*
 	 * Initialize the spinlock used by ShmemAlloc.  We must use
 	 * ShmemAllocUnlocked, since obviously ShmemAlloc can't be called yet.
@@ -180,6 +198,13 @@ ShmemAllocNoError(Size size)
 	void	   *newSpace;
 
 	/*
+	 * Better to return NULL for this else caller could still use memory that
+	 * does not belong to it.
+	 */
+	if (size == 0)
+		return NULL;
+
+	/*
 	 * Ensure all space is adequately aligned.  We used to only MAXALIGN this
 	 * space but experience has proved that on modern systems that is not good
 	 * enough.  Many parts of the system are very sensitive to critical data
@@ -197,6 +222,16 @@ ShmemAllocNoError(Size size)
 	SpinLockAcquire(ShmemLock);
 
 	newStart = ShmemSegHdr->freeoffset;
+
+	/*
+	 * Extra alignment for large requests, since they are probably buffers.
+	 * This is also needed for mprotect based shared buffer debugging
+	 * (-DMPROTECT_BUFFERS).
+	 */
+	if (size >= BLCKSZ)
+	{
+		newStart =  TYPEALIGN(ShmemSystemPageSize, newStart);
+	}
 
 	newFree = newStart + size;
 	if (newFree <= ShmemSegHdr->totalsize)

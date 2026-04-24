@@ -25,6 +25,9 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 
+#include "cdb/cdbvars.h"
+#include "utils/backend_cancel.h"
+
 
 /*
  * Send a signal to another backend.
@@ -45,7 +48,7 @@
 #define SIGNAL_BACKEND_NOPERMISSION 2
 #define SIGNAL_BACKEND_NOSUPERUSER 3
 static int
-pg_signal_backend(int pid, int sig)
+pg_signal_backend(int pid, int sig, char *msg)
 {
 	PGPROC	   *proc = BackendPidGetProc(pid);
 
@@ -76,6 +79,18 @@ pg_signal_backend(int pid, int sig)
 	if (!has_privs_of_role(GetUserId(), proc->roleId) &&
 		!has_privs_of_role(GetUserId(), DEFAULT_ROLE_SIGNAL_BACKENDID))
 		return SIGNAL_BACKEND_NOPERMISSION;
+
+	/* If the user supplied a message to the signalled backend */
+	if (msg != NULL)
+	{
+		int		r;
+
+		r = SetBackendCancelMessage(pid, msg);
+
+		if (r != -1 && r != strlen(msg))
+			ereport(NOTICE,
+					(errmsg("message is too long and has been truncated")));
+	}
 
 	/*
 	 * Can the process we just validated above end, followed by the pid being
@@ -110,7 +125,28 @@ pg_signal_backend(int pid, int sig)
 Datum
 pg_cancel_backend(PG_FUNCTION_ARGS)
 {
-	int			r = pg_signal_backend(PG_GETARG_INT32(0), SIGINT);
+	int			r = pg_signal_backend(PG_GETARG_INT32(0), SIGINT, NULL);
+
+	if (r == SIGNAL_BACKEND_NOSUPERUSER)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("must be a superuser to cancel superuser query"))));
+
+	if (r == SIGNAL_BACKEND_NOPERMISSION)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("must be a member of the role whose query is being canceled or member of pg_signal_backend"))));
+
+	PG_RETURN_BOOL(r == SIGNAL_BACKEND_SUCCESS);
+}
+
+Datum
+pg_cancel_backend_msg(PG_FUNCTION_ARGS)
+{
+	pid_t		pid = PG_GETARG_INT32(0);
+	char 	   *msg = text_to_cstring(PG_GETARG_TEXT_PP(1));
+
+	int			r = pg_signal_backend(pid, SIGINT, msg);
 
 	if (r == SIGNAL_BACKEND_NOSUPERUSER)
 		ereport(ERROR,
@@ -134,7 +170,7 @@ pg_cancel_backend(PG_FUNCTION_ARGS)
 Datum
 pg_terminate_backend(PG_FUNCTION_ARGS)
 {
-	int			r = pg_signal_backend(PG_GETARG_INT32(0), SIGTERM);
+	int			r = pg_signal_backend(PG_GETARG_INT32(0), SIGTERM, NULL);
 
 	if (r == SIGNAL_BACKEND_NOSUPERUSER)
 		ereport(ERROR,
@@ -147,6 +183,45 @@ pg_terminate_backend(PG_FUNCTION_ARGS)
 				 (errmsg("must be a member of the role whose process is being terminated or member of pg_signal_backend"))));
 
 	PG_RETURN_BOOL(r == SIGNAL_BACKEND_SUCCESS);
+}
+
+Datum
+pg_terminate_backend_msg(PG_FUNCTION_ARGS)
+{
+	pid_t		pid = PG_GETARG_INT32(0);
+	char 	   *msg = text_to_cstring(PG_GETARG_TEXT_PP(1));
+	int			r;
+
+	r = pg_signal_backend(pid, SIGTERM, msg);
+
+	if (r == SIGNAL_BACKEND_NOSUPERUSER)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+			(errmsg("must be a superuser to terminate superuser process"))));
+
+	if (r == SIGNAL_BACKEND_NOPERMISSION)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("must be a member of the role whose process is being terminated or member of pg_signal_backend"))));
+
+	PG_RETURN_BOOL(r == SIGNAL_BACKEND_SUCCESS);
+}
+
+Datum
+gp_terminate_mpp_backends(PG_FUNCTION_ARGS)
+{
+	if (Gp_role != GP_ROLE_EXECUTE)
+		ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						(errmsg("terminate mpp backends on segments only"))));
+
+	if (!superuser())
+		ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						(errmsg("Superuser only to execute it"))));
+
+	elog(LOG, "tried to terminate all (%d) mpp backends except self",
+		 SignalMppBackends(SIGTERM));
+
+	PG_RETURN_NULL();
 }
 
 /*

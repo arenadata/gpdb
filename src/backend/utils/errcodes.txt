@@ -2,6 +2,8 @@
 # errcodes.txt
 #      PostgreSQL error codes
 #
+# Portions Copyright (c) 2005-2008, Greenplum inc.
+# Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
 # Copyright (c) 2003-2019, PostgreSQL Global Development Group
 #
 # This list serves as the basis for generating source files containing error
@@ -73,6 +75,10 @@
 # class defined by the standard have a subclass value that begins
 # with 'P'. In addition, error codes defined by PostgreSQL clients
 # (such as ecpg) have a class value that begins with 'Y'.
+#
+# An additional convention is the new error codes defined by MPP and
+# that belong in a class defined by the standard have a subclass
+# beginning 'M'.
 
 Section: Class 00 - Successful Completion
 
@@ -89,6 +95,8 @@ Section: Class 01 - Warning
 01006    W    ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED                          privilege_not_revoked
 01004    W    ERRCODE_WARNING_STRING_DATA_RIGHT_TRUNCATION                   string_data_right_truncation
 01P01    W    ERRCODE_WARNING_DEPRECATED_FEATURE                             deprecated_feature
+#01M01 no longer used
+01M02    W    ERRCODE_WARNING_GP_INTERCONNECTION                             gp_interconnection
 
 Section: Class 02 - No Data (this is also a warning class per the SQL standard)
 
@@ -101,6 +109,8 @@ Section: Class 03 - SQL Statement Not Yet Complete
 03000    E    ERRCODE_SQL_STATEMENT_NOT_YET_COMPLETE                         sql_statement_not_yet_complete
 
 Section: Class 08 - Connection Exception
+# GPDB: In the QD, these should be generated only for client<-->QD
+# communication errors, not for QD<-->QE communication errors.
 
 08000    E    ERRCODE_CONNECTION_EXCEPTION                                   connection_exception
 08003    E    ERRCODE_CONNECTION_DOES_NOT_EXIST                              connection_does_not_exist
@@ -117,6 +127,8 @@ Section: Class 09 - Triggered Action Exception
 Section: Class 0A - Feature Not Supported
 
 0A000    E    ERRCODE_FEATURE_NOT_SUPPORTED                                  feature_not_supported
+0AM01    E    ERRCODE_GP_FEATURE_NOT_YET                                     gp_feature_not_yet
+0AM02    E    ERRCODE_GP_FEATURE_NOT_CONFIGURED                              gp_feature_not_configured
 
 Section: Class 0B - Invalid Transaction Initiation
 
@@ -176,6 +188,7 @@ Section: Class 22 - Data Exception
 22025    E    ERRCODE_INVALID_ESCAPE_SEQUENCE                                invalid_escape_sequence
 22P06    E    ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER                    nonstandard_use_of_escape_character
 22010    E    ERRCODE_INVALID_INDICATOR_PARAMETER_VALUE                      invalid_indicator_parameter_value
+22020    E    ERRCODE_INVALID_LIMIT_VALUE                                    invalid_limit_value
 22023    E    ERRCODE_INVALID_PARAMETER_VALUE                                invalid_parameter_value
 22013    E    ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE                    invalid_preceding_or_following_size
 2201B    E    ERRCODE_INVALID_REGULAR_EXPRESSION                             invalid_regular_expression
@@ -184,6 +197,7 @@ Section: Class 22 - Data Exception
 2202H    E    ERRCODE_INVALID_TABLESAMPLE_ARGUMENT                           invalid_tablesample_argument
 2202G    E    ERRCODE_INVALID_TABLESAMPLE_REPEAT                             invalid_tablesample_repeat
 22009    E    ERRCODE_INVALID_TIME_ZONE_DISPLACEMENT_VALUE                   invalid_time_zone_displacement_value
+2200A    E    ERRCODE_INVALID_INTERVAL_WIDTH                                 invalid_interval_width
 2200C    E    ERRCODE_INVALID_USE_OF_ESCAPE_CHARACTER                        invalid_use_of_escape_character
 2200G    E    ERRCODE_MOST_SPECIFIC_TYPE_MISMATCH                            most_specific_type_mismatch
 22004    E    ERRCODE_NULL_VALUE_NOT_ALLOWED                                 null_value_not_allowed
@@ -221,6 +235,7 @@ Section: Class 22 - Data Exception
 2203F    E    ERRCODE_JSON_SCALAR_REQUIRED                                   json_scalar_required
 2203D    E    ERRCODE_TOO_MANY_JSON_ARRAY_ELEMENTS                           too_many_json_array_elements
 2203E    E    ERRCODE_TOO_MANY_JSON_OBJECT_MEMBERS                           too_many_json_object_members
+22M01    E    ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY                      no_partition_for_partitioning_key
 
 Section: Class 23 - Integrity Constraint Violation
 
@@ -249,6 +264,7 @@ Section: Class 25 - Invalid Transaction State
 25007    E    ERRCODE_SCHEMA_AND_DATA_STATEMENT_MIXING_NOT_SUPPORTED         schema_and_data_statement_mixing_not_supported
 25P01    E    ERRCODE_NO_ACTIVE_SQL_TRANSACTION                              no_active_sql_transaction
 25P02    E    ERRCODE_IN_FAILED_SQL_TRANSACTION                              in_failed_sql_transaction
+25M01    E    ERRCODE_GP_OPERATION_CANCELED                                  gp_operation_canceled
 25P03    E    ERRCODE_IDLE_IN_TRANSACTION_SESSION_TIMEOUT                    idle_in_transaction_session_timeout
 
 Section: Class 26 - Invalid SQL Statement Name
@@ -323,6 +339,8 @@ Section: Class 40 - Transaction Rollback
 40001    E    ERRCODE_T_R_SERIALIZATION_FAILURE                              serialization_failure
 40003    E    ERRCODE_T_R_STATEMENT_COMPLETION_UNKNOWN                       statement_completion_unknown
 40P01    E    ERRCODE_T_R_DEADLOCK_DETECTED                                  deadlock_detected
+40M00    E    ERRCODE_T_R_GP_REJECT_LIMIT_REACHED                            gp_reject_limit_reached
+
 
 Section: Class 42 - Syntax Error or Access Rule Violation
 
@@ -387,6 +405,7 @@ Section: Class 42 - Syntax Error or Access Rule Violation
 42P15    E    ERRCODE_INVALID_SCHEMA_DEFINITION                              invalid_schema_definition
 42P16    E    ERRCODE_INVALID_TABLE_DEFINITION                               invalid_table_definition
 42P17    E    ERRCODE_INVALID_OBJECT_DEFINITION                              invalid_object_definition
+42M00    E    ERRCODE_GP_COMMAND_ERROR                                       gp_command_error
 
 Section: Class 44 - WITH CHECK OPTION Violation
 
@@ -400,6 +419,7 @@ Section: Class 53 - Insufficient Resources
 53200    E    ERRCODE_OUT_OF_MEMORY                                          out_of_memory
 53300    E    ERRCODE_TOO_MANY_CONNECTIONS                                   too_many_connections
 53400    E    ERRCODE_CONFIGURATION_LIMIT_EXCEEDED                           configuration_limit_exceeded
+53500    E    ERRCODE_GP_MEMPROT_KILL                                        gp_memprot_kill
 
 Section: Class 54 - Program Limit Exceeded
 
@@ -427,6 +447,7 @@ Section: Class 57 - Operator Intervention
 57P02    E    ERRCODE_CRASH_SHUTDOWN                                         crash_shutdown
 57P03    E    ERRCODE_CANNOT_CONNECT_NOW                                     cannot_connect_now
 57P04    E    ERRCODE_DATABASE_DROPPED                                       database_dropped
+57M02    E    ERRCODE_MIRROR_READY                                           mirror_ready
 
 Section: Class 58 - System Error (errors external to PostgreSQL itself)
 
@@ -435,6 +456,7 @@ Section: Class 58 - System Error (errors external to PostgreSQL itself)
 58030    E    ERRCODE_IO_ERROR                                               io_error
 58P01    E    ERRCODE_UNDEFINED_FILE                                         undefined_file
 58P02    E    ERRCODE_DUPLICATE_FILE                                         duplicate_file
+58M01    E    ERRCODE_GP_INTERCONNECTION_ERROR                               gp_interconnection_error
 
 Section: Class 72 - Snapshot Failure
 # (class borrowed from Oracle)
@@ -492,3 +514,7 @@ Section: Class XX - Internal Error
 XX000    E    ERRCODE_INTERNAL_ERROR                                         internal_error
 XX001    E    ERRCODE_DATA_CORRUPTED                                         data_corrupted
 XX002    E    ERRCODE_INDEX_CORRUPTED                                        index_corrupted
+
+# This is used for ERRORs induced on purpose for testing purposes. Shouldn't
+# appear in production, only in regression tests.
+XX009    E    ERRCODE_FAULT_INJECT                                           fault_inject

@@ -135,7 +135,7 @@ extern void FreeBulkInsertState(BulkInsertState);
 extern void ReleaseBulkInsertStatePin(BulkInsertState bistate);
 
 extern void heap_insert(Relation relation, HeapTuple tup, CommandId cid,
-						int options, BulkInsertState bistate);
+						int options, BulkInsertState bistate, TransactionId xid);
 extern void heap_multi_insert(Relation relation, struct TupleTableSlot **slots,
 							  int ntuples, CommandId cid, int options,
 							  BulkInsertState bistate);
@@ -162,6 +162,7 @@ extern bool heap_tuple_needs_freeze(HeapTupleHeader tuple, TransactionId cutoff_
 extern bool heap_tuple_needs_eventual_freeze(HeapTupleHeader tuple);
 
 extern void simple_heap_insert(Relation relation, HeapTuple tup);
+extern void frozen_heap_insert(Relation relation, HeapTuple tup);
 extern void simple_heap_delete(Relation relation, ItemPointer tid);
 extern void simple_heap_update(Relation relation, ItemPointer otid,
 							   HeapTuple tup);
@@ -189,22 +190,16 @@ extern BlockNumber ss_get_location(Relation rel, BlockNumber relnblocks);
 extern void SyncScanShmemInit(void);
 extern Size SyncScanShmemSize(void);
 
-/* in heap/vacuumlazy.c */
-struct VacuumParams;
-extern void heap_vacuum_rel(Relation onerel,
-							struct VacuumParams *params, BufferAccessStrategy bstrategy);
-
 /* in heap/heapam_visibility.c */
-extern bool HeapTupleSatisfiesVisibility(HeapTuple stup, Snapshot snapshot,
+extern bool HeapTupleSatisfiesVisibility(Relation relation, HeapTuple stup, Snapshot snapshot,
 										 Buffer buffer);
-extern TM_Result HeapTupleSatisfiesUpdate(HeapTuple stup, CommandId curcid,
+extern TM_Result HeapTupleSatisfiesUpdate(Relation relation, HeapTuple stup, CommandId curcid,
 										  Buffer buffer);
-extern HTSV_Result HeapTupleSatisfiesVacuum(HeapTuple stup, TransactionId OldestXmin,
+extern HTSV_Result HeapTupleSatisfiesVacuum(Relation relation, HeapTuple stup, TransactionId OldestXmin,
 											Buffer buffer);
-extern void HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer,
+extern void HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer, Relation rel,
 								 uint16 infomask, TransactionId xid);
 extern bool HeapTupleHeaderIsOnlyLocked(HeapTupleHeader tuple);
-extern bool XidInMVCCSnapshot(TransactionId xid, Snapshot snapshot);
 extern bool HeapTupleIsSurelyDead(HeapTuple htup, TransactionId OldestXmin);
 
 /*

@@ -19,15 +19,6 @@
  * of lossiness.  In theory we could fall back to page ranges at some
  * point, but for now that seems useless complexity.
  *
- * We also support the notion of candidate matches, or rechecking.  This
- * means we know that a search need visit only some tuples on a page,
- * but we are not certain that all of those tuples are real matches.
- * So the eventual heap scan must recheck the quals for these tuples only,
- * rather than rechecking the quals for all tuples on the page as in the
- * lossy-bitmap case.  Rechecking can be specified when TIDs are inserted
- * into a bitmap, and it can also happen internally when we AND a lossy
- * and a non-lossy page.
- *
  *
  * Copyright (c) 2003-2019, PostgreSQL Global Development Group
  *
@@ -40,70 +31,21 @@
 
 #include <limits.h>
 
+#include "access/htup.h"
 #include "access/htup_details.h"
-#include "nodes/bitmapset.h"
+#include "access/bitmap.h"		/* XXX: remove once pull_stream is generic */
+#include "common/hashfn.h"
+#include "executor/instrument.h"	/* Instrumentation */
 #include "nodes/tidbitmap.h"
 #include "storage/lwlock.h"
 #include "utils/dsa.h"
-#include "utils/hashutils.h"
 
-/*
- * The maximum number of tuples per page is not large (typically 256 with
- * 8K pages, or 1024 with 32K pages).  So there's not much point in making
- * the per-page bitmaps variable size.  We just legislate that the size
- * is this:
- */
-#define MAX_TUPLES_PER_PAGE  MaxHeapTuplesPerPage
+#define WORDNUM(x)	((x) / TBM_BITS_PER_BITMAPWORD)
+#define BITNUM(x)	((x) % TBM_BITS_PER_BITMAPWORD)
 
-/*
- * When we have to switch over to lossy storage, we use a data structure
- * with one bit per page, where all pages having the same number DIV
- * PAGES_PER_CHUNK are aggregated into one chunk.  When a chunk is present
- * and has the bit set for a given page, there must not be a per-page entry
- * for that page in the page table.
- *
- * We actually store both exact pages and lossy chunks in the same hash
- * table, using identical data structures.  (This is because the memory
- * management for hashtables doesn't easily/efficiently allow space to be
- * transferred easily from one hashtable to another.)  Therefore it's best
- * if PAGES_PER_CHUNK is the same as MAX_TUPLES_PER_PAGE, or at least not
- * too different.  But we also want PAGES_PER_CHUNK to be a power of 2 to
- * avoid expensive integer remainder operations.  So, define it like this:
- */
-#define PAGES_PER_CHUNK  (BLCKSZ / 32)
-
-/* We use BITS_PER_BITMAPWORD and typedef bitmapword from nodes/bitmapset.h */
-
-#define WORDNUM(x)	((x) / BITS_PER_BITMAPWORD)
-#define BITNUM(x)	((x) % BITS_PER_BITMAPWORD)
-
-/* number of active words for an exact page: */
-#define WORDS_PER_PAGE	((MAX_TUPLES_PER_PAGE - 1) / BITS_PER_BITMAPWORD + 1)
-/* number of active words for a lossy chunk: */
-#define WORDS_PER_CHUNK  ((PAGES_PER_CHUNK - 1) / BITS_PER_BITMAPWORD + 1)
-
-/*
- * The hashtable entries are represented by this data structure.  For
- * an exact page, blockno is the page number and bit k of the bitmap
- * represents tuple offset k+1.  For a lossy chunk, blockno is the first
- * page in the chunk (this must be a multiple of PAGES_PER_CHUNK) and
- * bit k represents page blockno+k.  Note that it is not possible to
- * have exact storage for the first page of a chunk if we are using
- * lossy storage for any page in the chunk's range, since the same
- * hashtable entry has to serve both purposes.
- *
- * recheck is used only on exact pages --- it indicates that although
- * only the stated tuples need be checked, the full index qual condition
- * must be checked for each (ie, these are candidate matches).
- */
-typedef struct PagetableEntry
-{
-	BlockNumber blockno;		/* page number (hashtable key) */
-	char		status;			/* hash entry status */
-	bool		ischunk;		/* T = lossy storage, F = exact */
-	bool		recheck;		/* should the tuples be rechecked? */
-	bitmapword	words[Max(WORDS_PER_PAGE, WORDS_PER_CHUNK)];
-} PagetableEntry;
+static bool tbm_iterate_page(PagetableEntry *page, TBMIterateResult *output);
+static PagetableEntry *tbm_next_page(TBMIterator *iterator, bool *more);
+static void tbm_upd_instrument(TIDBitmap *tbm);
 
 /*
  * Holds array of pagetable entries.
@@ -152,6 +94,7 @@ struct TIDBitmap
 	TBMStatus	status;			/* see codes above */
 	struct pagetable_hash *pagetable;	/* hash table of PagetableEntry's */
 	int			nentries;		/* number of entries in pagetable */
+	int			nentries_hwm;	/* high-water mark for number of entries */
 	int			maxentries;		/* limit on same to meet maxbytes */
 	int			npages;			/* number of exact entries in pagetable */
 	int			nchunks;		/* number of lossy entries in pagetable */
@@ -161,11 +104,15 @@ struct TIDBitmap
 	/* these are valid when iterating is true: */
 	PagetableEntry **spages;	/* sorted exact-page list, or NULL */
 	PagetableEntry **schunks;	/* sorted lossy-chunk list, or NULL */
-	dsa_pointer dsapagetable;	/* dsa_pointer to the element array */
-	dsa_pointer dsapagetableold;	/* dsa_pointer to the old element array */
-	dsa_pointer ptpages;		/* dsa_pointer to the page array */
-	dsa_pointer ptchunks;		/* dsa_pointer to the chunk array */
-	dsa_area   *dsa;			/* reference to per-query dsa area */
+    dsa_pointer dsapagetable;	/* dsa_pointer to the element array */
+    dsa_pointer dsapagetableold;	/* dsa_pointer to the old element array */
+    dsa_pointer ptpages;		/* dsa_pointer to the page array */
+    dsa_pointer ptchunks;		/* dsa_pointer to the chunk array */
+    dsa_area   *dsa;			/* reference to per-query dsa area */
+
+	/* CDB: Statistics for EXPLAIN ANALYZE */
+	struct Instrumentation *instrument;
+	Size		bytesperentry;
 };
 
 /*
@@ -181,6 +128,16 @@ struct TBMIterator
 	int			schunkptr;		/* next schunks index */
 	int			schunkbit;		/* next bit to check in current schunk */
 	TBMIterateResult output;	/* MUST BE LAST (because variable-size) */
+};
+
+struct GenericBMIterator
+{
+	const Node *bm;				/* [TID|Stream]Bitmap we're iterating over */
+	union
+	{
+		TBMIterator		 *hash;		/* iterator for TIDBitmap implementation */
+		StreamBMIterator *stream;	/* iterator for StreamBitmap implementation */
+	} impl;
 };
 
 /*
@@ -237,6 +194,8 @@ static void tbm_lossify(TIDBitmap *tbm);
 static int	tbm_comparator(const void *left, const void *right);
 static int	tbm_shared_comparator(const void *left, const void *right,
 								  void *arg);
+static void tbm_stream_set_instrument(StreamNode * self, struct Instrumentation *instr);
+static void tbm_stream_upd_instrument(StreamNode * self);
 
 /* define hashtable mapping block numbers to PagetableEntry's */
 #define SH_USE_NONDEFAULT_ALLOCATOR
@@ -251,6 +210,20 @@ static int	tbm_shared_comparator(const void *left, const void *right,
 #define SH_DECLARE
 #include "lib/simplehash.h"
 
+static StreamBMIterator *tbm_stream_begin_iterate(StreamNode *node);
+static void tbm_stream_end_iterate(StreamBMIterator *iterator);
+
+/* IndexStream callbacks */
+static void index_stream_begin_iterate(StreamNode *self, StreamBMIterator *iterator);
+static bool tbm_stream_block(StreamBMIterator *iterator, PagetableEntry *e);
+static void index_stream_end_iterate(StreamBMIterator *self);
+static void tbm_stream_free(StreamNode *self);
+
+/* OpStream callbacks */
+static void opstream_begin_iterate(StreamNode *self, StreamBMIterator *iterator);
+static bool opstream_iterate(StreamBMIterator *iterator, PagetableEntry *e);
+static void opstream_end_iterate(StreamBMIterator *self);
+static void opstream_free(StreamNode *self);
 
 /*
  * tbm_create - create an initially-empty bitmap
@@ -266,11 +239,19 @@ tbm_create(long maxbytes, dsa_area *dsa)
 {
 	TIDBitmap  *tbm;
 
+	/*
+	 * Ensure that we don't have heap tuple offsets going beyond (INT16_MAX +
+	 * 1) or 32768. The executor iterates only over the first 32K tuples for
+	 * lossy bitmap pages [MPP-24326].
+	 */
+	COMPILE_ASSERT(MaxHeapTuplesPerPage <= (INT16_MAX + 1));
+
 	/* Create the TIDBitmap struct and zero all its fields */
 	tbm = makeNode(TIDBitmap);
 
 	tbm->mcxt = CurrentMemoryContext;
 	tbm->status = TBM_EMPTY;
+	tbm->instrument = NULL;
 
 	tbm->maxentries = (int) tbm_calculate_entries(maxbytes);
 	tbm->lossify_start = 0;
@@ -320,6 +301,8 @@ tbm_create_pagetable(TIDBitmap *tbm)
 void
 tbm_free(TIDBitmap *tbm)
 {
+	if (tbm->instrument)
+		tbm_upd_instrument(tbm);
 	if (tbm->pagetable)
 		pagetable_destroy(tbm->pagetable);
 	if (tbm->spages)
@@ -328,6 +311,47 @@ tbm_free(TIDBitmap *tbm)
 		pfree(tbm->schunks);
 	pfree(tbm);
 }
+
+
+/*
+ * tbm_upd_instrument - Update the Instrumentation attached to a TIDBitmap.
+ */
+static void
+tbm_upd_instrument(TIDBitmap *tbm)
+{
+	Instrumentation *instr = tbm->instrument;
+	Size		workmemused;
+
+	if (!instr)
+		return;
+
+	/* Update page table high-water mark. */
+	tbm->nentries_hwm = Max(tbm->nentries_hwm, tbm->nentries);
+
+	/* How much of our work_mem quota was actually used? */
+	workmemused = tbm->nentries_hwm * tbm->bytesperentry;
+	instr->workmemused = Max(instr->workmemused, workmemused);
+}	/* tbm_upd_instrument */
+
+
+/*
+ * tbm_set_instrument
+ *	Attach caller's Instrumentation object to a TIDBitmap, unless the
+ *	TIDBitmap already has one.  We want the statistics to be associated
+ *	with the plan node which originally created the bitmap, rather than a
+ *	downstream consumer of the bitmap.
+ */
+static void
+tbm_set_instrument(TIDBitmap *tbm, struct Instrumentation *instr)
+{
+	if (instr == NULL ||
+		tbm->instrument == NULL)
+	{
+		tbm->instrument = instr;
+		tbm_upd_instrument(tbm);
+	}
+}	/* tbm_set_instrument */
+
 
 /*
  * tbm_free_shared_area - free shared state
@@ -368,9 +392,6 @@ tbm_free_shared_area(dsa_area *dsa, dsa_pointer dp)
 
 /*
  * tbm_add_tuples - add some tuple IDs to a TIDBitmap
- *
- * If recheck is true, then the recheck flag will be set in the
- * TBMIterateResult when any of these tuples are reported out.
  */
 void
 tbm_add_tuples(TIDBitmap *tbm, const ItemPointer tids, int ntids,
@@ -389,8 +410,12 @@ tbm_add_tuples(TIDBitmap *tbm, const ItemPointer tids, int ntids,
 					bitnum;
 
 		/* safety check to ensure we don't overrun bit array bounds */
+
+		/* UNDONE: Turn this off until we convert this module to AO TIDs. */
+#if 0
 		if (off < 1 || off > MAX_TUPLES_PER_PAGE)
 			elog(ERROR, "tuple offset out of range: %u", off);
+#endif
 
 		/*
 		 * Look up target page unless we already did.  This saves cycles when
@@ -420,7 +445,7 @@ tbm_add_tuples(TIDBitmap *tbm, const ItemPointer tids, int ntids,
 			wordnum = WORDNUM(off - 1);
 			bitnum = BITNUM(off - 1);
 		}
-		page->words[wordnum] |= ((bitmapword) 1 << bitnum);
+		page->words[wordnum] |= ((tbm_bitmapword) 1 << bitnum);
 		page->recheck |= recheck;
 
 		if (tbm->nentries > tbm->maxentries)
@@ -487,13 +512,13 @@ tbm_union_page(TIDBitmap *a, const PagetableEntry *bpage)
 		/* Scan b's chunk, mark each indicated page lossy in a */
 		for (wordnum = 0; wordnum < WORDS_PER_CHUNK; wordnum++)
 		{
-			bitmapword	w = bpage->words[wordnum];
+			tbm_bitmapword w = bpage->words[wordnum];
 
 			if (w != 0)
 			{
 				BlockNumber pg;
 
-				pg = bpage->blockno + (wordnum * BITS_PER_BITMAPWORD);
+				pg = bpage->blockno + (wordnum * TBM_BITS_PER_BITMAPWORD);
 				while (w != 0)
 				{
 					if (w & 1)
@@ -515,7 +540,7 @@ tbm_union_page(TIDBitmap *a, const PagetableEntry *bpage)
 		if (apage->ischunk)
 		{
 			/* The page is a lossy chunk header, set bit for itself */
-			apage->words[0] |= ((bitmapword) 1 << 0);
+			apage->words[0] |= ((tbm_bitmapword) 1 << 0);
 		}
 		else
 		{
@@ -542,6 +567,9 @@ tbm_intersect(TIDBitmap *a, const TIDBitmap *b)
 	/* Nothing to do if a is empty */
 	if (a->nentries == 0)
 		return;
+
+	a->nentries_hwm = Max(a->nentries_hwm, a->nentries);
+
 	/* Scan through chunks and pages in a, try to match to b */
 	if (a->status == TBM_ONE_PAGE)
 	{
@@ -597,15 +625,15 @@ tbm_intersect_page(TIDBitmap *a, PagetableEntry *apage, const TIDBitmap *b)
 
 		for (wordnum = 0; wordnum < WORDS_PER_CHUNK; wordnum++)
 		{
-			bitmapword	w = apage->words[wordnum];
+			tbm_bitmapword w = apage->words[wordnum];
 
 			if (w != 0)
 			{
-				bitmapword	neww = w;
+				tbm_bitmapword neww = w;
 				BlockNumber pg;
 				int			bitnum;
 
-				pg = apage->blockno + (wordnum * BITS_PER_BITMAPWORD);
+				pg = apage->blockno + (wordnum * TBM_BITS_PER_BITMAPWORD);
 				bitnum = 0;
 				while (w != 0)
 				{
@@ -615,7 +643,7 @@ tbm_intersect_page(TIDBitmap *a, PagetableEntry *apage, const TIDBitmap *b)
 							tbm_find_pageentry(b, pg) == NULL)
 						{
 							/* Page is not in b at all, lose lossy bit */
-							neww &= ~((bitmapword) 1 << bitnum);
+							neww &= ~((tbm_bitmapword) 1 << bitnum);
 						}
 					}
 					pg++;
@@ -750,6 +778,115 @@ tbm_begin_iterate(TIDBitmap *tbm)
 	tbm->iterating = TBM_ITERATING_PRIVATE;
 
 	return iterator;
+}
+
+/*
+ * tbm_stream_begin_iterate - prepare to iterate through a StreamBitmap
+ */
+static StreamBMIterator *
+tbm_stream_begin_iterate(StreamNode *node)
+{
+	/*
+	 * Create the StreamBMIterator struct, with enough trailing space to serve
+	 * the needs of the TBMIterateResult sub-struct.
+	 */
+	StreamBMIterator *iterator = palloc0(sizeof(StreamBMIterator) +
+								 MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+
+	iterator->node = node;
+	node->begin_iterate(node, iterator);
+
+	return iterator;
+}
+
+/*
+ * tbm_generic_begin_iterate - prepare to iterate through either a TIDBitmap or
+ * a StreamBitmap
+ *
+ * The GenericBMIterator struct is created in the caller's memory context.
+ * For a clean shutdown of the iteration, call tbm_generic_end_iterate.
+ * It is caller's responsibility not to touch the iterator anymore once the
+ * Node passed to this function is freed.
+ *
+ * Similarly to tbm_begin_iterate, after this is called, it is no longer allowed
+ * to modify the contents of the bitmap.  However, you can call this multiple
+ * times to scan the contents repeatedly, including parallel scans.
+ */
+GenericBMIterator *
+tbm_generic_begin_iterate(Node *bm)
+{
+	GenericBMIterator *iterator;
+
+	Assert(IsA(bm, TIDBitmap) || IsA(bm, StreamBitmap));
+
+	/* Allocate space. */
+	iterator = palloc(sizeof(*iterator));
+	iterator->bm = bm;
+
+	switch (bm->type)
+	{
+		case T_TIDBitmap:
+			iterator->impl.hash = tbm_begin_iterate((TIDBitmap *) bm);
+			break;
+
+		case T_StreamBitmap:
+		{
+			StreamBitmap *sbm = (StreamBitmap *) bm;
+			iterator->impl.stream = tbm_stream_begin_iterate(sbm->streamNode);
+			break;
+		}
+
+		default:
+			elog(ERROR, "invalid node type");
+	}
+
+	return iterator;
+}
+
+/*
+ * tbm_generic_iterate - scan through next page of a TIDBitmap or a
+ * StreamBitmap.
+ */
+TBMIterateResult *
+tbm_generic_iterate(GenericBMIterator *iterator)
+{
+	const Node *tbm = iterator->bm;
+
+	Assert(IsA(tbm, TIDBitmap) || IsA(tbm, StreamBitmap));
+
+	switch (tbm->type)
+	{
+		case T_TIDBitmap:
+			{
+#ifdef USE_ASSERT_CHECKING
+				const TIDBitmap *hashBitmap = (const TIDBitmap *) tbm;
+#endif
+				TBMIterator *hashIterator = iterator->impl.hash;
+
+				Assert(hashIterator->tbm == hashBitmap);
+				Assert(hashBitmap->iterating);
+
+				return tbm_iterate(hashIterator);
+			}
+		case T_StreamBitmap:
+			{
+				StreamBMIterator *streamIterator = iterator->impl.stream;
+				TBMIterateResult *output = NULL;
+
+				MemSet(&streamIterator->entry, 0, sizeof(PagetableEntry));
+				if (streamIterator->pull(streamIterator, &streamIterator->entry))
+				{
+					output = &streamIterator->output;
+					tbm_iterate_page(&streamIterator->entry, output);
+				}
+
+				return output;
+			}
+		default:
+			elog(ERROR, "unrecoganized node type");
+	}
+
+	return NULL;
 }
 
 /*
@@ -914,11 +1051,11 @@ tbm_extract_page_tuple(PagetableEntry *page, TBMIterateResult *output)
 
 	for (wordnum = 0; wordnum < WORDS_PER_PAGE; wordnum++)
 	{
-		bitmapword	w = page->words[wordnum];
+		tbm_bitmapword	w = page->words[wordnum];
 
 		if (w != 0)
 		{
-			int			off = wordnum * BITS_PER_BITMAPWORD + 1;
+			int			off = wordnum * TBM_BITS_PER_BITMAPWORD + 1;
 
 			while (w != 0)
 			{
@@ -934,6 +1071,32 @@ tbm_extract_page_tuple(PagetableEntry *page, TBMIterateResult *output)
 }
 
 /*
+ * tbm_iterate_page - get a TBMIterateResult from a given PagetableEntry.
+ */
+static bool
+tbm_iterate_page(PagetableEntry *page, TBMIterateResult *output)
+{
+	int			ntuples;
+
+	if (page->ischunk)
+	{
+		ntuples = -1;
+		output->recheck = true;
+	}
+	else
+	{
+		/* scan bitmap to extract individual offset numbers */
+		ntuples = tbm_extract_page_tuple(page, output);
+		output->recheck = page->recheck;
+	}
+
+	output->blockno = page->blockno;
+	output->ntuples = ntuples;
+
+	return true;
+}
+
+/*
  *	tbm_advance_schunkbit - Advance the schunkbit
  */
 static inline void
@@ -946,7 +1109,7 @@ tbm_advance_schunkbit(PagetableEntry *chunk, int *schunkbitp)
 		int			wordnum = WORDNUM(schunkbit);
 		int			bitnum = BITNUM(schunkbit);
 
-		if ((chunk->words[wordnum] & ((bitmapword) 1 << bitnum)) != 0)
+		if ((chunk->words[wordnum] & ((tbm_bitmapword) 1 << bitnum)) != 0)
 			break;
 		schunkbit++;
 	}
@@ -957,22 +1120,42 @@ tbm_advance_schunkbit(PagetableEntry *chunk, int *schunkbitp)
 /*
  * tbm_iterate - scan through next page of a TIDBitmap
  *
- * Returns a TBMIterateResult representing one page, or NULL if there are
+ * Gets a TBMIterateResult representing one page, or NULL if there are
  * no more pages to scan.  Pages are guaranteed to be delivered in numerical
  * order.  If result->ntuples < 0, then the bitmap is "lossy" and failed to
  * remember the exact tuples to look at on this page --- the caller must
  * examine all tuples on the page and check if they meet the intended
- * condition.  If result->recheck is true, only the indicated tuples need
- * be examined, but the condition must be rechecked anyway.  (For ease of
- * testing, recheck is always set true when ntuples < 0.)
+ * condition.
  */
 TBMIterateResult *
 tbm_iterate(TBMIterator *iterator)
 {
-	TIDBitmap  *tbm = iterator->tbm;
+	PagetableEntry *e;
+	bool		more;
 	TBMIterateResult *output = &(iterator->output);
 
+	e = tbm_next_page(iterator, &more);
+	if (more && e)
+	{
+		tbm_iterate_page(e, output);
+		return output;
+	}
+	return NULL;
+}
+
+/*
+ * tbm_next_page - actually traverse the TIDBitmap
+ *
+ * Store the next block of matches in nextpage.
+ */
+
+static PagetableEntry *
+tbm_next_page(TBMIterator *iterator, bool *more)
+{
+	TIDBitmap  *tbm = iterator->tbm;
 	Assert(tbm->iterating == TBM_ITERATING_PRIVATE);
+
+	*more = true;
 
 	/*
 	 * If lossy chunk pages remain, make sure we've advanced schunkptr/
@@ -1001,6 +1184,7 @@ tbm_iterate(TBMIterator *iterator)
 	if (iterator->schunkptr < tbm->nchunks)
 	{
 		PagetableEntry *chunk = tbm->schunks[iterator->schunkptr];
+		PagetableEntry *nextpage;
 		BlockNumber chunk_blockno;
 
 		chunk_blockno = chunk->blockno + iterator->schunkbit;
@@ -1008,35 +1192,30 @@ tbm_iterate(TBMIterator *iterator)
 			chunk_blockno < tbm->spages[iterator->spageptr]->blockno)
 		{
 			/* Return a lossy page indicator from the chunk */
-			output->blockno = chunk_blockno;
-			output->ntuples = -1;
-			output->recheck = true;
+			nextpage = (PagetableEntry *) palloc(sizeof(PagetableEntry));
+			nextpage->ischunk = true;
+			nextpage->blockno = chunk_blockno;
 			iterator->schunkbit++;
-			return output;
+			return nextpage;
 		}
 	}
 
 	if (iterator->spageptr < tbm->npages)
 	{
-		PagetableEntry *page;
-		int			ntuples;
+		PagetableEntry *e;
 
 		/* In ONE_PAGE state, we don't allocate an spages[] array */
 		if (tbm->status == TBM_ONE_PAGE)
-			page = &tbm->entry1;
+			e = &tbm->entry1;
 		else
-			page = tbm->spages[iterator->spageptr];
+			e = tbm->spages[iterator->spageptr];
 
-		/* scan bitmap to extract individual offset numbers */
-		ntuples = tbm_extract_page_tuple(page, output);
-		output->blockno = page->blockno;
-		output->ntuples = ntuples;
-		output->recheck = page->recheck;
 		iterator->spageptr++;
-		return output;
+		return e;
 	}
 
 	/* Nothing more in the bitmap */
+	*more = false;
 	return NULL;
 }
 
@@ -1145,6 +1324,44 @@ void
 tbm_end_iterate(TBMIterator *iterator)
 {
 	pfree(iterator);
+}
+
+/*
+ * tbm_stream_end_iterate - finish an iteration over a StreamBitmap
+ */
+static void
+tbm_stream_end_iterate(StreamBMIterator *iterator)
+{
+	/* end_iterate() will clean up whatever begin_iterate() set up. */
+	iterator->end_iterate(iterator);
+	pfree(iterator);
+}
+
+/*
+ * tbm_generic_end_iterate - finish an iteration over a TIDBitmap or
+ * StreamBitmap
+ */
+void
+tbm_generic_end_iterate(GenericBMIterator *iterator)
+{
+	const Node *bm = iterator->bm;
+
+	switch (bm->type)
+	{
+		case T_TIDBitmap:
+			tbm_end_iterate(iterator->impl.hash);
+			break;
+
+		case T_StreamBitmap:
+		{
+			tbm_stream_end_iterate(iterator->impl.stream);
+			break;
+		}
+
+		default:
+			Assert((bm->type == T_TIDBitmap)
+				   || (bm->type == T_StreamBitmap));
+	}
 }
 
 /*
@@ -1266,7 +1483,7 @@ tbm_page_is_lossy(const TIDBitmap *tbm, BlockNumber pageno)
 		int			wordnum = WORDNUM(bitno);
 		int			bitnum = BITNUM(bitno);
 
-		if ((page->words[wordnum] & ((bitmapword) 1 << bitnum)) != 0)
+		if ((page->words[wordnum] & ((tbm_bitmapword) 1 << bitnum)) != 0)
 			return true;
 	}
 	return false;
@@ -1304,6 +1521,7 @@ tbm_mark_page_lossy(TIDBitmap *tbm, BlockNumber pageno)
 		if (pagetable_delete(tbm->pagetable, pageno))
 		{
 			/* It was present, so adjust counts */
+			tbm->nentries_hwm = Max(tbm->nentries_hwm, tbm->nentries);
 			tbm->nentries--;
 			tbm->npages--;		/* assume it must have been non-lossy */
 		}
@@ -1335,7 +1553,7 @@ tbm_mark_page_lossy(TIDBitmap *tbm, BlockNumber pageno)
 		page->blockno = chunk_pageno;
 		page->ischunk = true;
 		/* we assume it had some tuple bit(s) set, so mark it lossy */
-		page->words[0] = ((bitmapword) 1 << 0);
+		page->words[0] = ((tbm_bitmapword) 1 << 0);
 		/* adjust counts */
 		tbm->nchunks++;
 		tbm->npages--;
@@ -1344,7 +1562,7 @@ tbm_mark_page_lossy(TIDBitmap *tbm, BlockNumber pageno)
 	/* Now set the original target page's bit */
 	wordnum = WORDNUM(bitno);
 	bitnum = BITNUM(bitno);
-	page->words[wordnum] |= ((bitmapword) 1 << bitnum);
+	page->words[wordnum] |= ((tbm_bitmapword) 1 << bitnum);
 }
 
 /*
@@ -1558,4 +1776,560 @@ tbm_calculate_entries(double maxbytes)
 	nbuckets = Max(nbuckets, 16);	/* sanity limit */
 
 	return nbuckets;
+}
+
+
+/*
+ * functions related to streaming
+ */
+
+static void
+opstream_free(StreamNode *self)
+{
+	ListCell   *cell;
+	List	   *input = self->opaque;
+
+	foreach(cell, input)
+	{
+		StreamNode *inp = (StreamNode *) lfirst(cell);
+
+		if (inp->free)
+			inp->free(inp);
+	}
+	list_free(input);
+	pfree(self);
+}
+
+static void
+opstream_set_instrument(StreamNode *self, struct Instrumentation *instr)
+{
+	ListCell   *cell;
+	List	   *input = self->opaque;
+
+	foreach(cell, input)
+	{
+		StreamNode *inp = (StreamNode *) lfirst(cell);
+
+		if (inp->set_instrument)
+			inp->set_instrument(inp, instr);
+	}
+}
+
+static void
+opstream_upd_instrument(StreamNode *self)
+{
+	ListCell   *cell;
+	List	   *input = self->opaque;
+
+	foreach(cell, input)
+	{
+		StreamNode *inp = (StreamNode *) lfirst(cell);
+
+		if (inp->upd_instrument)
+			inp->upd_instrument(inp);
+	}
+}
+
+static OpStream *
+make_opstream(StreamType kind, StreamNode *n1, StreamNode *n2)
+{
+	OpStream   *op;
+
+	Assert(kind == BMS_OR || kind == BMS_AND);
+	Assert(PointerIsValid(n1));
+
+	op = (OpStream *) palloc0(sizeof(OpStream));
+	op->type = kind;
+	op->opaque = list_make2(n1, n2);
+	op->begin_iterate = opstream_begin_iterate;
+	op->free = opstream_free;
+	op->set_instrument = opstream_set_instrument;
+	op->upd_instrument = opstream_upd_instrument;
+	return op;
+}
+
+/*
+ * stream_move_node - move a streamnode from StreamBitMap (source)'s streamnode
+ * to given StreamBitMap(destination). Also transfer the ownership of source streamnode by
+ * resetting to NULL.
+ */
+void
+stream_move_node(StreamBitmap *destination, StreamBitmap *source, StreamType kind)
+{
+	Assert(NULL != destination);
+	Assert(NULL != source);
+	stream_add_node(destination,
+			source->streamNode, kind);
+	/* destination owns the streamNode and hence resetting it to NULL for source->streamNode. */
+	source->streamNode = NULL;
+}
+
+
+/*
+ * stream_add_node() - add a new node to a bitmap stream
+ * node is a base node -- i.e., an index/external
+ * kind is one of BMS_INDEX, BMS_OR or BMS_AND
+ */
+
+void
+stream_add_node(StreamBitmap *sbm, StreamNode *node, StreamType kind)
+{
+	/* CDB: Tell node where to put its statistics for EXPLAIN ANALYZE. */
+	if (node->set_instrument)
+		node->set_instrument(node, sbm->instrument);
+
+	/* initialised */
+	if (sbm->streamNode)
+	{
+		StreamNode *n = sbm->streamNode;
+
+		/* StreamNode is already an index, transform to OpStream */
+		if ((n->type == BMS_AND && kind == BMS_AND) ||
+			(n->type == BMS_OR && kind == BMS_OR))
+		{
+			/* n->opaque is our list of inputs; append to it */
+			n->opaque = lappend(n->opaque, node);
+		}
+		else if ((n->type == BMS_AND && kind != BMS_AND) ||
+				 (n->type == BMS_OR && kind != BMS_OR) ||
+				 (n->type == BMS_INDEX))
+		{
+			sbm->streamNode = make_opstream(kind, sbm->streamNode, node);
+		}
+		else
+			elog(ERROR, "unknown stream type %i", (int) n->type);
+	}
+	else
+	{
+		if (kind == BMS_INDEX)
+			sbm->streamNode = node;
+		else
+			sbm->streamNode = make_opstream(kind, node, NULL);
+	}
+}
+
+/*
+ * tbm_create_stream_node() - turn a TIDBitmap into a stream
+ */
+
+StreamNode *
+tbm_create_stream_node(TIDBitmap *tbm)
+{
+	IndexStream *is;
+
+	is = (IndexStream *) palloc0(sizeof(IndexStream));
+
+	is->type = BMS_INDEX;
+	is->opaque = tbm;
+	is->begin_iterate = index_stream_begin_iterate;
+	is->free = tbm_stream_free;
+	is->set_instrument = tbm_stream_set_instrument;
+	is->upd_instrument = tbm_stream_upd_instrument;
+
+	return is;
+}
+
+/*
+ * IndexStream iteration callbacks
+ */
+
+static void
+index_stream_begin_iterate(StreamNode *self, StreamBMIterator *iterator)
+{
+	TIDBitmap *tbm = self->opaque;
+
+	iterator->pull = tbm_stream_block;
+	iterator->end_iterate = index_stream_end_iterate;
+
+	/* Begin iterating on the underlying TIDBitmap. */
+	iterator->input.hash = tbm_begin_iterate(tbm);
+}
+
+static void
+index_stream_end_iterate(StreamBMIterator *self)
+{
+	tbm_end_iterate(self->input.hash);
+}
+
+/*
+ * tbm_stream_block() - Fetch the next block from TIDBitmap stream
+ *
+ * Notice that the IndexStream passed in as opaque will tell us the
+ * desired block to stream. If the block requrested is greater than or equal
+ * to the block we've cached inside the iterator, return that.
+ */
+
+static bool
+tbm_stream_block(StreamBMIterator *iterator, PagetableEntry *e)
+{
+	TBMIterator *hashIterator = iterator->input.hash;
+	PagetableEntry *next = iterator->nextentry;
+	bool		more;
+
+	Assert(iterator->node->type == BMS_INDEX);
+
+	/* have we already got an entry? */
+	if (next && iterator->nextblock <= next->blockno)
+	{
+		memcpy(e, next, sizeof(PagetableEntry));
+		return true;
+	}
+
+	/* we need a new entry */
+	iterator->nextentry = tbm_next_page(hashIterator, &more);
+	if (more)
+	{
+		Assert(iterator->nextentry);
+		memcpy(e, iterator->nextentry, sizeof(PagetableEntry));
+	}
+	iterator->nextblock++;
+	return more;
+}
+
+static void
+tbm_stream_free(StreamNode *self)
+{
+	TIDBitmap *tbm = self->opaque;
+	Assert(self->type == BMS_INDEX);
+	tbm_free(tbm);
+	pfree(self);
+}
+
+static void
+tbm_stream_set_instrument(StreamNode *self, struct Instrumentation *instr)
+{
+	TIDBitmap *tbm = self->opaque;
+	Assert(self->type == BMS_INDEX);
+	tbm_set_instrument(tbm, instr);
+}
+
+static void
+tbm_stream_upd_instrument(StreamNode *self)
+{
+	TIDBitmap *tbm = self->opaque;
+	Assert(self->type == BMS_INDEX);
+	tbm_upd_instrument(tbm);
+}
+
+/*
+ * OpStream iteration callbacks
+ */
+
+static void
+opstream_begin_iterate(StreamNode *self, StreamBMIterator *iterator)
+{
+	List	 *input = self->opaque;
+	ListCell *cell;
+
+	iterator->pull = opstream_iterate;
+	iterator->end_iterate = opstream_end_iterate;
+
+	/* Recursively initialize an iterator for each StreamNode. */
+	foreach(cell, input)
+	{
+		StreamNode 		 *inNode = lfirst(cell);
+		StreamBMIterator *inIter = tbm_stream_begin_iterate(inNode);
+
+		iterator->input.stream = lappend(iterator->input.stream, inIter);
+	}
+}
+
+static void
+opstream_end_iterate(StreamBMIterator *self)
+{
+	ListCell *cell;
+
+	/* Recursively free all iterators in the stream "tree". */
+	foreach(cell, self->input.stream)
+	{
+		StreamBMIterator *inIter = lfirst(cell);
+		tbm_stream_end_iterate(inIter);
+	}
+	list_free(self->input.stream);
+}
+
+/*
+ * opstream_iterate()
+ *
+ * This is an iterator for OpStreams. The function doesn't
+ * know anything about the streams it is actually iterating.
+ *
+ * Returns false when no more results can be obtained, otherwise true.
+ */
+static bool
+opstream_iterate(StreamBMIterator *iterator, PagetableEntry *e)
+{
+	const StreamNode   *n = iterator->node;
+	bool				res = false;
+
+	/*
+	 * There are two ways we can do this: either, we could maintain our
+	 * own top level BatchWords structure and pull blocks out of that OR
+	 * we could maintain batch words for each sub map and union/intersect
+	 * those together to get the resulting page entries.
+	 *
+	 * Now, BatchWords are specific to bitmap indexes so we'd have to
+	 * translate TIDBitmaps. All the infrastructure is available to
+	 * translate bitmap indexes into the TIDBitmap mechanism so we'll do
+	 * that for now.
+	 */
+	ListCell   *map;
+	BlockNumber minblockno;
+	ListCell   *cell;
+	int			wordnum;
+	List	   *matches;
+	bool		empty;
+
+	Assert(n->type == BMS_OR || n->type == BMS_AND);
+
+	/*
+	 * First, iterate through each input bitmap stream and save the block
+	 * which is returned. TIDBitmaps are designed such that they do not
+	 * return blocks with no matches -- that is, say a TIDBitmap has
+	 * matches for block 1, 4 and 5 it store matches only for those
+	 * blocks. Therefore, we may have one stream return a match for block
+	 * 10, another for block 15 and another yet for block 10 again. In
+	 * this case, we cannot include block 15 in the union/intersection
+	 * because it represents matches on some page later in the scan. We'll
+	 * get around to it in good time.
+	 *
+	 * In this case, if we're doing a union, we perform the operation
+	 * without reference to block 15. If we're performing an intersection
+	 * we cannot perform it on block 10 because we didn't get any matches
+	 * for block 10 for one of the streams: the intersection with fail.
+	 * So, we set the desired block (op->nextblock) to block 15 and loop
+	 * around to the `restart' label.
+	 */
+restart:
+	e->blockno = InvalidBlockNumber;
+	empty = false;
+	matches = NIL;
+	minblockno = InvalidBlockNumber;
+	Assert(PointerIsValid(iterator->input.stream));
+	foreach(map, iterator->input.stream)
+	{
+		StreamBMIterator *inIter = lfirst(map);
+		PagetableEntry *new;
+		bool		r;
+
+		new = (PagetableEntry *) palloc0(sizeof(PagetableEntry));
+
+		/* set the desired block */
+		inIter->nextblock = iterator->nextblock;
+		r = inIter->pull(inIter, new);
+
+		/*
+		 * Let to caller know we got a result from some input bitmap. This
+		 * doesn't hold true if we're doing an intersection, and that is
+		 * handled below
+		 */
+		res = res || r;
+
+		/* only include a match if the pull function tells us to */
+		if (r)
+		{
+			if (minblockno == InvalidBlockNumber)
+				minblockno = new->blockno;
+			else if (n->type == BMS_OR)
+				minblockno = Min(minblockno, new->blockno);
+			else
+				minblockno = Max(minblockno, new->blockno);
+			matches = lappend(matches, (void *) new);
+		}
+		else
+		{
+			pfree(new);
+
+			if (n->type == BMS_AND)
+			{
+				/*
+				 * No more results for this stream and since we're doing
+				 * an intersection we wont get any valid results from now
+				 * on, so tell our caller that
+				 */
+				iterator->nextblock = minblockno + 1;	/* seems safe */
+				return false;
+			}
+			else if (n->type == BMS_OR)
+				continue;
+		}
+	}
+
+	/*
+	 * Now we iterate through the actual matches and perform the desired
+	 * operation on those from the same minimum block
+	 */
+	foreach(cell, matches)
+	{
+		PagetableEntry *tmp = (PagetableEntry *) lfirst(cell);
+
+		if (tmp->blockno == minblockno)
+		{
+			if (e->blockno == InvalidBlockNumber)
+			{
+				memcpy(e, tmp, sizeof(PagetableEntry));
+				continue;
+			}
+
+			/* already initialised, so OR/AND together */
+			if (tmp->ischunk == true)
+			{
+				/*
+				 * Okay, new entry is lossy so match our output as lossy
+				 */
+				e->ischunk = true;
+				/* XXX: we can just return now... I think :) */
+				iterator->nextblock = minblockno + 1;
+				list_free_deep(matches);
+				return res;
+			}
+
+			/* union/intersect existing output and new matches */
+			for (wordnum = 0; wordnum < WORDS_PER_PAGE; wordnum++)
+			{
+				if (n->type == BMS_OR)
+					e->words[wordnum] |= tmp->words[wordnum];
+				else
+					e->words[wordnum] &= tmp->words[wordnum];
+			}
+			e->recheck |= tmp->recheck;
+		}
+		else if (n->type == BMS_AND)
+		{
+			/*
+			 * One of our input maps didn't return a block for the desired
+			 * block number so, we loop around again.
+			 *
+			 * Notice that we don't set the next block as minblockno + 1.
+			 * We don't know if the other streams will find a match for
+			 * minblockno, so we cannot skip past it yet.
+			 */
+
+			iterator->nextblock = minblockno;
+			empty = true;
+			break;
+		}
+	}
+	if (empty)
+	{
+		/* start again */
+		empty = false;
+		MemSet(e->words, 0, sizeof(tbm_bitmapword) * WORDS_PER_PAGE);
+		list_free_deep(matches);
+		goto restart;
+	}
+	else
+		list_free_deep(matches);
+	if (res)
+		iterator->nextblock = minblockno + 1;
+
+	return res;
+}
+
+
+/*
+ * --------- These functions accept either TIDBitmap or StreamBitmap ---------
+ */
+
+
+/*
+ * tbm_generic_free - free a TIDBitmap or StreamBitmap
+ */
+void
+tbm_generic_free(Node *bm)
+{
+	if (bm == NULL)
+		return;
+
+	switch (bm->type)
+	{
+		case T_TIDBitmap:
+			tbm_free((TIDBitmap *) bm);
+			break;
+		case T_StreamBitmap:
+			{
+				StreamBitmap *sbm = (StreamBitmap *) bm;
+				StreamNode *sn = sbm->streamNode;
+
+				sbm->streamNode = NULL;
+				if (sn && sn->free)
+					sn->free(sn);
+
+				pfree(sbm);
+
+				break;
+			}
+		default:
+			Assert(0);
+	}
+}	/* tbm_generic_free */
+
+
+/*
+ * tbm_generic_set_instrument - attach caller's Instrumentation object to bitmap
+ */
+void
+tbm_generic_set_instrument(Node *bm, struct Instrumentation *instr)
+{
+	if (bm == NULL)
+		return;
+
+	switch (bm->type)
+	{
+		case T_TIDBitmap:
+			tbm_set_instrument((TIDBitmap *) bm, instr);
+			break;
+		case T_StreamBitmap:
+			{
+				StreamBitmap *sbm = (StreamBitmap *) bm;
+
+				if (sbm->streamNode &&
+					sbm->streamNode->set_instrument)
+					sbm->streamNode->set_instrument(sbm->streamNode, instr);
+				break;
+			}
+		default:
+			Assert(0);
+	}
+}	/* tbm_generic_set_instrument */
+
+
+/*
+ * tbm_generic_upd_instrument - update stats in caller's Instrumentation object
+ *
+ * Some callers don't bother to tbm_free() their bitmaps, but let the storage
+ * be reclaimed when the MemoryContext is reset.  Such callers should use this
+ * function to make sure the statistics are transferred to the Instrumentation
+ * object before the bitmap goes away.
+ */
+void
+tbm_generic_upd_instrument(Node *bm)
+{
+	if (bm == NULL)
+		return;
+
+	switch (bm->type)
+	{
+		case T_TIDBitmap:
+			tbm_upd_instrument((TIDBitmap *) bm);
+			break;
+		case T_StreamBitmap:
+			{
+				StreamBitmap *sbm = (StreamBitmap *) bm;
+
+				if (sbm->streamNode &&
+					sbm->streamNode->upd_instrument)
+					sbm->streamNode->upd_instrument(sbm->streamNode);
+				break;
+			}
+		default:
+			Assert(0);
+	}
+}	/* tbm_generic_upd_instrument */
+
+void
+tbm_convert_appendonly_tid_out(ItemPointer psudeoHeapTid, AOTupleId *aoTid)
+{
+	/* UNDONE: For now, just copy. */
+	memcpy(aoTid, psudeoHeapTid, sizeof(ItemPointerData));
 }

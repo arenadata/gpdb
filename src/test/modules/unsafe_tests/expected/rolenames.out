@@ -827,6 +827,7 @@ RESET ROLE;
 CREATE SCHEMA test_roles_schema AUTHORIZATION pg_signal_backend; --success
 SET ROLE regress_testrol2;
 UPDATE pg_proc SET proacl = null WHERE proname LIKE 'testagg_';
+ERROR:  permission denied: "pg_proc" is a system catalog
 SELECT proname, proacl FROM pg_proc WHERE proname LIKE 'testagg_';
  proname  | proacl 
 ----------+--------

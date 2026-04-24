@@ -119,7 +119,7 @@ select * from trigtest;
 
 drop table trigtest;
 
-create sequence ttdummy_seq increment 10 start 0 minvalue 0;
+create sequence ttdummy_seq increment 10 start 0 minvalue 0 cache 1;
 
 create table tttest (
 	price_id	int4,
@@ -304,6 +304,10 @@ create trigger oid_unchanged_trig after update on table_with_oids
 	for each row
 	when (new.tableoid = old.tableoid AND new.tableoid <> 0)
 	execute procedure trigger_func('after_upd_oid_unchanged');
+-- fails on GPDB because 'a' is the distribution key
+update table_with_oids set a = a + 1;
+-- try again
+alter table table_with_oids set distributed randomly;
 update table_with_oids set a = a + 1;
 drop table table_with_oids;
 
@@ -379,7 +383,7 @@ ALTER TABLE main_table DROP COLUMN b;
 begin;
 DROP TRIGGER after_upd_a_b_row_trig ON main_table;
 DROP TRIGGER after_upd_b_row_trig ON main_table;
-DROP TRIGGER after_upd_b_stmt_trig ON main_table;
+-- DROP TRIGGER after_upd_b_stmt_trig ON main_table;
 ALTER TABLE main_table DROP COLUMN b;
 rollback;
 
@@ -506,7 +510,7 @@ DROP TABLE trigger_test;
 -- Test use of row comparisons on OLD/NEW
 --
 
-CREATE TABLE trigger_test (f1 int, f2 text, f3 text);
+CREATE TABLE trigger_test (dkey int, f1 int, f2 text, f3 text);
 
 -- this is the obvious (and wrong...) way to compare rows
 CREATE FUNCTION mytrigger() RETURNS trigger LANGUAGE plpgsql as $$
@@ -523,8 +527,8 @@ CREATE TRIGGER t
 BEFORE UPDATE ON trigger_test
 FOR EACH ROW EXECUTE PROCEDURE mytrigger();
 
-INSERT INTO trigger_test VALUES(1, 'foo', 'bar');
-INSERT INTO trigger_test VALUES(2, 'baz', 'quux');
+INSERT INTO trigger_test VALUES(0, 1, 'foo', 'bar');
+INSERT INTO trigger_test VALUES(0, 2, 'baz', 'quux');
 
 UPDATE trigger_test SET f3 = 'bar';
 UPDATE trigger_test SET f3 = NULL;
@@ -566,7 +570,7 @@ CREATE TABLE serializable_update_tab (
 	id int,
 	filler  text,
 	description text
-);
+) distributed by (filler);
 
 CREATE TRIGGER serializable_update_trig BEFORE UPDATE ON serializable_update_tab
 	FOR EACH ROW EXECUTE PROCEDURE serializable_update_trig();
@@ -769,10 +773,11 @@ DROP VIEW main_view;
 
 --
 -- Test triggers on a join view
+-- GPDB ignore this test: don't support modifications on views.
 --
 CREATE TABLE country_table (
     country_id        serial primary key,
-    country_name    text unique not null,
+    country_name    text not null,
     continent        text not null
 );
 
@@ -960,6 +965,7 @@ DROP TABLE country_table;
 
 
 -- Test pg_trigger_depth()
+-- GPDB ignore this test: execute insert in trigger function
 
 create table depth_a (id int not null primary key);
 create table depth_b (id int not null primary key);
@@ -1509,6 +1515,7 @@ alter table parted_irreg_ancestor attach partition parted_irreg
   for values from ('aaaa') to ('zzzz');
 create table parted1_irreg (b text, fd int, a int);
 alter table parted1_irreg drop column fd;
+alter table parted1_irreg set distributed randomly;
 alter table parted_irreg attach partition parted1_irreg
   for values from ('aaaa') to ('bbbb');
 create trigger parted_trig after insert on parted_irreg
@@ -1562,9 +1569,11 @@ drop function bark(text);
 
 -- Test that the WHEN clause is set properly to partitions
 create table parted_trigger (a int, b text) partition by range (a);
+alter table parted_trigger set distributed by (b);
 create table parted_trigger_1 partition of parted_trigger for values from (0) to (1000);
 create table parted_trigger_2 (drp int, a int, b text);
 alter table parted_trigger_2 drop column drp;
+alter table parted_trigger_2 set distributed by (b);
 alter table parted_trigger attach partition parted_trigger_2 for values from (1000) to (2000);
 create trigger parted_trigger after update on parted_trigger
   for each row when (new.a % 2 = 1 and length(old.b) >= 2) execute procedure trigger_notice_ab();
@@ -1586,6 +1595,7 @@ create table parted_trigger (a int, b text) partition by range (a);
 create table parted_trigger_1 partition of parted_trigger for values from (0) to (1000);
 create table parted_trigger_2 (drp int, a int, b text);
 alter table parted_trigger_2 drop column drp;
+alter table parted_trigger_2 set distributed by (a);
 alter table parted_trigger attach partition parted_trigger_2 for values from (1000) to (2000);
 create constraint trigger parted_trigger after update on parted_trigger
   from parted_referenced
@@ -1594,6 +1604,7 @@ create constraint trigger parted_trigger after update on unparted_trigger
   from parted_referenced
   for each row execute procedure trigger_notice_ab();
 create table parted_trigger_3 (b text, a int) partition by range (length(b));
+alter table parted_trigger_3 set distributed by (a);
 create table parted_trigger_3_1 partition of parted_trigger_3 for values from (1) to (3);
 create table parted_trigger_3_2 partition of parted_trigger_3 for values from (3) to (5);
 alter table parted_trigger attach partition parted_trigger_3 for values from (2000) to (3000);
@@ -1606,6 +1617,7 @@ drop table parted_referenced, parted_trigger, unparted_trigger;
 
 -- verify that the "AFTER UPDATE OF columns" event is propagated correctly
 create table parted_trigger (a int, b text) partition by range (a);
+alter table parted_trigger set distributed randomly;
 create table parted_trigger_1 partition of parted_trigger for values from (0) to (1000);
 create table parted_trigger_2 (drp int, a int, b text);
 alter table parted_trigger_2 drop column drp;
@@ -1613,6 +1625,7 @@ alter table parted_trigger attach partition parted_trigger_2 for values from (10
 create trigger parted_trigger after update of b on parted_trigger
   for each row execute procedure trigger_notice_ab();
 create table parted_trigger_3 (b text, a int) partition by range (length(b));
+alter table parted_trigger_3 set distributed randomly;
 create table parted_trigger_3_1 partition of parted_trigger_3 for values from (1) to (4);
 create table parted_trigger_3_2 partition of parted_trigger_3 for values from (4) to (8);
 alter table parted_trigger attach partition parted_trigger_3 for values from (2000) to (3000);
@@ -1637,6 +1650,41 @@ select tgrelid::regclass, count(*) from pg_trigger
 	'trg_clone3', 'trg_clone_3_3')
   group by tgrelid::regclass order by tgrelid::regclass;
 drop table trg_clone;
+
+-- Test the interaction between ALTER TABLE .. DISABLE TRIGGER and
+-- both kinds of inheritance.  Historically, legacy inheritance has
+-- not recursed to children, so that behavior is preserved.
+create table parent (a int);
+create table child1 () inherits (parent);
+create function trig_nothing() returns trigger language plpgsql
+  as $$ begin return null; end $$;
+create trigger tg after insert on parent
+  for each row execute function trig_nothing();
+create trigger tg after insert on child1
+  for each row execute function trig_nothing();
+alter table parent disable trigger tg;
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text;
+alter table only parent enable always trigger tg;
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text;
+drop table parent, child1;
+
+create table parent (a int) partition by list (a);
+create table child1 partition of parent for values in (1);
+create trigger tg after insert on parent
+  for each row execute procedure trig_nothing();
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text;
+alter table only parent enable always trigger tg;
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text;
+drop table parent, child1;
+
 
 --
 -- Test the interaction between transition tables and both kinds of
@@ -1691,10 +1739,12 @@ create table child1 partition of parent for values in ('AAA');
 -- a child with a dropped column
 create table child2 (x int, a text, b int);
 alter table child2 drop column x;
+alter table child2 set distributed by (a);
 alter table parent attach partition child2 for values in ('BBB');
 
 -- a child with a different column order
 create table child3 (b int, a text);
+alter table child3 set distributed by (a);
 alter table parent attach partition child3 for values in ('CCC');
 
 create trigger parent_insert_trig

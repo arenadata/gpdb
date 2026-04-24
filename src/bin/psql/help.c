@@ -71,7 +71,7 @@ usage(unsigned short int pager)
 	 */
 	output = PageOutput(62, pager ? &(pset.popt.topt) : NULL);
 
-	fprintf(output, _("psql is the PostgreSQL interactive terminal.\n\n"));
+	fprintf(output, _("psql is the PostgreSQL interactive terminal (Greenplum version).\n\n"));
 	fprintf(output, _("Usage:\n"));
 	fprintf(output, _("  psql [OPTION]... [DBNAME [USERNAME]]\n\n"));
 
@@ -145,7 +145,7 @@ usage(unsigned short int pager)
 	fprintf(output, _("\nFor more information, type \"\\?\" (for internal commands) or \"\\help\" (for SQL\n"
 					  "commands) from within psql, or consult the psql section in the PostgreSQL\n"
 					  "documentation.\n\n"));
-	fprintf(output, _("Report bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	fprintf(output, _("Report bugs to <bugs@greenplum.org>.\n"));
 
 	ClosePager(output);
 }
@@ -163,6 +163,8 @@ slashUsage(unsigned short int pager)
 	char	   *currdb;
 
 	currdb = PQdb(pset.db);
+	if (currdb == NULL)
+		currdb = "";
 
 	/*
 	 * Keep this line count in sync with the number of lines printed below!
@@ -261,6 +263,8 @@ slashUsage(unsigned short int pager)
 	fprintf(output, _("  \\dT[S+] [PATTERN]      list data types\n"));
 	fprintf(output, _("  \\du[S+] [PATTERN]      list roles\n"));
 	fprintf(output, _("  \\dv[S+] [PATTERN]      list views\n"));
+	/* In GPDB, we use \dE for both external and foreign tables. */
+	fprintf(output, _("  \\dE[S+] [PATTERN]      list foreign and external tables\n"));
 	fprintf(output, _("  \\dx[+]  [PATTERN]      list extensions\n"));
 	fprintf(output, _("  \\dy     [PATTERN]      list event triggers\n"));
 	fprintf(output, _("  \\l[+]   [PATTERN]      list databases\n"));
@@ -665,9 +669,12 @@ void
 print_copyright(void)
 {
 	puts(
-		 "PostgreSQL Database Management System\n"
-		 "(formerly known as Postgres, then as Postgres95)\n\n"
+		 "Greenplum Database version of PostgreSQL Database Management System\n"
 		 "Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group\n\n"
+		 "Portions Copyright (c) 2014-Present VMware, Inc. or its affiliates.\n\n"
+		 "Portions Copyright (c) 2011-2014 EMC\n\n"
+		 "This software is based on Postgres95, formerly known as Postgres, which\n"
+		 "contains the following notice:\n\n"
 		 "Portions Copyright (c) 1994, The Regents of the University of California\n\n"
 		 "Permission to use, copy, modify, and distribute this software and its\n"
 		 "documentation for any purpose, without fee, and without a written agreement\n"

@@ -803,7 +803,7 @@ _hash_initbitmapbuffer(Buffer buf, uint16 bmsize, bool initpage)
  */
 void
 _hash_squeezebucket(Relation rel,
-					Bucket bucket,
+					Bucket bucket pg_attribute_unused(),
 					BlockNumber bucket_blkno,
 					Buffer bucket_buf,
 					BufferAccessStrategy bstrategy)

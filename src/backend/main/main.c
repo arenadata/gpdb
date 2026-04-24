@@ -43,6 +43,7 @@
 #include "utils/pg_locale.h"
 #include "utils/ps_status.h"
 
+#include "catalog/catversion.h"
 
 const char *progname;
 
@@ -170,6 +171,17 @@ main(int argc, char *argv[])
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
 			fputs(PG_BACKEND_VERSIONSTR, stdout);
+			exit(0);
+		}
+		if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			fputs("postgres (Greenplum Database) " GP_VERSION "\n", stdout);
+			exit(0);
+		}
+		if (strcmp(argv[1], "--catalog-version") == 0 )
+		{
+			printf(_("Catalog version number:               %u\n"),
+				   CATALOG_VERSION_NO);
 			exit(0);
 		}
 
@@ -350,6 +362,8 @@ help(const char *progname)
 	printf(_("  --NAME=VALUE       set run-time parameter\n"));
 	printf(_("  --describe-config  describe configuration parameters, then exit\n"));
 	printf(_("  -?, --help         show this help, then exit\n"));
+	printf(_("  --gp-version       output Greenplum version information, then exit\n"));
+	printf(_("  --catalog-version  output the catalog version, then exit\n"));
 
 	printf(_("\nDeveloper options:\n"));
 	printf(_("  -f s|i|n|m|h       forbid use of some plan types\n"));
@@ -359,6 +373,12 @@ help(const char *progname)
 	printf(_("  -t pa|pl|ex        show timings after each query\n"));
 	printf(_("  -T                 send SIGSTOP to all backend processes if one dies\n"));
 	printf(_("  -W NUM             wait NUM seconds to allow attach from a debugger\n"));
+
+	printf(_("\nOptions for maintenance mode:\n"));
+	printf(_("  -m              start the system in maintenance mode\n"));
+
+	printf(_("\nOptions for upgrade mode:\n"));
+	printf(_("  -U              start the system in upgrade mode\n"));
 
 	printf(_("\nOptions for single-user mode:\n"));
 	printf(_("  --single           selects single-user mode (must be first argument)\n"));
@@ -377,7 +397,7 @@ help(const char *progname)
 	printf(_("\nPlease read the documentation for the complete list of run-time\n"
 			 "configuration settings and how to set them on the command line or in\n"
 			 "the configuration file.\n\n"
-			 "Report bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+			 "Report bugs to <bugs@greenplum.org>.\n"));
 }
 
 
@@ -410,6 +430,7 @@ check_root(const char *progname)
 		exit(1);
 	}
 #else							/* WIN32 */
+#if 0
 	if (pgwin32_is_admin())
 	{
 		write_stderr("Execution of PostgreSQL by a user with administrative permissions is not\n"
@@ -419,5 +440,6 @@ check_root(const char *progname)
 					 "more information on how to properly start the server.\n");
 		exit(1);
 	}
+#endif
 #endif							/* WIN32 */
 }

@@ -19,6 +19,8 @@
 #include "datatype/timestamp.h"
 #include "storage/lock.h"
 
+#include "cdb/cdblocaldistribxact.h"
+
 /*
  * GlobalTransactionData is defined in twophase.c; other places have no
  * business knowing the internal definition.
@@ -37,7 +39,9 @@ extern void PostPrepare_Twophase(void);
 extern PGPROC *TwoPhaseGetDummyProc(TransactionId xid, bool lock_held);
 extern BackendId TwoPhaseGetDummyBackendId(TransactionId xid, bool lock_held);
 
-extern GlobalTransaction MarkAsPreparing(TransactionId xid, const char *gid,
+extern GlobalTransaction MarkAsPreparing(TransactionId xid,
+										 LocalDistribXactData *localDistribXactRef,
+										 const char *gid,
 										 TimestampTz prepared_at,
 										 Oid owner, Oid databaseid);
 
@@ -54,7 +58,7 @@ extern void RecoverPreparedTransactions(void);
 
 extern void CheckPointTwoPhase(XLogRecPtr redo_horizon);
 
-extern void FinishPreparedTransaction(const char *gid, bool isCommit);
+extern bool FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound);
 
 extern void PrepareRedoAdd(char *buf, XLogRecPtr start_lsn,
 						   XLogRecPtr end_lsn, RepOriginId origin_id);

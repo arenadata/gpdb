@@ -2,8 +2,31 @@
 
 CREATE TABLE tidscan(id integer);
 
+-- GPDB: we need some preparation, to make the output the same as in upstream.
+-- Firstly, force all the rows to the same segment, so that selecting by ctid
+-- produces the same result as in upstream.
+ALTER TABLE tidscan ADD COLUMN distkey int;
+ALTER TABLE tidscan SET DISTRIBUTED BY (distkey);
+
+-- Secondly, Coerce the planner to produce same plans as in upstream.
+set enable_seqscan=off;
+set enable_mergejoin=on;
+set enable_nestloop=on;
+
+-- Finally, silence NOTICEs that GPDB normally emits if you use ctid in a
+-- query:
+-- NOTICE:  SELECT uses system-defined column "tidscan.ctid" without the necessary companion column "tidscan.gp_segment_id"
+-- HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+set client_min_messages='warning';
+
 -- only insert a few rows, we don't want to spill onto a second table page
-INSERT INTO tidscan VALUES (1), (2), (3);
+INSERT INTO tidscan (id) VALUES (1), (2), (3);
+ANALYZE tidscan;
+
+-- The 'distkey' column has served its purpose, by ensuring that all the rows
+-- end up on the same segment. Now drop it, so that it doesn't affect the
+-- output of the "select *" queries that follow.
+ALTER TABLE tidscan DROP COLUMN distkey;
 
 -- show ctids
 SELECT ctid, * FROM tidscan;
@@ -85,13 +108,14 @@ ROLLBACK;
 -- bulk joins on CTID
 -- (these plans don't use TID scans, but this still seems like an
 -- appropriate place for these tests)
+reset enable_seqscan;
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM tenk1 t1 JOIN tenk1 t2 ON t1.ctid = t2.ctid;
-SELECT count(*) FROM tenk1 t1 JOIN tenk1 t2 ON t1.ctid = t2.ctid;
+SELECT count(*) FROM tenk1 t1 JOIN tenk1 t2 ON t1.ctid = t2.ctid and t1.gp_segment_id = t2.gp_segment_id;
+SELECT count(*) FROM tenk1 t1 JOIN tenk1 t2 ON t1.ctid = t2.ctid and t1.gp_segment_id = t2.gp_segment_id;
 SET enable_hashjoin TO off;
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM tenk1 t1 JOIN tenk1 t2 ON t1.ctid = t2.ctid;
-SELECT count(*) FROM tenk1 t1 JOIN tenk1 t2 ON t1.ctid = t2.ctid;
+SELECT count(*) FROM tenk1 t1 JOIN tenk1 t2 ON t1.ctid = t2.ctid and t1.gp_segment_id = t2.gp_segment_id;
+SELECT count(*) FROM tenk1 t1 JOIN tenk1 t2 ON t1.ctid = t2.ctid and t1.gp_segment_id = t2.gp_segment_id;
 RESET enable_hashjoin;
 
 DROP TABLE tidscan;

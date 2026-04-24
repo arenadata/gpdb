@@ -36,6 +36,9 @@ CATALOG(pg_largeobject,2613,LargeObjectRelationId)
 											 * zero-length) */
 } FormData_pg_largeobject;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+/* none */
+
 /* ----------------
  *		Form_pg_largeobject corresponds to a pointer to a tuple with
  *		the format of pg_largeobject relation.

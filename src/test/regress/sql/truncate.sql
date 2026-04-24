@@ -1,5 +1,5 @@
 -- Test basic TRUNCATE functionality.
-CREATE TABLE truncate_a (col1 integer primary key);
+CREATE TABLE truncate_a (col1 integer primary key) DISTRIBUTED BY (col1);
 INSERT INTO truncate_a VALUES (1);
 INSERT INTO truncate_a VALUES (2);
 SELECT * FROM truncate_a;
@@ -16,7 +16,7 @@ SELECT * FROM truncate_a;
 
 -- Test foreign-key checks
 CREATE TABLE trunc_b (a int REFERENCES truncate_a);
-CREATE TABLE trunc_c (a serial PRIMARY KEY);
+CREATE TABLE trunc_c (a serial PRIMARY KEY) DISTRIBUTED BY (a);
 CREATE TABLE trunc_d (a int REFERENCES trunc_c);
 CREATE TABLE trunc_e (a int REFERENCES truncate_a, b int REFERENCES trunc_c);
 
@@ -181,7 +181,7 @@ DROP TABLE trunc_trigger_log;
 DROP FUNCTION trunctrigger();
 
 -- test TRUNCATE ... RESTART IDENTITY
-CREATE SEQUENCE truncate_a_id1 START WITH 33;
+CREATE SEQUENCE truncate_a_id1 START WITH 33 CACHE 1;
 CREATE TABLE truncate_a (id serial,
                          id1 integer default nextval('truncate_a_id1'));
 ALTER SEQUENCE truncate_a_id1 OWNED BY truncate_a.id1;
@@ -229,7 +229,6 @@ ROLLBACK;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
 SELECT * FROM truncate_a;
-
 DROP TABLE truncate_a;
 
 SELECT nextval('truncate_a_id1'); -- fail, seq should have been dropped
@@ -271,6 +270,7 @@ CREATE TABLE truncpart_2 PARTITION OF truncpart FOR VALUES FROM (100) TO (200)
 CREATE TABLE truncpart_2_1 PARTITION OF truncpart_2 FOR VALUES FROM (100) TO (150);
 CREATE TABLE truncpart_2_d PARTITION OF truncpart_2 DEFAULT;
 
+-- GPDB: this doesn't fail in GPDB, because GPDB doesn't enforce primary keys.
 TRUNCATE TABLE truncprim;	-- should fail
 
 select tp_ins_data();

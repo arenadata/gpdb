@@ -30,6 +30,9 @@ extern const char *fmtQualifiedId(const char *schema, const char *id);
 extern char *formatPGVersionNumber(int version_number, bool include_minor,
 								   char *buf, size_t buflen);
 
+extern char *formatPGVersionNumber(int version_number, bool include_minor,
+					  char *buf, size_t buflen);
+
 extern void appendStringLiteral(PQExpBuffer buf, const char *str,
 								int encoding, bool std_strings);
 extern void appendStringLiteralConn(PQExpBuffer buf, const char *str,
@@ -46,6 +49,7 @@ extern void appendConnStrVal(PQExpBuffer buf, const char *str);
 extern void appendPsqlMetaConnect(PQExpBuffer buf, const char *dbname);
 
 extern bool parsePGArray(const char *atext, char ***itemarray, int *nitems);
+extern void appendPGArray(PQExpBuffer buffer, const char *value);
 
 extern bool appendReloptionsArray(PQExpBuffer buffer, const char *reloptions,
 								  const char *prefix, int encoding, bool std_strings);

@@ -17,6 +17,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_proc_callback.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
@@ -52,6 +53,13 @@ static Oid	LookupFuncNameInternal(List *funcname, int nargs,
 								   const Oid *argtypes,
 								   bool missing_ok, FuncLookupError *lookupError);
 
+typedef struct
+{
+	Node *parent;
+} check_table_func_context;
+
+static bool 
+checkTableFunctions_walker(Node *node, check_table_func_context *context);
 
 /*
  *	Parse a function call
@@ -772,13 +780,17 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		/*
 		 * Reject attempt to call a parameterless aggregate without (*)
 		 * syntax.  This is mere pedantry but some folks insisted ...
+		 *
+		 * GPDB: We allow this in GPDB.
 		 */
+#if 0
 		if (fargs == NIL && !agg_star && !agg_within_group)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("%s(*) must be used to call a parameterless aggregate function",
 							NameListToString(funcname)),
 					 parser_errposition(pstate, location)));
+#endif
 
 		if (retset)
 			ereport(ERROR,
@@ -824,25 +836,41 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		wfunc->aggfilter = agg_filter;
 		wfunc->location = location;
 
+		wfunc->windistinct = agg_distinct;
+
 		/*
 		 * agg_star is allowed for aggregate functions but distinct isn't
+		 *
+		 * GPDB: We have implemented this in GPDB, with some limitations.
 		 */
 		if (agg_distinct)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("DISTINCT is not implemented for window functions"),
-					 parser_errposition(pstate, location)));
+		{
+			if (fdresult == FUNCDETAIL_WINDOWFUNC)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("DISTINCT is not implemented for window functions"),
+						 parser_errposition(pstate, location)));
+
+			if (list_length(fargs) != 1)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("DISTINCT is supported only for single-argument window aggregates")));
+		}
 
 		/*
 		 * Reject attempt to call a parameterless aggregate without (*)
 		 * syntax.  This is mere pedantry but some folks insisted ...
+		 *
+		 * GPDB: We allow this in GPDB.
 		 */
+#if 0
 		if (wfunc->winagg && fargs == NIL && !agg_star)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("%s(*) must be used to call a parameterless aggregate function",
 							NameListToString(funcname)),
 					 parser_errposition(pstate, location)));
+#endif
 
 		/*
 		 * ordered aggs not allowed in windows yet
@@ -884,6 +912,32 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 		retval = (Node *) wfunc;
 	}
+
+	/*
+	 * Mark the context if this is a dynamic typed function, if so we mustn't
+	 * allow views to be created from this statement because we cannot 
+	 * guarantee that the future return type will be the same as the current
+	 * return type.
+	 */
+	if (TypeSupportsDescribe(rettype))
+	{
+		Oid DescribeFuncOid = lookupProcCallback(funcid, PROMETHOD_DESCRIBE);
+		if (OidIsValid(DescribeFuncOid))
+		{
+			ParseState *state = pstate;
+
+			for (state = pstate; state; state = state->parentParseState)
+				state->p_hasDynamicFunction = true;
+		}
+	}
+
+	/*
+	 * If this function has restrictions on where it can be executed
+	 * (EXECUTE ON MASTER or EXECUTE ON ALL SEGMENTS), make note of that,
+	 * so that the planner knows to be prepared for it.
+	 */
+	if (func_exec_location(funcid) != PROEXECLOCATION_ANY)
+		pstate->p_hasFuncsWithExecRestrictions = true;
 
 	/* if it returns a set, remember it for error checks at higher levels */
 	if (retset)
@@ -2030,8 +2084,8 @@ LookupFuncNameInternal(List *funcname, int nargs, const Oid *argtypes,
 {
 	FuncCandidateList clist;
 
-	/* Passing NULL for argtypes is no longer allowed */
-	Assert(argtypes);
+	/* NULL argtypes allowed for nullary functions only */
+	Assert(argtypes != NULL || nargs == 0);
 
 	/* Always set *lookupError, to forestall uninitialized-variable warnings */
 	*lookupError = FUNCLOOKUP_NOSUCHFUNC;
@@ -2065,7 +2119,9 @@ LookupFuncNameInternal(List *funcname, int nargs, const Oid *argtypes,
 	 */
 	while (clist)
 	{
-		if (memcmp(argtypes, clist->args, nargs * sizeof(Oid)) == 0)
+		/* if nargs==0, argtypes can be null; don't pass that to memcmp */
+		if (nargs == 0 ||
+			memcmp(argtypes, clist->args, nargs * sizeof(Oid)) == 0)
 			return clist->oid;
 		clist = clist->next;
 	}
@@ -2512,6 +2568,10 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 			err = _("set-returning functions are not allowed in column generation expressions");
 			break;
 
+		case EXPR_KIND_SCATTER_BY:
+			err = _("set-returning functions are not allowed in scatter by expressions");
+			break;
+
 			/*
 			 * There is intentionally no default: case here, so that the
 			 * compiler will warn if we add a new ParseExprKind without
@@ -2532,4 +2592,72 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 				 errmsg("set-returning functions are not allowed in %s",
 						ParseExprKindName(pstate->p_expr_kind)),
 				 parser_errposition(pstate, location)));
+}
+
+
+/*
+ * parseCheckTableFunctions
+ *
+ *	Check for TableValueExpr where they shouldn't be.  Currently the only
+ *  valid location for a TableValueExpr is within a call to a table function.
+ *  In the full SQL Standard they can exist anywhere a multiset is supported.
+ */
+void 
+parseCheckTableFunctions(ParseState *pstate, Query *qry)
+{
+	check_table_func_context context;
+	context.parent = NULL;
+	query_tree_walker(qry, 
+					  checkTableFunctions_walker,
+					  (void *) &context, 0);
+}
+
+static bool 
+checkTableFunctions_walker(Node *node, check_table_func_context *context)
+{
+	if (node == NULL)
+		return false;
+
+	/* 
+	 * TABLE() value expressions are currently only permitted as parameters
+	 * to table functions called in the FROM clause.
+	 */
+	if (IsA(node, TableValueExpr))
+	{
+		if (context->parent && IsA(context->parent, FuncExpr))
+		{ 
+			FuncExpr *parent = (FuncExpr *) context->parent;
+
+			/*
+			 * This flag is set in addRangeTableEntryForFunction for functions
+			 * called as range table entries having TABLE value expressions
+			 * as arguments.
+			 */
+			if (parent->is_tablefunc)
+				return false;
+
+			/* Error message could be improved */
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("table functions must be invoked in FROM clause")));
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("invalid use of TABLE value expression")));
+		return true;  /* not possible, but keeps compiler happy */
+	}
+
+	context->parent = node;
+	if (IsA(node, Query))
+	{
+		return query_tree_walker((Query *) node, 
+								 checkTableFunctions_walker,
+								 (void *) context, 0);
+	}
+	else
+	{
+		return expression_tree_walker(node, 
+									  checkTableFunctions_walker, 
+									  (void *) context);
+	}
 }

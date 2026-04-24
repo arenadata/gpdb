@@ -31,6 +31,7 @@
 #include "common/file_utils.h"
 #include "common/logging.h"
 #include "common/string.h"
+#include "fe_utils/recovery_gen.h"
 #include "fe_utils/string_utils.h"
 #include "getopt_long.h"
 #include "libpq-fe.h"
@@ -40,6 +41,8 @@
 #include "receivelog.h"
 #include "replication/basebackup.h"
 #include "streamutil.h"
+#include "catalog/catalog.h"
+
 
 #define ERRCODE_DATA_CORRUPTED	"XX001"
 
@@ -66,11 +69,6 @@ typedef struct TablespaceList
  * Temporary replication slots are supported from version 10.
  */
 #define MINIMUM_VERSION_FOR_TEMP_SLOTS 100000
-
-/*
- * recovery.conf is integrated into postgresql.conf from version 12.
- */
-#define MINIMUM_VERSION_FOR_RECOVERY_GUC 120000
 
 /*
  * Different ways to include WAL
@@ -114,6 +112,14 @@ static bool found_existing_xlogdir = false;
 static bool made_tablespace_dirs = false;
 static bool found_tablespace_dirs = false;
 
+static bool forceoverwrite = false;
+#define MAX_EXCLUDE 255
+static int	num_exclude = 0;
+static char *excludes[MAX_EXCLUDE];
+static int	num_exclude_from = 0;
+static char *excludefroms[MAX_EXCLUDE];
+static int target_gp_dbid = 0;
+
 /* Progress counters */
 static uint64 totalsize;
 static uint64 totaldone;
@@ -147,8 +153,6 @@ static void progress_report(int tablespacenum, const char *filename, bool force)
 
 static void ReceiveTarFile(PGconn *conn, PGresult *res, int rownum);
 static void ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum);
-static void GenerateRecoveryConf(PGconn *conn);
-static void WriteRecoveryConf(void);
 static void BaseBackup(void);
 
 static bool reached_end_position(XLogRecPtr segendpos, uint32 timeline,
@@ -156,7 +160,7 @@ static bool reached_end_position(XLogRecPtr segendpos, uint32 timeline,
 
 static const char *get_tablespace_mapping(const char *dir);
 static void tablespace_list_append(const char *arg);
-
+static void WriteInternalConfFile(void);
 
 static void
 cleanup_directories_atexit(void)
@@ -329,7 +333,7 @@ usage(void)
 	printf(_("  %s [OPTION]...\n"), progname);
 	printf(_("\nOptions controlling the output:\n"));
 	printf(_("  -D, --pgdata=DIRECTORY receive base backup into directory\n"));
-	printf(_("  -F, --format=p|t       output format (plain (default), tar)\n"));
+	printf(_("  -F, --format=p|t       output format (plain (default), tar (Unsupported in GPDB))\n"));
 	printf(_("  -r, --max-rate=RATE    maximum transfer rate to transfer data directory\n"
 			 "                         (in kB/s, or use suffix \"k\" or \"M\")\n"));
 	printf(_("  -R, --write-recovery-conf\n"
@@ -341,6 +345,7 @@ usage(void)
 			 "                         include required WAL files with specified method\n"));
 	printf(_("  -z, --gzip             compress tar output\n"));
 	printf(_("  -Z, --compress=0-9     compress tar output with given compression level\n"));
+	printf(_("  --target-gp-dbid       create tablespace subdirectories with given dbid\n"));
 	printf(_("\nGeneral options:\n"));
 	printf(_("  -c, --checkpoint=fast|spread\n"
 			 "                         set fast or spread checkpointing\n"));
@@ -365,7 +370,10 @@ usage(void)
 	printf(_("  -U, --username=NAME    connect as specified database user\n"));
 	printf(_("  -w, --no-password      never prompt for password\n"));
 	printf(_("  -W, --password         force password prompt (should happen automatically)\n"));
-	printf(_("\nReport bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("  -E, --exclude          exclude path names\n"));
+	printf(_("      --exclude-from=FILE\n"
+			 "                         get path names to exclude from FILE\n"));
+	printf(_("\nReport bugs to <bugs@greenplum.org>.\n"));
 }
 
 
@@ -685,9 +693,18 @@ verify_dir_is_empty_or_create(char *dirname, bool *created, bool *found)
 
 			/*
 			 * Exists, not empty
+			 *
+			 * In GPDB, we may force pg_basebackup to continue even if the
+			 * directory already exists. This is needed to preserve important
+			 * things that should not be deleted such as pg_log files if we
+			 * are doing segment recovery.
 			 */
+			if (forceoverwrite)
+				return;
+
 			pg_log_error("directory \"%s\" exists but is not empty", dirname);
 			exit(1);
+			break;
 		case -1:
 
 			/*
@@ -1388,6 +1405,7 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 {
 	char		current_path[MAXPGPATH];
 	char		filename[MAXPGPATH];
+	char		gp_tablespace_filename[MAXPGPATH] = {0};
 	const char *mapped_tblspc_path;
 	pgoff_t		current_len_left = 0;
 	int			current_padding = 0;
@@ -1399,9 +1417,25 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 	if (basetablespace)
 		strlcpy(current_path, basedir, sizeof(current_path));
 	else
+	{
 		strlcpy(current_path,
 				get_tablespace_mapping(PQgetvalue(res, rownum, 1)),
 				sizeof(current_path));
+
+		if (target_gp_dbid < 1)
+		{
+			pg_log_error("cannot restore user-defined tablespaces without the --target-gp-dbid option");
+			exit(1);
+		}
+		
+		/* 
+		 * Construct the new tablespace path using the given target gp dbid
+		 */
+		snprintf(gp_tablespace_filename, sizeof(filename), "%s/%d/%s",
+				current_path,
+				target_gp_dbid,
+				GP_TABLESPACE_VERSION_DIRECTORY);
+	}
 
 	/*
 	 * Get the COPY data
@@ -1475,8 +1509,29 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 			/*
 			 * First part of header is zero terminated filename
 			 */
-			snprintf(filename, sizeof(filename), "%s/%s", current_path,
-					 copybuf);
+			if (!basetablespace)
+			{
+				/*
+				 * Append relfile path to --target-gp-dbid tablespace path.
+				 *
+				 * For example, copybuf can be
+				 * "<GP_TABLESPACE_VERSION_DIRECTORY>_db<dbid>/16384/16385".
+				 * We create a pointer to the dbid and relfile "/16384/16385",
+				 * construct the new tablespace with provided dbid, and append
+				 * the dbid and relfile on top.
+				 */
+				char *copybuf_dbid_relfile = strstr(copybuf, "/");
+
+				snprintf(filename, sizeof(filename), "%s%s",
+						 gp_tablespace_filename,
+						 copybuf_dbid_relfile);
+			}
+			else
+			{
+				snprintf(filename, sizeof(filename), "%s/%s", current_path,
+						 copybuf);
+			}
+
 			if (filename[strlen(filename) - 1] == '/')
 			{
 				/*
@@ -1488,6 +1543,40 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 					 * Directory
 					 */
 					filename[strlen(filename) - 1] = '\0';	/* Remove trailing slash */
+
+					/*
+					 * Since the forceoverwrite flag is being used, the
+					 * directories still exist. Remove them so that
+					 * pg_basebackup can create them. Skip when we detect
+					 * pg_log because we want to retain its contents.
+					 */
+					if (forceoverwrite && pg_check_dir(filename) != 0)
+					{
+						/*
+						 * We want to retain the contents of pg_log. And for
+						 * pg_xlog we assume is deleted at the start of
+						 * pg_basebackup. We cannot delete pg_xlog because if
+						 * streammode was used then it may have already copied
+						 * new xlog files into pg_xlog directory.
+						 */
+						if (pg_str_endswith(filename, "/pg_log") ||
+							pg_str_endswith(filename, "/log") ||
+							pg_str_endswith(filename, "/pg_wal") ||
+							pg_str_endswith(filename, "/pg_xlog"))
+							continue;
+
+						rmtree(filename, true);
+
+					}
+
+					bool is_gp_tablespace_directory = strncmp(gp_tablespace_filename, filename, strlen(filename)) == 0;
+					if (is_gp_tablespace_directory && !forceoverwrite) {
+						/*
+						 * This directory has already been created during beginning of BaseBackup().
+						 */
+						continue;
+					}
+
 					if (mkdir(filename, pg_dir_create_mode) != 0)
 					{
 						/*
@@ -1532,12 +1621,14 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 					filename[strlen(filename) - 1] = '\0';	/* Remove trailing slash */
 
 					mapped_tblspc_path = get_tablespace_mapping(&copybuf[157]);
-					if (symlink(mapped_tblspc_path, filename) != 0)
+					char *mapped_tblspc_path_with_dbid = psprintf("%s/%d", mapped_tblspc_path, target_gp_dbid);
+					if (symlink(mapped_tblspc_path_with_dbid, filename) != 0)
 					{
 						pg_log_error("could not create symbolic link from \"%s\" to \"%s\": %m",
 									 filename, mapped_tblspc_path);
 						exit(1);
 					}
+					pfree(mapped_tblspc_path_with_dbid);
 				}
 				else
 				{
@@ -1550,7 +1641,15 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 
 			/*
 			 * regular file
+			 *
+			 * In GPDB, we may need to remove the file first if we are forcing
+			 * an overwrite instead of starting with a blank directory. Some
+			 * files may have had their permissions changed to read only.
+			 * Remove the file instead of literally overwriting them.
 			 */
+			if (forceoverwrite)
+				remove(filename);
+
 			file = fopen(filename, "wb");
 			if (!file)
 			{
@@ -1625,7 +1724,10 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 		PQfreemem(copybuf);
 
 	if (basetablespace && writerecoveryconf)
-		WriteRecoveryConf();
+		WriteRecoveryConfig(conn, basedir, recoveryconfcontents);
+
+	if (basetablespace)
+		WriteInternalConfFile();
 
 	/*
 	 * No data is synced here, everything is done for all tablespaces at the
@@ -1633,156 +1735,79 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 	 */
 }
 
-/*
- * Escape a string so that it can be used as a value in a key-value pair
- * a configuration file.
- */
+static void
+add_to_exclude_list(PQExpBufferData *buf, const char *exclude)
+{
+	char		quoted[MAXPGPATH];
+	int			error;
+	size_t		len;
+
+	error = 1;
+	len = PQescapeStringConn(conn, quoted, exclude, MAXPGPATH, &error);
+	if (len == 0 || error != 0)
+	{
+		pg_log_error("could not process exclude \"%s\": %s",
+					 exclude, PQerrorMessage(conn));
+		exit(1);
+	}
+	appendPQExpBuffer(buf, " EXCLUDE '%s'", quoted);
+}
+
 static char *
-escape_quotes(const char *src)
+build_exclude_list(void)
 {
-	char	   *result = escape_single_quotes_ascii(src);
+	PQExpBufferData	buf;
+	int				i;
 
-	if (!result)
+	if (num_exclude == 0 && num_exclude_from == 0)
+		return "";
+
+	initPQExpBuffer(&buf);
+
+	for (i = 0; i < num_exclude; i++)
+		add_to_exclude_list(&buf, excludes[i]);
+
+	for (i = 0; i < num_exclude_from; i++)
 	{
-		pg_log_error("out of memory");
-		exit(1);
-	}
-	return result;
-}
+		const char *filename = excludefroms[i];
+		FILE	   *file = fopen(filename, "r");
+		char		str[MAXPGPATH];
 
-/*
- * Create a configuration file in memory using a PQExpBuffer
- */
-static void
-GenerateRecoveryConf(PGconn *conn)
-{
-	PQconninfoOption *connOptions;
-	PQconninfoOption *option;
-	PQExpBufferData conninfo_buf;
-	char	   *escaped;
-
-	recoveryconfcontents = createPQExpBuffer();
-	if (!recoveryconfcontents)
-	{
-		pg_log_error("out of memory");
-		exit(1);
-	}
-
-	/*
-	 * In PostgreSQL 12 and newer versions, standby_mode is gone, replaced by
-	 * standby.signal to trigger a standby state at recovery.
-	 */
-	if (PQserverVersion(conn) < MINIMUM_VERSION_FOR_RECOVERY_GUC)
-		appendPQExpBufferStr(recoveryconfcontents, "standby_mode = 'on'\n");
-
-	connOptions = PQconninfo(conn);
-	if (connOptions == NULL)
-	{
-		pg_log_error("out of memory");
-		exit(1);
-	}
-
-	initPQExpBuffer(&conninfo_buf);
-	for (option = connOptions; option && option->keyword; option++)
-	{
-		/* Omit empty settings and those libpqwalreceiver overrides. */
-		if (strcmp(option->keyword, "replication") == 0 ||
-			strcmp(option->keyword, "dbname") == 0 ||
-			strcmp(option->keyword, "fallback_application_name") == 0 ||
-			(option->val == NULL) ||
-			(option->val != NULL && option->val[0] == '\0'))
-			continue;
-
-		/* Separate key-value pairs with spaces */
-		if (conninfo_buf.len != 0)
-			appendPQExpBufferChar(&conninfo_buf, ' ');
-
-		/*
-		 * Write "keyword=value" pieces, the value string is escaped and/or
-		 * quoted if necessary.
-		 */
-		appendPQExpBuffer(&conninfo_buf, "%s=", option->keyword);
-		appendConnStrVal(&conninfo_buf, option->val);
-	}
-
-	/*
-	 * Escape the connection string, so that it can be put in the config file.
-	 * Note that this is different from the escaping of individual connection
-	 * options above!
-	 */
-	escaped = escape_quotes(conninfo_buf.data);
-	appendPQExpBuffer(recoveryconfcontents, "primary_conninfo = '%s'\n", escaped);
-	free(escaped);
-
-	if (replication_slot)
-	{
-		/* unescaped: ReplicationSlotValidateName allows [a-z0-9_] only */
-		appendPQExpBuffer(recoveryconfcontents, "primary_slot_name = '%s'\n",
-						  replication_slot);
-	}
-
-	if (PQExpBufferBroken(recoveryconfcontents) ||
-		PQExpBufferDataBroken(conninfo_buf))
-	{
-		pg_log_error("out of memory");
-		exit(1);
-	}
-
-	termPQExpBuffer(&conninfo_buf);
-
-	PQconninfoFree(connOptions);
-}
-
-
-/*
- * Write the configuration file into the directory specified in basedir,
- * with the contents already collected in memory appended.  Then write
- * the signal file into the basedir.  If the server does not support
- * recovery parameters as GUCs, the signal file is not necessary, and
- * configuration is written to recovery.conf.
- */
-static void
-WriteRecoveryConf(void)
-{
-	char		filename[MAXPGPATH];
-	FILE	   *cf;
-	bool		is_recovery_guc_supported = true;
-
-	if (PQserverVersion(conn) < MINIMUM_VERSION_FOR_RECOVERY_GUC)
-		is_recovery_guc_supported = false;
-
-	snprintf(filename, MAXPGPATH, "%s/%s", basedir,
-			 is_recovery_guc_supported ? "postgresql.auto.conf" : "recovery.conf");
-
-	cf = fopen(filename, is_recovery_guc_supported ? "a" : "w");
-	if (cf == NULL)
-	{
-		pg_log_error("could not open file \"%s\": %m", filename);
-		exit(1);
-	}
-
-	if (fwrite(recoveryconfcontents->data, recoveryconfcontents->len, 1, cf) != 1)
-	{
-		pg_log_error("could not write to file \"%s\": %m", filename);
-		exit(1);
-	}
-
-	fclose(cf);
-
-	if (is_recovery_guc_supported)
-	{
-		snprintf(filename, MAXPGPATH, "%s/%s", basedir, "standby.signal");
-		cf = fopen(filename, "w");
-		if (cf == NULL)
+		if (file == NULL)
 		{
-			pg_log_error("could not create file \"%s\": %m", filename);
+			pg_log_error("could not open exclude-from file \"%s\": %m",
+						 filename);
 			exit(1);
 		}
 
-		fclose(cf);
-	}
-}
+		/*
+		 * Each line contains a pathname to exclude.
+		 *
+		 * We must use fgets() instead of fscanf("%s") to correctly handle the
+		 * spaces in the filenames.
+		 */
+		while (fgets(str, sizeof(str), file))
+		{
+			/* Remove all trailing \r and \n */
+			for (int len = strlen(str);
+				 len > 0 && (str[len - 1] == '\r' || str[len - 1] == '\n');
+				 len--)
+				str[len - 1] = '\0';
 
+			add_to_exclude_list(&buf, str);
+		}
+
+		fclose(file);
+	}
+
+	if (PQExpBufferDataBroken(buf))
+	{
+		pg_log_error("out of memory");
+		exit(1);
+	}
+
+	return buf.data;
+}
 
 static void
 BaseBackup(void)
@@ -1799,6 +1824,7 @@ BaseBackup(void)
 	char		xlogend[64];
 	int			minServerMajor,
 				maxServerMajor;
+	char 	   *exclude_list;
 	int			serverVersion,
 				serverMajor;
 
@@ -1839,7 +1865,7 @@ BaseBackup(void)
 	 * Build contents of configuration file if requested
 	 */
 	if (writerecoveryconf)
-		GenerateRecoveryConf(conn);
+		recoveryconfcontents = GenerateRecoveryConfig(conn, replication_slot);
 
 	/*
 	 * Run IDENTIFY_SYSTEM so we can get the timeline
@@ -1855,6 +1881,8 @@ BaseBackup(void)
 	if (maxrate > 0)
 		maxrate_clause = psprintf("MAX_RATE %u", maxrate);
 
+	exclude_list = build_exclude_list();
+
 	if (verbose)
 		pg_log_info("initiating base backup, waiting for checkpoint to complete");
 
@@ -1868,7 +1896,7 @@ BaseBackup(void)
 	}
 
 	basebkp =
-		psprintf("BASE_BACKUP LABEL '%s' %s %s %s %s %s %s %s",
+		psprintf("BASE_BACKUP LABEL '%s' %s %s %s %s %s %s %s %s",
 				 escaped_label,
 				 showprogress ? "PROGRESS" : "",
 				 includewal == FETCH_WAL ? "WAL" : "",
@@ -1876,7 +1904,11 @@ BaseBackup(void)
 				 includewal == NO_WAL ? "" : "NOWAIT",
 				 maxrate_clause ? maxrate_clause : "",
 				 format == 't' ? "TABLESPACE_MAP" : "",
-				 verify_checksums ? "" : "NOVERIFY_CHECKSUMS");
+				 verify_checksums ? "" : "NOVERIFY_CHECKSUMS",
+				 exclude_list);
+
+	if (exclude_list[0] != '\0')
+		free(exclude_list);
 
 	if (PQsendQuery(conn, basebkp) == 0)
 	{
@@ -1956,8 +1988,11 @@ BaseBackup(void)
 		if (format == 'p' && !PQgetisnull(res, i, 1))
 		{
 			char	   *path = unconstify(char *, get_tablespace_mapping(PQgetvalue(res, i, 1)));
+			char path_with_subdir[MAXPGPATH];
 
-			verify_dir_is_empty_or_create(path, &made_tablespace_dirs, &found_tablespace_dirs);
+			snprintf(path_with_subdir, MAXPGPATH, "%s/%d/%s", path, target_gp_dbid, GP_TABLESPACE_VERSION_DIRECTORY);
+
+			verify_dir_is_empty_or_create(path_with_subdir, &made_tablespace_dirs, &found_tablespace_dirs);
 		}
 	}
 
@@ -1969,6 +2004,22 @@ BaseBackup(void)
 		pg_log_error("can only write single tablespace to stdout, database has %d",
 					 PQntuples(res));
 		exit(1);
+	}
+
+	/*
+	 * In the case of forceoverwrite the base directory may already exist. In
+	 * this case we need to wipeout the old pg_xlog directory. This is done
+	 * before StartLogStreamer and ReceiveAndUnpackTarFile so that either can
+	 * create pg_xlog directory and begin populating new contents to it.
+	 */
+	if (forceoverwrite)
+	{
+		char xlog_path[MAXPGPATH];
+		snprintf(xlog_path, MAXPGPATH, "%s/%s", basedir,
+			PQserverVersion(conn) < MINIMUM_VERSION_FOR_PG_WAL ? "pg_xlog" : "pg_wal");
+
+		if (pg_check_dir(xlog_path) != 0)
+			rmtree(xlog_path, true);
 	}
 
 	/*
@@ -2195,6 +2246,10 @@ main(int argc, char **argv)
 		{"waldir", required_argument, NULL, 1},
 		{"no-slot", no_argument, NULL, 2},
 		{"no-verify-checksums", no_argument, NULL, 3},
+		{"exclude", required_argument, NULL, 'E'},
+		{"force-overwrite", no_argument, NULL, 128},
+		{"target-gp-dbid", required_argument, NULL, 129},
+		{"exclude-from", required_argument, NULL, 130},
 		{NULL, 0, NULL, 0}
 	};
 	int			c;
@@ -2220,9 +2275,11 @@ main(int argc, char **argv)
 		}
 	}
 
+	num_exclude = 0;
+	num_exclude_from = 0;
 	atexit(cleanup_directories_atexit);
 
-	while ((c = getopt_long(argc, argv, "CD:F:r:RS:T:X:l:nNzZ:d:c:h:p:U:s:wWkvP",
+	while ((c = getopt_long(argc, argv, "CD:F:r:RT:xX:l:zZ:d:c:h:p:U:s:S:wWvPE:",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -2363,6 +2420,33 @@ main(int argc, char **argv)
 			case 3:
 				verify_checksums = false;
 				break;
+			case 'E':
+				if (num_exclude >= MAX_EXCLUDE)
+				{
+					pg_log_error("too many elements in exclude list: max is %d",
+								 MAX_EXCLUDE);
+					pg_log_error("HINT: use --exclude-from to load a large exclude list from a file");
+					exit(1);
+				}
+
+				excludes[num_exclude++] = pg_strdup(optarg);
+				break;
+			case 128:
+				forceoverwrite = true;
+				break;
+			case 129:
+				target_gp_dbid = atoi(optarg);
+				break;
+			case 130:			/* --exclude-from=FILE */
+				if (num_exclude_from >= MAX_EXCLUDE)
+				{
+					pg_log_error("too many elements in exclude-from list: max is %d",
+								 MAX_EXCLUDE);
+					exit(1);
+				}
+
+				excludefroms[num_exclude_from++] = pg_strdup(optarg);
+				break;
 			default:
 
 				/*
@@ -2392,6 +2476,14 @@ main(int argc, char **argv)
 	if (basedir == NULL)
 	{
 		pg_log_error("no target directory specified");
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+				progname);
+		exit(1);
+	}
+
+	if (target_gp_dbid <= 0)
+	{
+		pg_log_error("no target dbid specified, --target-gp-dbid is required");
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 				progname);
 		exit(1);
@@ -2512,6 +2604,16 @@ main(int argc, char **argv)
 	if (format == 'p' || strcmp(basedir, "-") != 0)
 		verify_dir_is_empty_or_create(basedir, &made_new_pgdata, &found_existing_pgdata);
 
+	/*
+	 * GPDB: Backups in tar mode will not have the internal.auto.conf file,
+	 * nor will any tablespaces have the dbid appended to their symlinks in
+	 * pg_tblspc. The backups are still, in theory, valid, but the tablespace
+	 * mapping and internal.auto.conf files will need to be added manually
+	 * when extracting the backups.
+	 */
+	if (format == 't')
+		pg_log_error("WARNING: tar backups are not supported on GPDB");
+
 	/* determine remote server's xlog segment size */
 	if (!RetrieveWalSegSize(conn))
 		exit(1);
@@ -2548,4 +2650,32 @@ main(int argc, char **argv)
 
 	success = true;
 	return 0;
+}
+
+static void
+WriteInternalConfFile(void)
+{
+	char		filename[MAXPGPATH];
+	FILE	   *cf;
+	char line_to_write[100];
+	int length;
+
+	sprintf(filename, "%s/%s", basedir, GP_INTERNAL_AUTO_CONF_FILE_NAME);
+
+	cf = fopen(filename, "w");
+	if (cf == NULL)
+	{
+		pg_log_error("could not create file \"%s\": %m", filename);
+		exit(1);
+	}
+
+	length = snprintf(line_to_write, 100, "gp_dbid=%d\n", target_gp_dbid);
+
+	if (fwrite(line_to_write, length, 1, cf) != 1)
+	{
+		pg_log_error("could not write to file \"%s\": %m", filename);
+		exit(1);
+	}
+
+	fclose(cf);
 }

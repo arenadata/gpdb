@@ -23,6 +23,8 @@
 #include "storage/procarray.h"
 #include "miscadmin.h"
 
+#include "access/bufmask.h"
+
 /*
  * _bt_restore_page -- re-enter all the index tuples on a page
  *

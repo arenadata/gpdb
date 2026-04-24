@@ -7,6 +7,8 @@
  *
  * src/backend/utils/misc/ps_status.c
  *
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Copyright (c) 2000-2019, PostgreSQL Global Development Group
  * various details abducted from various places
  *--------------------------------------------------------------------
@@ -31,7 +33,10 @@
 #include "utils/ps_status.h"
 #include "utils/guc.h"
 
+#include "cdb/cdbvars.h"        /* Gp_role, GpIdentity.segindex, currentSliceId */
+
 extern char **environ;
+extern int PostPortNumber; /* GPDB: Helps identify child processes */
 bool		update_process_title = true;
 
 
@@ -103,11 +108,20 @@ static size_t last_status_len;	/* use to minimize length of clobber */
 static size_t ps_buffer_cur_len;	/* nominal strlen(ps_buffer) */
 
 static size_t ps_buffer_fixed_size; /* size of the constant prefix */
+static char     ps_username[NAMEDATALEN];        /*CDB*/
 
 /* save the original argv[] location here */
 static int	save_argc;
 static char **save_argv;
 
+/*
+ * GPDB: the real activity location, the location right after
+ * those "con1 seg1 cmd1" strings. Sometimes we need to modify
+ * the original activity string in the ps display output. Use
+ * this pointer to get the real original activity string instead
+ * of get_ps_display(). See MPP-2329.
+ */
+static size_t real_act_prefix_size;
 
 /*
  * Call this early in startup to save the original argc/argv values.
@@ -253,6 +267,8 @@ init_ps_display(const char *username, const char *dbname,
 	Assert(dbname);
 	Assert(host_info);
 
+	StrNCpy(ps_username, username, sizeof(ps_username));    /*CDB*/
+
 #ifndef PS_USE_NONE
 	/* no ps display for stand-alone backend */
 	if (!IsUnderPostmaster)
@@ -305,17 +321,18 @@ init_ps_display(const char *username, const char *dbname,
 	if (*cluster_name == '\0')
 	{
 		snprintf(ps_buffer, ps_buffer_size,
-				 PROGRAM_NAME_PREFIX "%s %s %s ",
-				 username, dbname, host_info);
+				 PROGRAM_NAME_PREFIX "%5d, %s %s %s ",
+				 PostPortNumber, username, dbname, host_info);
 	}
 	else
 	{
 		snprintf(ps_buffer, ps_buffer_size,
-				 PROGRAM_NAME_PREFIX "%s: %s %s %s ",
-				 cluster_name, username, dbname, host_info);
+				 PROGRAM_NAME_PREFIX "%5d, %s: %s %s %s ",
+				 PostPortNumber, cluster_name, username, dbname, host_info);
 	}
 
 	ps_buffer_cur_len = ps_buffer_fixed_size = strlen(ps_buffer);
+	real_act_prefix_size = ps_buffer_fixed_size;
 
 	set_ps_display(initial_str, true);
 #endif							/* not PS_USE_NONE */
@@ -332,6 +349,9 @@ set_ps_display(const char *activity, bool force)
 {
 #ifndef PS_USE_NONE
 	/* update_process_title=off disables updates, unless force = true */
+	char	   *cp = ps_buffer + ps_buffer_fixed_size;
+	char	   *ep = ps_buffer + ps_buffer_size;
+
 	if (!force && !update_process_title)
 		return;
 
@@ -345,9 +365,44 @@ set_ps_display(const char *activity, bool force)
 		return;
 #endif
 
-	/* Update ps_buffer to contain both fixed part and activity */
-	strlcpy(ps_buffer + ps_buffer_fixed_size, activity,
-			ps_buffer_size - ps_buffer_fixed_size);
+	Assert(cp >= ps_buffer);
+
+	/* Add client session's global id. */
+	if (gp_session_id > 0 && ep - cp > 0 &&
+		strstr(ps_buffer, "dtx recovery process") == NULL &&
+		strstr(ps_buffer, "ftsprobe process") == NULL)
+	{
+		cp += snprintf(cp, ep - cp, "con%d ", gp_session_id);
+
+		/* Which segment is accessed by this qExec? */
+		if (Gp_role == GP_ROLE_EXECUTE && GpIdentity.segindex >= -1)
+			cp += snprintf(cp, ep - cp, "seg%d ", GpIdentity.segindex);
+	}
+
+	/* Add count of commands received from client session. */
+	if (gp_command_count > 0 && ep - cp > 0)
+		cp += snprintf(cp, ep - cp, "cmd%d ", gp_command_count);
+
+	/* Add slice number information */
+	if (currentSliceId > 0 && ep - cp > 0)
+		cp += snprintf(cp, ep - cp, "slice%d ", currentSliceId);
+
+	/*
+	 * Calculate the size preceding the actual activity string start.
+	 * snprintf returns the number of bytes that *would* have been written if
+	 * enough space had been available. This means cp might go beyond, if
+	 * truncation happened. Hence need below check for Min. (ep - 1) is
+	 * performed because in normal case when no truncation happens, snprintf
+	 * doesn't count null, so in truncation case as well it shouldn't be
+	 * counted. End result simply intended here is really real_act_prefix_size
+	 * = strlen(ps_buffer), for performance reasons kept this way.
+	 */
+	real_act_prefix_size = Min(cp, (ep-1)) - ps_buffer;
+
+	/* Append caller's activity string. */
+	strlcpy(ps_buffer + real_act_prefix_size, activity,
+			ps_buffer_size - real_act_prefix_size);
+
 	ps_buffer_cur_len = strlen(ps_buffer);
 
 	/* Transmit new setting to kernel, if necessary */
@@ -403,13 +458,12 @@ set_ps_display(const char *activity, bool force)
 
 
 /*
- * Returns what's currently in the ps display, in case someone needs
- * it.  Note that only the activity part is returned.  On some platforms
- * the string will not be null-terminated, so return the effective
- * length into *displen.
+ * Returns what's currently in the ps display with a given starting
+ * position. On some platforms the string will not be null-terminated,
+ * so return the effective length into *displen.
  */
-const char *
-get_ps_display(int *displen)
+static inline const char *
+get_ps_display_from_position(size_t pos, int *displen)
 {
 #ifdef PS_USE_CLOBBER_ARGV
 	/* If ps_buffer is a pointer, it might still be null */
@@ -420,7 +474,39 @@ get_ps_display(int *displen)
 	}
 #endif
 
-	*displen = (int) (ps_buffer_cur_len - ps_buffer_fixed_size);
+	*displen = (int) (ps_buffer_cur_len - real_act_prefix_size);
 
-	return ps_buffer + ps_buffer_fixed_size;
+	return ps_buffer + pos;
+}
+
+/*
+ * Returns what's currently in the ps display, in case someone needs
+ * it.  Note that only the activity part is returned.  On some platforms
+ * the string will not be null-terminated, so return the effective
+ * length into *displen.
+ */
+const char *
+get_ps_display(int *displen)
+{
+	return get_ps_display_from_position(ps_buffer_fixed_size, displen);
+}
+
+
+/* CDB: Get the "username" string saved by init_ps_display().  */
+const char *
+get_ps_display_username(void)
+{
+	return ps_username;
+}
+
+/*
+ * Returns the real activity string in the ps display without prefix
+ * strings like "con1 seg1 cmd1" for GPDB. On some platforms the
+ * string will not be null-terminated, so return the effective length
+ * into *displen.
+ */
+const char *
+get_real_act_ps_display(int *displen)
+{
+	return get_ps_display_from_position(real_act_prefix_size, displen);
 }

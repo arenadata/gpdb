@@ -70,7 +70,7 @@ static const InfoItem info_items[] = {
 
 static void
 help(void)
-{
+{ 
 	printf(_("\n%s provides information about the installed version of PostgreSQL.\n\n"), progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n\n"), progname);
@@ -102,7 +102,7 @@ help(void)
 	printf(_("  --version             show the PostgreSQL version\n"));
 	printf(_("  -?, --help            show this help, then exit\n"));
 	printf(_("\nWith no arguments, all known items are shown.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }
 
 static void

@@ -6,7 +6,7 @@
 SET bytea_output TO escape;
 
 -- Load a file
-CREATE TABLE lotest_stash_values (loid oid, fd integer);
+CREATE TABLE lotest_stash_values (loid oid, fd integer) DISTRIBUTED BY (loid);
 -- lo_creat(mode integer) returns oid
 -- The mode arg to lo_creat is unused, some vestigal holdover from ancient times
 -- returns the large object id

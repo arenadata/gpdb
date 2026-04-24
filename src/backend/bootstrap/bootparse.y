@@ -4,6 +4,8 @@
  * bootparse.y
  *	  yacc grammar for the "bootstrap" mode (BKI file format)
  *
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -29,7 +31,9 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_auth_members.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/toasting.h"
@@ -253,12 +257,14 @@ Boot_CreateStmt:
 													  shared_relation,
 													  mapped_relation,
 													  ONCOMMIT_NOOP,
+													  NULL,			/*CDB*/
 													  (Datum) 0,
 													  false,
 													  true,
 													  false,
 													  InvalidOid,
-													  NULL);
+													  NULL,
+													  /* valid_opts */ false);
 						elog(DEBUG4, "relation created with OID %u", id);
 					}
 					do_end();
@@ -329,7 +335,8 @@ Boot_DeclareIndexStmt:
 								false,
 								false,
 								true, /* skip_build */
-								false);
+								false,
+								false /* is_new_table */);
 					do_end();
 				}
 		;
@@ -379,7 +386,8 @@ Boot_DeclareUniqueIndexStmt:
 								false,
 								false,
 								true, /* skip_build */
-								false);
+								false,
+								false /* is_new_table */);
 					do_end();
 				}
 		;

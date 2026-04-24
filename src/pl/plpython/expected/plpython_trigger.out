@@ -100,17 +100,8 @@ FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 CREATE TRIGGER show_trigger_data_trig_stmt
 BEFORE INSERT OR UPDATE OR DELETE OR TRUNCATE ON trigger_test
 FOR EACH STATEMENT EXECUTE PROCEDURE trigger_data(23,'skidoo');
+ERROR:  Triggers for statements are not yet supported
 insert into trigger_test values(1,'insert');
-NOTICE:  TD[args] => ['23', 'skidoo']
-NOTICE:  TD[event] => INSERT
-NOTICE:  TD[level] => STATEMENT
-NOTICE:  TD[name] => show_trigger_data_trig_stmt
-NOTICE:  TD[new] => None
-NOTICE:  TD[old] => None
-NOTICE:  TD[relid] => bogus:12345
-NOTICE:  TD[table_name] => trigger_test
-NOTICE:  TD[table_schema] => public
-NOTICE:  TD[when] => BEFORE
 NOTICE:  TD[args] => ['23', 'skidoo']
 NOTICE:  TD[event] => INSERT
 NOTICE:  TD[level] => ROW
@@ -134,16 +125,6 @@ NOTICE:  TD[when] => AFTER
 update trigger_test set v = 'update' where i = 1;
 NOTICE:  TD[args] => ['23', 'skidoo']
 NOTICE:  TD[event] => UPDATE
-NOTICE:  TD[level] => STATEMENT
-NOTICE:  TD[name] => show_trigger_data_trig_stmt
-NOTICE:  TD[new] => None
-NOTICE:  TD[old] => None
-NOTICE:  TD[relid] => bogus:12345
-NOTICE:  TD[table_name] => trigger_test
-NOTICE:  TD[table_schema] => public
-NOTICE:  TD[when] => BEFORE
-NOTICE:  TD[args] => ['23', 'skidoo']
-NOTICE:  TD[event] => UPDATE
 NOTICE:  TD[level] => ROW
 NOTICE:  TD[name] => show_trigger_data_trig_before
 NOTICE:  TD[new] => {'i': 1, 'v': 'update'}
@@ -165,16 +146,6 @@ NOTICE:  TD[when] => AFTER
 delete from trigger_test;
 NOTICE:  TD[args] => ['23', 'skidoo']
 NOTICE:  TD[event] => DELETE
-NOTICE:  TD[level] => STATEMENT
-NOTICE:  TD[name] => show_trigger_data_trig_stmt
-NOTICE:  TD[new] => None
-NOTICE:  TD[old] => None
-NOTICE:  TD[relid] => bogus:12345
-NOTICE:  TD[table_name] => trigger_test
-NOTICE:  TD[table_schema] => public
-NOTICE:  TD[when] => BEFORE
-NOTICE:  TD[args] => ['23', 'skidoo']
-NOTICE:  TD[event] => DELETE
 NOTICE:  TD[level] => ROW
 NOTICE:  TD[name] => show_trigger_data_trig_before
 NOTICE:  TD[new] => None
@@ -194,17 +165,8 @@ NOTICE:  TD[table_name] => trigger_test
 NOTICE:  TD[table_schema] => public
 NOTICE:  TD[when] => AFTER
 truncate table trigger_test;
-NOTICE:  TD[args] => ['23', 'skidoo']
-NOTICE:  TD[event] => TRUNCATE
-NOTICE:  TD[level] => STATEMENT
-NOTICE:  TD[name] => show_trigger_data_trig_stmt
-NOTICE:  TD[new] => None
-NOTICE:  TD[old] => None
-NOTICE:  TD[relid] => bogus:12345
-NOTICE:  TD[table_name] => trigger_test
-NOTICE:  TD[table_schema] => public
-NOTICE:  TD[when] => BEFORE
 DROP TRIGGER show_trigger_data_trig_stmt on trigger_test;
+ERROR:  trigger "show_trigger_data_trig_stmt" for table "trigger_test" does not exist
 DROP TRIGGER show_trigger_data_trig_before on trigger_test;
 DROP TRIGGER show_trigger_data_trig_after on trigger_test;
 CREATE TRIGGER show_trigger_data_trig_before
@@ -234,12 +196,16 @@ NOTICE:  TD[relid] => bogus:12345
 NOTICE:  TD[table_name] => trigger_test_generated
 NOTICE:  TD[table_schema] => public
 NOTICE:  TD[when] => AFTER
+-- GPDB: Fails, updating the distribution key with triggers is not allowed.
 update trigger_test_generated set i = 11 where i = 1;
+ERROR:  UPDATE on distributed key column not allowed on relation with update triggers
+-- try this instead:
+update trigger_test_generated set j = default where i = 1;
 NOTICE:  TD[args] => None
 NOTICE:  TD[event] => UPDATE
 NOTICE:  TD[level] => ROW
 NOTICE:  TD[name] => show_trigger_data_trig_before
-NOTICE:  TD[new] => {'i': 11}
+NOTICE:  TD[new] => {'i': 1}
 NOTICE:  TD[old] => {'i': 1, 'j': 2}
 NOTICE:  TD[relid] => bogus:12345
 NOTICE:  TD[table_name] => trigger_test_generated
@@ -249,7 +215,7 @@ NOTICE:  TD[args] => None
 NOTICE:  TD[event] => UPDATE
 NOTICE:  TD[level] => ROW
 NOTICE:  TD[name] => show_trigger_data_trig_after
-NOTICE:  TD[new] => {'i': 11, 'j': 22}
+NOTICE:  TD[new] => {'i': 1, 'j': 2}
 NOTICE:  TD[old] => {'i': 1, 'j': 2}
 NOTICE:  TD[relid] => bogus:12345
 NOTICE:  TD[table_name] => trigger_test_generated
@@ -261,7 +227,7 @@ NOTICE:  TD[event] => DELETE
 NOTICE:  TD[level] => ROW
 NOTICE:  TD[name] => show_trigger_data_trig_before
 NOTICE:  TD[new] => None
-NOTICE:  TD[old] => {'i': 11, 'j': 22}
+NOTICE:  TD[old] => {'i': 1, 'j': 2}
 NOTICE:  TD[relid] => bogus:12345
 NOTICE:  TD[table_name] => trigger_test_generated
 NOTICE:  TD[table_schema] => public
@@ -271,7 +237,7 @@ NOTICE:  TD[event] => DELETE
 NOTICE:  TD[level] => ROW
 NOTICE:  TD[name] => show_trigger_data_trig_after
 NOTICE:  TD[new] => None
-NOTICE:  TD[old] => {'i': 11, 'j': 22}
+NOTICE:  TD[old] => {'i': 1, 'j': 2}
 NOTICE:  TD[relid] => bogus:12345
 NOTICE:  TD[table_name] => trigger_test_generated
 NOTICE:  TD[table_schema] => public
@@ -280,6 +246,8 @@ DROP TRIGGER show_trigger_data_trig_before ON trigger_test_generated;
 DROP TRIGGER show_trigger_data_trig_after ON trigger_test_generated;
 insert into trigger_test values(1,'insert');
 CREATE VIEW trigger_test_view AS SELECT * FROM trigger_test;
+--start_ignore
+-- INSTEAD OF triggers are not yet supported in Greenplum
 CREATE TRIGGER show_trigger_data_trig
 INSTEAD OF INSERT OR UPDATE OR DELETE ON trigger_test_view
 FOR EACH ROW EXECUTE PROCEDURE trigger_data(24,'skidoo view');
@@ -318,6 +286,7 @@ NOTICE:  TD[table_schema] => public
 NOTICE:  TD[when] => INSTEAD OF
 DROP FUNCTION trigger_data() CASCADE;
 NOTICE:  drop cascades to trigger show_trigger_data_trig on view trigger_test_view
+--end_ignore
 DROP VIEW trigger_test_view;
 delete from trigger_test;
 --
@@ -482,7 +451,8 @@ CREATE FUNCTION set_modif_time() RETURNS trigger AS $$
     TD['new']['modif_time'] = '2010-10-13 21:57:28.930486'
     return 'MODIFY'
 $$ LANGUAGE plpythonu;
-CREATE TABLE pb (a TEXT, modif_time TIMESTAMP(0) WITHOUT TIME ZONE);
+-- Add 'DISTRIBUTED RANDOMLY' to avoid "ERROR:  Cannot parallelize an UPDATE statement that updates the distribution columns"
+CREATE TABLE pb (a TEXT, modif_time TIMESTAMP(0) WITHOUT TIME ZONE) DISTRIBUTED RANDOMLY;
 CREATE TRIGGER set_modif_time BEFORE UPDATE ON pb
   FOR EACH ROW EXECUTE PROCEDURE set_modif_time();
 INSERT INTO pb VALUES ('a', '2010-10-09 21:57:33.930486');
@@ -591,12 +561,13 @@ $$
     plpy.info("new: " + str(rv[0]["id"]) + " -> " + rv[0]["name"])
     return None
 $$;
+-- GPDB: this test doesn't work properly on GPDB, because statement triggers
+-- are not fired.
 CREATE TRIGGER a_t AFTER UPDATE ON transition_table_test
   REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
   FOR EACH STATEMENT EXECUTE PROCEDURE transition_table_test_f();
+ERROR:  Triggers for statements are not yet supported
 UPDATE transition_table_test SET name = 'b';
-INFO:  old: 1 -> a
-INFO:  new: 1 -> b
 DROP TABLE transition_table_test;
 DROP FUNCTION transition_table_test_f();
 -- dealing with generated columns

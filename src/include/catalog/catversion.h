@@ -50,9 +50,12 @@
  * YYYYMMDD are the date of the change, and N is the number of the change
  * on that day.  (Hopefully we'll never commit ten independent sets of
  * catalog changes on the same day...)
+ *
+ * For Greenplum, use 3 as the first digit, to distinguish PostgreSQL
+ * catalog versions from Greenplum.
  */
 
-/*							yyyymmddN */
-#define CATALOG_VERSION_NO	201907222
+/*							3yyymmddN */
+#define CATALOG_VERSION_NO	302504211
 
 #endif

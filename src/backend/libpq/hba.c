@@ -823,7 +823,7 @@ check_network_callback(struct sockaddr *addr, struct sockaddr *netmask,
 /*
  * Use pg_foreach_ifaddr to check a samehost or samenet match
  */
-static bool
+bool
 check_same_host_or_net(SockAddr *raddr, IPCompareMethod method)
 {
 	check_network_data cn;
@@ -1582,6 +1582,21 @@ parse_hba_line(TokenizedLine *tok_line, int elevel)
 								line_num, HbaFileName)));
 			*err_msg = "cannot use ldapsearchattribute together with ldapsearchfilter";
 			return NULL;
+		}
+
+		/* Can't set LDAPS and StartTLS at the same time. Set ldaptls to 1 to
+		 * make the connection between database and the LDAP server use TLS
+		 * encryption. The scheme 'ldaps' makes LDAP connections over SSL.
+		 */
+		if (parsedline->ldaptls && strcmp(parsedline->ldapscheme, "ldaps") == 0)
+		{
+			ereport(LOG,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("cannot use 'ldaptls' with 'ldaps' scheme or 'ldapurl' start with 'ldaps://'"),
+					 errcontext("line %d of configuration file \"%s\"",
+								line_num, HbaFileName)));
+			return NULL;
+
 		}
 	}
 

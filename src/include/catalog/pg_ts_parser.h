@@ -52,6 +52,13 @@ CATALOG(pg_ts_parser,3601,TSParserRelationId)
 	regproc		prslextype BKI_LOOKUP(pg_proc);
 } FormData_pg_ts_parser;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(prsnamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(prsstart REFERENCES pg_proc(oid));
+FOREIGN_KEY(prsend REFERENCES pg_proc(oid));
+FOREIGN_KEY(prsheadline REFERENCES pg_proc(oid));
+FOREIGN_KEY(prslextype REFERENCES pg_proc(oid));
+
 typedef FormData_pg_ts_parser *Form_pg_ts_parser;
 
 #endif							/* PG_TS_PARSER_H */

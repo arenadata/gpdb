@@ -514,6 +514,42 @@ interval_lerp(Datum lo, Datum hi, double pct)
 	return DirectFunctionCall2(interval_pl, mul_result, lo);
 }
 
+static Datum
+timestamp_lerp(Datum lo, Datum hi, double pct)
+{
+	Timestamp	lots = DatumGetTimestamp(lo);
+	Timestamp	hits = DatumGetTimestamp(hi);
+	Timestamp	diff_result;
+	Timestamp	mul_result;
+
+	diff_result = hits - lots;
+#ifdef HAVE_INT64_TIMESTAMP
+	mul_result = (Timestamp) round(diff_result * pct);
+#else
+	mul_result = (Timestamp) diff_result * pct;
+#endif
+
+	return TimestampGetDatum(lo + mul_result);
+}
+
+static Datum
+timestamptz_lerp(Datum lo, Datum hi, double pct)
+{
+	TimestampTz lots = DatumGetTimestampTz(lo);
+	TimestampTz hits = DatumGetTimestampTz(hi);
+	TimestampTz diff_result;
+	TimestampTz mul_result;
+
+	diff_result = hits - lots;
+#ifdef HAVE_INT64_TIMESTAMP
+	mul_result = (TimestampTz) round(diff_result * pct);
+#else
+	mul_result = (TimestampTz) diff_result * pct;
+#endif
+
+	return TimestampTzGetDatum(lo + mul_result);
+}
+
 /*
  * Continuous percentile
  */
@@ -615,6 +651,24 @@ Datum
 percentile_cont_interval_final(PG_FUNCTION_ARGS)
 {
 	return percentile_cont_final_common(fcinfo, INTERVALOID, interval_lerp);
+}
+
+/*
+ * percentile_cont(float8) within group (timestamp)	- continuous percentile
+ */
+Datum
+percentile_cont_timestamp_final(PG_FUNCTION_ARGS)
+{
+	return percentile_cont_final_common(fcinfo, TIMESTAMPOID, timestamp_lerp);
+}
+
+/*
+ * percentile_cont(float8) within group (timestamptz)	- continuous percentile
+ */
+Datum
+percentile_cont_timestamptz_final(PG_FUNCTION_ARGS)
+{
+	return percentile_cont_final_common(fcinfo, TIMESTAMPTZOID, timestamptz_lerp);
 }
 
 
@@ -1019,6 +1073,32 @@ percentile_cont_interval_multi_final(PG_FUNCTION_ARGS)
 											  interval_lerp);
 }
 
+/*
+ * percentile_cont(float8[]) within group (timestamp)  - continuous percentiles
+ */
+Datum
+percentile_cont_timestamp_multi_final(PG_FUNCTION_ARGS)
+{
+	return percentile_cont_multi_final_common(fcinfo,
+											  TIMESTAMPOID,
+	/* hard-wired info on type interval */
+											  8, FLOAT8PASSBYVAL, 'd',
+											  timestamp_lerp);
+}
+
+/*
+ * percentile_cont(float8[]) within group (timestamptz)  - continuous percentiles
+ */
+Datum
+percentile_cont_timestamptz_multi_final(PG_FUNCTION_ARGS)
+{
+	return percentile_cont_multi_final_common(fcinfo,
+											  TIMESTAMPTZOID,
+	/* hard-wired info on type interval */
+											  8, FLOAT8PASSBYVAL, 'd',
+											  timestamptz_lerp);
+}
+
 
 /*
  * mode() within group (anyelement) - most common value
@@ -1420,4 +1500,184 @@ hypothetical_dense_rank_final(PG_FUNCTION_ARGS)
 	rank = rank - duplicate_count;
 
 	PG_RETURN_INT64(rank);
+}
+
+/*
+ * Generic transition function for gp_percentile_cont
+ * with a single input column in which we want to suppress nulls
+ * This assumes the input tuples are already sorted
+ */
+static Datum
+gp_percentile_cont_transition(FunctionCallInfo fcinfo,
+		       LerpFunc lerpfunc)
+{
+	int64        first_row;
+	int64        second_row;
+
+	/* Return state for NULL inputs of val*/
+	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
+
+	/* Ignore NULL inputs for val, percent and total_count*/
+	if (PG_ARGISNULL(1) || PG_ARGISNULL(2) || PG_ARGISNULL(3))
+		PG_RETURN_NULL();
+
+	double percentile = PG_GETARG_FLOAT8(2);
+	if (percentile < 0 || percentile > 1 || isnan(percentile))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("percentile value %g is not between 0 and 1",
+						percentile)));
+
+	Datum prev_state = PG_GETARG_DATUM(0);
+	Datum val = PG_GETARG_DATUM(1);
+	Datum return_state = prev_state;
+	int64 total_rows = PG_GETARG_INT64(3);
+	int64 peer_count = PG_GETARG_INT64(4);
+	first_row = (int64) floor(percentile * (total_rows - 1) + 1);
+	second_row = (int64) ceil(percentile * (total_rows - 1) + 1);
+	double proportion = (percentile * (total_rows - 1)) - floor(percentile * (total_rows - 1));
+	int64 *cnt;
+	if(first_row == second_row)
+		proportion = 0;
+
+	if (!fcinfo->flinfo->fn_extra)
+	{
+		cnt = (int64 *) MemoryContextAllocZero(fcinfo->flinfo->fn_mcxt, sizeof(int64));
+		*cnt = 1;
+		fcinfo->flinfo->fn_extra = cnt;
+	}
+	else
+	{
+		cnt = (int64 *) fcinfo->flinfo->fn_extra;
+	}
+
+	if(*cnt <= first_row && first_row < *cnt + peer_count)
+	{
+		return_state = val;
+	}
+	else if(*cnt <= second_row && second_row < *cnt + peer_count)
+	{
+		return_state = lerpfunc(prev_state, val, proportion);
+	}
+	*cnt = *cnt + peer_count;
+
+	if(*cnt > total_rows)
+	{
+		/* Clean up, so the next group can see NULL for fn_extra */
+		pfree(cnt);
+		fcinfo->flinfo->fn_extra = NULL;
+	}
+
+	PG_RETURN_DATUM(return_state);
+}
+
+/*
+ * gp_percentile_cont(float8, float8, bigint)    - continuous percentile
+ */
+Datum
+gp_percentile_cont_float8_transition(PG_FUNCTION_ARGS)
+{
+	return gp_percentile_cont_transition(fcinfo, float8_lerp);
+}
+
+/*
+ * gp_percentile_cont(interval, float8, bigint)    - continuous percentile
+ */
+Datum
+gp_percentile_cont_interval_transition(PG_FUNCTION_ARGS)
+{
+	return gp_percentile_cont_transition(fcinfo, interval_lerp);
+}
+
+/*
+ * gp_percentile_cont(timestamp, float8, bigint)    - continuous percentile
+ */
+Datum
+gp_percentile_cont_timestamp_transition(PG_FUNCTION_ARGS)
+{
+	return gp_percentile_cont_transition(fcinfo, timestamp_lerp);
+}
+
+/*
+ * gp_percentile_cont(timestamptz, float8, bigint)    - continuous percentile
+ */
+Datum
+gp_percentile_cont_timestamptz_transition(PG_FUNCTION_ARGS)
+{
+	return gp_percentile_cont_transition(fcinfo, timestamptz_lerp);
+}
+
+/*
+ * Transition function for gp_percentile_disc  - discrete percentile
+ * This assumes the input tuples are already sorted
+ */
+Datum
+gp_percentile_disc_transition(PG_FUNCTION_ARGS)
+{
+	int64        rownum;
+
+	/* Return state for NULL inputs of val*/
+	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
+
+	/* Ignore NULL inputs for val, percent and total_count*/
+	if (PG_ARGISNULL(1) || PG_ARGISNULL(2) || PG_ARGISNULL(3))
+			PG_RETURN_NULL();
+
+	double percentile = PG_GETARG_FLOAT8(2);
+	if (percentile < 0 || percentile > 1 || isnan(percentile))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("percentile value %g is not between 0 and 1",
+						percentile)));
+	Datum prev_state = PG_GETARG_DATUM(0);
+	Datum val = PG_GETARG_DATUM(1);
+	Datum return_state = prev_state;
+	int64 total_rows = PG_GETARG_INT64(3);
+	int64 peer_count = PG_GETARG_INT64(4);
+	rownum = (int64) ceil(percentile * (total_rows));
+	int64 *cnt;
+
+	if (!fcinfo->flinfo->fn_extra)
+	{
+		cnt = (int64 *) MemoryContextAllocZero(fcinfo->flinfo->fn_mcxt, sizeof(int64));
+		*cnt = 1;
+		fcinfo->flinfo->fn_extra = cnt;
+		if (percentile == 0.0)
+			rownum = 1;
+	}
+	else
+	{
+		cnt = (int64 *) fcinfo->flinfo->fn_extra;
+	}
+
+	if(*cnt <= rownum && rownum < *cnt + peer_count)
+	{
+		return_state = val;
+	}
+
+	*cnt = *cnt + peer_count;
+
+	if(*cnt > total_rows)
+	{
+		/* Clean up, so the next group can see NULL for fn_extra */
+		pfree(cnt);
+		fcinfo->flinfo->fn_extra = NULL;
+	}
+
+	PG_RETURN_DATUM(return_state);
+}
+
+/*
+ * Final function for gp_percentile
+ */
+Datum
+gp_percentile_final(PG_FUNCTION_ARGS)
+{
+	/* Get and check the percentile argument */
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 }

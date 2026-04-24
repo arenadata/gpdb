@@ -20,6 +20,7 @@
 
 #include "postgres.h"
 
+#include "access/heapam.h"
 #include "access/tuptoaster.h"
 #include "executor/tstoreReceiver.h"
 

@@ -38,6 +38,10 @@
 typedef long pgpid_t;
 
 
+/* postgres version ident string */
+#define PM_VERSIONSTR "postgres (Greenplum Database) " PG_VERSION "\n"
+
+
 typedef enum
 {
 	SMART_MODE,
@@ -90,7 +94,9 @@ static const char *progname;
 static char *log_file = NULL;
 static char *exec_path = NULL;
 static char *event_source = NULL;
-static char *register_servicename = "PostgreSQL";	/* FIXME: + version ID? */
+static char *wrapper = NULL;
+static char *wrapper_args = NULL;
+static char *register_servicename = "PostgreSQL";		/* FIXME: + version ID? */
 static char *register_username = NULL;
 static char *register_password = NULL;
 static char *argv0 = NULL;
@@ -151,6 +157,10 @@ static void WINAPI pgwin32_ServiceMain(DWORD, LPTSTR *);
 static void pgwin32_doRunAsService(void);
 static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_service);
 static PTOKEN_PRIVILEGES GetPrivilegesToDelete(HANDLE hToken);
+static bool pgwin32_get_dynamic_tokeninfo(HANDLE token,
+							  TOKEN_INFORMATION_CLASS class,
+							  char **InfoBuffer, char *errbuf, int errsize);
+static int pgwin32_is_service(void);
 #endif
 
 static pgpid_t get_pgpid(bool is_status_request);
@@ -159,6 +169,7 @@ static void free_readfile(char **optlines);
 static pgpid_t start_postmaster(void);
 static void read_post_opts(void);
 
+static bool is_secondary_instance(const char *pg_data);
 static WaitPMResult wait_for_postmaster(pgpid_t pm_pid, bool do_checkpoint);
 static bool postmaster_is_alive(pid_t pid);
 
@@ -448,6 +459,7 @@ free_readfile(char **optlines)
 static pgpid_t
 start_postmaster(void)
 {
+	char		launcher[MAXPGPATH] = "";
 	char		cmd[MAXPGPATH];
 
 #ifndef WIN32
@@ -487,18 +499,26 @@ start_postmaster(void)
 	}
 #endif
 
+	if (wrapper != NULL)
+	{
+		if (wrapper_args != NULL)
+			snprintf(launcher, MAXPGPATH, "%s %s", wrapper, wrapper_args);
+		else
+			snprintf(launcher, MAXPGPATH, "%s", wrapper);
+	}
+
 	/*
 	 * Since there might be quotes to handle here, it is easier simply to pass
 	 * everything to a shell to process them.  Use exec so that the postmaster
 	 * has the same PID as the current child process.
 	 */
 	if (log_file != NULL)
-		snprintf(cmd, MAXPGPATH, "exec \"%s\" %s%s < \"%s\" >> \"%s\" 2>&1",
-				 exec_path, pgdata_opt, post_opts,
+		snprintf(cmd, MAXPGPATH, "exec %s \"%s\" %s%s < \"%s\" >> \"%s\" 2>&1",
+				 launcher, exec_path, pgdata_opt, post_opts,
 				 DEVNULL, log_file);
 	else
-		snprintf(cmd, MAXPGPATH, "exec \"%s\" %s%s < \"%s\" 2>&1",
-				 exec_path, pgdata_opt, post_opts, DEVNULL);
+		snprintf(cmd, MAXPGPATH, "exec %s \"%s\" %s%s < \"%s\" 2>&1",
+				 launcher, exec_path, pgdata_opt, post_opts, DEVNULL);
 
 	(void) execl("/bin/sh", "/bin/sh", "-c", cmd, (char *) NULL);
 
@@ -539,6 +559,20 @@ start_postmaster(void)
 }
 
 
+static bool
+is_secondary_instance(const char *pg_data)
+{
+	char		standby_signal[MAXPGPATH];
+	int			rc;
+
+	snprintf(standby_signal, sizeof(standby_signal), "%s/standby.signal", pg_data);
+	rc = access(standby_signal, R_OK);
+
+	if (rc == -1 && errno != ENOENT)
+		write_stderr(_("could not test the existence of standby.signal: %m"));
+
+	return rc == 0;
+}
 
 /*
  * Wait for the postmaster to become ready.
@@ -558,6 +592,11 @@ static WaitPMResult
 wait_for_postmaster(pgpid_t pm_pid, bool do_checkpoint)
 {
 	int			i;
+	bool		is_coordinator;
+
+	/* check if starting GPDB coordinator in distributed mode */
+	is_coordinator = strstr(post_opts, "gp_role=dispatch") != NULL
+                        && !is_secondary_instance(pg_data);
 
 	for (i = 0; i < wait_seconds * WAITS_PER_SEC; i++)
 	{
@@ -599,7 +638,11 @@ wait_for_postmaster(pgpid_t pm_pid, bool do_checkpoint)
 				 */
 				char	   *pmstatus = optlines[LOCK_FILE_LINE_PM_STATUS - 1];
 
-				if (strcmp(pmstatus, PM_STATUS_READY) == 0 ||
+				/*
+				 * The READY status for coordinator is `dtmready`, while the READY
+				 * status is really ready for other nodes.
+				 */
+				if (strcmp(pmstatus, is_coordinator ? PM_STATUS_DTM_RECOVERED : PM_STATUS_READY) == 0 ||
 					strcmp(pmstatus, PM_STATUS_STANDBY) == 0)
 				{
 					/* postmaster is done starting up */
@@ -797,7 +840,7 @@ do_init(void)
 	char		cmd[MAXPGPATH];
 
 	if (exec_path == NULL)
-		exec_path = find_other_exec_or_die(argv0, "initdb", "initdb (PostgreSQL) " PG_VERSION "\n");
+		exec_path = find_other_exec_or_die(argv0, "initdb", "initdb (Greenplum Database) " PG_VERSION "\n");
 
 	if (pgdata_opt == NULL)
 		pgdata_opt = "";
@@ -1721,6 +1764,160 @@ pgwin32_doRunAsService(void)
 	}
 }
 
+/*
+ * Call GetTokenInformation() on a token and return a dynamically sized
+ * buffer with the information in it. This buffer must be free():d by
+ * the calling function!
+ */
+static bool
+pgwin32_get_dynamic_tokeninfo(HANDLE token, TOKEN_INFORMATION_CLASS class,
+							  char **InfoBuffer, char *errbuf, int errsize)
+{
+	DWORD		InfoBufferSize;
+
+	if (GetTokenInformation(token, class, NULL, 0, &InfoBufferSize))
+	{
+		snprintf(errbuf, errsize, "could not get token information: got zero size\n");
+		return false;
+	}
+
+	if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+	{
+		snprintf(errbuf, errsize, "could not get token information: error code %lu\n",
+				 GetLastError());
+		return false;
+	}
+
+	*InfoBuffer = malloc(InfoBufferSize);
+	if (*InfoBuffer == NULL)
+	{
+		snprintf(errbuf, errsize, "could not allocate %d bytes for token information\n",
+				 (int) InfoBufferSize);
+		return false;
+	}
+
+	if (!GetTokenInformation(token, class, *InfoBuffer,
+							 InfoBufferSize, &InfoBufferSize))
+	{
+		snprintf(errbuf, errsize, "could not get token information: error code %lu\n",
+				 GetLastError());
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * We consider ourselves running as a service if one of the following is
+ * true:
+ *
+ * 1) We are running as Local System (only used by services)
+ * 2) Our token contains SECURITY_SERVICE_RID (automatically added to the
+ *	  process token by the SCM when starting a service)
+ *
+ * Return values:
+ *	 0 = Not service
+ *	 1 = Service
+ *	-1 = Error
+ *
+ * Note: we can't report errors via write_stderr (because that calls this)
+ * We are therefore reduced to writing directly on stderr, which sucks, but
+ * we have few alternatives.
+ */
+int
+pgwin32_is_service(void)
+{
+	static int	_is_service = -1;
+	HANDLE		AccessToken;
+	char	   *InfoBuffer = NULL;
+	char		errbuf[256];
+	PTOKEN_GROUPS Groups;
+	PTOKEN_USER User;
+	PSID		ServiceSid;
+	PSID		LocalSystemSid;
+	SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
+	UINT		x;
+
+	/* Only check the first time */
+	if (_is_service != -1)
+		return _is_service;
+
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_READ, &AccessToken))
+	{
+		fprintf(stderr, "could not open process token: error code %lu\n",
+				GetLastError());
+		return -1;
+	}
+
+	/* First check for local system */
+	if (!pgwin32_get_dynamic_tokeninfo(AccessToken, TokenUser, &InfoBuffer,
+									   errbuf, sizeof(errbuf)))
+	{
+		fprintf(stderr, "%s", errbuf);
+		return -1;
+	}
+
+	User = (PTOKEN_USER) InfoBuffer;
+
+	if (!AllocateAndInitializeSid(&NtAuthority, 1,
+							  SECURITY_LOCAL_SYSTEM_RID, 0, 0, 0, 0, 0, 0, 0,
+								  &LocalSystemSid))
+	{
+		fprintf(stderr, "could not get SID for local system account\n");
+		CloseHandle(AccessToken);
+		return -1;
+	}
+
+	if (EqualSid(LocalSystemSid, User->User.Sid))
+	{
+		FreeSid(LocalSystemSid);
+		free(InfoBuffer);
+		CloseHandle(AccessToken);
+		_is_service = 1;
+		return _is_service;
+	}
+
+	FreeSid(LocalSystemSid);
+	free(InfoBuffer);
+
+	/* Now check for group SID */
+	if (!pgwin32_get_dynamic_tokeninfo(AccessToken, TokenGroups, &InfoBuffer,
+									   errbuf, sizeof(errbuf)))
+	{
+		fprintf(stderr, "%s", errbuf);
+		return -1;
+	}
+
+	Groups = (PTOKEN_GROUPS) InfoBuffer;
+
+	if (!AllocateAndInitializeSid(&NtAuthority, 1,
+								  SECURITY_SERVICE_RID, 0, 0, 0, 0, 0, 0, 0,
+								  &ServiceSid))
+	{
+		fprintf(stderr, "could not get SID for service group\n");
+		free(InfoBuffer);
+		CloseHandle(AccessToken);
+		return -1;
+	}
+
+	_is_service = 0;
+	for (x = 0; x < Groups->GroupCount; x++)
+	{
+		if (EqualSid(ServiceSid, Groups->Groups[x].Sid))
+		{
+			_is_service = 1;
+			break;
+		}
+	}
+
+	free(InfoBuffer);
+	FreeSid(ServiceSid);
+
+	CloseHandle(AccessToken);
+
+	return _is_service;
+}
+
 
 /*
  * Mingw headers are incomplete, and so are the libraries. So we have to load
@@ -1934,6 +2131,7 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_ser
 		}
 	}
 
+    AddUserToTokenDacl(processInfo->hProcess);
 
 	CloseHandle(restrictedToken);
 
@@ -2051,6 +2249,8 @@ do_help(void)
 	printf(_("  -w, --wait             wait until operation completes (default)\n"));
 	printf(_("  -W, --no-wait          do not wait until operation completes\n"));
 	printf(_("  -?, --help             show this help, then exit\n"));
+	printf(_("  --gp-version           output Greenplum version information, then exit\n"));
+	printf(_("(The default is to wait for shutdown, but not for start or restart.)\n\n"));
 	printf(_("If the -D option is omitted, the environment variable PGDATA is used.\n"));
 
 	printf(_("\nOptions for start or restart:\n"));
@@ -2086,7 +2286,7 @@ do_help(void)
 	printf(_("  demand     start service on demand\n"));
 #endif
 
-	printf(_("\nReport bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("\nReport bugs to <bugs@greenplum.org>.\n"));
 }
 
 
@@ -2264,6 +2464,8 @@ main(int argc, char **argv)
 		{"silent", no_argument, NULL, 's'},
 		{"timeout", required_argument, NULL, 't'},
 		{"core-files", no_argument, NULL, 'c'},
+		{"wrapper", optional_argument, NULL, 'q'},
+		{"wrapper-args", optional_argument, NULL, 'Q'},
 		{"wait", no_argument, NULL, 'w'},
 		{"no-wait", no_argument, NULL, 'W'},
 		{NULL, 0, NULL, 0}
@@ -2298,7 +2500,12 @@ main(int argc, char **argv)
 		}
 		else if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_ctl (PostgreSQL) " PG_VERSION);
+			printf("%s (Greenplum Database) %s\n", progname, PG_VERSION);
+			exit(0);
+		}
+		else if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			printf("%s (Greenplum Database) %s\n", progname, GP_VERSION);
 			exit(0);
 		}
 	}
@@ -2417,6 +2624,12 @@ main(int argc, char **argv)
 					break;
 				case 'c':
 					allow_core_files = true;
+					break;
+				case 'q':
+					wrapper = pg_strdup(optarg);
+					break;
+				case 'Q':
+					wrapper_args = pg_strdup(optarg);
 					break;
 				default:
 					/* getopt_long already issued a suitable error message */

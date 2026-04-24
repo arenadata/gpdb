@@ -2,6 +2,13 @@
 -- \crosstabview
 --
 
+-- ORCA plans produce slightly different plans, with different row order.
+-- The row order differences are not masked out by gpdiff in the cross-tab
+-- views. The point of this test is to test psql functionality, the queries
+-- are not that interesting in the server side, so disable ORCA to make the
+-- output consistent.
+set optimizer=off;
+
 CREATE TABLE ctv_data (v, h, c, i, d) AS
 VALUES
    ('v1','h2','foo', 3, '2015-04-01'::date),

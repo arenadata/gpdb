@@ -3,6 +3,8 @@
  * lmgr.c
  *	  POSTGRES lock manager code
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,6 +28,13 @@
 #include "storage/procarray.h"
 #include "storage/sinvaladt.h"
 #include "utils/inval.h"
+#include "utils/memutils.h"
+
+#include "access/heapam.h"
+#include "catalog/namespace.h"
+#include "cdb/cdbvars.h"
+#include "storage/proc.h"
+#include "utils/lsyscache.h"        /* CDB: get_rel_namespace() */
 
 
 /*
@@ -234,6 +243,35 @@ LockRelation(Relation relation, LOCKMODE lockmode)
 		AcceptInvalidationMessages();
 		MarkLockClear(locallock);
 	}
+}
+
+/*
+ *		LockRelationNoWait
+ *
+ * Similar to LockReation, except that it is not waiting
+ * for the lock if it is not available.
+ *
+ */
+LockAcquireResult
+LockRelationNoWait(Relation relation, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+	LockAcquireResult res;
+
+	SET_LOCKTAG_RELATION(tag,
+						 relation->rd_lockInfo.lockRelId.dbId,
+						 relation->rd_lockInfo.lockRelId.relId);
+
+	res = LockAcquire(&tag, lockmode, false, true);
+
+	/*
+	 * Now that we have the lock, check for invalidation messages; see notes
+	 * in LockRelationOid.
+	 */
+	if (res != LOCKACQUIRE_ALREADY_HELD)
+		AcceptInvalidationMessages();
+
+	return res;
 }
 
 /*
@@ -630,6 +668,30 @@ XactLockTableWait(TransactionId xid, Relation rel, ItemPointer ctid,
 	bool		first = true;
 
 	/*
+	 * Concurrent update and delete will wait on segment when GDD is enabled (or
+	 * the corner case that utility mode delete|update in segment which does not hold
+	 * gxid), need to report the waited transactions to QD to make sure the they have
+	 * the same transaction order on the master.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		MemoryContext oldContext;
+		DistributedTransactionId gxid = LocalXidGetDistributedXid(xid);
+
+		if (gxid != InvalidDistributedTransactionId)
+		{
+			/*
+			 * allocate waitGxids in TopMemoryContext since it's used in
+			 * 'commit prepared' and the TopTransactionContext has been delete
+			 * after 'prepare'
+			 */
+			oldContext = MemoryContextSwitchTo(TopMemoryContext);
+			MyTmGxactLocal->waitGxids = lappend_int(MyTmGxactLocal->waitGxids, gxid);
+			MemoryContextSwitchTo(oldContext);
+		}
+	}
+
+	/*
 	 * If an operation is specified, set up our verbose error context
 	 * callback.
 	 */
@@ -685,6 +747,45 @@ XactLockTableWait(TransactionId xid, Relation rel, ItemPointer ctid,
 
 	if (oper != XLTW_None)
 		error_context_stack = callback.previous;
+}
+
+/*
+ *		GxactLockTableInsert
+ *
+ * CDB: a copy of XactLockTableInsert
+ * Insert a lock showing that the given distributed transaction ID is running
+ */
+void
+GxactLockTableInsert(DistributedTransactionId gxid)
+{
+	LOCKTAG		tag;
+
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	SET_LOCKTAG_DISTRIB_TRANSACTION(tag, gxid);
+
+	(void) LockAcquire(&tag, ExclusiveLock, false, false);
+}
+
+/*
+ *		GxactLockTableWait
+ *
+ * CDB: a copy of XactLockTableWait, no need to take care of sub-transaction.
+ * Wait for the specified distributed transaction to commit or abort.
+ */
+void
+GxactLockTableWait(DistributedTransactionId gxid)
+{
+	LOCKTAG		tag;
+
+	Assert(gxid != InvalidDistributedTransactionId);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	SET_LOCKTAG_DISTRIB_TRANSACTION(tag, gxid);
+
+	(void) LockAcquire(&tag, ShareLock, false, false);
+
+	LockRelease(&tag, ShareLock, false);
 }
 
 /*
@@ -1120,6 +1221,11 @@ DescribeLockTag(StringInfo buf, const LOCKTAG *tag)
 							 _("transaction %u"),
 							 tag->locktag_field1);
 			break;
+		case LOCKTAG_DISTRIB_TRANSACTION:
+			appendStringInfo(buf,
+							 _("distributed transaction %u"),
+							 tag->locktag_field1);
+			break;
 		case LOCKTAG_VIRTUALTRANSACTION:
 			appendStringInfo(buf,
 							 _("virtual transaction %d/%u"),
@@ -1155,12 +1261,61 @@ DescribeLockTag(StringInfo buf, const LOCKTAG *tag)
 							 tag->locktag_field3,
 							 tag->locktag_field4);
 			break;
+		case LOCKTAG_RESOURCE_QUEUE:
+			appendStringInfo(buf,
+							 _("resource queue %u"),
+							 tag->locktag_field1);
+			break;
 		default:
 			appendStringInfo(buf,
 							 _("unrecognized locktag type %d"),
 							 (int) tag->locktag_type);
 			break;
 	}
+}
+
+/*
+ * LockTagIsTemp
+ *		Determine whether a locktag is for a lock on a temporary object
+ *
+ * In PostgreSQL, 2PC cannot deal with temporary objects. Commit
+ * f3032cbe377ecc570989e1bd2fe1aea455c12cc3 replace this method with global
+ * variable MyXactAccessedTempRel, so it's no longer needed.
+ *
+ * However, GPDB supports 2PC with temporary objects. Hence, it still relies
+ * on this method to check certain LOCKTAG is on temporary object or not, so
+ * that GPDB can skip the lock information in `TwoPhaseRecordOnDisk` for the
+ * temporary objects. That's to prevent replay redundant lock acquiring and
+ * releasing during `xact_redo()` on non-existent temporary objects.
+ */
+bool
+LockTagIsTemp(const LOCKTAG *tag)
+{
+	switch (tag->locktag_type)
+	{
+		case LOCKTAG_RELATION:
+		case LOCKTAG_RELATION_EXTEND:
+		case LOCKTAG_PAGE:
+		case LOCKTAG_TUPLE:
+			/* check for lock on a temp relation */
+			/* field1 is dboid, field2 is reloid for all of these */
+			if ((Oid) tag->locktag_field1 == InvalidOid)
+				return false;	/* shared, so not temp */
+			if (isTempNamespace(get_rel_namespace((Oid) tag->locktag_field2)))
+				return true;
+			break;
+		case LOCKTAG_TRANSACTION:
+			/* there are no temp transactions */
+			break;
+		case LOCKTAG_OBJECT:
+			/* there are currently no non-table temp objects */
+			break;
+		case LOCKTAG_USERLOCK:
+		case LOCKTAG_ADVISORY:
+			/* assume these aren't temp */
+			break;
+	}
+	return false;				/* default case */
 }
 
 /*

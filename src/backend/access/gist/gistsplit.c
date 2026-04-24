@@ -413,7 +413,7 @@ genericPickSplit(GISTSTATE *giststate, GistEntryVector *entryvec, GIST_SPLITVEC 
  */
 static bool
 gistUserPicksplit(Relation r, GistEntryVector *entryvec, int attno, GistSplitVector *v,
-				  IndexTuple *itup, int len, GISTSTATE *giststate)
+				  IndexTuple *itup, int len pg_attribute_unused(), GISTSTATE *giststate)
 {
 	GIST_SPLITVEC *sv = &v->splitVector;
 

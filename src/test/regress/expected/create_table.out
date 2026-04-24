@@ -150,19 +150,19 @@ CREATE TABLE aggtest (
 CREATE TABLE hash_i4_heap (
 	seqno 		int4,
 	random 		int4
-);
+) distributed by (seqno);
 CREATE TABLE hash_name_heap (
 	seqno 		int4,
 	random 		name
-);
+) distributed by (seqno);
 CREATE TABLE hash_txt_heap (
 	seqno 		int4,
 	random 		text
-);
+) distributed by (seqno);
 CREATE TABLE hash_f8_heap (
 	seqno		int4,
 	random 		float8
-);
+) distributed by (seqno);
 -- don't include the hash_ovfl_heap stuff in the distribution
 -- the data set is too large for what it's worth
 --
@@ -1127,6 +1127,10 @@ create temp table temp_part partition of temp_parted default; -- ok
 drop table perm_parted cascade;
 drop table temp_parted cascade;
 -- check that adding partitions to a table while it is being used is prevented
+-- This test doesn't work as intended in GPDB, because statement-triggers don't
+-- work. I was not able to formulate a test that would exercise the same
+-- codepath as this does in upstream. So this test produces a different error,
+-- and isn't very interesting in GPDB.
 create table tab_part_create (a int) partition by list (a);
 create or replace function func_part_create() returns trigger
   language plpgsql as $$
@@ -1136,10 +1140,10 @@ create or replace function func_part_create() returns trigger
   end $$;
 create trigger trig_part_create before insert on tab_part_create
   for each statement execute procedure func_part_create();
+ERROR:  Triggers for statements are not yet supported
 insert into tab_part_create values (1);
-ERROR:  cannot CREATE TABLE .. PARTITION OF "tab_part_create" because it is being used by active queries in this session
-CONTEXT:  SQL statement "create table tab_part_create_1 partition of tab_part_create for values in (1)"
-PL/pgSQL function func_part_create() line 3 at EXECUTE
+DETAIL:  Partition key of the failing row contains (a) = (1).
+ERROR:  no partition of relation "tab_part_create" found for row
 drop table tab_part_create;
 drop function func_part_create();
 -- test using a volatile expression as partition bound
@@ -1163,9 +1167,14 @@ alter table defcheck_def drop c;
 alter table defcheck attach partition defcheck_def default;
 alter table defcheck_def add check (b <= 0 and b is not null);
 create table defcheck_1 partition of defcheck for values in (1, null);
-INFO:  updated partition constraint for default partition "defcheck_def" is implied by existing constraints
 -- test that complex default partition constraints are enforced correctly
 insert into defcheck_def values (0, 0);
 create table defcheck_0 partition of defcheck for values in (0);
 ERROR:  updated partition constraint for default partition "defcheck_def" would be violated by some row
 drop table defcheck;
+-- Test github issue #7340. truncating a toast unlogged table fails.
+-- Leave the table on purpose for pg_dump and gp_replica_check tests.
+CREATE UNLOGGED TABLE unlogged_toast (a text);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+TRUNCATE unlogged_toast;

@@ -62,7 +62,7 @@ struct sockaddr_storage
 typedef struct
 {
 	struct sockaddr_storage addr;
-	ACCEPT_TYPE_ARG3 salen;
+	socklen_t salen;
 } SockAddr;
 
 /* Configure the UNIX socket location for the well known port. */
@@ -100,10 +100,14 @@ typedef struct
  * A frontend isn't required to support anything other than the current
  * version.
  */
-
-#define PG_PROTOCOL_MAJOR(v)	((v) >> 16)
+/* Upper four bits used special by GPDB */
+#define PG_PROTOCOL_MAJOR(v)	(((v) >> 16) & 0xfff)
 #define PG_PROTOCOL_MINOR(v)	((v) & 0x0000ffff)
 #define PG_PROTOCOL(m,n)	(((m) << 16) | (n))
+
+/* GPDB specific */
+#define GPDB_INTERNAL_PROTOCOL(m, n)    PG_PROTOCOL((m) | 0x7000, (n))
+#define IS_GPDB_INTERNAL_PROTOCOL(v)    (((v) >> 28) == 7)
 
 /* The earliest and latest frontend/backend protocol version supported. */
 
@@ -157,7 +161,7 @@ extern bool Db_user_namespace;
  * denial-of-service attacks via sending enough data to run the server
  * out of memory.
  */
-#define MAX_STARTUP_PACKET_LENGTH 10000
+#define MAX_STARTUP_PACKET_LENGTH 64000
 
 
 /* These are the authentication request codes sent by the backend. */
@@ -189,6 +193,15 @@ typedef uint32 AuthRequest;
  */
 #define CANCEL_REQUEST_CODE PG_PROTOCOL(1234,5678)
 
+/*
+ * query-finish operation is a special message betweeen QD and QE, used to
+ * indicate that QD is successfully finishing the current query so that
+ * QE can finish its work at the earliest point.  Though executor has
+ * a way to squelch QEs, it is necessary to have asynchronous message
+ * by signal.
+ */
+#define FINISH_REQUEST_CODE PG_PROTOCOL(1234,5677)
+
 typedef struct CancelRequestPacket
 {
 	/* Note that each field is stored in network byte order! */
@@ -204,5 +217,15 @@ typedef struct CancelRequestPacket
  */
 #define NEGOTIATE_SSL_CODE PG_PROTOCOL(1234,5679)
 #define NEGOTIATE_GSS_CODE PG_PROTOCOL(1234,5680)
+
+/* the number of times trying to acquire the send mutex for the front
+ * end connection after detecting process is exitting */
+#define PQ_BUSY_TEST_COUNT_IN_EXITING 5
+
+#define GPCONN_TYPE "gpconntype"
+
+#define GPCONN_TYPE_DEFAULT "default"
+#define GPCONN_TYPE_FTS "fts"
+#define GPCONN_TYPE_FAULT "fault"
 
 #endif							/* PQCOMM_H */

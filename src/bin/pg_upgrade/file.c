@@ -26,6 +26,7 @@
 #include <linux/fs.h>
 #endif
 
+#include "greenplum/pg_upgrade_greenplum.h"
 
 #ifdef WIN32
 static int	win32_pghardlink(const char *src, const char *dst);
@@ -83,6 +84,8 @@ void
 copyFile(const char *src, const char *dst,
 		 const char *schemaName, const char *relName)
 {
+	report_progress(NULL, FILE_COPY, "Copy \"%s\" to \"%s\"", src, dst);
+
 #ifndef WIN32
 	int			src_fd;
 	int			dest_fd;
@@ -152,6 +155,8 @@ void
 linkFile(const char *src, const char *dst,
 		 const char *schemaName, const char *relName)
 {
+	report_progress(NULL, FILE_COPY, "Link \"%s\" to \"%s\"", src, dst);
+
 	if (pg_link_file(src, dst) < 0)
 		pg_fatal("error while creating link for relation \"%s.%s\" (\"%s\" to \"%s\"): %s\n",
 				 schemaName, relName, src, dst, strerror(errno));

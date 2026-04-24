@@ -11,9 +11,13 @@ ifeq ($(PORTNAME), win32)
 override python_libspec =
 endif
 
-override CPPFLAGS := -I. -I$(srcdir) $(python_includespec) $(CPPFLAGS)
+override python_libspec := -L${python_configdir}/../.. ${python_libspec}
 
-rpathdir = $(python_libdir)
+# do not fail build due to warnings in this code
+#override CPPFLAGS := -Wno-error -I. -I$(srcdir) $(python_includespec) $(CPPFLAGS) -DPLPYTHON_SHOW_DEBUG_INFO
+override CPPFLAGS := -Wno-error -I. -I$(srcdir) $(python_includespec) $(CPPFLAGS)
+
+rpathdir = $(python_libdir):$(INSTLOC)/ext/python/lib
 
 PGFILEDESC = "PL/Python - procedural language"
 
@@ -76,13 +80,20 @@ endif # win32
 
 SHLIB_LINK = $(python_libspec) $(python_additional_libs) $(filter -lintl,$(LIBS))
 
-REGRESS_OPTS = --dbname=$(PL_TESTDB)
+REGRESS_OPTS = --dbname=$(PL_TESTDB) --init-file=$(srcdir)/init_file
 # Only load plpythonu with Python 2.  The test files themselves load
 # the versioned language plpython(2|3)u.
 ifeq ($(python_majorversion),2)
 REGRESS_OPTS += --load-extension=plpythonu
 endif
 
+# FIXME: enable plpython_returns test. exec() functionality changed
+# between Python2 and Python3. plpython_returns test uses it
+# extensively, hence it must be modified to handle exec()
+# correctly. Attempted to use namespace for variable assignment for
+# exec() and then return the same via namespace['y]. But test crashes
+# for some of text return type functions, hence adding this as fixme
+# for later.
 REGRESS = \
 	plpython_schema \
 	plpython_populate \
@@ -106,6 +117,7 @@ REGRESS = \
 	plpython_composite \
 	plpython_subtransaction \
 	plpython_transaction \
+	plpython_gpdb \
 	plpython_drop
 
 REGRESS_PLPYTHON3_MANGLE := $(REGRESS)

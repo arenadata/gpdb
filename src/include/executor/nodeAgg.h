@@ -280,6 +280,14 @@ typedef struct AggStatePerPhaseData
 	Sort	   *sortnode;		/* Sort node for input ordering for phase */
 
 	ExprState  *evaltrans;		/* evaluation of transition functions  */
+
+	int		   *group_id;		/* on per gset */
+	int		   *gset_id;		/* on per gset */
+
+	/* cached variants of the compiled expression */
+	ExprState  *evaltrans_cache
+				[2]		/* 0: outerops; 1: TTSOpsMinimalTuple */
+				[2];	/* 0: no NULL check; 1: with NULL check */
 }			AggStatePerPhaseData;
 
 /*
@@ -309,8 +317,15 @@ extern AggState *ExecInitAgg(Agg *node, EState *estate, int eflags);
 extern void ExecEndAgg(AggState *node);
 extern void ExecReScanAgg(AggState *node);
 
-extern Size hash_agg_entry_size(int numAggs);
+extern Size hash_agg_entry_size(int numTrans, Size tupleWidth,
+								Size transitionSpace);
+extern void hash_agg_set_limits(AggState *aggstate, double hashentrysize, uint64 input_groups,
+								int used_bits, Size *mem_limit,
+								uint64 *ngroups_limit, int *num_partitions);
 
 extern Datum aggregate_dummy(PG_FUNCTION_ARGS);
+
+extern void ExecSquelchAgg(AggState *aggstate);
+extern bool ReuseHashTable(AggState *node);
 
 #endif							/* NODEAGG_H */

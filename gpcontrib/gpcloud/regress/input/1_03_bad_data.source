@@ -1,0 +1,10 @@
+CREATE READABLE EXTERNAL TABLE s3regress_1_03 (date text, time text, open float, high float,
+	low float, volume int) LOCATION('s3://s3-us-west-2.amazonaws.com/@read_prefix@/baddata/ config=@config_file@') format 'csv' LOG ERRORS SEGMENT REJECT LIMIT 5;
+
+SELECT count(*) FROM s3regress_1_03;
+
+-- start_ignore
+SELECT gp_read_error_log('s3regress_1_03');
+-- end_ignore
+
+DROP EXTERNAL TABLE s3regress_1_03;

@@ -102,6 +102,8 @@ int			xmloption;
 /* random number to identify PgXmlErrorContext */
 #define ERRCXT_MAGIC	68275028
 
+static xmlParserInputPtr xmlPgEntityLoader(const char *URL, const char *ID,
+				  xmlParserCtxtPtr ctxt);
 struct PgXmlErrorContext
 {
 	int			magic;
@@ -1022,6 +1024,9 @@ pg_xml_init(PgXmlStrictness strictness)
 
 	xmlSetStructuredErrorFunc((void *) errcxt, xml_errorHandler);
 
+	/* set up our entity loader, too */
+	xmlSetExternalEntityLoader(xmlPgEntityLoader);
+
 	/*
 	 * Verify that xmlSetStructuredErrorFunc set the context variable we
 	 * expected it to.  If not, the error context pointer we just saved is not
@@ -1049,6 +1054,13 @@ pg_xml_init(PgXmlStrictness strictness)
 				 errhint("This probably indicates that the version of libxml2"
 						 " being used is not compatible with the libxml2"
 						 " header files that PostgreSQL was built with.")));
+
+	/*
+	 * Also, install an entity loader to prevent unwanted fetches of external
+	 * files and URLs.
+	 */
+	errcxt->saved_entityfunc = xmlGetExternalEntityLoader();
+	xmlSetExternalEntityLoader(xmlPgEntityLoader);
 
 	/*
 	 * Also, install an entity loader to prevent unwanted fetches of external
@@ -4065,6 +4077,16 @@ xpath_internal(text *xpath_expr_text, xmltype *data, ArrayType *namespaces,
 
 	string = pg_xmlCharStrndup(datastr, len);
 	xpath_expr = pg_xmlCharStrndup(VARDATA_ANY(xpath_expr_text), xpath_len);
+
+	/*
+	 * In a UTF8 database, skip any xml declaration, which might assert
+	 * another encoding.  Ignore parse_xml_decl() failure, letting
+	 * xmlCtxtReadMemory() report parse errors.  Documentation disclaims
+	 * xpath() support for non-ASCII data in non-UTF8 databases, so leave
+	 * those scenarios bug-compatible with historical behavior.
+	 */
+	if (GetDatabaseEncoding() == PG_UTF8)
+		parse_xml_decl(string, &xmldecl_len, NULL, NULL, NULL);
 
 	/*
 	 * In a UTF8 database, skip any xml declaration, which might assert

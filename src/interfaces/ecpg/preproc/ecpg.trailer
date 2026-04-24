@@ -29,7 +29,7 @@ statement: ecpgstart at stmt ';' { connection = NULL; }
 		}
 		;
 
-CreateAsStmt: CREATE OptTemp TABLE create_as_target AS {FoundInto = 0;} SelectStmt opt_with_data
+CreateAsStmt: CREATE OptTemp TABLE create_as_target AS {FoundInto = 0;} SelectStmt opt_with_data OptDistributedBy OptFirstPartitionSpec
 		{
 			if (FoundInto == 1)
 				mmerror(PARSE_ERROR, ET_ERROR, "CREATE TABLE AS cannot specify INTO");
@@ -539,7 +539,7 @@ var_type:	simple_type
 				$$.type_sizeof = NULL;
 			}
 		}
-		| enum_type
+ 		| enum_type
 		{
 			$$.type_str = $1;
 			$$.type_enum = ECPGt_int;

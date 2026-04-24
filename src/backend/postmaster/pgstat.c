@@ -40,8 +40,10 @@
 #include "access/transam.h"
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
+#include "access/xlog.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_proc.h"
+#include "executor/instrument.h"
 #include "common/ip.h"
 #include "libpq/libpq.h"
 #include "libpq/pqsignal.h"
@@ -68,6 +70,16 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
+
+#include "libpq-int.h"
+#include "cdb/cdbconn.h"
+#include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbvars.h"
+#include "commands/resgroupcmds.h"
+#include "common/hashfn.h"
+#include "libpq/pqformat.h"
+#include "utils/faultinjector.h"
+#include "utils/lsyscache.h"
 
 
 /* ----------
@@ -103,6 +115,7 @@
  */
 #define PGSTAT_DB_HASH_SIZE		16
 #define PGSTAT_TAB_HASH_SIZE	512
+#define PGSTAT_QUEUE_HASH_SIZE	8
 #define PGSTAT_FUNCTION_HASH_SIZE	512
 
 
@@ -126,6 +139,8 @@ bool		pgstat_track_activities = false;
 bool		pgstat_track_counts = false;
 int			pgstat_track_functions = TRACK_FUNC_OFF;
 int			pgstat_track_activity_query_size = 1024;
+
+bool		pgstat_collect_queuelevel = false;
 
 /* ----------
  * Built from GUC parameter
@@ -237,11 +252,20 @@ typedef struct TwoPhasePgStatRecord
 	bool		t_truncated;	/* was the relation truncated? */
 } TwoPhasePgStatRecord;
 
+typedef struct PgStatTabRecordFromQE
+{
+	TwoPhasePgStatRecord 	table_stat;
+	int						nest_level;
+} PgStatTabRecordFromQE;
+
 /*
  * Info about current "snapshot" of stats file
  */
 static MemoryContext pgStatLocalContext = NULL;
 static HTAB *pgStatDBHash = NULL;
+
+static HTAB *pgStatQueueHash = NULL;		/* GPDB */
+static HTAB *localStatPortalHash = NULL;	/* GPDB. per backend portal queue stats.*/
 
 /* Status for backends including auxiliary */
 static LocalPgBackendStatus *localBackendStatusTable = NULL;
@@ -275,6 +299,13 @@ static volatile bool got_SIGHUP = false;
  */
 static instr_time total_func_time;
 
+/*
+ * Total time charged to functions so far in the current backend.
+ * We use this to help separate "self" and "other" time charges.
+ * (We assume this initializes to zero.)
+ */
+static instr_time total_func_time;
+
 
 /* ----------
  * Local function forward declarations
@@ -292,6 +323,8 @@ static void pgstat_sighup_handler(SIGNAL_ARGS);
 static PgStat_StatDBEntry *pgstat_get_db_entry(Oid databaseid, bool create);
 static PgStat_StatTabEntry *pgstat_get_tab_entry(PgStat_StatDBEntry *dbentry,
 												 Oid tableoid, bool create);
+static PgStat_StatQueueEntry *pgstat_get_queue_entry(Oid queueid, bool create); /*GPDB*/
+
 static void pgstat_write_statsfiles(bool permanent, bool allDbs);
 static void pgstat_write_db_statsfile(PgStat_StatDBEntry *dbentry, bool permanent);
 static HTAB *pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep);
@@ -330,6 +363,7 @@ static void pgstat_recv_autovac(PgStat_MsgAutovacStart *msg, int len);
 static void pgstat_recv_vacuum(PgStat_MsgVacuum *msg, int len);
 static void pgstat_recv_analyze(PgStat_MsgAnalyze *msg, int len);
 static void pgstat_recv_archiver(PgStat_MsgArchiver *msg, int len);
+static void pgstat_recv_queuestat(PgStat_MsgQueuestat *msg, int len); /* GPDB */
 static void pgstat_recv_bgwriter(PgStat_MsgBgWriter *msg, int len);
 static void pgstat_recv_funcstat(PgStat_MsgFuncstat *msg, int len);
 static void pgstat_recv_funcpurge(PgStat_MsgFuncpurge *msg, int len);
@@ -355,7 +389,7 @@ static void pgstat_recv_tempfile(PgStat_MsgTempFile *msg, int len);
 void
 pgstat_init(void)
 {
-	ACCEPT_TYPE_ARG3 alen;
+	socklen_t	alen;
 	struct addrinfo *addrs = NULL,
 			   *addr,
 				hints;
@@ -629,6 +663,7 @@ startup_failed:
 	 * on from postgresql.conf without a restart.
 	 */
 	SetConfigOption("track_counts", "off", PGC_INTERNAL, PGC_S_OVERRIDE);
+	pgstat_collect_queuelevel = false;
 }
 
 /*
@@ -2966,6 +3001,8 @@ pgstat_bestart(void)
 	else
 		lbeentry.st_userid = InvalidOid;
 
+	lbeentry.st_session_id = gp_session_id;  /* GPDB only */
+
 	/*
 	 * We may not have a MyProcPort (eg, if this is the autovacuum process).
 	 * If so, use all-zeroes client address, which is dealt with specially in
@@ -3018,6 +3055,7 @@ pgstat_bestart(void)
 	lbeentry.st_state = STATE_UNDEFINED;
 	lbeentry.st_progress_command = PROGRESS_COMMAND_INVALID;
 	lbeentry.st_progress_command_target = InvalidOid;
+	lbeentry.st_rsgid = InvalidOid;
 
 	/*
 	 * we don't zero st_progress_param here to save cycles; nobody should
@@ -3065,6 +3103,11 @@ pgstat_bestart(void)
 
 	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
 
+	/*
+	 * GPDB: Initialize per-portal statistics hash for resource queues.
+	 */
+	pgstat_init_localportalhash();
+
 	/* Update app name to current GUC setting */
 	if (application_name)
 		pgstat_report_appname(application_name);
@@ -3101,6 +3144,7 @@ pgstat_beshutdown_hook(int code, Datum arg)
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
 	beentry->st_procpid = 0;	/* mark invalid */
+	beentry->st_session_id = 0;
 
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
@@ -3339,6 +3383,50 @@ pgstat_report_xact_timestamp(TimestampTz tstamp)
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
+/*
+ * Report the timestamp of transaction start queueing on the resource group.
+ */
+void
+pgstat_report_resgroup(Oid groupid)
+{
+	volatile PgBackendStatus *beentry = MyBEEntry;
+
+	if (!beentry)
+		return;
+
+	/*
+	 * Update my status entry, following the protocol of bumping
+	 * st_changecount before and after.  We use a volatile pointer here to
+	 * ensure the compiler doesn't try to get cute.
+	 */
+	beentry->st_changecount++;
+
+	beentry->st_rsgid = groupid;
+	beentry->st_changecount++;
+	Assert((beentry->st_changecount & 1) == 0);
+}
+
+/* ----------
+ * pgstat_report_sessionid() -
+ *
+ * 	Called from cdbgang to report a session is reset.
+ *
+ * ----------
+ */
+void
+pgstat_report_sessionid(int new_sessionid)
+{
+	volatile PgBackendStatus *beentry = MyBEEntry;
+
+	if (!beentry)
+		return;
+
+	beentry->st_changecount++;
+	beentry->st_session_id = new_sessionid;
+	beentry->st_changecount++;
+	Assert((beentry->st_changecount & 1) == 0);
+}
+
 /* ----------
  * pgstat_read_current_status() -
  *
@@ -3539,6 +3627,15 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 		case PG_WAIT_IO:
 			event_type = "IO";
 			break;
+		case PG_WAIT_RESOURCE_GROUP:
+			event_type = "ResourceGroup";
+			break;
+		case PG_WAIT_RESOURCE_QUEUE:
+			event_type = "ResourceQueue";
+			break;
+		case PG_WAIT_REPLICATION:
+			event_type = "Replication";
+			break;
 		default:
 			event_type = "???";
 			break;
@@ -3616,6 +3713,22 @@ pgstat_get_wait_event(uint32 wait_event_info)
 				event_name = pgstat_get_wait_io(w);
 				break;
 			}
+		case PG_WAIT_RESOURCE_GROUP:
+			/*
+			 * We don't pass details for resource groups via event id, since
+			 * it's an uint16 and resource group id is an Oid.
+			 *
+			 * Here should be never used, pg_stat_get_activity() will get the
+			 * information from backend entry.
+			 */
+			event_name = "ResourceGroup";
+			break;
+		case PG_WAIT_RESOURCE_QUEUE:
+			event_name = "ResourceQueue";
+			break;
+		case PG_WAIT_REPLICATION:
+			event_name = "Replication";
+			break;
 		default:
 			event_name = "unknown wait event";
 			break;
@@ -3678,6 +3791,16 @@ pgstat_get_wait_activity(WaitEventActivity w)
 			break;
 		case WAIT_EVENT_WAL_WRITER_MAIN:
 			event_name = "WalWriterMain";
+			break;
+
+		case WAIT_EVENT_BACKOFF_MAIN:
+			event_name = "BackoffSweeperMain";
+			break;
+		case WAIT_EVENT_FTS_PROBE_MAIN:
+			event_name = "FtsProbeMain";
+			break;
+		case WAIT_EVENT_GLOBAL_DEADLOCK_DETECTOR_MAIN:
+			event_name = "GlobalDeadLockDetectorMain";
 			break;
 			/* no default case, so that compiler will warn */
 	}
@@ -3854,6 +3977,25 @@ pgstat_get_wait_ipc(WaitEventIPC w)
 			break;
 		case WAIT_EVENT_SYNC_REP:
 			event_name = "SyncRep";
+			break;
+
+		case WAIT_EVENT_INTERCONNECT:
+			event_name = "Interconnect";
+			break;
+		case WAIT_EVENT_SHAREINPUT_SCAN:
+			event_name = "ShareInputScan";
+			break;
+		case WAIT_EVENT_GANG_ASSIGN:
+			event_name = "Dispatch/Gang-Assign";
+			break;
+		case WAIT_EVENT_DISP_FINISH:
+			event_name = "Dispatch/Finish";
+			break;
+		case WAIT_EVENT_DISP_RESULT:
+			event_name = "Dispatch/Result";
+			break;
+		case WAIT_EVENT_DTX_RECOVERY:
+			event_name = "DtxRecovery";
 			break;
 			/* no default case, so that compiler will warn */
 	}
@@ -4395,6 +4537,15 @@ pgstat_send_bgwriter(void)
 	static const PgStat_MsgBgWriter all_zeroes;
 
 	/*
+	 * Non hot standby mirror should not send bgwriter statistics to the
+	 * stat collector, since stat collector is not started when mirror
+	 * is not in hot standby mode. Sending statistics would cause the
+	 * Recv-Q buffer to be filled up.
+	 */
+	if (!EnableHotStandby && IsRoleMirror())
+		return;
+
+	/*
 	 * This function can be called even if nothing at all has happened. In
 	 * this case, avoid sending a completely empty message to the stats
 	 * collector.
@@ -4414,6 +4565,244 @@ pgstat_send_bgwriter(void)
 	MemSet(&BgWriterStats, 0, sizeof(BgWriterStats));
 }
 
+/*
+ * pgstat_send_qd_tabstats() -
+ *
+ * Send the writer QE's tables' pgstat for current nest xact level
+ * to QD through libpq at each end of a statement.
+ *
+ * For a single statement executed on the writer QE, it wouldn't operate
+ * too many tables, so the effort should be small.
+ *
+ * We used don't have accurate table stat on QD, especially for partition
+ * tables since these table stats counters are counted through the access
+ * method on segments that contain data.
+ */
+void
+pgstat_send_qd_tabstats(void)
+{
+	int								nest_level;
+	StringInfoData					buf;
+	StringInfoData					stat_data;
+	PgStat_TableXactStatus		   *trans;
+
+	if (!pgstat_track_counts || !pgStatXactStack)
+		return;
+
+	nest_level = GetCurrentTransactionNestLevel();
+	if (nest_level != pgStatXactStack->nest_level)
+		return;
+
+	trans = pgStatXactStack->first;
+	initStringInfo(&stat_data);
+
+	for (; trans != NULL; trans = trans->next)
+	{
+		PgStatTabRecordFromQE		record;
+		PgStat_TableStatus		   *tabstat = trans->parent;
+		GpPolicy *gppolicy = GpPolicyFetch(tabstat->t_id);
+
+		switch (gppolicy->ptype)
+		{
+			case POLICYTYPE_ENTRY:
+				/*
+				 * No need to send catalog table's pgstat to QD since if the catalog
+				 * table get updated on QE, QD should have the same update.
+				 */
+				continue;
+			case POLICYTYPE_REPLICATED:
+				/*
+				 * gppolicy->numsegments has the same value on all segments even when we are doing expand.
+				 */
+				if (GpIdentity.segindex != tabstat->t_id % gppolicy->numsegments)
+					continue;
+				break;
+			case POLICYTYPE_PARTITIONED:
+				break;
+			default:
+				elog(ERROR, "unrecognized policy type %d", gppolicy->ptype);
+		}
+
+		record.table_stat.tuples_inserted = trans->tuples_inserted;
+		record.table_stat.tuples_updated = trans->tuples_updated;
+		record.table_stat.tuples_deleted = trans->tuples_deleted;
+		record.table_stat.inserted_pre_trunc = trans->inserted_pre_trunc;
+		record.table_stat.updated_pre_trunc = trans->updated_pre_trunc;
+		record.table_stat.deleted_pre_trunc = trans->deleted_pre_trunc;
+		record.table_stat.t_id = tabstat->t_id;
+		record.table_stat.t_shared = tabstat->t_shared;
+		record.table_stat.t_truncated = trans->truncated;
+		record.nest_level = trans->nest_level;
+
+		appendBinaryStringInfo(
+			&stat_data, (char *)&record, sizeof(PgStatTabRecordFromQE));
+		ereport(DEBUG3,
+				(errmsg("Send pgstat for current xact nest_level: %d, rel oid: %d. "
+						"Inserted: %ld, updated: %ld, deleted: %ld.",
+						nest_level, tabstat->t_id,
+						trans->tuples_inserted, trans->tuples_updated,
+						trans->tuples_deleted)));
+	}
+
+	if (stat_data.len > 0)
+	{
+		pq_beginmessage(&buf, 'y');
+		pq_sendstring(&buf, "PGSTAT");
+
+		/*
+		 * Don't mark the pgresult PGASYNC_READY when receive this message on QD.
+		 * Otherwise, QD may think the result is complete and start to process it.
+		 * But actually there may still have messages not received yet on QD belong
+		 * to same pgresult.
+		 */
+		pq_sendbyte(&buf, false);
+
+		pq_sendint(&buf, PGExtraTypeTableStats, sizeof(PGExtraType));
+		pq_sendint(&buf, stat_data.len, sizeof(int));
+		pq_sendbytes(&buf, stat_data.data, stat_data.len);
+		pq_endmessage(&buf);
+	}
+}
+
+/*
+ * pgstat_combine_one_qe_result() -
+ *
+ * Combine one pg_result's pgstat tables' stats from a QE. Process pg_result
+ * contains stats send from QE.
+ * The function should be called on QD after get dispatch results from QE
+ * for the operations that could have tuple inserted/updated/deleted on
+ * QEs.
+ * Normally using pgstat_combine_from_qe(). Current function are also called
+ * in cdbCopyEndInternal().
+ * oidMap - an oid bitmapset, record the processed table oid. To distinguish
+ * whether reset or sum on current PgStat_TableXactStatus entry for the table.
+ * pgresult - pointer of pg_result
+ * nest_level - current xact nest level
+ * segindex - the QE segment index for the current pgresult, for logging purpose
+ */
+void
+pgstat_combine_one_qe_result(List **oidList, struct pg_result *pgresult,
+							 int nest_level, int32 segindex)
+{
+	int						arrayLen;
+	PgStatTabRecordFromQE  *records;
+	PgStat_SubXactStatus   *xact_state;
+	PgStat_TableStatus	   *pgstat_info;
+	PgStat_TableXactStatus *trans;
+
+	if (!pgresult || pgresult->extraslen < 1 || pgresult->extraType != PGExtraTypeTableStats)
+		return;
+	/*
+	* If this is the first rel to be modified at the current nest level,
+	* we first have to push a transaction stack entry.
+	*/
+	xact_state = get_tabstat_stack_level(nest_level);
+
+	arrayLen = pgresult->extraslen / sizeof(PgStatTabRecordFromQE);
+	records = (PgStatTabRecordFromQE *) pgresult->extras;
+	for (int i = 0; i < arrayLen; i++)
+	{
+		char		   *relname;
+		Assert(records[i].nest_level = nest_level);
+
+		relname = get_rel_name(records[i].table_stat.t_id);
+		if (!relname)
+			continue;
+
+		/* Find or create a tabstat entry for the rel */
+		pgstat_info = get_tabstat_entry(
+			records[i].table_stat.t_id, records[i].table_stat.t_shared);
+
+		if (pgstat_info->trans == NULL ||
+			pgstat_info->trans->nest_level != nest_level)
+			add_tabstat_xact_level(pgstat_info, nest_level);
+		trans = pgstat_info->trans;
+		if (list_member_oid(*oidList, records[i].table_stat.t_id))
+		{
+			/*
+			 * Same table pgstat from different QE;
+			 */
+			trans->tuples_inserted += records[i].table_stat.tuples_inserted;
+			trans->tuples_updated += records[i].table_stat.tuples_updated;
+			trans->tuples_deleted += records[i].table_stat.tuples_deleted;
+			trans->truncated = (trans->truncated ||
+								records[i].table_stat.t_truncated) ? true : false;
+			trans->inserted_pre_trunc += records[i].table_stat.inserted_pre_trunc;
+			trans->updated_pre_trunc += records[i].table_stat.updated_pre_trunc;
+			trans->deleted_pre_trunc += records[i].table_stat.deleted_pre_trunc;
+		}
+		else
+		{
+			/*
+			 * First time see the table from a QE, overwrite existing records,
+			 * since the results could belong to same transaction nest level,
+			 * it already contians the previous count collected from previous
+			 * statement.
+			 */
+			*oidList = lappend_oid(*oidList, records[i].table_stat.t_id);
+			trans->tuples_inserted = records[i].table_stat.tuples_inserted;
+			trans->tuples_updated = records[i].table_stat.tuples_updated;
+			trans->tuples_deleted = records[i].table_stat.tuples_deleted;
+			trans->truncated = records[i].table_stat.t_truncated;
+			trans->inserted_pre_trunc = records[i].table_stat.inserted_pre_trunc;
+			trans->updated_pre_trunc = records[i].table_stat.updated_pre_trunc;
+			trans->deleted_pre_trunc = records[i].table_stat.deleted_pre_trunc;
+
+#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+				"gp_pgstat_report_on_master", DDLNotSpecified,
+				"", relname);
+#endif
+		}
+
+		ereport(DEBUG3,
+				(errmsg("Update pgstat from segment %d for current xact nest_level: %d, "
+						"relation name: %s, relation oid: %d. "
+						"Sum of inserted: %ld, updated: %ld, deleted: %ld.",
+						segindex, nest_level, relname, pgstat_info->t_id,
+						trans->tuples_inserted, trans->tuples_updated,
+						trans->tuples_deleted)));
+		pfree(relname);
+	}
+}
+
+/*
+ * pgstat_combine_from_qe() -
+ *
+ * Combine the pgstat tables stats on QD from dispatch result for each QE.
+ * The function should be called on QD after get dispatch results from QE
+ * for the operations that could have tuple inserted/updated/deleted on
+ * QEs.
+ * Currently this function are called in cdbdisp_dispatchCommandInternal(),
+ * mppExecutorFinishup() and ExecSetParamPlan().
+ */
+void
+pgstat_combine_from_qe(CdbDispatchResults *results, int writerSliceIndex)
+{
+	CdbDispatchResult	   *dispatchResult;
+	CdbDispatchResult	   *resultEnd;
+	struct pg_result	   *pgresult;
+	List                   *oidList = NIL;
+	int						nest_level;
+
+	if (!pgstat_track_counts)
+		return;
+
+	resultEnd = cdbdisp_resultEnd(results, writerSliceIndex);
+	nest_level = GetCurrentTransactionNestLevel();
+
+	for (dispatchResult = cdbdisp_resultBegin(results, writerSliceIndex);
+		 dispatchResult < resultEnd; ++dispatchResult)
+	{
+		pgresult = cdbdisp_getPGresult(dispatchResult, dispatchResult->okindex);
+		if (pgresult && !dispatchResult->errcode && pgresult->extraslen > 0 &&
+			pgresult->extraType == PGExtraTypeTableStats)
+		{
+			pgstat_combine_one_qe_result(&oidList, pgresult, nest_level,
+										 dispatchResult->segdbDesc->segindex);
+		}
+	}
+}
 
 /* ----------
  * PgstatCollectorMain() -
@@ -4604,6 +4993,10 @@ PgstatCollectorMain(int argc, char *argv[])
 
 				case PGSTAT_MTYPE_BGWRITER:
 					pgstat_recv_bgwriter(&msg.msg_bgwriter, len);
+					break;
+
+				case PGSTAT_MTYPE_QUEUESTAT:  /* GPDB */
+					pgstat_recv_queuestat((PgStat_MsgQueuestat *) &msg, len);
 					break;
 
 				case PGSTAT_MTYPE_FUNCSTAT:
@@ -4855,7 +5248,9 @@ static void
 pgstat_write_statsfiles(bool permanent, bool allDbs)
 {
 	HASH_SEQ_STATUS hstat;
+	HASH_SEQ_STATUS qstat;
 	PgStat_StatDBEntry *dbentry;
+	PgStat_StatQueueEntry *queueentry;
 	FILE	   *fpout;
 	int32		format_id;
 	const char *tmpfile = permanent ? PGSTAT_STAT_PERMANENT_TMPFILE : pgstat_stat_tmpname;
@@ -4926,6 +5321,16 @@ pgstat_write_statsfiles(bool permanent, bool allDbs)
 		fputc('D', fpout);
 		rc = fwrite(dbentry, offsetof(PgStat_StatDBEntry, tables), 1, fpout);
 		(void) rc;				/* we'll check for error with ferror */
+	}
+
+	/*
+	 * Walk through resource queue stats.
+	 */
+	hash_seq_init(&qstat, pgStatQueueHash);
+	while ((queueentry = (PgStat_StatQueueEntry *) hash_seq_search(&qstat)) != NULL)
+	{
+		fputc('Q', fpout);
+		fwrite(queueentry, sizeof(PgStat_StatQueueEntry), 1, fpout);
 	}
 
 	/*
@@ -5136,6 +5541,9 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	int32		format_id;
 	bool		found;
 	const char *statfile = permanent ? PGSTAT_STAT_PERMANENT_FILENAME : pgstat_stat_filename;
+	PgStat_StatQueueEntry queuebuf;	/* GPDB */
+	PgStat_StatQueueEntry *queueentry; /* GPDB */
+	HTAB	   *queuehash = NULL;  /* GPDB */
 
 	/*
 	 * The tables will live in pgStatLocalContext.
@@ -5151,6 +5559,18 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	hash_ctl.hcxt = pgStatLocalContext;
 	dbhash = hash_create("Databases hash", PGSTAT_DB_HASH_SIZE, &hash_ctl,
 						 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
+	/**
+	 ** Create the Queue hashtable
+	 **/
+	memset(&hash_ctl, 0, sizeof(hash_ctl));
+	hash_ctl.keysize = sizeof(Oid);
+	hash_ctl.entrysize = sizeof(PgStat_StatQueueEntry);
+	hash_ctl.hash = oid_hash;
+	hash_ctl.hcxt = pgStatLocalContext;
+	queuehash = hash_create("Queues hash", PGSTAT_QUEUE_HASH_SIZE, &hash_ctl,
+						  HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+	pgStatQueueHash = queuehash;
 
 	/*
 	 * Clear out global and archiver statistics so they start from zero in
@@ -5298,6 +5718,7 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 											  &hash_ctl,
 											  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
+				memset(&hash_ctl, 0, sizeof(hash_ctl));
 				hash_ctl.keysize = sizeof(Oid);
 				hash_ctl.entrysize = sizeof(PgStat_StatFuncEntry);
 				hash_ctl.hcxt = pgStatLocalContext;
@@ -5316,6 +5737,40 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 											 dbentry->functions,
 											 permanent);
 
+				break;
+
+				/*
+				 * 'Q'	A PgStat_StatQueueEntry follows.  (GPDB)
+				 */
+			case 'Q':
+				if (fread(&queuebuf, 1, sizeof(PgStat_StatQueueEntry),
+						  fpin) != sizeof(PgStat_StatQueueEntry))
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile)));
+					goto done;
+				}
+
+				if (queuehash == NULL)
+					break;
+
+				/*
+				 * Add it to the queue hash.
+				 */
+				queueentry = (PgStat_StatQueueEntry *) hash_search(queuehash,
+													(void *) &queuebuf.queueid,
+														 HASH_ENTER, &found);
+
+				if (found)
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile)));
+					goto done;
+				}
+
+				memcpy(queueentry, &queuebuf, sizeof(PgStat_StatQueueEntry));
 				break;
 
 			case 'E':
@@ -5524,6 +5979,7 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 								   TimestampTz *ts)
 {
 	PgStat_StatDBEntry dbentry;
+	PgStat_StatQueueEntry queuebuf;	/* GPDB */
 	PgStat_GlobalStats myGlobalStats;
 	PgStat_ArchiverStats myArchiverStats;
 	FILE	   *fpin;
@@ -5615,6 +6071,20 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 					goto done;
 				}
 
+				break;
+
+				/*
+				 * 'Q'	A PgStat_StatQueueEntry follows.  (GPDB)
+				 */
+			case 'Q':
+				if (fread(&queuebuf, 1, sizeof(PgStat_StatQueueEntry),
+						  fpin) != sizeof(PgStat_StatQueueEntry))
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile)));
+					goto done;
+				}
 				break;
 
 			case 'E':
@@ -6320,6 +6790,198 @@ pgstat_recv_bgwriter(PgStat_MsgBgWriter *msg, int len)
 	globalStats.buf_fsync_backend += msg->m_buf_fsync_backend;
 	globalStats.buf_alloc += msg->m_buf_alloc;
 }
+
+
+/*
+ * GPDB: Lookup the hash table entry for the specified resource queue. If no hash
+ * table entry exists, initialize it, if the create parameter is true.
+ * Else, return NULL.
+ */
+static PgStat_StatQueueEntry *
+pgstat_get_queue_entry(Oid queueid, bool create)
+{
+	PgStat_StatQueueEntry *result;
+	bool		found;
+	HASHACTION	action = (create ? HASH_ENTER : HASH_FIND);
+
+	/* Lookup or create the hash table entry for this queue */
+	result = (PgStat_StatQueueEntry *) hash_search(pgStatQueueHash,
+												   &queueid,
+												   action, &found);
+
+	if (!create && !found)
+		return NULL;
+
+	/* If not found, initialize the new one. */
+	if (!found)
+	{
+		result->queueid = queueid;
+		result->n_queries_exec = 0;
+		result->n_queries_wait = 0;
+		result->elapsed_exec = 0;
+		result->elapsed_wait = 0;
+	}
+
+	return result;
+}
+
+/* ----------
+ * pgstat_recv_queuestat() -
+ *
+ *	Process resource queue activity for a backend.
+ * ----------
+ */
+static void
+pgstat_recv_queuestat(PgStat_MsgQueuestat *msg, int len)
+{
+	PgStat_StatQueueEntry	*queueentry;
+
+	/* Get or create an entry for this resource queue. */
+	queueentry = pgstat_get_queue_entry(msg->m_queueid, true);
+
+	/* Update the metrics. */
+	queueentry->n_queries_exec += msg->m_queries_exec;
+	queueentry->n_queries_wait += msg->m_queries_wait;
+	queueentry->elapsed_exec += msg->m_elapsed_exec;
+	queueentry->elapsed_wait += msg->m_elapsed_wait;
+}
+
+
+/* ----------
+ * pgstat_init_localportalhash() -
+ *
+ *  Cache for portal statistics for a backend.
+ * ----------
+ */
+void
+pgstat_init_localportalhash(void)
+{
+	HASHCTL		info;
+	int			hash_flags;
+
+	info.keysize = sizeof(uint32);
+	info.entrysize = sizeof(PgStat_StatPortalEntry);
+	info.hash = tag_hash;
+	hash_flags = (HASH_ELEM | HASH_FUNCTION);
+
+	localStatPortalHash = hash_create("Local Stat Portal Hash",
+									 1,
+									 &info,
+									 hash_flags);
+
+	return;
+}
+
+
+/* ----------
+ * pgstat_getportalentry() -
+ *
+ *  Return the (PgStat_StatPortalEntry *) for a given portal (and backend).
+ * ----------
+ */
+PgStat_StatPortalEntry *
+pgstat_getportalentry(uint32 portalid, Oid queueid)
+{
+	PgStat_StatPortalEntry	*portalentry;
+	
+	bool					found;
+
+	portalentry = hash_search(localStatPortalHash,
+							  (void *) &portalid,
+							  HASH_ENTER, &found);
+
+	Assert(portalentry != NULL);
+
+	/* Initialize if this we have not seen this portal before! */
+	if (!found || portalentry->queueentry.queueid == InvalidOid)
+	{
+		portalentry->portalid = portalid;
+		portalentry->queueentry.queueid = queueid;
+		portalentry->queueentry.n_queries_exec = 0;
+		portalentry->queueentry.n_queries_wait = 0;
+		portalentry->queueentry.elapsed_exec = 0;
+		portalentry->queueentry.elapsed_wait = 0;
+	}
+	
+	return portalentry;
+}
+
+
+/* ----------
+ * pgstat_report_queuestat() -
+ *
+ *	Called from tcop/postgres.c to send the so far collected
+ *	per resource queue statistics to the collector.
+ * ----------
+ */
+void
+pgstat_report_queuestat()
+{
+	HASH_SEQ_STATUS			hstat;
+	PgStat_StatPortalEntry	*pentry;
+	PgStat_MsgQueuestat		msg;
+
+	/* Not collecting queue stats or collector disabled. */
+	if (pgStatSock < 0 || !pgstat_collect_queuelevel)
+		return;
+
+	/* Do a sequential scan through the local portal/queue hash*/
+	hash_seq_init(&hstat, localStatPortalHash);
+	while ((pentry = (PgStat_StatPortalEntry *) hash_seq_search(&hstat)) != NULL)
+	{
+		/* Skip if message payload will be trivial. */
+		if (pentry->queueentry.n_queries_exec == 0 &&
+			pentry->queueentry.n_queries_wait == 0 &&
+			pentry->queueentry.elapsed_exec == 0 &&
+			pentry->queueentry.elapsed_wait == 0)
+			continue;
+
+		/* Initialize a message to send to the collector. */
+		pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUEUESTAT);
+		msg.m_queueid = pentry->queueentry.queueid;
+		msg.m_queries_exec = pentry->queueentry.n_queries_exec;
+		msg.m_queries_wait = pentry->queueentry.n_queries_wait;
+		msg.m_elapsed_exec = pentry->queueentry.elapsed_exec;
+		msg.m_elapsed_wait = pentry->queueentry.elapsed_wait;
+
+		/* Reset the counters for this entry. */
+		pentry->queueentry.queueid = InvalidOid;
+		pentry->queueentry.n_queries_exec = 0;
+		pentry->queueentry.n_queries_wait = 0;
+		pentry->queueentry.elapsed_exec = 0;
+		pentry->queueentry.elapsed_wait = 0;
+
+		pgstat_send(&msg, sizeof(msg));
+	}
+}
+
+
+/* ----------
+ * pgstat_fetch_stat_queueentry() -
+ *
+ *	Support function for the SQL-callable pgstat* functions. Returns
+ *	the collected statistics for one resource queue or NULL. NULL doesn't mean
+ *	that the queue doesn't exist, it is just not yet known by the
+ *	collector, so the caller is better off to report ZERO instead.
+ * ----------
+ */
+PgStat_StatQueueEntry *
+pgstat_fetch_stat_queueentry(Oid queueid)
+{
+	/*
+	 * If not done for this transaction, read the statistics collector stats
+	 * file into some hash tables.
+	 */
+	backend_read_statsfile();
+
+	/*
+	 * Lookup the requested database; return NULL if not found
+	 */
+	return (PgStat_StatQueueEntry *) hash_search(pgStatQueueHash,
+											  (void *) &queueid,
+											  HASH_FIND, NULL);
+}
+
 
 /* ----------
  * pgstat_recv_recoveryconflict() -

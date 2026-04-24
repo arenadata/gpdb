@@ -23,6 +23,7 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_func.h"
@@ -618,6 +619,7 @@ AggregateCreate(const char *aggName,
 							 GetUserId(),	/* proowner */
 							 INTERNALlanguageId,	/* languageObjectId */
 							 InvalidOid,	/* no validator */
+							 InvalidOid,		/* no describe function */
 							 "aggregate_dummy", /* placeholder proc */
 							 NULL,	/* probin */
 							 PROKIND_AGGREGATE,
@@ -637,7 +639,9 @@ AggregateCreate(const char *aggName,
 							 PointerGetDatum(NULL), /* proconfig */
 							 InvalidOid,	/* no prosupport */
 							 1, /* procost */
-							 0);	/* prorows */
+							 0, /* prorows */
+							 PRODATAACCESS_NONE,		/* prodataaccess */
+							 PROEXECLOCATION_ANY);		/* proexeclocation */
 	procOid = myself.objectId;
 
 	/*

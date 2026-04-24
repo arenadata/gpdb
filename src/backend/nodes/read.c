@@ -4,6 +4,8 @@
  *	  routines to convert a string (legal ascii representation of node) back
  *	  to nodes
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -29,12 +31,35 @@
 
 /* Static state for pg_strtok */
 static const char *pg_strtok_ptr = NULL;
+static const char *pg_strtok_begin = NULL;                    /*CDB*/
 
 /* State flag that determines how readfuncs.c should treat location fields */
 #ifdef WRITE_READ_PARSE_PLAN_TREES
 bool		restore_location_fields = false;
 #endif
 
+static void nodeReadSkipThru(char closingDelimiter);    /*CDB*/
+
+/*
+ * Helper functions for saving current states and pg_strtok() another string
+ *
+ * External functions like ExtensibleNodeMethods->nodeRead() uses the
+ * pg_strtok_ptr information via pg_strtok() but the context could be binary
+ * (readfast.c), set_strtok_states() to pg_strtok() the string.
+ */
+void
+save_strtok_states(const char ** save_ptr, const char ** save_begin)
+{
+	*save_ptr = pg_strtok_ptr;		/* point pg_strtok at the string to read */
+	*save_begin = pg_strtok_begin;	/* CDB: save starting position for debug */
+}
+
+void
+set_strtok_states(const char *ptr, const char *begin)
+{
+	pg_strtok_ptr = ptr;		/* point pg_strtok at the string to read */
+	pg_strtok_begin = begin;	/* CDB: save starting position for debug */
+}
 
 /*
  * stringToNode -
@@ -49,6 +74,7 @@ stringToNodeInternal(const char *str, bool restore_loc_fields)
 {
 	void	   *retval;
 	const char *save_strtok;
+    const char *save_begin = pg_strtok_begin;
 #ifdef WRITE_READ_PARSE_PLAN_TREES
 	bool		save_restore_location_fields;
 #endif
@@ -61,7 +87,8 @@ stringToNodeInternal(const char *str, bool restore_loc_fields)
 	 */
 	save_strtok = pg_strtok_ptr;
 
-	pg_strtok_ptr = str;		/* point pg_strtok at the string to read */
+    pg_strtok_ptr = str;		/* point pg_strtok at the string to read */
+    pg_strtok_begin = str;      /* CDB: save starting position for debug */
 
 	/*
 	 * If enabled, likewise save/restore the location field handling flag.
@@ -74,6 +101,7 @@ stringToNodeInternal(const char *str, bool restore_loc_fields)
 	retval = nodeRead(NULL, 0); /* do the reading */
 
 	pg_strtok_ptr = save_strtok;
+    pg_strtok_begin = save_begin;
 
 #ifdef WRITE_READ_PARSE_PLAN_TREES
 	restore_location_fields = save_restore_location_fields;
@@ -333,8 +361,58 @@ nodeRead(const char *token, int tok_len)
 		case LEFT_BRACE:
 			result = parseNodeString();
 			token = pg_strtok(&tok_len);
-			if (token == NULL || token[0] != '}')
+
+            /*
+             * CDB: Check for extra fields left over following the ones that
+             * were consumed by the node reader function.  If this tree was
+             * read from the catalog, it might have been stored by a future
+             * release which may have added fields that we don't know about.
+             */
+            while (token &&
+                   token[0] == ':')
+            {
+                /*
+                 * Check for special :prereq tag that a future release may have
+                 * inserted to tell us that the node's semantics are not
+                 * downward compatible.  The node reader function should have
+                 * consumed any such tags for features that it supports.  If a
+                 * :prereq is left to be seen here, that means its feature isn't
+                 * implemented in this release and we must reject the statement.
+                 * The tag should be followed by a concise feature name or
+                 * release id that can be shown to the user in an error message.
+                 */
+                if (tok_len == 7 &&
+                    memcmp(token, ":prereq", 7) == 0)
+                {
+        			token = pg_strtok(&tok_len);
+                    token = debackslash(token, tok_len);
+                    ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                                    errmsg("This operation requires a feature "
+                                           "called \"%.*s\" which is not "
+                                           "supported in this version of %s.", 
+                                           tok_len, token, PACKAGE_NAME)
+                            ));
+                }
+
+                /*
+                 * Other extra fields can safely be ignored.  They are assumed
+                 * downward compatible unless a :prereq tag tells us otherwise.
+                 */
+                nodeReadSkip();
+                ereport(DEBUG2, (errmsg("nodeRead: unknown option '%.*s' ignored",
+                                        tok_len, token),
+                                 errdetail("Skipped '%.*s' at offset %d in %s",
+                                           (int)(pg_strtok_ptr - token), token,
+                                           (int)(token - pg_strtok_begin),
+                                           pg_strtok_begin)
+                        ));
+                token = pg_strtok(&tok_len);
+            }
+
+			if (token == NULL )
 				elog(ERROR, "did not find '}' at end of input node");
+			if (token[0] != '}')
+				elog(ERROR, "did not find '}' at end of input node, instead found %s",token);
 			break;
 		case LEFT_PAREN:
 			{
@@ -460,3 +538,134 @@ nodeRead(const char *token, int tok_len)
 
 	return (void *) result;
 }
+
+
+/*
+ * nodeReadSkip
+ *    Skips next item (a token, list or subtree).
+ */
+void
+nodeReadSkip(void)
+{
+    int     tok_len;
+    const char *token = pg_strtok(&tok_len);
+
+    if (!token)
+    {
+        elog(ERROR, "did not find expected token");
+        return;                 /* not reached */
+    }
+
+    switch (*token)
+    {
+        case '{':
+            nodeReadSkipThru('}');
+            break;
+
+        case '(':
+            nodeReadSkipThru(')');
+            break;
+
+        case '}':
+        case ')':
+            elog(ERROR, "did not find expected token, instead found %s", token);
+            return;             /* not reached */
+
+        default:
+            break;
+    }
+}                               /* nodeReadSkip */
+
+
+/*
+ * nodeReadSkipThru
+ *    Skips one or more tokens, lists or subtrees up to and including
+ *    the specified matching delimiter.
+ */
+void
+nodeReadSkipThru(char closingDelimiter)
+{
+    for (;;)
+    {
+        int     tok_len;
+        const char   *token = pg_strtok(&tok_len);
+
+        if (!token)
+        {
+            elog(ERROR, "did not find '%c' as expected", closingDelimiter);
+            return;             /* not reached */
+        }
+
+        switch (*token)
+        {
+            case '{':
+                nodeReadSkipThru('}');
+                break;
+
+            case '(':
+                nodeReadSkipThru(')');
+                break;
+
+            case '}':
+            case ')':
+                if (*token != closingDelimiter)
+                    elog(ERROR, "did not find '%c' as expected, instead found %s",
+                         closingDelimiter, token);
+                return;         /* not reached */
+
+            default:
+                break;
+        }
+    }
+}                               /* nodeReadSkipThru */
+
+
+/*
+ * pg_strtok_peek_fldname
+ *    Peeks at the token that will be returned by the next call to
+ *    pg_strtok and returns true if it is, case-sensitively,
+ *          :fldname
+ */
+bool
+pg_strtok_peek_fldname(const char *fldname)
+{
+    const char   *bp = pg_strtok_ptr;
+    const char   *cp;
+
+    if (!bp)
+        return false;
+
+    /* trim leading whitespace */
+    if (*bp <= ' ')
+    {
+        while (*bp == ' ' || *bp == '\n' || *bp == '\t')
+		    bp++;
+        pg_strtok_ptr = bp;
+    }
+
+    if (*bp != ':')
+        return false;
+
+    cp = bp+1;
+    while (*fldname != '\0' &&
+           *fldname == *cp)
+    {
+        cp++;
+        fldname++;
+    }
+
+    if (*fldname != '\0')
+        return false;
+
+    if (*cp == ' ' ||
+        *cp == '\n' ||
+        *cp == '\t' ||
+        *cp == '(' ||
+        *cp == ')' ||
+        *cp == '{' ||
+        *cp == '}' ||
+        *cp == '\0')
+        return true;
+
+    return false;
+}                                   /* pg_strtok_peek_fldname */

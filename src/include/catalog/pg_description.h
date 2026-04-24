@@ -56,6 +56,9 @@ CATALOG(pg_description,2609,DescriptionRelationId)
 #endif
 } FormData_pg_description;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(classoid REFERENCES pg_class(oid));
+
 /* ----------------
  *		Form_pg_description corresponds to a pointer to a tuple with
  *		the format of pg_description relation.

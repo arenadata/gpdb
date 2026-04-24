@@ -28,6 +28,11 @@ ALTER ROLE <replaceable class="parameter">role_specification</replaceable> [ WIT
       SUPERUSER | NOSUPERUSER
     | CREATEDB | NOCREATEDB
     | CREATEROLE | NOCREATEROLE
+    | CREATEEXTTABLE | NOCREATEEXTTABLE 
+      [ ( attribute='value'[, ...] ) ]
+           where attributes and values are:
+           type='readable'|'writable'
+           protocol='gpfdist'|'http'
     | INHERIT | NOINHERIT
     | LOGIN | NOLOGIN
     | REPLICATION | NOREPLICATION
@@ -42,6 +47,8 @@ ALTER ROLE { <replaceable class="parameter">role_specification</replaceable> | A
 ALTER ROLE { <replaceable class="parameter">role_specification</replaceable> | ALL } [ IN DATABASE <replaceable class="parameter">database_name</replaceable> ] SET <replaceable>configuration_parameter</replaceable> FROM CURRENT
 ALTER ROLE { <replaceable class="parameter">role_specification</replaceable> | ALL } [ IN DATABASE <replaceable class="parameter">database_name</replaceable> ] RESET <replaceable>configuration_parameter</replaceable>
 ALTER ROLE { <replaceable class="parameter">role_specification</replaceable> | ALL } [ IN DATABASE <replaceable class="parameter">database_name</replaceable> ] RESET ALL
+ALTER ROLE <replaceable class="parameter">name</replaceable> RESOURCE QUEUE {<replaceable class="parameter">queue_name</replaceable> | NONE}
+ALTER ROLE <replaceable class="parameter">name</replaceable> RESOURCE GROUP {<replaceable class="parameter">group_name</replaceable> | NONE}
 
 <phrase>where <replaceable class="parameter">role_specification</replaceable> can be:</phrase>
 
@@ -176,6 +183,33 @@ ALTER ROLE { <replaceable class="parameter">role_specification</replaceable> | A
         These clauses alter attributes originally set by
         <xref linkend="sql-createrole"/>. For more information, see the
         <command>CREATE ROLE</command> reference page.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>RESOURCE GROUP</> <replaceable class="parameter">group_name</replaceable></term>
+      <listitem>
+       <para>
+        The name of the resource group to assign to this role. Specifying
+        <replaceable>group_name</replaceable> <literal>NONE</literal> removes the role's
+        current resource group assignment and assigns a default resource
+        group based on the role's capability. <literal>SUPERUSER</literal> roles are assigned
+        the <literal>admin_group</literal> resource group, while the <literal>default_group</literal> resource
+        group is assigned to non-admin roles. See <xref linkend="sql-createresourcegroup"
+        endterm="sql-createresourcegroup-title"> for more information.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>RESOURCE QUEUE</> <replaceable class="parameter">queue_name</replaceable></term>
+      <listitem>
+       <para>
+        The <literal>RESOURCE QUEUE</literal> that this role is in, or 
+        <literal>NONE</literal> to remove the role from any resource queuing 
+        restrictions. See <xref linkend="sql-createresourcequeue" 
+        endterm="sql-createresourcequeue-title"> for more information.
        </para>
       </listitem>
      </varlistentry>

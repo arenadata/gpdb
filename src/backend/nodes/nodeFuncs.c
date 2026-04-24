@@ -63,6 +63,12 @@ exprType(const Node *expr)
 		case T_GroupingFunc:
 			type = INT4OID;
 			break;
+		case T_GroupId:
+			type = INT4OID;
+			break;
+		case T_GroupingSetId:
+			type = INT4OID;
+			break;
 		case T_WindowFunc:
 			type = ((const WindowFunc *) expr)->wintype;
 			break;
@@ -208,6 +214,9 @@ exprType(const Node *expr)
 		case T_RowExpr:
 			type = ((const RowExpr *) expr)->row_typeid;
 			break;
+		case T_TableValueExpr:
+			type = ANYTABLEOID;  /* MULTISET values are a special pseudotype */
+			break;
 		case T_RowCompareExpr:
 			type = BOOLOID;
 			break;
@@ -259,6 +268,16 @@ exprType(const Node *expr)
 		case T_PlaceHolderVar:
 			type = exprType((Node *) ((const PlaceHolderVar *) expr)->phexpr);
 			break;
+		case T_DMLActionExpr:
+			type = INT4OID;
+			break;
+		case T_AggExprId:
+			type = INT4OID;
+			break;
+		case T_RowIdExpr:
+			type = INT8OID;
+			break;
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			type = InvalidOid;	/* keep compiler quiet */
@@ -741,6 +760,12 @@ exprCollation(const Node *expr)
 		case T_GroupingFunc:
 			coll = InvalidOid;
 			break;
+		case T_GroupId:
+			coll = InvalidOid;
+			break;
+		case T_GroupingSetId:
+			coll = InvalidOid;
+			break;
 		case T_WindowFunc:
 			coll = ((const WindowFunc *) expr)->wincollid;
 			break;
@@ -852,6 +877,9 @@ exprCollation(const Node *expr)
 		case T_RowExpr:
 			coll = InvalidOid;	/* result is always composite */
 			break;
+		case T_TableValueExpr:
+			coll = InvalidOid;  /* result is always anytable */
+			break;
 		case T_RowCompareExpr:
 			coll = InvalidOid;	/* result is always boolean */
 			break;
@@ -906,6 +934,12 @@ exprCollation(const Node *expr)
 			break;
 		case T_PlaceHolderVar:
 			coll = exprCollation((Node *) ((const PlaceHolderVar *) expr)->phexpr);
+			break;
+
+		case T_DMLActionExpr:
+		case T_AggExprId:
+		case T_RowIdExpr:
+			coll = InvalidOid;
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
@@ -989,6 +1023,12 @@ exprSetCollation(Node *expr, Oid collation)
 		case T_GroupingFunc:
 			Assert(!OidIsValid(collation));
 			break;
+		case T_GroupId:
+			Assert(!OidIsValid(collation));
+			break;
+		case T_GroupingSetId:
+			Assert(!OidIsValid(collation));
+			break;
 		case T_WindowFunc:
 			((WindowFunc *) expr)->wincollid = collation;
 			break;
@@ -1069,6 +1109,9 @@ exprSetCollation(Node *expr, Oid collation)
 		case T_RowExpr:
 			Assert(!OidIsValid(collation)); /* result is always composite */
 			break;
+		case T_TableValueExpr:
+			Assert(!OidIsValid(collation));		/* result is always anytable */
+			break;
 		case T_RowCompareExpr:
 			Assert(!OidIsValid(collation)); /* result is always boolean */
 			break;
@@ -1110,6 +1153,7 @@ exprSetCollation(Node *expr, Oid collation)
 			Assert(!OidIsValid(collation)); /* result is always an integer
 											 * type */
 			break;
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			break;
@@ -1218,6 +1262,12 @@ exprLocation(const Node *expr)
 			break;
 		case T_GroupingFunc:
 			loc = ((const GroupingFunc *) expr)->location;
+			break;
+		case T_GroupId:
+			loc = ((const GroupId *) expr)->location;
+			break;
+		case T_GroupingSetId:
+			loc = ((const GroupingSetId *) expr)->location;
 			break;
 		case T_WindowFunc:
 			/* function name should always be the first thing */
@@ -1350,6 +1400,10 @@ exprLocation(const Node *expr)
 		case T_RowExpr:
 			/* the location points at ROW or (, which must be leftmost */
 			loc = ((const RowExpr *) expr)->location;
+			break;
+		case T_TableValueExpr:
+			/* the location points at TABLE, which must be leftmost */
+			loc = ((TableValueExpr *) expr)->location;
 			break;
 		case T_RowCompareExpr:
 			/* just use leftmost argument's location */
@@ -1557,6 +1611,7 @@ exprLocation(const Node *expr)
 	}
 	return loc;
 }
+
 
 /*
  * leftmostLoc - support for exprLocation
@@ -1870,6 +1925,9 @@ expression_tree_walker(Node *node,
 		case T_NextValueExpr:
 		case T_RangeTblRef:
 		case T_SortGroupClause:
+		case T_DMLActionExpr:
+		case T_AggExprId:
+		case T_RowIdExpr:
 			/* primitive node types with no expression subnodes */
 			break;
 		case T_WithCheckOption:
@@ -1904,11 +1962,14 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_GroupId:
+		case T_GroupingSetId:
+			break;
 		case T_WindowFunc:
 			{
-				WindowFunc *expr = (WindowFunc *) node;
+				WindowFunc   *expr = (WindowFunc *) node;
 
-				/* recurse directly on List */
+				/* recurse directly on explicit arg List */
 				if (expression_tree_walker((Node *) expr->args,
 										   walker, context))
 					return true;
@@ -2095,20 +2156,6 @@ expression_tree_walker(Node *node,
 		case T_Query:
 			/* Do nothing with a sub-Query, per discussion above */
 			break;
-		case T_WindowClause:
-			{
-				WindowClause *wc = (WindowClause *) node;
-
-				if (walker(wc->partitionClause, context))
-					return true;
-				if (walker(wc->orderClause, context))
-					return true;
-				if (walker(wc->startOffset, context))
-					return true;
-				if (walker(wc->endOffset, context))
-					return true;
-			}
-			break;
 		case T_CommonTableExpr:
 			{
 				CommonTableExpr *cte = (CommonTableExpr *) node;
@@ -2220,6 +2267,56 @@ expression_tree_walker(Node *node,
 			return walker(((PlaceHolderInfo *) node)->ph_var, context);
 		case T_RangeTblFunction:
 			return walker(((RangeTblFunction *) node)->funcexpr, context);
+
+		case T_WindowDef:
+			{
+				WindowDef  *wd = (WindowDef *) node;
+
+				if (expression_tree_walker((Node *) wd->partitionClause, walker,
+										   context))
+					return true;
+				if (expression_tree_walker((Node *) wd->orderClause, walker,
+										   context))
+					return true;
+				if (walker((Node *) wd->startOffset, context))
+					return true;
+				if (walker((Node *) wd->endOffset, context))
+					return true;
+			}
+			break;
+		case T_TypeCast:
+			{
+				TypeCast *tc = (TypeCast *)node;
+
+				if (expression_tree_walker((Node*) tc->arg, walker, context))
+					return true;
+			}
+			break;
+		case T_TableValueExpr:
+			{
+				TableValueExpr *expr = (TableValueExpr *) node;
+
+				return walker(expr->subquery, context);
+			}
+			break;
+		case T_WindowClause:
+			{
+				WindowClause *wc = (WindowClause *) node;
+
+				if (expression_tree_walker((Node *) wc->partitionClause, walker,
+										   context))
+					return true;
+				if (expression_tree_walker((Node *) wc->orderClause, walker,
+										   context))
+					return true;
+				if (walker((Node *) wc->startOffset, context))
+					return true;
+				if (walker((Node *) wc->endOffset, context))
+					return true;
+				return false;
+			}
+			break;
+
 		case T_TableSampleClause:
 			{
 				TableSampleClause *tsc = (TableSampleClause *) node;
@@ -2231,6 +2328,27 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+
+		case T_PartitionedRelPruneInfo:
+			{
+				PartitionedRelPruneInfo *prpinfo= (PartitionedRelPruneInfo *) node;
+
+				if (walker((Node *)prpinfo->initial_pruning_steps, context))
+					return true;
+				if (walker((Node *)prpinfo->exec_pruning_steps, context))
+					return true;
+			}
+			break;
+
+		case T_PartitionPruneInfo:
+			{
+				PartitionPruneInfo *ppinfo = (PartitionPruneInfo *)node;
+
+				if (walker((Node *) ppinfo->prune_infos, context))
+					return true;
+			}
+			break;
+
 		case T_TableFunc:
 			{
 				TableFunc  *tf = (TableFunc *) node;
@@ -2292,6 +2410,10 @@ query_tree_walker(Query *query,
 		return true;
 	if (walker(query->havingQual, context))
 		return true;
+	if (walker(query->groupClause, context))
+		return true;
+	if (walker(query->windowClause, context))
+		return true;
 	if (walker(query->limitOffset, context))
 		return true;
 	if (walker(query->limitCount, context))
@@ -2305,6 +2427,38 @@ query_tree_walker(Query *query,
 	{
 		if (range_table_walker(query->rtable, walker, context, flags))
 			return true;
+	}
+	if (query->utilityStmt)
+	{
+		/*
+		 * Certain utility commands contain general-purpose Querys embedded in
+		 * them --- if this is one, invoke the walker on the sub-Query.
+		 */
+		if (IsA(query->utilityStmt, CopyStmt))
+		{
+			if (walker(((CopyStmt *) query->utilityStmt)->query, context))
+				return true;
+		}
+		if (IsA(query->utilityStmt, DeclareCursorStmt))
+		{
+			if (walker(((DeclareCursorStmt *) query->utilityStmt)->query, context))
+				return true;
+		}
+		if (IsA(query->utilityStmt, ExplainStmt))
+		{
+			if (walker(((ExplainStmt *) query->utilityStmt)->query, context))
+				return true;
+		}
+		if (IsA(query->utilityStmt, PrepareStmt))
+		{
+			if (walker(((PrepareStmt *) query->utilityStmt)->query, context))
+				return true;
+		}
+		if (IsA(query->utilityStmt, ViewStmt))
+		{
+			if (walker(((ViewStmt *) query->utilityStmt)->query, context))
+				return true;
+		}
 	}
 	return false;
 }
@@ -2355,6 +2509,12 @@ range_table_walker(List *rtable,
 				if (walker(rte->functions, context))
 					return true;
 				break;
+			case RTE_TABLEFUNCTION:
+				if (walker(rte->subquery, context))
+					return true;
+				if (walker(rte->functions, context))
+					return true;
+				break;
 			case RTE_TABLEFUNC:
 				if (walker(rte->tablefunc, context))
 					return true;
@@ -2366,6 +2526,7 @@ range_table_walker(List *rtable,
 			case RTE_CTE:
 			case RTE_NAMEDTUPLESTORE:
 			case RTE_RESULT:
+			case RTE_VOID:
 				/* nothing to do */
 				break;
 		}
@@ -2505,7 +2666,8 @@ expression_tree_mutator(Node *node,
 		case T_CurrentOfExpr:
 		case T_NextValueExpr:
 		case T_RangeTblRef:
-		case T_SortGroupClause:
+		case T_String:
+		case T_Null:
 			return (Node *) copyObject(node);
 		case T_WithCheckOption:
 			{
@@ -2532,10 +2694,19 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_DQAExpr:
+			{
+				DQAExpr *dqaExpr = (DQAExpr *)node;
+				DQAExpr *newDqaExpr;
+				FLATCOPY(newDqaExpr, dqaExpr, DQAExpr);
+				MUTATE(newDqaExpr->agg_filter, dqaExpr->agg_filter, Expr *);
+				return (Node *)newDqaExpr;
+			}
+            break;
 		case T_GroupingFunc:
 			{
-				GroupingFunc *grouping = (GroupingFunc *) node;
-				GroupingFunc *newnode;
+				GroupingFunc   *grouping = (GroupingFunc *) node;
+				GroupingFunc   *newnode;
 
 				FLATCOPY(newnode, grouping, GroupingFunc);
 				MUTATE(newnode->args, grouping->args, List *);
@@ -2551,6 +2722,26 @@ expression_tree_mutator(Node *node,
 				 */
 				newnode->refs = list_copy(grouping->refs);
 				newnode->cols = list_copy(grouping->cols);
+
+				return (Node *) newnode;
+			}
+			break;
+		case T_GroupId:
+			{
+				GroupId   *groupid = (GroupId *) node;
+				GroupId   *newnode;
+
+				FLATCOPY(newnode, groupid, GroupId);
+
+				return (Node *) newnode;
+			}
+			break;
+		case T_GroupingSetId:
+			{
+				GroupingSetId   *gsetid = (GroupingSetId *) node;
+				GroupingSetId   *newnode;
+
+				FLATCOPY(newnode, gsetid, GroupingSetId);
 
 				return (Node *) newnode;
 			}
@@ -2591,6 +2782,18 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, expr, FuncExpr);
 				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_TableValueExpr:
+			{
+				TableValueExpr   *expr = (TableValueExpr *) node;
+				TableValueExpr   *newnode;
+
+				FLATCOPY(newnode, expr, TableValueExpr);
+
+				/* The subquery already pulled up into the T_TableFunctionScan node */
+				newnode->subquery = (Node *) NULL;
 				return (Node *) newnode;
 			}
 			break;
@@ -2903,13 +3106,14 @@ expression_tree_mutator(Node *node,
 				WindowClause *newnode;
 
 				FLATCOPY(newnode, wc, WindowClause);
+
 				MUTATE(newnode->partitionClause, wc->partitionClause, List *);
 				MUTATE(newnode->orderClause, wc->orderClause, List *);
 				MUTATE(newnode->startOffset, wc->startOffset, Node *);
 				MUTATE(newnode->endOffset, wc->endOffset, Node *);
 				return (Node *) newnode;
+
 			}
-			break;
 		case T_CommonTableExpr:
 			{
 				CommonTableExpr *cte = (CommonTableExpr *) node;
@@ -3074,6 +3278,50 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_TableFunctionScan:
+			{
+				TableFunctionScan *tablefunc = (TableFunctionScan *) node;
+				TableFunctionScan *newnode;
+
+				FLATCOPY(newnode, tablefunc, TableFunctionScan);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowDef:
+			{
+				WindowDef *windef = (WindowDef *) node;
+				WindowDef *newnode;
+
+				FLATCOPY(newnode, windef, WindowDef);
+
+				MUTATE(newnode->partitionClause, windef->partitionClause, List *);
+				MUTATE(newnode->orderClause, windef->orderClause, List *);
+				MUTATE(newnode->startOffset, windef->startOffset, Node *);
+				MUTATE(newnode->endOffset, windef->endOffset, Node *);
+
+				return (Node *) newnode;
+
+			}
+			break;
+		case T_SortGroupClause:
+			{
+				SortGroupClause *sortcl = (SortGroupClause *) node;
+				SortGroupClause *newnode;
+
+				FLATCOPY(newnode, sortcl, SortGroupClause);
+
+				return (Node *) newnode;
+			}
+			break;
+		case T_DMLActionExpr:
+			{
+				DMLActionExpr *action_expr = (DMLActionExpr *) node;
+				DMLActionExpr *new_action_expr;
+
+				FLATCOPY(new_action_expr, action_expr, DMLActionExpr);
+				return (Node *)new_action_expr;
+			}
+			break;
 		case T_TableSampleClause:
 			{
 				TableSampleClause *tsc = (TableSampleClause *) node;
@@ -3085,6 +3333,24 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_AggExprId:
+			{
+				AggExprId *exprId = (AggExprId *)node;
+				AggExprId *new_exprId;
+				FLATCOPY(new_exprId, exprId, AggExprId);
+				return (Node *)new_exprId;
+			}
+			break;
+		case T_RowIdExpr:
+			{
+				RowIdExpr *rowidexpr = (RowIdExpr *) node;
+				RowIdExpr *newnode;
+
+				FLATCOPY(newnode, rowidexpr, RowIdExpr);
+				return (Node *) newnode;
+			}
+			break;
+
 		case T_TableFunc:
 			{
 				TableFunc  *tf = (TableFunc *) node;
@@ -3150,7 +3416,10 @@ query_tree_mutator(Query *query,
 	MUTATE(query->returningList, query->returningList, List *);
 	MUTATE(query->jointree, query->jointree, FromExpr *);
 	MUTATE(query->setOperations, query->setOperations, Node *);
+	MUTATE(query->groupClause, query->groupClause, List *);
+	MUTATE(query->scatterClause, query->scatterClause, List *);
 	MUTATE(query->havingQual, query->havingQual, Node *);
+	MUTATE(query->windowClause, query->windowClause, List *);
 	MUTATE(query->limitOffset, query->limitOffset, Node *);
 	MUTATE(query->limitCount, query->limitCount, Node *);
 	if (!(flags & QTW_IGNORE_CTE_SUBQUERIES))
@@ -3213,6 +3482,10 @@ range_table_mutator(List *rtable,
 			case RTE_FUNCTION:
 				MUTATE(newrte->functions, rte->functions, List *);
 				break;
+			case RTE_TABLEFUNCTION:
+				MUTATE(newrte->functions, rte->functions, List *);
+				MUTATE(newrte->subquery, rte->subquery, Query *);
+				break;
 			case RTE_TABLEFUNC:
 				MUTATE(newrte->tablefunc, rte->tablefunc, TableFunc *);
 				break;
@@ -3222,6 +3495,7 @@ range_table_mutator(List *rtable,
 			case RTE_CTE:
 			case RTE_NAMEDTUPLESTORE:
 			case RTE_RESULT:
+			case RTE_VOID:
 				/* nothing to do */
 				break;
 		}
@@ -3332,6 +3606,9 @@ raw_expression_tree_walker(Node *node,
 			return walker(((RangeVar *) node)->alias, context);
 		case T_GroupingFunc:
 			return walker(((GroupingFunc *) node)->args, context);
+		case T_GroupId:
+		case T_GroupingSetId:
+			break;
 		case T_SubLink:
 			{
 				SubLink    *sublink = (SubLink *) node;
@@ -3817,6 +4094,13 @@ planstate_tree_walker(PlanState *planstate,
 		case T_BitmapOr:
 			if (planstate_walk_members(((BitmapOrState *) planstate)->bitmapplans,
 									   ((BitmapOrState *) planstate)->nplans,
+									   walker, context))
+				return true;
+			break;
+		/* GPDB_96_MERGE_FIXME: verify walker works on Sequence node */
+		case T_Sequence:
+			if (planstate_walk_members(((SequenceState *) planstate)->subplans,
+									   ((SequenceState *) planstate)->numSubplans,
 									   walker, context))
 				return true;
 			break;

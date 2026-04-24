@@ -243,6 +243,18 @@ CATALOG(pg_type,1247,TypeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71,TypeRelati
 #endif
 } FormData_pg_type;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(typnamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(typowner REFERENCES pg_authid(oid));
+FOREIGN_KEY(typrelid REFERENCES pg_class(oid));
+FOREIGN_KEY(typinput REFERENCES pg_proc(oid));
+FOREIGN_KEY(typoutput REFERENCES pg_proc(oid));
+FOREIGN_KEY(typreceive REFERENCES pg_proc(oid));
+FOREIGN_KEY(typsend REFERENCES pg_proc(oid));
+FOREIGN_KEY(typanalyze REFERENCES pg_proc(oid));
+FOREIGN_KEY(typmodin REFERENCES pg_proc(oid));
+FOREIGN_KEY(typmodout REFERENCES pg_proc(oid));
+
 /* ----------------
  *		Form_pg_type corresponds to a pointer to a row with
  *		the format of pg_type relation.
@@ -286,6 +298,10 @@ typedef FormData_pg_type *Form_pg_type;
 	 (typid) == ANYNONARRAYOID || \
 	 (typid) == ANYENUMOID || \
 	 (typid) == ANYRANGEOID)
+
+/* Is a type OID suitable for describe callback functions? */
+#define TypeSupportsDescribe(typid)  \
+	((typid) == RECORDOID)
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
@@ -343,5 +359,10 @@ extern char *makeArrayTypeName(const char *typeName, Oid typeNamespace);
 
 extern bool moveArrayTypeName(Oid typeOid, const char *typeName,
 							  Oid typeNamespace);
+
+extern void add_type_encoding(Oid typid, Datum typoptions);
+extern void remove_type_encoding(Oid typid);
+extern void update_type_encoding(Oid typid, Datum typoptions);
+extern List *get_type_encoding(TypeName *typname);
 
 #endif							/* PG_TYPE_H */

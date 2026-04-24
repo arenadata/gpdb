@@ -595,4 +595,23 @@
   typcategory => 'P', typinput => 'anyrange_in', typoutput => 'anyrange_out',
   typreceive => '-', typsend => '-', typalign => 'd', typstorage => 'x' },
 
+{ oid => '7198', oid_symbol => 'COMPLEXOID', array_type_oid => '7199',
+  descr => 'double-precision floating point complex number, 16-byte storage',
+  typname => 'complex', typlen => '16', typbyval => 'f', typcategory => 'N',
+  typdelim => '\054', typinput => 'complex_in', typoutput => 'complex_out',
+  typreceive => 'complex_recv', typsend => 'complex_send', typalign => 'd' },
+{ oid => '7053', oid_symbol => 'ANYTABLEOID',
+  descr => 'Represents a generic TABLE value expression',
+  typname => 'anytable', typlen => '-1', typbyval => 'f', typtype => 'p',
+  typcategory => 'P', typdelim => '\054', typinput => 'anytable_in',
+  typoutput => 'anytable_out', typreceive => '-', typsend => '-',
+  typalign => 'd', typstorage => 'x' },
+{ oid => '7157', array_type_oid => '7165',
+  descr => 'gp_hyperloglog_estimator’s internal bytea representation for hyperloglog counter',
+  typname => 'gp_hyperloglog_estimator', typlen => '-1', typbyval => 'f',
+  typcategory => 'X', typdelim => '\054',
+  typarray => '_gp_hyperloglog_estimator', typinput => 'gp_hyperloglog_in',
+  typoutput => 'gp_hyperloglog_out', typreceive => '-', typsend => '-',
+  typalign => 'i', typstorage => 'x' },
+
 ]

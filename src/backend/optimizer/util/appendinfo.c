@@ -468,8 +468,45 @@ adjust_appendrel_attrs_mutator(Node *node,
 	Assert(!IsA(node, SubLink));
 	Assert(!IsA(node, Query));
 
-	return expression_tree_mutator(node, adjust_appendrel_attrs_mutator,
+	node = expression_tree_mutator(node, adjust_appendrel_attrs_mutator,
 								   (void *) context);
+
+	/*
+	 * In GPDB, if you have two SubPlans referring to the same initplan, we
+	 * require two separate copies of the subplan, one for each SubPlan
+	 * reference. That's because even if a plan is otherwise the same, we
+	 * may want to later apply different flow to different SubPlans
+	 * referring it. Any subplan that is left unused, because we created
+	 * the new copy here, will be removed by remove_unused_subplans().
+	 */
+	if (IsA(node, SubPlan))
+	{
+		SubPlan	   *sp = (SubPlan *) node;
+
+		if (!sp->is_initplan)
+		{
+			PlannerInfo *root = context->root;
+			Plan	   *newsubplan = (Plan *) copyObject(planner_subplan_get_plan(root, sp));
+			PlannerInfo *newsubroot = makeNode(PlannerInfo);
+
+			memcpy(newsubroot, planner_subplan_get_root(root, sp), sizeof(PlannerInfo));
+
+			/*
+			 * Add the subplan and its subroot to the global lists.
+			 */
+			root->glob->subplans = lappend(root->glob->subplans, newsubplan);
+			root->glob->subroots = lappend(root->glob->subroots, newsubroot);
+
+			/*
+			 * expression_tree_mutator made a copy of the SubPlan already, so
+			 * we can modify it directly.
+			 */
+			sp->plan_id = list_length(root->glob->subplans);
+			sp->plan_name = psprintf("%s (copy %d)", sp->plan_name, sp->plan_id);
+		}
+	}
+
+	return node;
 }
 
 /*

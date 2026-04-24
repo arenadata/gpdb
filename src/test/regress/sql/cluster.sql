@@ -3,13 +3,14 @@
 --
 
 CREATE TABLE clstr_tst_s (rf_a SERIAL PRIMARY KEY,
-	b INT);
+	b INT) DISTRIBUTED BY (rf_a);
 
 CREATE TABLE clstr_tst (a SERIAL PRIMARY KEY,
 	b INT,
 	c TEXT,
 	d TEXT,
-	CONSTRAINT clstr_tst_con FOREIGN KEY (b) REFERENCES clstr_tst_s);
+	CONSTRAINT clstr_tst_con FOREIGN KEY (b) REFERENCES clstr_tst_s)
+	DISTRIBUTED BY (a);
 
 CREATE INDEX clstr_tst_b ON clstr_tst (b);
 CREATE INDEX clstr_tst_c ON clstr_tst (c);
@@ -157,13 +158,14 @@ SELECT * FROM clstr_1;
 -- Test MVCC-safety of cluster. There isn't much we can do to verify the
 -- results with a single backend...
 
-CREATE TABLE clustertest (key int PRIMARY KEY);
+CREATE TABLE clustertest (key int, distkey int) DISTRIBUTED BY (distkey);
+CREATE INDEX clustertest_pkey ON clustertest (key);
 
-INSERT INTO clustertest VALUES (10);
-INSERT INTO clustertest VALUES (20);
-INSERT INTO clustertest VALUES (30);
-INSERT INTO clustertest VALUES (40);
-INSERT INTO clustertest VALUES (50);
+INSERT INTO clustertest VALUES (10, 1);
+INSERT INTO clustertest VALUES (20, 2);
+INSERT INTO clustertest VALUES (30, 1);
+INSERT INTO clustertest VALUES (40, 2);
+INSERT INTO clustertest VALUES (50, 3);
 
 -- Use a transaction so that updates are not committed when CLUSTER sees 'em
 BEGIN;
@@ -179,13 +181,13 @@ UPDATE clustertest SET key = 60 WHERE key = 50;
 UPDATE clustertest SET key = 70 WHERE key = 60;
 UPDATE clustertest SET key = 80 WHERE key = 70;
 
-SELECT * FROM clustertest;
+SELECT key FROM clustertest;
 CLUSTER clustertest_pkey ON clustertest;
-SELECT * FROM clustertest;
+SELECT key FROM clustertest;
 
 COMMIT;
 
-SELECT * FROM clustertest;
+SELECT key FROM clustertest;
 
 -- check that temp tables can be clustered
 create temp table clstr_temp (col1 int primary key, col2 text);
@@ -205,7 +207,11 @@ DROP TABLE clstrpart;
 
 -- Test CLUSTER with external tuplesorting
 
-create table clstr_4 as select * from tenk1;
+-- The tests assume that the rows come out in the physical order, as
+-- sorted by CLUSTER. In GPDB, add a dummy column to force all the rows to go
+-- to the same segment, otherwise the rows come out in random order from the
+-- segments.
+create table clstr_4 as select 1 as dummy, * from tenk1 distributed by (dummy);
 create index cluster_sort on clstr_4 (hundred, thousand, tenthous);
 -- ensure we don't use the index in CLUSTER nor the checking SELECTs
 set enable_indexscan = off;
@@ -229,3 +235,15 @@ DROP TABLE clstr_2;
 DROP TABLE clstr_3;
 DROP TABLE clstr_4;
 DROP USER regress_clstr_user;
+
+-- Test transactional safety of CLUSTER against heap
+CREATE TABLE foo (a int, b varchar, c int) DISTRIBUTED BY (a);
+INSERT INTO foo SELECT i, 'initial insert' || i, i FROM generate_series(1,10000)i;
+CREATE index ifoo on foo using btree (b);
+-- execute cluster in a transaction but don't commit the transaction
+BEGIN;
+CLUSTER foo USING ifoo;
+ABORT;
+-- try cluster again
+CLUSTER foo USING ifoo;
+DROP TABLE foo;

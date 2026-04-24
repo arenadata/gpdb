@@ -42,6 +42,7 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parse_clause.h"
+#include "postmaster/autostats.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/smgr.h"
 #include "tcop/tcopprot.h"
@@ -51,6 +52,15 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 
+#include "catalog/oid_dispatch.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdboidsync.h"
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
+#include "cdb/memquota.h"
+#include "utils/metrics_utils.h"
 
 typedef struct
 {
@@ -64,12 +74,13 @@ typedef struct
 	BulkInsertState bistate;	/* bulk insert state */
 } DR_intorel;
 
+static void intorel_startup_dummy(DestReceiver *self, int operation, TupleDesc typeinfo);
 /* utility functions for CTAS definition creation */
-static ObjectAddress create_ctas_internal(List *attrList, IntoClause *into);
-static ObjectAddress create_ctas_nodata(List *tlist, IntoClause *into);
+static ObjectAddress create_ctas_internal(List *attrList, IntoClause *into,
+										  QueryDesc *queryDesc, bool dispatch);
+static ObjectAddress create_ctas_nodata(List *tlist, IntoClause *into, QueryDesc *queryDesc);
 
 /* DestReceiver routines for collecting data */
-static void intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo);
 static bool intorel_receive(TupleTableSlot *slot, DestReceiver *self);
 static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
@@ -83,7 +94,7 @@ static void intorel_destroy(DestReceiver *self);
  * provide a list of attributes (ColumnDef nodes).
  */
 static ObjectAddress
-create_ctas_internal(List *attrList, IntoClause *into)
+create_ctas_internal(List *attrList, IntoClause *into, QueryDesc *queryDesc, bool dispatch)
 {
 	CreateStmt *create = makeNode(CreateStmt);
 	bool		is_matview;
@@ -92,10 +103,20 @@ create_ctas_internal(List *attrList, IntoClause *into)
 	static char *validnsps[] = HEAP_RELOPT_NAMESPACES;
 	ObjectAddress intoRelationAddr;
 
+	/* Sync OIDs for into relation, if any */
+	cdb_sync_oid_to_segments();
+
 	/* This code supports both CREATE TABLE AS and CREATE MATERIALIZED VIEW */
 	is_matview = (into->viewQuery != NULL);
 	relkind = is_matview ? RELKIND_MATVIEW : RELKIND_RELATION;
 
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		create = queryDesc->ddesc->intoCreateStmt;
+	}
+	/* funny indentation to avoid re-indenting a lot of upstream code */
+	else
+  {
 	/*
 	 * Create the target relation by faking up a CREATE TABLE parsetree and
 	 * passing it to DefineRelation.
@@ -109,13 +130,47 @@ create_ctas_internal(List *attrList, IntoClause *into)
 	create->oncommit = into->onCommit;
 	create->tablespacename = into->tableSpaceName;
 	create->if_not_exists = false;
+	create->gp_style_alter_part = false;
+
+	create->distributedBy = NULL; /* We will pass a pre-made intoPolicy instead */
+	create->partitionBy = NULL; /* CTAS does not not support partition. */
+
+	create->buildAoBlkdir = false;
+	create->attr_encodings = NULL; /* filled in by DefineRelation */
+
+	/* Save them in CreateStmt for dispatching. */
+	create->relKind = relkind;
+	create->ownerid = GetUserId();
 	create->accessMethod = into->accessMethod;
+	create->isCtas = true;
+
+	create->intoQuery = into->viewQuery;
+	create->intoPolicy = queryDesc->plannedstmt->intoPolicy;
+  }
+	/* end of funny indentation */
 
 	/*
 	 * Create the relation.  (This will error out if there's an existing view,
 	 * so we don't need more code to complain if "replace" is false.)
+	 *
+	 * Don't dispatch it yet, as we haven't created the toast and other
+	 * auxiliary tables yet.
+	 *
+	 * Pass the policy that was computed by the planner.
 	 */
-	intoRelationAddr = DefineRelation(create, relkind, InvalidOid, NULL, NULL);
+    intoRelationAddr = DefineRelation(create,
+                                      relkind,
+                                      InvalidOid,
+                                      NULL,
+                                      NULL,
+                                      false,
+                                      queryDesc->ddesc ? queryDesc->ddesc->useChangedAOOpts : true,
+                                      queryDesc->plannedstmt->intoPolicy);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		queryDesc->ddesc->intoCreateStmt = create;
+	}
 
 	/*
 	 * If necessary, create a TOAST table for the target table.  Note that
@@ -145,6 +200,14 @@ create_ctas_internal(List *attrList, IntoClause *into)
 		CommandCounterIncrement();
 	}
 
+	if (Gp_role == GP_ROLE_DISPATCH && dispatch)
+		CdbDispatchUtilityStatement((Node *) create,
+									DF_CANCEL_ON_ERROR |
+									DF_NEED_TWO_PHASE |
+									DF_WITH_SNAPSHOT,
+									GetAssignedOidsForDispatch(),
+									NULL);
+
 	return intoRelationAddr;
 }
 
@@ -156,11 +219,12 @@ create_ctas_internal(List *attrList, IntoClause *into)
  * the targetlist of the SELECT or view definition.
  */
 static ObjectAddress
-create_ctas_nodata(List *tlist, IntoClause *into)
+create_ctas_nodata(List *tlist, IntoClause *into, QueryDesc *queryDesc)
 {
 	List	   *attrList;
 	ListCell   *t,
 			   *lc;
+	ObjectAddress intoRelationAddr;
 
 	/*
 	 * Build list of ColumnDefs from non-junk elements of the tlist.  If a
@@ -216,7 +280,9 @@ create_ctas_nodata(List *tlist, IntoClause *into)
 				 errmsg("too many column names were specified")));
 
 	/* Create the relation definition using the ColumnDef list */
-	return create_ctas_internal(attrList, into);
+	intoRelationAddr = create_ctas_internal(attrList, into, queryDesc, true);
+
+	return intoRelationAddr;
 }
 
 
@@ -239,23 +305,38 @@ ExecCreateTableAs(CreateTableAsStmt *stmt, const char *queryString,
 	List	   *rewritten;
 	PlannedStmt *plan;
 	QueryDesc  *queryDesc;
+	Oid         relationOid = InvalidOid;   /* relation that is modified */
+	AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL;  /* command type */
+
+	Assert(Gp_role != GP_ROLE_EXECUTE);
 
 	if (stmt->if_not_exists)
 	{
 		Oid			nspid;
+		Oid			oldrelid;
 
-		nspid = RangeVarGetCreationNamespace(stmt->into->rel);
+		nspid = RangeVarGetCreationNamespace(into->rel);
 
-		if (get_relname_relid(stmt->into->rel->relname, nspid))
+		oldrelid = get_relname_relid(into->rel->relname, nspid);
+		if (OidIsValid(oldrelid))
 		{
+			/*
+			 * The relation exists and IF NOT EXISTS has been specified.
+			 *
+			 * If we are in an extension script, insist that the pre-existing
+			 * object be a member of the extension, to avoid security risks.
+			 */
+			ObjectAddressSet(address, RelationRelationId, oldrelid);
+			checkMembershipInCurrentExtension(&address);
+
+			/* OK to skip */
 			ereport(NOTICE,
 					(errcode(ERRCODE_DUPLICATE_TABLE),
 					 errmsg("relation \"%s\" already exists, skipping",
-							stmt->into->rel->relname)));
+							into->rel->relname)));
 			return InvalidObjectAddress;
 		}
 	}
-
 	/*
 	 * Create the tuple receiver object and insert info it will need
 	 */
@@ -295,17 +376,6 @@ ExecCreateTableAs(CreateTableAsStmt *stmt, const char *queryString,
 		save_nestlevel = NewGUCNestLevel();
 	}
 
-	if (into->skipData)
-	{
-		/*
-		 * If WITH NO DATA was specified, do not go through the rewriter,
-		 * planner and executor.  Just define the relation using a code path
-		 * similar to CREATE VIEW.  This avoids dump/restore problems stemming
-		 * from running the planner before all dependencies are set up.
-		 */
-		address = create_ctas_nodata(query->targetList, into);
-	}
-	else
 	{
 		/*
 		 * Parse analysis was done already, but we still have to run the rule
@@ -332,6 +402,13 @@ ExecCreateTableAs(CreateTableAsStmt *stmt, const char *queryString,
 		/* plan the query */
 		plan = pg_plan_query(query, CURSOR_OPT_PARALLEL_OK, params);
 
+		/*GPDB: Save the target information in PlannedStmt */
+		/*
+		 * GPDB_92_MERGE_FIXME: it really should be an optimizer's responsibility
+		 * to correctly set the into-clause and into-policy of the PlannedStmt.
+		 */
+		plan->intoClause = copyObject(stmt->into);
+
 		/*
 		 * Use a snapshot with an updated command ID to ensure this query sees
 		 * results of any previously executed queries.  (This could only
@@ -346,25 +423,66 @@ ExecCreateTableAs(CreateTableAsStmt *stmt, const char *queryString,
 		queryDesc = CreateQueryDesc(plan, queryString,
 									GetActiveSnapshot(), InvalidSnapshot,
 									dest, params, queryEnv, 0);
+	}
+
+	/* GPDB hook for collecting query info */
+	if (query_info_collect_hook)
+		(*query_info_collect_hook)(METRICS_QUERY_SUBMIT, queryDesc);
+
+	if (into->skipData)
+	{
+		/*
+		 * If WITH NO DATA was specified, do not go through the rewriter,
+		 * planner and executor.  Just define the relation using a code path
+		 * similar to CREATE VIEW.  This avoids dump/restore problems stemming
+		 * from running the planner before all dependencies are set up.
+		 */
+		queryDesc->ddesc = makeNode(QueryDispatchDesc);
+		address = create_ctas_nodata(query->targetList, into, queryDesc);
+	}
+	else
+	{
+		queryDesc->plannedstmt->query_mem = ResourceManagerGetQueryMemoryLimit(queryDesc->plannedstmt);
 
 		/* call ExecutorStart to prepare the plan for execution */
 		ExecutorStart(queryDesc, GetIntoRelEFlags(into));
 
+		if (Gp_role == GP_ROLE_DISPATCH)
+			autostats_get_cmdtype(queryDesc, &cmdType, &relationOid);
+
 		/* run the plan to completion */
 		ExecutorRun(queryDesc, ForwardScanDirection, 0L, true);
+
+		/* and clean up */
+		ExecutorFinish(queryDesc);
+		ExecutorEnd(queryDesc);
+
+		/*
+		 * In GPDB, computing the row count needs to happen after ExecutorEnd()
+		 * because that is where it gets the row count from dispatch. There's
+		 * also some special processing if the relation was a replicated table.
+		 * In upstream Postgres, the rowcount is saved before ExecutorFinish().
+		 */
+		if (into->distributedBy &&
+			((DistributedBy *)(into->distributedBy))->ptype == POLICYTYPE_REPLICATED)
+			queryDesc->es_processed /= ((DistributedBy *)(into->distributedBy))->numsegments;
+
+		/* get object address that intorel_startup saved for us */
+		address = ((DR_intorel *) dest)->reladdr;
 
 		/* save the rowcount if we're given a completionTag to fill */
 		if (completionTag)
 			snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
 					 "SELECT " UINT64_FORMAT,
-					 queryDesc->estate->es_processed);
+					 queryDesc->es_processed);
 
-		/* get object address that intorel_startup saved for us */
-		address = ((DR_intorel *) dest)->reladdr;
+		/* MPP-14001: Running auto_stats */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			auto_stats(cmdType, relationOid, queryDesc->es_processed, false /* inFunction */);
+	}
 
-		/* and clean up */
-		ExecutorFinish(queryDesc);
-		ExecutorEnd(queryDesc);
+	{
+		dest->rDestroy(dest);
 
 		FreeQueryDesc(queryDesc);
 
@@ -415,24 +533,42 @@ CreateIntoRelDestReceiver(IntoClause *intoClause)
 	DR_intorel *self = (DR_intorel *) palloc0(sizeof(DR_intorel));
 
 	self->pub.receiveSlot = intorel_receive;
-	self->pub.rStartup = intorel_startup;
+	self->pub.rStartup = intorel_startup_dummy;
 	self->pub.rShutdown = intorel_shutdown;
 	self->pub.rDestroy = intorel_destroy;
 	self->pub.mydest = DestIntoRel;
 	self->into = intoClause;
-	/* other private fields will be set during intorel_startup */
 
 	return (DestReceiver *) self;
 }
 
 /*
- * intorel_startup --- executor startup
+ * intorel_startup_dummy --- executor startup
  */
 static void
-intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
+intorel_startup_dummy(DestReceiver *self, int operation, TupleDesc typeinfo)
 {
-	DR_intorel *myState = (DR_intorel *) self;
-	IntoClause *into = myState->into;
+	Relation rel = ((DR_intorel *)self)->rel;
+	/* See intorel_initplan() for explanation */
+	if (rel->rd_tableam)
+		table_dml_init(rel);
+}
+
+/*
+ * intorel_initplan --- Based on PG intorel_startup().
+ * Parameters are different. We need to run the code earlier before the
+ * executor runs since we want the relation to be created earlier else current
+ * MPP framework will fail. This could be called in InitPlan() as before, but
+ * we could call it just before ExecutorRun() in ExecCreateTableAs(). In the
+ * future if the requirment is general we could add an interface into
+ * DestReceiver but so far that is not needed (Based on PG 11 code.)
+ */
+void
+intorel_initplan(struct QueryDesc *queryDesc, int eflags)
+{
+	DR_intorel *myState;
+	/* Get 'into' from the dispatched plan */
+	IntoClause *into = queryDesc->plannedstmt->intoClause;
 	bool		is_matview;
 	char		relkind;
 	List	   *attrList;
@@ -441,8 +577,12 @@ intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	RangeTblEntry *rte;
 	ListCell   *lc;
 	int			attnum;
+	TupleDesc   typeinfo = queryDesc->tupDesc;
 
-	Assert(into != NULL);		/* else somebody forgot to set it */
+	/* If EXPLAIN/QE, skip creating the "into" relation. */
+	if ((eflags & EXEC_FLAG_EXPLAIN_ONLY) ||
+		(Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer))
+		return;
 
 	/* This code supports both CREATE TABLE AS and CREATE MATERIALIZED VIEW */
 	is_matview = (into->viewQuery != NULL);
@@ -500,8 +640,13 @@ intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 
 	/*
 	 * Actually create the target table
+	 * We also get here with CREATE TABLE AS EXECUTE ... WITH NO DATA. In that
+	 * case, dispatch the creation of the table immediately. Normally, the table
+	 * is created in the initialization of the plan in QEs, but with NO DATA, we
+	 * don't need to dispatch the plan during ExecutorStart().
 	 */
-	intoRelationAddr = create_ctas_internal(attrList, into);
+	intoRelationAddr = create_ctas_internal(attrList, into, queryDesc,
+											into->skipData ? true : false);
 
 	/*
 	 * Finally we can open the target table
@@ -550,6 +695,10 @@ intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	/*
 	 * Fill private fields of myState for use by later routines
 	 */
+
+	if (queryDesc->dest->mydest != DestIntoRel)
+		queryDesc->dest = CreateIntoRelDestReceiver(into);
+	myState = (DR_intorel *) queryDesc->dest;
 	myState->rel = intoRelationDesc;
 	myState->reladdr = intoRelationAddr;
 	myState->output_cid = GetCurrentCommandId(true);
@@ -601,6 +750,10 @@ static void
 intorel_shutdown(DestReceiver *self)
 {
 	DR_intorel *myState = (DR_intorel *) self;
+	Relation	into_rel = myState->rel;
+
+	if (into_rel == NULL)
+		return;
 
 	FreeBulkInsertState(myState->bistate);
 
@@ -618,4 +771,21 @@ static void
 intorel_destroy(DestReceiver *self)
 {
 	pfree(self);
+}
+
+/*
+ * Get the OID of the relation created for SELECT INTO or CREATE TABLE AS.
+ *
+ * To be called between ExecutorStart and ExecutorEnd.
+ */
+Oid
+GetIntoRelOid(QueryDesc *queryDesc)
+{
+	DR_intorel *myState = (DR_intorel *) queryDesc->dest;
+	Relation    into_rel = myState->rel;
+
+	if (myState && myState->pub.mydest == DestIntoRel && into_rel)
+		return RelationGetRelid(into_rel);
+	else
+		return InvalidOid;
 }

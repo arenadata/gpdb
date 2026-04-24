@@ -1,0 +1,64 @@
+<!--
+doc/src/sgml/ref/alter_external_table.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterexternaltable">
+ <indexterm zone="sql-alterexternaltable">
+  <primary>ALTER EXTERNAL TABLE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER EXTERNAL TABLE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER EXTERNAL TABLE</refname>
+  <refpurpose>change the definition of an external table</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER EXTERNAL TABLE name RENAME [COLUMN] column TO new_column
+
+ALTER EXTERNAL TABLE name RENAME TO new_name
+
+ALTER EXTERNAL TABLE name SET SCHEMA new_schema
+
+ALTER EXTERNAL TABLE name action [, ... ]
+
+where action is one of:
+  ADD [COLUMN] column_name type
+  DROP [COLUMN] column
+  ALTER [COLUMN] column TYPE type [USING expression]
+  OWNER TO new_owner
+
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+ </refsect1>
+
+ <refsect1 id="SQL-ALTEREXTERNALTABLE-notes">
+  <title>Notes</title>
+ </refsect1>
+
+ <refsect1 id="SQL-ALTEREXTERNALTABLE-examples">
+  <title>Examples</title>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+ </refsect1>
+</refentry>

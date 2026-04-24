@@ -22,6 +22,7 @@
 #include "plpy_resultobject.h"
 #include "plpy_spi.h"
 #include "plpy_subxactobject.h"
+#include "plpy_main.h"
 
 
 HTAB	   *PLy_spi_exceptions = NULL;
@@ -436,6 +437,7 @@ PLy_output(volatile int level, PyObject *self, PyObject *args, PyObject *kw)
 	PyObject   *volatile so;
 	Py_ssize_t	pos = 0;
 
+	PLy_enter_python_intepreter = false;
 	if (PyTuple_Size(args) == 1)
 	{
 		/*

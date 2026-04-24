@@ -14,6 +14,7 @@
 
 #include <unistd.h>
 
+#include "cdb/ic_proxy_bgworker.h"
 #include "libpq/pqsignal.h"
 #include "access/parallel.h"
 #include "miscadmin.h"
@@ -36,6 +37,12 @@
 #include "utils/ascii.h"
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
+
+#include "postmaster/backoff.h"
+#include "postmaster/fts.h"
+#include "utils/gdd.h"
+
+extern bool isAuxiliaryBgWorker(BackgroundWorker *worker);
 
 /*
  * The postmaster's list of registered background workers, in private memory.
@@ -130,6 +137,26 @@ static const struct
 	{
 		"ApplyWorkerMain", ApplyWorkerMain
 	}
+
+	/* GPDB additions */
+	,
+	{
+		"FtsProbeMain", FtsProbeMain
+	},
+	{
+		"GlobalDeadLockDetectorMain", GlobalDeadLockDetectorMain
+	},
+	{
+		"DtxRecoveryMain", DtxRecoveryMain
+	},
+	{
+		"BackoffSweeperMain", BackoffSweeperMain
+	},
+#ifdef ENABLE_IC_PROXY
+	{
+		"ICProxyMain", ICProxyMain
+	},
+#endif  /* ENABLE_IC_PROXY */
 };
 
 /* Private functions. */
@@ -603,6 +630,23 @@ SanityCheckBackgroundWorker(BackgroundWorker *worker, int elevel)
 			return false;
 		}
 
+		/*
+		 * it's unsafe to allow custom workers to accessing database if distributed
+		 * transactions are not recovered yet.
+		 *
+		 * Built-in auxiliary workers like FTS are fine because we know what
+		 * they do and they can work even dtx are not recovered.
+		 */
+		if (worker->bgw_start_time == BgWorkerStart_DtxRecovering &&
+			!isAuxiliaryBgWorker(worker))
+		{
+			ereport(elevel,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("background worker \"%s\": cannot request database access if starting at distributed transactions recovering",
+							worker->bgw_name)));
+			return false;
+		}
+
 		/* XXX other checks? */
 	}
 
@@ -848,14 +892,17 @@ void
 RegisterBackgroundWorker(BackgroundWorker *worker)
 {
 	RegisteredBgWorker *rw;
+	bool auxworker = false;
 	static int	numworkers = 0;
 
 	if (!IsUnderPostmaster)
 		ereport(DEBUG1,
 				(errmsg("registering background worker \"%s\"", worker->bgw_name)));
 
-	if (!process_shared_preload_libraries_in_progress &&
-		strcmp(worker->bgw_library_name, "postgres") != 0)
+	auxworker = isAuxiliaryBgWorker(worker);
+
+	if (!process_shared_preload_libraries_in_progress && !auxworker
+        && strcmp(worker->bgw_library_name, "postgres") != 0)
 	{
 		if (!IsUnderPostmaster)
 			ereport(LOG,
@@ -883,7 +930,7 @@ RegisterBackgroundWorker(BackgroundWorker *worker)
 	 * towards the MAX_BACKENDS limit elsewhere.  For now, it doesn't seem
 	 * important to relax this restriction.
 	 */
-	if (++numworkers > max_worker_processes)
+	if (!auxworker && ++numworkers > max_worker_processes - MaxPMAuxProc)
 	{
 		ereport(LOG,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),

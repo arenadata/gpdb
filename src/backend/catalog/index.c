@@ -3,6 +3,8 @@
  * index.c
  *	  code to create and destroy POSTGRES index relations
  *
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -38,6 +40,9 @@
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
+#include "catalog/indexing.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_appendonly.h"
 #include "catalog/objectaccess.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
@@ -46,6 +51,7 @@
 #include "catalog/pg_description.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_inherits.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_tablespace.h"
@@ -76,10 +82,18 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_rusage.h"
+#include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 #include "utils/snapmgr.h"
 
+#include "catalog/oid_dispatch.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdboidsync.h"
+#include "utils/faultinjector.h"
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_index_pg_class_oid = InvalidOid;
@@ -97,7 +111,6 @@ typedef struct
 } SerializedReindexState;
 
 /* non-export function prototypes */
-static bool relationHasPrimaryKey(Relation rel);
 static TupleDesc ConstructTupleDescriptor(Relation heapRelation,
 										  IndexInfo *indexInfo,
 										  List *indexColNames,
@@ -143,7 +156,7 @@ static void ResetReindexPending(void);
  * is used to enforce the rule that there can be only one indisprimary index,
  * and we want that to be true even if said index is invalid.
  */
-static bool
+bool
 relationHasPrimaryKey(Relation rel)
 {
 	bool		result = false;
@@ -166,6 +179,43 @@ relationHasPrimaryKey(Relation rel)
 		if (!HeapTupleIsValid(indexTuple))	/* should not happen */
 			elog(ERROR, "cache lookup failed for index %u", indexoid);
 		result = ((Form_pg_index) GETSTRUCT(indexTuple))->indisprimary;
+		ReleaseSysCache(indexTuple);
+		if (result)
+			break;
+	}
+
+	list_free(indexoidlist);
+
+	return result;
+}
+
+/*
+ * relationHasUniqueIndex -
+ *
+ *	See whether an existing relation has a unique index.
+ */
+bool
+relationHasUniqueIndex(Relation rel)
+{
+	bool		result = false;
+	List	   *indexoidlist;
+	ListCell   *indexoidscan;
+
+	/*
+	 * Get the list of index OIDs for the table from the relcache, and look up
+	 * each one in the pg_index syscache until we find one marked unique
+	 */
+	indexoidlist = RelationGetIndexList(rel);
+
+	foreach(indexoidscan, indexoidlist)
+	{
+		Oid			indexoid = lfirst_oid(indexoidscan);
+		HeapTuple	indexTuple;
+
+		indexTuple = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(indexoid));
+		if (!HeapTupleIsValid(indexTuple))		/* should not happen */
+			elog(ERROR, "cache lookup failed for index %u", indexoid);
+		result = ((Form_pg_index) GETSTRUCT(indexTuple))->indisunique;
 		ReleaseSysCache(indexTuple);
 		if (result)
 			break;
@@ -849,25 +899,16 @@ index_create(Relation heapRelation,
 	 *
 	 * The OID will be the relfilenode as well, so make sure it doesn't
 	 * collide with either pg_class OIDs or existing physical files.
+	 *
+	 * (In GPDB, heap_create can choose a different relfilenode, in a QE node,
+	 * if the one we choose is already in use.)
 	 */
 	if (!OidIsValid(indexRelationId))
 	{
-		/* Use binary-upgrade override for pg_class.oid/relfilenode? */
-		if (IsBinaryUpgrade)
-		{
-			if (!OidIsValid(binary_upgrade_next_index_pg_class_oid))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("pg_class index OID value not set when in binary upgrade mode")));
-
-			indexRelationId = binary_upgrade_next_index_pg_class_oid;
-			binary_upgrade_next_index_pg_class_oid = InvalidOid;
-		}
-		else
-		{
-			indexRelationId =
-				GetNewRelFileNode(tableSpaceId, pg_class, relpersistence);
-		}
+		indexRelationId = GetNewOidForRelation(pg_class, ClassOidIndexId,
+											   Anum_pg_class_oid,
+											   (char *) indexRelationName,
+											   namespaceId);
 	}
 
 	/*
@@ -921,6 +962,42 @@ index_create(Relation heapRelation,
 
 	/* done with pg_class */
 	table_close(pg_class, RowExclusiveLock);
+
+	{							/* MPP-7575: track index creation */
+		bool	 doIt	= true;
+		char	*subtyp = "INDEX";
+
+		/* MPP-7576: don't track internal namespace tables */
+		switch (namespaceId) 
+		{
+			case PG_CATALOG_NAMESPACE:
+				/* MPP-7773: don't track objects in system namespace
+				 * if modifying system tables (eg during upgrade)  
+				 */
+				if (allowSystemTableMods)
+					doIt = false;
+				break;
+
+			case PG_TOAST_NAMESPACE:
+			case PG_BITMAPINDEX_NAMESPACE:
+			case PG_AOSEGMENT_NAMESPACE:
+				doIt = false;
+				break;
+			default:
+				break;
+		}
+
+		if (doIt)
+			doIt = (!(isAnyTempNamespace(namespaceId)));
+
+		/* MPP-6929: metadata tracking */
+		if (doIt)
+			MetaTrackAddObject(RelationRelationId,
+							   RelationGetRelid(indexRelation),
+							   GetUserId(), /* not ownerid */
+							   "CREATE", subtyp
+					);
+	}
 
 	/*
 	 * now update the object id's of all the attribute tuple forms in the
@@ -1182,7 +1259,6 @@ index_create(Relation heapRelation,
 	 * of transaction.  Closing the heap is caller's responsibility.
 	 */
 	index_close(indexRelation, NoLock);
-
 	return indexRelationId;
 }
 
@@ -2185,6 +2261,10 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 	 * fix INHERITS relation
 	 */
 	DeleteInheritsTuple(indexId, InvalidOid);
+	
+	/* MPP-6929: metadata tracking */
+	MetaTrackDropObject(RelationRelationId, 
+						indexId);
 
 	/*
 	 * We are presently too lazy to attempt to compute the new correct value
@@ -2287,6 +2367,8 @@ BuildIndexInfo(Relation index)
 	ii->ii_Am = index->rd_rel->relam;
 	ii->ii_AmCache = NULL;
 	ii->ii_Context = CurrentMemoryContext;
+
+	ii->ii_Am = index->rd_rel->relam;
 
 	return ii;
 }
@@ -2481,9 +2563,9 @@ BuildSpeculativeIndexInfo(Relation index, IndexInfo *ii)
  * ----------------
  */
 void
-FormIndexDatum(IndexInfo *indexInfo,
+FormIndexDatum(struct IndexInfo *indexInfo,
 			   TupleTableSlot *slot,
-			   EState *estate,
+			   struct EState *estate,
 			   Datum *values,
 			   bool *isnull)
 {
@@ -2644,12 +2726,18 @@ index_update_stats(Relation rel,
 		dirty = true;
 	}
 
-	if (reltuples >= 0)
+	if (reltuples >= 0 && Gp_role != GP_ROLE_DISPATCH)
 	{
-		BlockNumber relpages = RelationGetNumberOfBlocks(rel);
+		BlockNumber relpages;
 		BlockNumber relallvisible;
 
-		if (rd_rel->relkind != RELKIND_INDEX)
+		relpages = RelationGetNumberOfBlocks(rel);
+
+		/*
+		 * GPDB: In theory, it is possible to support index only scans with AO
+		 * tables, but disable them for now by setting relallvisible to 0.
+		 */
+		if (rd_rel->relkind != RELKIND_INDEX && !RelationIsAppendOptimized(rel))
 			visibilitymap_count(rel, &relallvisible, NULL);
 		else					/* don't bother for indexes */
 			relallvisible = 0;
@@ -2738,6 +2826,15 @@ index_build(Relation heapRelation,
 		indexInfo->ii_ParallelWorkers =
 			plan_create_index_workers(RelationGetRelid(heapRelation),
 									  RelationGetRelid(indexRelation));
+
+	/*
+	 * GPDB_12_MERGE_FIXME: Parallel CREATE INDEX temporarily disabled.
+	 * In the 'partition_prune' regression test, the parallel worker
+	 * blocked waiting for the main process. I believe there's something
+	 * broken in the lock manager in GPDB with parallel workers. Need
+	 * figure that out first.
+	 */
+	indexInfo->ii_ParallelWorkers = 0;
 
 	if (indexInfo->ii_ParallelWorkers == 0)
 		ereport(DEBUG1,
@@ -3326,10 +3423,13 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 				heapRelation;
 	Oid			heapId;
 	IndexInfo  *indexInfo;
+	Oid			namespaceId;
 	volatile bool skipped_constraint = false;
 	PGRUsage	ru0;
 
 	pg_rusage_init(&ru0);
+
+	Assert(OidIsValid(indexId));
 
 	/*
 	 * Open and lock the parent heap relation.  ShareLock is sufficient since
@@ -3345,6 +3445,8 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
 								 indexId);
 
+	namespaceId = RelationGetNamespace(heapRelation);
+
 	/*
 	 * Open the target index relation and get an exclusive lock on it, to
 	 * ensure that no one else is touching this particular index.
@@ -3355,11 +3457,12 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 								 iRel->rd_rel->relam);
 
 	/*
-	 * The case of reindexing partitioned tables and indexes is handled
-	 * differently by upper layers, so this case shouldn't arise.
+	 * Partitioned indexes should never get processed here, as they have no
+	 * physical storage.
 	 */
 	if (iRel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
-		elog(ERROR, "unsupported relation kind for index \"%s\"",
+		elog(ERROR, "cannot reindex partitioned index \"%s.%s\"",
+			 get_namespace_name(RelationGetNamespace(iRel)),
 			 RelationGetRelationName(iRel));
 
 	/*
@@ -3370,6 +3473,16 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot reindex temporary tables of other sessions")));
+
+	/*
+	 * Two-phase commit is not supported for transactions that change
+	 * relfilenode mappings. We can get away without two-phase commit, if
+	 * we're not already running in a transaction block, but if we are,
+	 * we won't be able to commit. To get a more descriptive error message,
+	 * check for that now, rather than let the COMMIT fail.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && RelationIsMapped(heapRelation))
+		PreventInTransactionBlock(true, "REINDEX of a catalog table");
 
 	/*
 	 * Also check for active uses of the index in the current transaction; we
@@ -3497,6 +3610,44 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 		table_close(pg_index, RowExclusiveLock);
 	}
 
+	{
+		bool	 doIt	= true;
+		char	*subtyp = "REINDEX";
+
+		/* MPP-7576: don't track internal namespace tables */
+		switch (namespaceId) 
+		{
+			case PG_CATALOG_NAMESPACE:
+				/* MPP-7773: don't track objects in system namespace
+				 * if modifying system tables (eg during upgrade)  
+				 */
+				if (allowSystemTableMods)
+					doIt = false;
+				break;
+
+			case PG_TOAST_NAMESPACE:
+			case PG_BITMAPINDEX_NAMESPACE:
+			case PG_AOSEGMENT_NAMESPACE:
+				doIt = false;
+				break;
+			default:
+				break;
+		}
+
+		if (doIt)
+			doIt = (!(isAnyTempNamespace(namespaceId)));
+
+		/* MPP-6929: metadata tracking */
+		/* MPP-7587: treat as a VACUUM operation, since the index is
+		 * rebuilt */
+		if (doIt)
+			MetaTrackUpdObject(RelationRelationId,
+							   indexId,
+							   GetUserId(), /* not ownerid */
+							   "VACUUM", subtyp
+					);
+	}
+
 	/* Log what we did */
 	if (options & REINDEXOPT_VERBOSE)
 		ereport(INFO,
@@ -3519,6 +3670,8 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
  * "flags" is a bitmask that can include any combination of these bits:
  *
  * REINDEX_REL_PROCESS_TOAST: if true, process the toast table too (if any).
+ * In GPDB, auxiliary AO heap tables, i.e. AO segments, AO block directory,
+ * and AO visibilitymap, are also processed if this is set.
  *
  * REINDEX_REL_SUPPRESS_INDEX_USE: if true, the relation was just completely
  * rebuilt by an operation such as VACUUM FULL or CLUSTER, and therefore its
@@ -3552,8 +3705,12 @@ reindex_relation(Oid relid, int flags, int options)
 {
 	Relation	rel;
 	Oid			toast_relid;
+	Oid			aoseg_relid = InvalidOid;
+	Oid         aoblkdir_relid = InvalidOid;
+	Oid         aovisimap_relid = InvalidOid;
 	List	   *indexIds;
 	bool		result;
+	bool relIsAO = false;
 	int			i;
 
 	/*
@@ -3564,20 +3721,15 @@ reindex_relation(Oid relid, int flags, int options)
 	rel = table_open(relid, ShareLock);
 
 	/*
-	 * This may be useful when implemented someday; but that day is not today.
-	 * For now, avoid erroring out when called in a multi-table context
-	 * (REINDEX SCHEMA) and happen to come across a partitioned table.  The
-	 * partitions may be reindexed on their own anyway.
+	 * Partitioned tables should never get processed here, as they have no
+	 * physical storage.
 	 */
 	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-	{
-		ereport(WARNING,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("REINDEX of partitioned tables is not yet implemented, skipping \"%s\"",
-						RelationGetRelationName(rel))));
-		table_close(rel, ShareLock);
-		return false;
-	}
+		elog(ERROR, "cannot reindex partitioned table \"%s.%s\"",
+			 get_namespace_name(RelationGetNamespace(rel)),
+			 RelationGetRelationName(rel));
+
+	relIsAO = RelationIsAppendOptimized(rel);
 
 	toast_relid = rel->rd_rel->reltoastrelid;
 
@@ -3652,12 +3804,42 @@ reindex_relation(Oid relid, int flags, int options)
 
 	result = (indexIds != NIL);
 
+	SIMPLE_FAULT_INJECTOR("reindex_relation");
+
 	/*
 	 * If the relation has a secondary toast rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if ((flags & REINDEX_REL_PROCESS_TOAST) && OidIsValid(toast_relid))
 		result |= reindex_relation(toast_relid, flags, options);
+
+	/* Obtain the aoseg_relid and aoblkdir_relid if the relation is an AO table. */
+	if ((flags & REINDEX_REL_PROCESS_TOAST) && relIsAO)
+		GetAppendOnlyEntryAuxOids(relid, NULL,
+								  &aoseg_relid,
+								  &aoblkdir_relid, NULL,
+								  &aovisimap_relid, NULL);
+
+	/*
+	 * If an AO rel has a secondary segment list rel, reindex that too while we
+	 * still hold the lock on the master table.
+	 */
+	if (OidIsValid(aoseg_relid))
+		result |= reindex_relation(aoseg_relid, 0, options);
+
+	/*
+	 * If an AO rel has a secondary block directory rel, reindex that too while we
+	 * still hold the lock on the master table.
+	 */
+	if (OidIsValid(aoblkdir_relid))
+		result |= reindex_relation(aoblkdir_relid, 0, options);
+
+	/*
+	 * If an AO rel has a secondary visibility map rel, reindex that too while we
+	 * still hold the lock on the master table.
+	 */
+	if (OidIsValid(aovisimap_relid))
+		result |= reindex_relation(aovisimap_relid, 0, options);
 
 	return result;
 }

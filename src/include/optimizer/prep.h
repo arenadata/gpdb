@@ -4,6 +4,8 @@
  *	  prototypes for files in optimizer/prep/
  *
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -30,6 +32,8 @@ extern void reduce_outer_joins(PlannerInfo *root);
 extern void remove_useless_result_rtes(PlannerInfo *root);
 extern Relids get_relids_in_jointree(Node *jtnode, bool include_joins);
 extern Relids get_relids_for_join(Query *query, int joinrelid);
+
+extern List *init_list_cteplaninfo(int numCtes);
 
 /*
  * prototypes for preptlist.c

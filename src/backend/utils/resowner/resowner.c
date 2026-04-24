@@ -20,16 +20,20 @@
  */
 #include "postgres.h"
 
+#include "common/hashfn.h"
 #include "jit/jit.h"
 #include "storage/bufmgr.h"
 #include "storage/ipc.h"
 #include "storage/predicate.h"
 #include "storage/proc.h"
-#include "utils/hashutils.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/resowner_private.h"
 #include "utils/snapmgr.h"
+
+#include "cdb/cdbvars.h"
+#include "utils/guc.h"
+#include "utils/resource_manager.h"
 
 
 /*
@@ -480,6 +484,15 @@ ResourceOwnerRelease(ResourceOwner owner,
 					 bool isCommit,
 					 bool isTopLevel)
 {
+	/*
+	 * Greenplum: For some reason we've been calling this when the owner is NULL.
+	 */
+	if (owner == NULL)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"ResourceOwnerRelease found owner = NULL");
+		return;
+	}
+
 	/* There's not currently any setup needed before recursing */
 	ResourceOwnerReleaseInternal(owner, phase, isCommit, isTopLevel);
 }
@@ -492,7 +505,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 {
 	ResourceOwner child;
 	ResourceOwner save;
-	ResourceReleaseCallbackItem *item;
+	ResourceReleaseCallbackItem *item, *next;
 	Datum		foundres;
 
 	/* Recurse to handle descendants */
@@ -567,6 +580,9 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			{
 				ProcReleaseLocks(isCommit);
 				ReleasePredicateLocks(isCommit, false);
+
+				if (Gp_role == GP_ROLE_DISPATCH && IsResQueueEnabled())
+					ResLockWaitCancel();
 			}
 		}
 		else
@@ -616,7 +632,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			HeapTuple	res = (HeapTuple) DatumGetPointer(foundres);
 
 			if (isCommit)
-				PrintCatCacheLeakWarning(res);
+				PrintCatCacheLeakWarning(res, owner->name);
 			ReleaseCatCache(res);
 		}
 
@@ -626,7 +642,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			CatCList   *res = (CatCList *) DatumGetPointer(foundres);
 
 			if (isCommit)
-				PrintCatCacheListLeakWarning(res);
+				PrintCatCacheListLeakWarning(res, owner->name);
 			ReleaseCatCacheList(res);
 		}
 
@@ -672,8 +688,11 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 	}
 
 	/* Let add-on modules get a chance too */
-	for (item = ResourceRelease_callbacks; item; item = item->next)
+	for (item = ResourceRelease_callbacks; item; item = next)
+	{
+		next = item->next;
 		item->callback(phase, isCommit, isTopLevel, item->arg);
+	}
 
 	CurrentResourceOwner = save;
 }
@@ -1345,4 +1364,22 @@ ResourceOwnerForgetJIT(ResourceOwner owner, Datum handle)
 	if (!ResourceArrayRemove(&(owner->jitarr), handle))
 		elog(ERROR, "JIT context %p is not owned by resource owner %s",
 			 DatumGetPointer(handle), owner->name);
+}
+
+/*
+ * Cdb: walk through a resource owner and it's childrens
+ */
+void
+CdbResourceOwnerWalker(ResourceOwner owner, ResourceWalkerCallback callback)
+{
+	ResourceOwner child;
+
+	if (!owner)
+		return;
+
+	(*callback)(owner);
+
+	/* Recurse to handle descendants */
+	for (child = owner->firstchild; child != NULL; child = child->nextchild)
+		CdbResourceOwnerWalker(child, callback);
 }

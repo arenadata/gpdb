@@ -35,6 +35,10 @@ extern bool IsBinaryCoercible(Oid srctype, Oid targettype);
 extern bool IsPreferredType(TYPCATEGORY category, Oid type);
 extern TYPCATEGORY TypeCategory(Oid type);
 
+extern Node* coerce_to_specific_type(ParseState *pstate,
+									 Node *node,
+									 Oid targetTypeId,
+									 const char *constructName);
 extern Node *coerce_to_target_type(ParseState *pstate,
 								   Node *expr, Oid exprtype,
 								   Oid targettype, int32 targettypmod,
@@ -61,7 +65,7 @@ extern Node *coerce_to_specific_type_typmod(ParseState *pstate, Node *node,
 											Oid targetTypeId, int32 targetTypmod,
 											const char *constructName);
 
-extern int	parser_coercion_errposition(ParseState *pstate,
+extern void parser_coercion_errposition(ParseState *pstate,
 										int coerce_location,
 										Node *input_expr);
 
@@ -70,6 +74,10 @@ extern Oid	select_common_type(ParseState *pstate, List *exprs,
 extern Node *coerce_to_common_type(ParseState *pstate, Node *node,
 								   Oid targetTypeId,
 								   const char *context);
+
+extern void fixup_unknown_vars_in_exprlist(ParseState *pstate, List *exprlist);
+extern void fixup_unknown_vars_in_targetlist(ParseState *pstate, 
+											 List *targetlist);
 
 extern bool check_generic_type_consistency(const Oid *actual_arg_types,
 										   const Oid *declared_arg_types,

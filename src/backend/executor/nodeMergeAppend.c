@@ -150,6 +150,9 @@ ExecInitMergeAppend(MergeAppend *node, EState *estate, int eflags)
 		mergestate->ms_valid_subplans = validsubplans =
 			bms_add_range(NULL, 0, nplans - 1);
 		mergestate->ms_prune_state = NULL;
+
+		if (node->join_prune_paramids)
+			mergestate->ms_valid_subplans = NULL;
 	}
 
 	mergeplanstates = (PlanState **) palloc(nplans * sizeof(PlanState *));
@@ -249,8 +252,15 @@ ExecMergeAppend(PlanState *pstate)
 		 * set to all subplans.
 		 */
 		if (node->ms_valid_subplans == NULL)
+		{
+			MergeAppend *plan = (MergeAppend *) node->ps.plan;
+
 			node->ms_valid_subplans =
-				ExecFindMatchingSubPlans(node->ms_prune_state);
+				ExecFindMatchingSubPlans(node->ms_prune_state,
+										 node->ps.state,
+										 list_length(plan->mergeplans),
+										 plan->join_prune_paramids);
+		}
 
 		/*
 		 * First time through: pull the first tuple from each valid subplan,
@@ -406,4 +416,15 @@ ExecReScanMergeAppend(MergeAppendState *node)
 	}
 	binaryheap_reset(node->ms_heap);
 	node->ms_initialized = false;
+}
+
+void
+ExecSquelchMergeAppend(MergeAppendState *node)
+{
+	int			i;
+
+	for (i = 0; i < node->ms_nplans; i++)
+	{
+		ExecSquelchNode(node->mergeplans[i]);
+	}
 }

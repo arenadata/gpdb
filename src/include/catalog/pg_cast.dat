@@ -512,4 +512,22 @@
 { castsource => 'jsonb', casttarget => 'float8', castfunc => 'float8(jsonb)',
   castcontext => 'e', castmethod => 'f' },
 
+# complex type
+{ castsource => 'float8', casttarget => 'complex', castfunc => 'float82complex(float8)',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'float4', casttarget => 'complex', castfunc => 'float42complex(float4)',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'int8', casttarget => 'complex', castfunc => 'int82complex(int8)',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'int4', casttarget => 'complex', castfunc => 'int42complex(int4)',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'int2', casttarget => 'complex', castfunc => 'int22complex(int2)',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'point', casttarget => 'complex', castfunc => '0',
+  castcontext => 'e', castmethod => 'b' },
+{ castsource => 'complex', casttarget => 'point', castfunc => '0',
+  castcontext => 'e', castmethod => 'b' },
+{ castsource => 'numeric', casttarget => 'complex', castfunc => 'numeric2complex(numeric)',
+  castcontext => 'i', castmethod => 'f' },
+
 ]

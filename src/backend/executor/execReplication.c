@@ -294,7 +294,7 @@ RelationFindReplTupleSeq(Relation rel, LockTupleMode lockmode,
 	bool		found;
 	TupleDesc	desc PG_USED_FOR_ASSERTS_ONLY = RelationGetDescr(rel);
 
-	Assert(equalTupleDescs(desc, outslot->tts_tupleDescriptor));
+	Assert(equalTupleDescs(desc, outslot->tts_tupleDescriptor, true));
 
 	/* Start a heap scan. */
 	InitDirtySnapshot(snap);

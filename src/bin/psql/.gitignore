@@ -1,5 +1,9 @@
 /psqlscanslash.c
 /sql_help.h
 /sql_help.c
+/dumputils.c
+/keywords.c
+/kwlookup.c
+/lex.backup
 
 /psql

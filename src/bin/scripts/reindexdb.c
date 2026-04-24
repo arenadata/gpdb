@@ -336,6 +336,10 @@ reindex_one_database(const char *dbname, ReindexType type,
 	conn = connectDatabase(dbname, host, port, username, prompt_password,
 						   progname, echo, false, false);
 
+	/*
+	 * GPDB_12_MERGE_FIXME: do we still report this as PostgreSQL 12 or should
+	 * it say Greenplum 7?
+	 */
 	if (concurrently && PQserverVersion(conn) < 120000)
 	{
 		PQfinish(conn);
@@ -779,5 +783,5 @@ help(const char *progname)
 	printf(_("  -W, --password            force password prompt\n"));
 	printf(_("  --maintenance-db=DBNAME   alternate maintenance database\n"));
 	printf(_("\nRead the description of the SQL command REINDEX for details.\n"));
-	printf(_("\nReport bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("\nReport bugs to <bugs@greenplum.org>.\n"));
 }

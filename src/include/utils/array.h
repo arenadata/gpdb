@@ -77,7 +77,7 @@ struct ExprContext;
  * CAUTION: if you change the header for ordinary arrays you will also
  * need to change the headers for oidvector and int2vector!
  */
-typedef struct
+typedef struct ArrayType
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			ndim;			/* # of dimensions */
@@ -398,8 +398,10 @@ extern void deconstruct_array(ArrayType *array,
 							  Datum **elemsp, bool **nullsp, int *nelemsp);
 extern bool array_contains_nulls(ArrayType *array);
 
-extern ArrayBuildState *initArrayResult(Oid element_type,
-										MemoryContext rcontext, bool subcontext);
+extern ArrayBuildState *
+initArrayResult(Oid element_type, MemoryContext rcontext, bool subcontext);
+extern ArrayBuildState *
+initArrayResultWithSize(Oid element_type, MemoryContext rcontext, bool subcontext, int initsize);
 extern ArrayBuildState *accumArrayResult(ArrayBuildState *astate,
 										 Datum dvalue, bool disnull,
 										 Oid element_type,

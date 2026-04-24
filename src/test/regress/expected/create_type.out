@@ -76,6 +76,7 @@ CREATE TYPE text_w_default (
    default = 'zippo'
 );
 CREATE TABLE default_test (f1 text_w_default, f2 int42);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
 INSERT INTO default_test DEFAULT VALUES;
 SELECT * FROM default_test;
   f1   | f2 
@@ -115,7 +116,7 @@ ERROR:  type input function must be specified
 CREATE TYPE default_test_row AS (f1 text_w_default, f2 int42);
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
   SELECT * FROM default_test;
-' LANGUAGE SQL;
+' LANGUAGE SQL READS SQL DATA;
 SELECT * FROM get_default_test();
   f1   | f2 
 -------+----
@@ -211,3 +212,13 @@ select format_type('bpchar'::regtype, -1);
  bpchar
 (1 row)
 
+-- Create & Drop type as non-superuser
+CREATE USER user_bob;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SET SESSION AUTHORIZATION user_bob;
+CREATE TYPE shell; -- not allowed
+ERROR:  must be superuser to create a base type
+CREATE TYPE compfoo as (f1 int, f2 text);
+DROP TYPE compfoo;
+RESET SESSION AUTHORIZATION;
+DROP USER user_bob;

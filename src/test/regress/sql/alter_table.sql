@@ -1,3 +1,4 @@
+set optimizer_print_missing_stats = off;
 --
 -- ALTER_TABLE
 --
@@ -185,7 +186,7 @@ CREATE TABLE part_attmp1 PARTITION OF part_attmp FOR VALUES FROM (0) TO (100);
 ALTER INDEX part_attmp_pkey RENAME TO part_attmp_index;
 ALTER INDEX part_attmp1_pkey RENAME TO part_attmp1_index;
 ALTER TABLE part_attmp RENAME TO part_at2tmp;
-ALTER TABLE part_attmp1 RENAME TO part_at2tmp1;
+-- ALTER TABLE part_attmp1 RENAME TO part_at2tmp1; -- GPDB cascades parent rename to child partition
 SET ROLE regress_alter_table_user1;
 ALTER INDEX part_attmp_index RENAME TO fail;
 ALTER INDEX part_attmp1_index RENAME TO fail;
@@ -239,7 +240,7 @@ RESET ROLE;
 set enable_seqscan to off;
 set enable_bitmapscan to off;
 -- 5 values, sorted
-SELECT unique1 FROM tenk1 WHERE unique1 < 5;
+SELECT unique1 FROM tenk1 WHERE unique1 < 5 ORDER BY 1;
 reset enable_seqscan;
 reset enable_bitmapscan;
 
@@ -331,6 +332,7 @@ ALTER TABLE attmp3 add constraint attmpconstr foreign key(c) references attmp2 m
 ALTER TABLE attmp3 add constraint attmpconstr foreign key(a) references attmp2(b) match full;
 
 -- Try (and fail) to add constraint due to invalid data
+-- (passes on GPDB, because GPDB doesn't enforce foreign keys)
 ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 match full;
 
 -- Delete failing row
@@ -344,14 +346,19 @@ INSERT INTO attmp3 values (5,50);
 
 -- Try NOT VALID and then VALIDATE CONSTRAINT, but fails. Delete failure then re-validate
 ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 match full NOT VALID;
+-- FK constraints are not supported in GPDB
+--start_ignore
 ALTER TABLE attmp3 validate constraint attmpconstr;
+--end_ignore
 
 -- Delete failing row
 DELETE FROM attmp3 where a=5;
 
 -- Try (and succeed) and repeat to show it works on already valid constraint
+--start_ignore
 ALTER TABLE attmp3 validate constraint attmpconstr;
 ALTER TABLE attmp3 validate constraint attmpconstr;
+--end_ignore
 
 -- Try a non-verified CHECK constraint
 ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10); -- fail
@@ -477,7 +484,8 @@ DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 
 CREATE TEMP TABLE PKTABLE (ptest1 int, ptest2 inet,
-                           PRIMARY KEY(ptest1, ptest2));
+                           PRIMARY KEY(ptest1, ptest2))
+                           distributed by (ptest1);
 -- This should fail, because we just chose really odd types
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) references pktable;
@@ -535,6 +543,9 @@ ORDER BY 1,2,3;
 create table atacc1 ( test int );
 -- add a check constraint
 alter table atacc1 add constraint atacc_test1 check (test>3);
+-- start_ignore
+-- Known_opt_diff: MPP-21330
+-- end_ignore
 -- should fail
 insert into atacc1 (test) values (2);
 -- should succeed
@@ -640,7 +651,7 @@ drop table atacc1;
 
 -- test unique constraint adding
 
-create table atacc1 ( test int ) ;
+create table atacc1 ( test int );
 -- add a unique constraint
 alter table atacc1 add constraint atacc_test1 unique (test);
 -- insert first value
@@ -694,7 +705,7 @@ drop table atacc1;
 
 -- test primary key constraint adding
 
-create table atacc1 ( id serial, test int) ;
+create table atacc1 ( id serial, test int) distributed by (test);
 -- add a primary key constraint
 alter table atacc1 add constraint atacc_test1 primary key (test);
 -- insert first value
@@ -710,6 +721,8 @@ alter table atacc1 add constraint atacc_oid1 primary key(id);
 -- drop first primary key constraint
 alter table atacc1 drop constraint atacc_test1 restrict;
 -- try adding a primary key on oid (should succeed)
+alter table atacc1 add constraint atacc_oid1 primary key(id);
+alter table atacc1 set distributed by (id);
 alter table atacc1 add constraint atacc_oid1 primary key(id);
 drop table atacc1;
 
@@ -1260,6 +1273,7 @@ drop table p1 cascade;
 
 create domain mytype as text;
 create temp table foo (f1 text, f2 mytype, f3 text);
+alter table foo set distributed randomly;
 
 insert into foo values('bb','cc','dd');
 select * from foo;
@@ -1278,7 +1292,8 @@ alter table foo alter f1 TYPE integer; -- fails
 alter table foo alter f1 TYPE varchar(10);
 
 create table anothertab (atcol1 serial8, atcol2 boolean,
-	constraint anothertab_chk check (atcol1 <= 3));
+	constraint anothertab_chk check (atcol1 <= 3))
+	distributed randomly;
 
 insert into anothertab (atcol1, atcol2) values (default, true);
 insert into anothertab (atcol1, atcol2) values (default, false);
@@ -1319,7 +1334,7 @@ drop table anothertab;
 
 -- Test index handling in alter table column type (cf. bugs #15835, #15865)
 create table anothertab(f1 int primary key, f2 int unique,
-                        f3 int, f4 int, f5 int);
+                        f3 int, f4 int, f5 int) distributed replicated;
 alter table anothertab
   add exclude using btree (f3 with =);
 alter table anothertab
@@ -1332,12 +1347,26 @@ create index on anothertab(f2,f3);
 create unique index on anothertab(f4);
 
 \d anothertab
+
+-- In GPDB, you cannot change the type of a column that's part of a unique key
+alter table anothertab drop constraint anothertab_pkey;
+alter table anothertab drop constraint anothertab_f1_f4_key ;
+alter table anothertab drop constraint anothertab_f2_key;
+drop index anothertab_f4_idx;
+
 alter table anothertab alter column f1 type bigint;
 alter table anothertab
   alter column f2 type bigint,
   alter column f3 type bigint,
   alter column f4 type bigint;
 alter table anothertab alter column f5 type bigint;
+
+-- restore primary and unique keys
+alter table anothertab add constraint anothertab_pkey primary key (f1);
+alter table anothertab add constraint anothertab_f1_f4_key unique (f1, f4);
+create unique index on anothertab(f4);
+alter table anothertab add constraint anothertab_f2_key unique (f2);
+
 \d anothertab
 
 drop table anothertab;
@@ -1368,6 +1397,7 @@ create table at_partitioned (a int, b text) partition by range (a);
 create table at_part_1 partition of at_partitioned for values from (0) to (1000);
 insert into at_partitioned values (512, '0.123');
 create table at_part_2 (b text, a int);
+alter table at_part_2 set distributed by (a);
 insert into at_part_2 values ('1.234', 1024);
 create index on at_partitioned (b);
 create index on at_partitioned (a);
@@ -1401,6 +1431,9 @@ create temp table old_oids as
   select relname, oid as oldoid, relfilenode as oldfilenode
   from pg_class where relname like 'at_partitioned%';
 
+-- GPDB: the output for these queries differ from upstream, because GPDB
+-- assigns a new relfilenode for every table, it never uses the table's
+-- OID as the relfilenode like Postgres does.
 select relname,
   c.oid = oldoid as orig_oid,
   case relfilenode
@@ -1418,7 +1451,9 @@ select conname, obj_description(oid, 'pg_constraint') as desc
   from pg_constraint where conname like 'at_partitioned%'
   order by conname;
 
+-- this doesn't work in GPDB, which makes the rest of the test quite pointless.
 alter table at_partitioned alter column name type varchar(127);
+
 
 -- Note: these tests currently show the wrong behavior for comments :-(
 
@@ -1698,14 +1733,14 @@ drop type lockmodes;
 --
 create function test_strict(text) returns text as
     'select coalesce($1, ''got passed a null'');'
-    language sql returns null on null input;
+    language sql CONTAINS SQL returns null on null input;
 select test_strict(NULL);
 alter function test_strict(text) called on null input;
 select test_strict(NULL);
 
 create function non_strict(text) returns text as
     'select coalesce($1, ''got passed a null'');'
-    language sql called on null input;
+    language sql CONTAINS SQL called on null input;
 select non_strict(NULL);
 alter function non_strict(text) returns null on null input;
 select non_strict(NULL);
@@ -1721,7 +1756,7 @@ create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
 
 create view alter1.v1 as select * from alter1.t1;
 
-create function alter1.plus1(int) returns int as 'select $1+1' language sql;
+create function alter1.plus1(int) returns int as 'select $1+1' language sql CONTAINS SQL;
 
 create domain alter1.posint integer check (value > 0);
 
@@ -1906,6 +1941,7 @@ DROP TABLE test_drop_constr_parent CASCADE;
 -- IF EXISTS test
 --
 ALTER TABLE IF EXISTS tt8 ADD COLUMN f int;
+ALTER TABLE IF EXISTS tt8 SET DISTRIBUTED BY(f);
 ALTER TABLE IF EXISTS tt8 ADD CONSTRAINT xxx PRIMARY KEY(f);
 ALTER TABLE IF EXISTS tt8 ADD CHECK (f BETWEEN 0 AND 10);
 ALTER TABLE IF EXISTS tt8 ALTER COLUMN f SET DEFAULT 0;
@@ -1916,6 +1952,7 @@ CREATE TABLE tt8(a int);
 CREATE SCHEMA alter2;
 
 ALTER TABLE IF EXISTS tt8 ADD COLUMN f int;
+ALTER TABLE IF EXISTS tt8 SET DISTRIBUTED BY(f);
 ALTER TABLE IF EXISTS tt8 ADD CONSTRAINT xxx PRIMARY KEY(f);
 ALTER TABLE IF EXISTS tt8 ADD CHECK (f BETWEEN 0 AND 10);
 ALTER TABLE IF EXISTS tt8 ALTER COLUMN f SET DEFAULT 0;
@@ -1970,8 +2007,14 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 -- first, to test that no-op codepath, and another one that does.
 ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE int;
 ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE text;
+
+-- Changing the data type of an indexed column is not supported in GPDB as of fecd245
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int;
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
+ALTER TABLE comment_test DROP CONSTRAINT comment_test_pk;
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
+ALTER TABLE comment_test ADD CONSTRAINT comment_test_pk PRIMARY KEY (id);
+
 ALTER TABLE comment_test ALTER COLUMN positive_col SET DATA TYPE int;
 ALTER TABLE comment_test ALTER COLUMN positive_col SET DATA TYPE bigint;
 
@@ -2092,6 +2135,42 @@ ALTER TABLE logged1 SET UNLOGGED; -- silently do nothing
 DROP TABLE logged3;
 DROP TABLE logged2;
 DROP TABLE logged1;
+
+--
+-- Test for splitting after dropping a column
+--
+DROP TABLE IF EXISTS test_part;
+CREATE TABLE test_part (
+    field_part timestamp without time zone,
+    field1 int,
+    field2 text,
+    field3 int
+) PARTITION BY RANGE(field_part)
+          (
+          PARTITION p2017 START ('2017-01-01'::date) END ('2018-01-01'::date) WITH (appendonly=false ),
+          DEFAULT PARTITION p_overflow  WITH (appendonly=false )
+          );
+
+DROP TABLE IF EXISTS test_ref;
+CREATE TABLE test_ref (
+    field1 text,
+    field2 text
+);
+
+INSERT INTO test_part select '2017-01-01'::date + interval '1 days' * mod (id,1000) , mod(id,50), 'test ' || mod(id,5) ,mod(id,2) from generate_series(1,10000) id;
+INSERT INTO test_ref select 'test ' || id , 'values' from generate_series(1,10) id;
+
+ALTER TABLE test_part DROP COLUMN field1;
+ALTER TABLE test_part   SPLIT DEFAULT PARTITION
+START('2018-01-01'::date)
+       END( '2018-02-01'::date);
+ANALYZE test_part;
+ANALYZE test_ref;
+
+SELECT * FROM test_part WHERE field2 IN (SELECT field1 FROM test_ref) ORDER BY 1 LIMIT 10;
+
+DROP TABLE test_ref;
+DROP TABLE test_part;
 
 -- test ADD COLUMN IF NOT EXISTS
 CREATE TABLE test_add_column(c1 integer);
@@ -2228,6 +2307,7 @@ CREATE TABLE fail_part (
 	b char(3),
 	a int NOT NULL
 );
+alter table fail_part set distributed by (a);
 ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
 ALTER TABLE fail_part ALTER b TYPE char (2) COLLATE "POSIX";
 ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
@@ -2238,6 +2318,7 @@ CREATE TABLE fail_part (
 	b char(2) COLLATE "C",
 	a int NOT NULL
 );
+alter table fail_part set distributed by (a);
 ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
 
 -- check that the constraint matches in definition with parent's constraint
@@ -2385,6 +2466,7 @@ CREATE TABLE part_6 (
 	LIKE list_parted2,
 	CONSTRAINT check_a CHECK (a IS NOT NULL AND a = 6)
 );
+alter table part_6 set distributed by (a);
 ALTER TABLE part_6 DROP c;
 ALTER TABLE list_parted2 ATTACH PARTITION part_6 FOR VALUES IN (6);
 
@@ -2403,6 +2485,7 @@ CREATE TABLE part_7_a_null (
 	CONSTRAINT check_b CHECK (b IS NULL OR b = 'a'),
 	CONSTRAINT check_a CHECK (a IS NOT NULL AND a = 7)
 );
+alter table part_7_a_null set distributed by (a);
 ALTER TABLE part_7_a_null DROP c, DROP d, DROP e;
 ALTER TABLE part_7 ATTACH PARTITION part_7_a_null FOR VALUES IN ('a', null);
 ALTER TABLE list_parted2 ATTACH PARTITION part_7 FOR VALUES IN (7);
@@ -2603,6 +2686,7 @@ DROP TABLE hash_parted;
 
 -- more tests for certain multi-level partitioning scenarios
 create table p (a int, b int) partition by range (a, b);
+alter table p set distributed by (b);
 create table p1 (b int, a int not null) partition by range (b);
 create table p11 (like p1);
 alter table p11 drop a;
@@ -2649,6 +2733,7 @@ DROP USER regress_alter_table_user1;
 create table defpart_attach_test (a int) partition by list (a);
 create table defpart_attach_test1 partition of defpart_attach_test for values in (1);
 create table defpart_attach_test_d (b int, a int);
+alter table defpart_attach_test_d set distributed by (a);
 alter table defpart_attach_test_d drop b;
 insert into defpart_attach_test_d values (1), (2);
 
@@ -2712,3 +2797,22 @@ alter table at_test_sql_partop attach partition at_test_sql_partop_1 for values 
 drop table at_test_sql_partop;
 drop operator class at_test_sql_partop using btree;
 drop function at_test_sql_partop;
+
+-- Test that altering owner of partition root should recurse into the child tables.
+create role atown_r1;
+create role atown_r2 in role atown_r1;
+set role atown_r2;
+create table atown_part(a int, b int) partition by range(a) (partition p1 start (1) end (100));
+select c.relname, r.rolname from pg_class c join pg_roles r on c.relowner = r.oid where relname like 'atown_part%';
+alter table atown_part owner to atown_r1;
+alter table atown_part add partition start(100) end(200);
+-- both existing and new child tables should have the new owner
+select c.relname, r.rolname from pg_class c join pg_roles r on c.relowner = r.oid where relname like 'atown_part%';
+-- should only alter the partition root with ONLY keyword
+alter table only atown_part owner to atown_r2;
+select c.relname, r.rolname from pg_class c join pg_roles r on c.relowner = r.oid where relname like 'atown_part%';
+
+drop table atown_part;
+reset role;
+drop role atown_r1;
+drop role atown_r2;

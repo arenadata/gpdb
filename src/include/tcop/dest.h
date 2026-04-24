@@ -71,7 +71,7 @@
 
 
 /* buffer size to use for command completion tags */
-#define COMPLETION_TAG_BUFSIZE	64
+#define COMPLETION_TAG_BUFSIZE	72
 
 
 /* ----------------
@@ -142,5 +142,7 @@ extern void EndCommand(const char *commandTag, CommandDest dest);
 
 extern void NullCommand(CommandDest dest);
 extern void ReadyForQuery(CommandDest dest);
+
+extern void sendQEDetails(void);
 
 #endif							/* DEST_H */

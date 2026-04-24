@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include "catalog/pg_proc.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -27,7 +28,12 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "nodes/makefuncs.h"
 
+#include "catalog/pg_operator.h"
+#include "optimizer/clauses.h"
+#include "optimizer/paths.h"
+#include "optimizer/predtest_valueset.h"
 
 /*
  * Proof attempts involving large arrays in ScalarArrayOpExpr nodes are
@@ -109,7 +115,6 @@ static bool operator_same_subexprs_lookup(Oid pred_op, Oid clause_op,
 										  bool refute_it);
 static Oid	get_btree_test_op(Oid pred_op, Oid clause_op, bool refute_it);
 static void InvalidateOprProofCacheCallBack(Datum arg, int cacheid, uint32 hashvalue);
-
 
 /*
  * predicate_implied_by
@@ -535,6 +540,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate,
 	PredClass	pclass;
 	Node	   *not_arg;
 	bool		result;
+
+	CHECK_FOR_INTERRUPTS();
 
 	/* skip through RestrictInfo */
 	Assert(clause != NULL);
@@ -1239,7 +1246,6 @@ predicate_refuted_by_simple_clause(Expr *predicate, Node *clause,
 	/* Else try operator-related knowledge */
 	return operator_predicate_proof(predicate, clause, true, weak);
 }
-
 
 /*
  * If clause asserts the non-truth of a subclause, return that subclause;
@@ -2222,4 +2228,129 @@ InvalidateOprProofCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
 		hentry->have_implic = false;
 		hentry->have_refute = false;
 	}
+}
+
+/**
+ * Process an AND clause -- this can do a INTERSECTION between sets learned from child clauses
+ */
+static PossibleValueSet
+ProcessAndClauseForPossibleValues( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
+{
+	PossibleValueSet result;
+
+	InitPossibleValueSetData(&result);
+
+	iterate_begin(child, clause, *clauseInfo)
+	{
+		PossibleValueSet childPossible = DeterminePossibleValueSet( child, variable );
+		if ( childPossible.isAnyValuePossible)
+		{
+			/* any value possible, this AND member does not add any information */
+			DeletePossibleValueSetData( &childPossible);
+		}
+		else
+		{
+			/* a particular set so this AND member can refine our estimate */
+			if ( result.isAnyValuePossible )
+			{
+				/* current result was not informative so just take the child */
+				result = childPossible;
+			}
+			else
+			{
+				/* result.set AND childPossible.set: do intersection inside result */
+				RemoveUnmatchingValues( &result, &childPossible );
+				DeletePossibleValueSetData( &childPossible);
+			}
+		}
+	}
+	iterate_end(*clauseInfo);
+
+	return result;
+}
+
+/**
+ * Process an OR clause -- this can do a UNION between sets learned from child clauses
+ */
+static PossibleValueSet
+ProcessOrClauseForPossibleValues( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
+{
+	PossibleValueSet result;
+	InitPossibleValueSetData(&result);
+
+	iterate_begin(child, clause, *clauseInfo)
+	{
+		PossibleValueSet childPossible = DeterminePossibleValueSet( child, variable );
+		if ( childPossible.isAnyValuePossible)
+		{
+			/* any value is possible for the entire AND */
+			DeletePossibleValueSetData( &childPossible );
+			DeletePossibleValueSetData( &result );
+
+			/* it can't improve once a part of the OR accepts all, so just quit */
+			result.isAnyValuePossible = true;
+			break;
+		}
+
+		if ( result.isAnyValuePossible )
+		{
+			/* first one in loop so just take it */
+			result = childPossible;
+		}
+		else
+		{
+			/* result.set OR childPossible.set --> do union into result */
+			AddUnmatchingValues( &result, &childPossible );
+			DeletePossibleValueSetData( &childPossible);
+		}
+	}
+	iterate_end(*clauseInfo);
+
+	return result;
+}
+
+
+/**
+ *
+ * Get the possible values of variable, as determined by the given qualification clause
+ *
+ * Note that only variables whose type is greenplumDbHashtable will return an actual finite set of values.  All others
+ *    will go to the default behavior -- return that any value is possible
+ *
+ * Note that if there are two variables to check, you must call this twice.  This then means that
+ *    if the two variables are dependent you won't learn of that -- you only know that the set of
+ *    possible values is within the cross-product of the two variables' sets
+ */
+PossibleValueSet
+DeterminePossibleValueSet(Node *clause, Node *variable)
+{
+	PredIterInfoData clauseInfo;
+	PossibleValueSet result;
+
+	if ( clause == NULL )
+	{
+		InitPossibleValueSetData(&result);
+		return result;
+	}
+
+	switch (predicate_classify(clause, &clauseInfo))
+	{
+		case CLASS_AND:
+			return ProcessAndClauseForPossibleValues(&clauseInfo, clause, variable);
+		case CLASS_OR:
+			return ProcessOrClauseForPossibleValues(&clauseInfo, clause, variable);
+		case CLASS_ATOM:
+			if (TryProcessExprForPossibleValues(clause, variable, &result))
+			{
+				return result;
+			}
+			/* can't infer anything, so return that any value is possible */
+			InitPossibleValueSetData(&result);
+			return result;
+	}
+
+
+	/* can't get here */
+	elog(ERROR, "predicate_classify returned a bad value");
+	return result;
 }

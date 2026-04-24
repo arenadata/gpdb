@@ -1,7 +1,14 @@
 --
 -- Tests for some likely failure cases with combo cmin/cmax mechanism
 --
-CREATE TEMP TABLE combocidtest (foobar int);
+-- GPDB: add a 'distkey' column to force all the rows to the same segment, so that
+-- the rows have the same TIDs as in upstream.
+CREATE TEMP TABLE combocidtest (foobar int, distkey int) distributed by (distkey);
+
+-- GPDB: Disable autostats, because the queries it increments the command
+-- counter, making the cmin/cmax values stored in the table different from
+-- upstream.
+set gp_autostats_mode=none;
 
 BEGIN;
 
@@ -44,7 +51,13 @@ BEGIN;
 
 INSERT INTO combocidtest VALUES (333);
 
-DECLARE c CURSOR FOR SELECT ctid,cmin,* FROM combocidtest;
+-- In GPDB, the cursor starts executing in the segments as soon as the
+-- DECLARE is dispatched. Usually, the cursor will fetch the first row
+-- from the table before the DELETE runs, so that it will see cmin==0
+-- on the first row. But sometimes, the DELETE will update the row first,
+-- so that the cursor will see cmin==1. Both are OK, but because it's
+-- non-deterministic, don't display the cmin value.
+DECLARE c CURSOR FOR SELECT ctid,* FROM combocidtest;
 
 DELETE FROM combocidtest;
 

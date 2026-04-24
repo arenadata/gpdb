@@ -61,12 +61,15 @@ INSERT INTO POINT_TBL(f1) VALUES (NULL);
 CREATE INDEX gpointind ON point_tbl USING gist (f1);
 CREATE TEMP TABLE gpolygon_tbl AS
     SELECT polygon(home_base) AS f1 FROM slow_emp4000;
+ANALYZE gpolygon_tbl;
 INSERT INTO gpolygon_tbl VALUES ( '(1000,0,0,1000)' );
 INSERT INTO gpolygon_tbl VALUES ( '(0,1000,1000,1000)' );
 CREATE TEMP TABLE gcircle_tbl AS
     SELECT circle(home_base) AS f1 FROM slow_emp4000;
+ANALYZE gcircle_tbl;
 CREATE INDEX ggpolygonind ON gpolygon_tbl USING gist (f1);
 CREATE INDEX ggcircleind ON gcircle_tbl USING gist (f1);
+SET optimizer_enable_tablescan = OFF;
 --
 -- Test GiST indexes
 --
@@ -178,11 +181,12 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
      1
 (1 row)
 
-SELECT * FROM point_tbl ORDER BY f1 <-> '0,1';
+-- In gpdb, we intentional filter out point (1e-300, -1e-300) every order by related queries
+-- in this test case file. It is an underflow point, rank it cause randomly results( (0,0),
+-- (1e-300, -1e-300) are equal).
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
         f1         
 -------------------
- (0,0)
- (1e-300,-1e-300)
  (-3,4)
  (-10,0)
  (10,10)
@@ -190,8 +194,7 @@ SELECT * FROM point_tbl ORDER BY f1 <-> '0,1';
  (5.1,34.5)
  (1e+300,Infinity)
  (NaN,NaN)
- 
-(10 rows)
+(7 rows)
 
 SELECT * FROM point_tbl WHERE f1 IS NULL;
  f1 
@@ -199,11 +202,9 @@ SELECT * FROM point_tbl WHERE f1 IS NULL;
  
 (1 row)
 
-SELECT * FROM point_tbl WHERE f1 IS NOT NULL ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
         f1         
 -------------------
- (1e-300,-1e-300)
- (0,0)
  (-3,4)
  (-10,0)
  (10,10)
@@ -211,17 +212,15 @@ SELECT * FROM point_tbl WHERE f1 IS NOT NULL ORDER BY f1 <-> '0,1';
  (5.1,34.5)
  (1e+300,Infinity)
  (NaN,NaN)
-(9 rows)
+(7 rows)
 
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-        f1        
-------------------
- (0,0)
- (1e-300,-1e-300)
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+   f1    
+---------
  (-3,4)
  (-10,0)
  (10,10)
-(5 rows)
+(3 rows)
 
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
                        f1                        
@@ -261,13 +260,16 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM fast_emp4000
     WHERE home_base @ '(200,200),(2000,1000)'::box
     ORDER BY (home_base[0])[0];
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Sort
-   Sort Key: ((home_base[0])[0])
-   ->  Index Only Scan using grect2ind on fast_emp4000
-         Index Cond: (home_base @ '(2000,1000),(200,200)'::box)
-(4 rows)
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: ((home_base[0])[0])
+   ->  Sort
+         Sort Key: ((home_base[0])[0])
+         ->  Index Only Scan using grect2ind on fast_emp4000
+               Index Cond: (home_base @ '(2000,1000),(200,200)'::box)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT * FROM fast_emp4000
     WHERE home_base @ '(200,200),(2000,1000)'::box
@@ -280,12 +282,15 @@ SELECT * FROM fast_emp4000
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM fast_emp4000 WHERE home_base && '(1000,1000,0,0)'::box;
-                         QUERY PLAN                          
--------------------------------------------------------------
- Aggregate
-   ->  Index Only Scan using grect2ind on fast_emp4000
-         Index Cond: (home_base && '(1000,1000),(0,0)'::box)
-(3 rows)
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Index Only Scan using grect2ind on fast_emp4000
+                     Index Cond: (home_base && '(1000,1000),(0,0)'::box)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 SELECT count(*) FROM fast_emp4000 WHERE home_base && '(1000,1000,0,0)'::box;
  count 
@@ -295,12 +300,15 @@ SELECT count(*) FROM fast_emp4000 WHERE home_base && '(1000,1000,0,0)'::box;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM fast_emp4000 WHERE home_base IS NULL;
-                      QUERY PLAN                       
--------------------------------------------------------
- Aggregate
-   ->  Index Only Scan using grect2ind on fast_emp4000
-         Index Cond: (home_base IS NULL)
-(3 rows)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Index Only Scan using grect2ind on fast_emp4000
+                     Index Cond: (home_base IS NULL)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 SELECT count(*) FROM fast_emp4000 WHERE home_base IS NULL;
  count 
@@ -311,13 +319,16 @@ SELECT count(*) FROM fast_emp4000 WHERE home_base IS NULL;
 EXPLAIN (COSTS OFF)
 SELECT * FROM polygon_tbl WHERE f1 ~ '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];
-                        QUERY PLAN                         
------------------------------------------------------------
- Sort
-   Sort Key: ((poly_center(f1))[0])
-   ->  Index Scan using gpolygonind on polygon_tbl
-         Index Cond: (f1 ~ '((1,1),(2,2),(2,1))'::polygon)
-(4 rows)
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: ((poly_center(f1))[0])
+   ->  Sort
+         Sort Key: ((poly_center(f1))[0])
+         ->  Index Scan using gpolygonind on polygon_tbl
+               Index Cond: (f1 ~ '((1,1),(2,2),(2,1))'::polygon)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT * FROM polygon_tbl WHERE f1 ~ '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];
@@ -329,13 +340,16 @@ SELECT * FROM polygon_tbl WHERE f1 ~ '((1,1),(2,2),(2,1))'::polygon
 EXPLAIN (COSTS OFF)
 SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
     ORDER BY area(f1);
-                    QUERY PLAN                    
---------------------------------------------------
- Sort
-   Sort Key: (area(f1))
-   ->  Index Scan using gcircleind on circle_tbl
-         Index Cond: (f1 && '<(1,-2),1>'::circle)
-(4 rows)
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: (area(f1))
+   ->  Sort
+         Sort Key: (area(f1))
+         ->  Index Scan using gcircleind on circle_tbl
+               Index Cond: (f1 && '<(1,-2),1>'::circle)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
     ORDER BY area(f1);
@@ -349,12 +363,15 @@ SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM gpolygon_tbl WHERE f1 && '(1000,1000,0,0)'::polygon;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Aggregate
-   ->  Index Scan using ggpolygonind on gpolygon_tbl
-         Index Cond: (f1 && '((1000,1000),(0,0))'::polygon)
-(3 rows)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Index Scan using ggpolygonind on gpolygon_tbl
+                     Index Cond: (f1 && '((1000,1000),(0,0))'::polygon)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 SELECT count(*) FROM gpolygon_tbl WHERE f1 && '(1000,1000,0,0)'::polygon;
  count 
@@ -364,12 +381,15 @@ SELECT count(*) FROM gpolygon_tbl WHERE f1 && '(1000,1000,0,0)'::polygon;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM gcircle_tbl WHERE f1 && '<(500,500),500>'::circle;
-                      QUERY PLAN                       
--------------------------------------------------------
- Aggregate
-   ->  Index Scan using ggcircleind on gcircle_tbl
-         Index Cond: (f1 && '<(500,500),500>'::circle)
-(3 rows)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Index Scan using ggcircleind on gcircle_tbl
+                     Index Cond: (f1 && '<(500,500),500>'::circle)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 SELECT count(*) FROM gcircle_tbl WHERE f1 && '<(500,500),500>'::circle;
  count 
@@ -379,12 +399,14 @@ SELECT count(*) FROM gcircle_tbl WHERE f1 && '<(500,500),500>'::circle;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl WHERE f1 <@ box '(0,0,100,100)';
-                     QUERY PLAN                     
-----------------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl
-         Index Cond: (f1 <@ '(100,100),(0,0)'::box)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl
+               Index Cond: (f1 <@ '(100,100),(0,0)'::box)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl WHERE f1 <@ box '(0,0,100,100)';
  count 
@@ -394,12 +416,14 @@ SELECT count(*) FROM point_tbl WHERE f1 <@ box '(0,0,100,100)';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl WHERE box '(0,0,100,100)' @> f1;
-                     QUERY PLAN                     
-----------------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl
-         Index Cond: (f1 <@ '(100,100),(0,0)'::box)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl
+               Index Cond: (f1 <@ '(100,100),(0,0)'::box)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl WHERE box '(0,0,100,100)' @> f1;
  count 
@@ -409,12 +433,14 @@ SELECT count(*) FROM point_tbl WHERE box '(0,0,100,100)' @> f1;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl WHERE f1 <@ polygon '(0,0),(0,100),(100,100),(50,50),(100,0),(0,0)';
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl
-         Index Cond: (f1 <@ '((0,0),(0,100),(100,100),(50,50),(100,0),(0,0))'::polygon)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl
+               Index Cond: (f1 <@ '((0,0),(0,100),(100,100),(50,50),(100,0),(0,0))'::polygon)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl WHERE f1 <@ polygon '(0,0),(0,100),(100,100),(50,50),(100,0),(0,0)';
  count 
@@ -424,12 +450,14 @@ SELECT count(*) FROM point_tbl WHERE f1 <@ polygon '(0,0),(0,100),(100,100),(50,
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl WHERE f1 <@ circle '<(50,50),50>';
-                     QUERY PLAN                     
-----------------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl
-         Index Cond: (f1 <@ '<(50,50),50>'::circle)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl
+               Index Cond: (f1 <@ '<(50,50),50>'::circle)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl WHERE f1 <@ circle '<(50,50),50>';
  count 
@@ -439,12 +467,14 @@ SELECT count(*) FROM point_tbl WHERE f1 <@ circle '<(50,50),50>';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl p WHERE p.f1 << '(0.0, 0.0)';
-                      QUERY PLAN                      
-------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl p
-         Index Cond: (f1 << '(0,0)'::point)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl p
+               Index Cond: (f1 << '(0,0)'::point)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl p WHERE p.f1 << '(0.0, 0.0)';
  count 
@@ -454,12 +484,14 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 << '(0.0, 0.0)';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl p WHERE p.f1 >> '(0.0, 0.0)';
-                      QUERY PLAN                      
-------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl p
-         Index Cond: (f1 >> '(0,0)'::point)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl p
+               Index Cond: (f1 >> '(0,0)'::point)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl p WHERE p.f1 >> '(0.0, 0.0)';
  count 
@@ -469,12 +501,14 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 >> '(0.0, 0.0)';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl p WHERE p.f1 <^ '(0.0, 0.0)';
-                      QUERY PLAN                      
-------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl p
-         Index Cond: (f1 <^ '(0,0)'::point)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl p
+               Index Cond: (f1 <^ '(0,0)'::point)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl p WHERE p.f1 <^ '(0.0, 0.0)';
  count 
@@ -484,12 +518,14 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 <^ '(0.0, 0.0)';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl p WHERE p.f1 >^ '(0.0, 0.0)';
-                      QUERY PLAN                      
-------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl p
-         Index Cond: (f1 >^ '(0,0)'::point)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl p
+               Index Cond: (f1 >^ '(0,0)'::point)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl p WHERE p.f1 >^ '(0.0, 0.0)';
  count 
@@ -499,12 +535,14 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 >^ '(0.0, 0.0)';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
-                      QUERY PLAN                      
-------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Aggregate
-   ->  Index Only Scan using gpointind on point_tbl p
-         Index Cond: (f1 ~= '(-5,-12)'::point)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using gpointind on point_tbl p
+               Index Cond: (f1 ~= '(-5,-12)'::point)
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
  count 
@@ -513,35 +551,38 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl ORDER BY f1 <-> '0,1';
-                  QUERY PLAN                  
-----------------------------------------------
- Index Only Scan using gpointind on point_tbl
-   Order By: (f1 <-> '(0,1)'::point)
-(2 rows)
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
+                     QUERY PLAN                     
+----------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: ((f1 <-> '(0,1)'::point))
+   ->  Index Only Scan using gpointind on point_tbl
+         Order By: (f1 <-> '(0,1)'::point)
+         Filter: (f1 <> '(1e-300,-1e-300)'::point)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
-SELECT * FROM point_tbl ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
         f1         
 -------------------
- (10,10)
- (NaN,NaN)
- (0,0)
- (1e-300,-1e-300)
  (-3,4)
  (-10,0)
+ (10,10)
  (-5,-12)
  (5.1,34.5)
- 
  (1e+300,Infinity)
-(10 rows)
+ (NaN,NaN)
+(7 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM point_tbl WHERE f1 IS NULL;
-                  QUERY PLAN                  
-----------------------------------------------
- Index Only Scan using gpointind on point_tbl
-   Index Cond: (f1 IS NULL)
-(2 rows)
+                     QUERY PLAN                     
+----------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Index Only Scan using gpointind on point_tbl
+         Index Cond: (f1 IS NULL)
+ Optimizer: Postgres query optimizer
+(4 rows)
 
 SELECT * FROM point_tbl WHERE f1 IS NULL;
  f1 
@@ -550,55 +591,63 @@ SELECT * FROM point_tbl WHERE f1 IS NULL;
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE f1 IS NOT NULL ORDER BY f1 <-> '0,1';
-                  QUERY PLAN                  
-----------------------------------------------
- Index Only Scan using gpointind on point_tbl
-   Index Cond: (f1 IS NOT NULL)
-   Order By: (f1 <-> '(0,1)'::point)
-(3 rows)
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
+                     QUERY PLAN                     
+----------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: ((f1 <-> '(0,1)'::point))
+   ->  Index Only Scan using gpointind on point_tbl
+         Index Cond: (f1 IS NOT NULL)
+         Order By: (f1 <-> '(0,1)'::point)
+         Filter: (f1 <> '(1e-300,-1e-300)'::point)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
-SELECT * FROM point_tbl WHERE f1 IS NOT NULL ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
         f1         
 -------------------
- (10,10)
- (NaN,NaN)
- (0,0)
- (1e-300,-1e-300)
  (-3,4)
  (-10,0)
+ (10,10)
  (-5,-12)
  (5.1,34.5)
  (1e+300,Infinity)
-(9 rows)
+ (NaN,NaN)
+(7 rows)
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-                   QUERY PLAN                   
-------------------------------------------------
- Index Only Scan using gpointind on point_tbl
-   Index Cond: (f1 <@ '(10,10),(-10,-10)'::box)
-   Order By: (f1 <-> '(0,1)'::point)
-(3 rows)
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+                      QUERY PLAN                      
+------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: ((f1 <-> '(0,1)'::point))
+   ->  Index Only Scan using gpointind on point_tbl
+         Index Cond: (f1 <@ '(10,10),(-10,-10)'::box)
+         Order By: (f1 <-> '(0,1)'::point)
+         Filter: (f1 <> '(1e-300,-1e-300)'::point)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-        f1        
-------------------
- (0,0)
- (1e-300,-1e-300)
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+   f1    
+---------
  (-3,4)
  (-10,0)
  (10,10)
-(5 rows)
+(3 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
-                     QUERY PLAN                      
------------------------------------------------------
+                           QUERY PLAN                            
+-----------------------------------------------------------------
  Limit
-   ->  Index Scan using ggpolygonind on gpolygon_tbl
-         Order By: (f1 <-> '(0,0)'::point)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: ((f1 <-> '(0,0)'::point))
+         ->  Limit
+               ->  Index Scan using ggpolygonind on gpolygon_tbl
+                     Order By: (f1 <-> '(0,0)'::point)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
                        f1                        
@@ -617,12 +666,16 @@ SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
 
 EXPLAIN (COSTS OFF)
 SELECT circle_center(f1), round(radius(f1)) as radius FROM gcircle_tbl ORDER BY f1 <-> '(200,300)'::point LIMIT 10;
-                    QUERY PLAN                     
----------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Limit
-   ->  Index Scan using ggcircleind on gcircle_tbl
-         Order By: (f1 <-> '(200,300)'::point)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: ((f1 <-> '(200,300)'::point))
+         ->  Limit
+               ->  Index Scan using ggcircleind on gcircle_tbl
+                     Order By: (f1 <-> '(200,300)'::point)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT circle_center(f1), round(radius(f1)) as radius FROM gcircle_tbl ORDER BY f1 <-> '(200,300)'::point LIMIT 10;
  circle_center  | radius 
@@ -644,26 +697,28 @@ SET enable_seqscan = OFF;
 SET enable_indexscan = OFF;
 SET enable_bitmapscan = ON;
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-                         QUERY PLAN                         
-------------------------------------------------------------
- Sort
-   Sort Key: ((f1 <-> '(0,1)'::point))
-   ->  Bitmap Heap Scan on point_tbl
-         Recheck Cond: (f1 <@ '(10,10),(-10,-10)'::box)
-         ->  Bitmap Index Scan on gpointind
-               Index Cond: (f1 <@ '(10,10),(-10,-10)'::box)
-(6 rows)
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: ((f1 <-> '(0,1)'::point))
+   ->  Sort
+         Sort Key: ((f1 <-> '(0,1)'::point))
+         ->  Bitmap Heap Scan on point_tbl
+               Recheck Cond: (f1 <@ '(10,10),(-10,-10)'::box)
+               Filter: (f1 <> '(1e-300,-1e-300)'::point)
+               ->  Bitmap Index Scan on gpointind
+                     Index Cond: (f1 <@ '(10,10),(-10,-10)'::box)
+ Optimizer: Postgres query optimizer
+(10 rows)
 
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-        f1        
-------------------
- (0,0)
- (1e-300,-1e-300)
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+   f1    
+---------
  (-3,4)
  (-10,0)
  (10,10)
-(5 rows)
+(3 rows)
 
 RESET enable_seqscan;
 RESET enable_indexscan;
@@ -679,15 +734,18 @@ SET enable_bitmapscan = ON;
 CREATE INDEX intarrayidx ON array_index_op_test USING gin (i);
 explain (costs off)
 SELECT * FROM array_index_op_test WHERE i @> '{32}' ORDER BY seqno;
-                     QUERY PLAN                     
-----------------------------------------------------
- Sort
-   Sort Key: seqno
-   ->  Bitmap Heap Scan on array_index_op_test
-         Recheck Cond: (i @> '{32}'::integer[])
-         ->  Bitmap Index Scan on intarrayidx
-               Index Cond: (i @> '{32}'::integer[])
-(6 rows)
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: seqno
+   ->  Sort
+         Sort Key: seqno
+         ->  Bitmap Heap Scan on array_index_op_test
+               Recheck Cond: (i @> '{32}'::integer[])
+               ->  Bitmap Index Scan on intarrayidx
+                     Index Cond: (i @> '{32}'::integer[])
+ Optimizer: Postgres query optimizer
+(9 rows)
 
 SELECT * FROM array_index_op_test WHERE i @> '{32}' ORDER BY seqno;
  seqno |                i                |                                                                 t                                                                  
@@ -925,15 +983,18 @@ SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
 CREATE INDEX textarrayidx ON array_index_op_test USING gin (t);
 explain (costs off)
 SELECT * FROM array_index_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Sort
-   Sort Key: seqno
-   ->  Bitmap Heap Scan on array_index_op_test
-         Recheck Cond: (t @> '{AAAAAAAA72908}'::text[])
-         ->  Bitmap Index Scan on textarrayidx
-               Index Cond: (t @> '{AAAAAAAA72908}'::text[])
-(6 rows)
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: seqno
+   ->  Sort
+         Sort Key: seqno
+         ->  Bitmap Heap Scan on array_index_op_test
+               Recheck Cond: (t @> '{AAAAAAAA72908}'::text[])
+               ->  Bitmap Index Scan on textarrayidx
+                     Index Cond: (t @> '{AAAAAAAA72908}'::text[])
+ Optimizer: Postgres query optimizer
+(9 rows)
 
 SELECT * FROM array_index_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
  seqno |           i           |                                                                     t                                                                      
@@ -1241,6 +1302,8 @@ CREATE INDEX hash_name_index ON hash_name_heap USING hash (random name_ops);
 CREATE INDEX hash_txt_index ON hash_txt_heap USING hash (random text_ops);
 CREATE INDEX hash_f8_index ON hash_f8_heap USING hash (random float8_ops) WITH (fillfactor=60);
 CREATE UNLOGGED TABLE unlogged_hash_table (id int4);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'id' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 CREATE INDEX unlogged_hash_index ON unlogged_hash_table USING hash (id int4_ops);
 DROP TABLE unlogged_hash_table;
 -- CREATE INDEX hash_ovfl_index ON hash_ovfl_heap USING hash (x int4_ops);
@@ -1250,14 +1313,17 @@ SET maintenance_work_mem = '1MB';
 CREATE INDEX hash_tuplesort_idx ON tenk1 USING hash (stringu1 name_ops) WITH (fillfactor = 10);
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM tenk1 WHERE stringu1 = 'TVAAAA';
-                      QUERY PLAN                       
--------------------------------------------------------
- Aggregate
-   ->  Bitmap Heap Scan on tenk1
-         Recheck Cond: (stringu1 = 'TVAAAA'::name)
-         ->  Bitmap Index Scan on hash_tuplesort_idx
-               Index Cond: (stringu1 = 'TVAAAA'::name)
-(5 rows)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Bitmap Heap Scan on tenk1
+                     Recheck Cond: (stringu1 = 'TVAAAA'::name)
+                     ->  Bitmap Index Scan on hash_tuplesort_idx
+                           Index Cond: (stringu1 = 'TVAAAA'::name)
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 SELECT count(*) FROM tenk1 WHERE stringu1 = 'TVAAAA';
  count 
@@ -1271,14 +1337,12 @@ RESET maintenance_work_mem;
 -- Test functional index
 --
 CREATE TABLE func_index_heap (f1 text, f2 text);
-CREATE UNIQUE INDEX func_index_index on func_index_heap (textcat(f1,f2));
+CREATE INDEX func_index_index on func_index_heap (textcat(f1,f2));
 INSERT INTO func_index_heap VALUES('ABC','DEF');
 INSERT INTO func_index_heap VALUES('AB','CDEFG');
 INSERT INTO func_index_heap VALUES('QWE','RTY');
--- this should fail because of unique index:
+-- this should fail because of unique index: (In GPDB, the index isn't unique, so no error)
 INSERT INTO func_index_heap VALUES('ABCD', 'EF');
-ERROR:  duplicate key value violates unique constraint "func_index_index"
-DETAIL:  Key (textcat(f1, f2))=(ABCDEF) already exists.
 -- but this shouldn't:
 INSERT INTO func_index_heap VALUES('QWERTY');
 --
@@ -1286,14 +1350,12 @@ INSERT INTO func_index_heap VALUES('QWERTY');
 --
 DROP TABLE func_index_heap;
 CREATE TABLE func_index_heap (f1 text, f2 text);
-CREATE UNIQUE INDEX func_index_index on func_index_heap ((f1 || f2) text_ops);
+CREATE  INDEX func_index_index on func_index_heap ((f1 || f2) text_ops);
 INSERT INTO func_index_heap VALUES('ABC','DEF');
 INSERT INTO func_index_heap VALUES('AB','CDEFG');
 INSERT INTO func_index_heap VALUES('QWE','RTY');
--- this should fail because of unique index:
+-- this should fail because of unique index: (In GPDB, the index isn't unique, so no error)
 INSERT INTO func_index_heap VALUES('ABCD', 'EF');
-ERROR:  duplicate key value violates unique constraint "func_index_index"
-DETAIL:  Key ((f1 || f2))=(ABCDEF) already exists.
 -- but this shouldn't:
 INSERT INTO func_index_heap VALUES('QWERTY');
 --
@@ -1319,42 +1381,51 @@ DROP TABLE covering_index_heap;
 -- Also try building functional, expressional, and partial indexes on
 -- tables that already contain data.
 --
-create unique index hash_f8_index_1 on hash_f8_heap(abs(random));
-create unique index hash_f8_index_2 on hash_f8_heap((seqno + 1), random);
-create unique index hash_f8_index_3 on hash_f8_heap(random) where seqno > 1000;
+create index hash_f8_index_1 on hash_f8_heap(abs(random));
+create index hash_f8_index_2 on hash_f8_heap((seqno + 1), random);
+create index hash_f8_index_3 on hash_f8_heap(random) where seqno > 1000;
 --
 -- Try some concurrent index builds
 --
 -- Unfortunately this only tests about half the code paths because there are
 -- no concurrent updates happening to the table at the same time.
-CREATE TABLE concur_heap (f1 text, f2 text);
+--
+-- Concurrent index building is not currently supported in Greenplum.
+--start_ignore
+CREATE TABLE concur_heap (f1 text, f2 text, dk text) distributed by (dk);
 -- empty table
 CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 CREATE INDEX CONCURRENTLY IF NOT EXISTS concur_index1 ON concur_heap(f2,f1);
-NOTICE:  relation "concur_index1" already exists, skipping
-INSERT INTO concur_heap VALUES  ('a','b');
-INSERT INTO concur_heap VALUES  ('b','b');
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
+INSERT INTO concur_heap VALUES  ('a','b', '1');
+INSERT INTO concur_heap VALUES  ('b','b', '1');
+INSERT INTO concur_heap VALUES  ('c','c', '2');
+INSERT INTO concur_heap VALUES  ('d','d', '3');
 -- unique index
-CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(f1);
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS concur_index2 ON concur_heap(f1);
-NOTICE:  relation "concur_index2" already exists, skipping
+CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(dk, f1);
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS concur_index2 ON concur_heap(dk, f1);
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 -- check if constraint is set up properly to be enforced
-INSERT INTO concur_heap VALUES ('b','x');
+INSERT INTO concur_heap VALUES ('b','x', '1');
 ERROR:  duplicate key value violates unique constraint "concur_index2"
-DETAIL:  Key (f1)=(b) already exists.
+DETAIL:  Key (dk, f1)=(1, b) already exists.
 -- check if constraint is enforced properly at build time
-CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
-ERROR:  could not create unique index "concur_index3"
-DETAIL:  Key (f2)=(b) is duplicated.
+CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(dk, f2);
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 -- test that expression indexes and partial indexes work concurrently
 CREATE INDEX CONCURRENTLY concur_index4 on concur_heap(f2) WHERE f1='a';
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 CREATE INDEX CONCURRENTLY concur_index5 on concur_heap(f2) WHERE f1='x';
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 -- here we also check that you can default the index name
 CREATE INDEX CONCURRENTLY on concur_heap((f2||f1));
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 -- You can't do a concurrent index build in a transaction
 BEGIN;
 CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
-ERROR:  CREATE INDEX CONCURRENTLY cannot run inside a transaction block
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 COMMIT;
 -- But you can do a regular index build in a transaction
 BEGIN;
@@ -1368,12 +1439,15 @@ DETAIL:  Key (f2)=(b) is duplicated.
 DELETE FROM concur_heap WHERE f1 = 'b';
 VACUUM FULL concur_heap;
 \d concur_heap
-           Table "public.concur_heap"
- Column | Type | Collation | Nullable | Default 
---------+------+-----------+----------+---------
- f1     | text |           |          | 
- f2     | text |           |          | 
+Table "public.concur_heap"
+ Column | Type | Modifiers 
+--------+------+-----------
+ dk     | text | 
+ f1     | text | 
+ f2     | text | 
 Indexes:
+    "concur_index2" UNIQUE, btree (dk, f1)
+    "concur_index3" UNIQUE, btree (dk, f2) INVALID
     "concur_heap_expr_idx" btree ((f2 || f1))
     "concur_index1" btree (f2, f1)
     "concur_index2" UNIQUE, btree (f1)
@@ -1381,6 +1455,7 @@ Indexes:
     "concur_index4" btree (f2) WHERE f1 = 'a'::text
     "concur_index5" btree (f2) WHERE f1 = 'x'::text
     "std_index" btree (f2)
+Distributed by: (dk)
 
 REINDEX TABLE concur_heap;
 \d concur_heap
@@ -1400,8 +1475,10 @@ Indexes:
 
 --
 -- Try some concurrent index drops
+-- Greenplum: The functionality of these tests is replicated in gp_index
 --
 DROP INDEX CONCURRENTLY "concur_index2";				-- works
+ERROR:  index "concur_index2" does not exist
 DROP INDEX CONCURRENTLY IF EXISTS "concur_index2";		-- notice
 NOTICE:  index "concur_index2" does not exist, skipping
 -- failures
@@ -1413,20 +1490,34 @@ ERROR:  DROP INDEX CONCURRENTLY cannot run inside a transaction block
 ROLLBACK;
 -- successes
 DROP INDEX CONCURRENTLY IF EXISTS "concur_index3";
+NOTICE:  index "concur_index3" does not exist, skipping
 DROP INDEX CONCURRENTLY "concur_index4";
+ERROR:  index "concur_index4" does not exist
 DROP INDEX CONCURRENTLY "concur_index5";
+ERROR:  index "concur_index5" does not exist
 DROP INDEX CONCURRENTLY "concur_index1";
+ERROR:  index "concur_index1" does not exist
 DROP INDEX CONCURRENTLY "concur_heap_expr_idx";
+ERROR:  index "concur_heap_expr_idx" does not exist
 \d concur_heap
-           Table "public.concur_heap"
- Column | Type | Collation | Nullable | Default 
---------+------+-----------+----------+---------
- f1     | text |           |          | 
- f2     | text |           |          | 
+Table "public.concur_heap"
+ Column | Type | Modifiers 
+--------+------+-----------
+ f1     | text | 
+ f2     | text | 
+ dk     | text | 
 Indexes:
+    "concur_index2" UNIQUE, btree (dk, f1)
+    "concur_index3" UNIQUE, btree (dk, f2) INVALID
+    "concur_heap_expr_idx" btree ((f2 || f1))
+    "concur_index1" btree (f2, f1)
+    "concur_index4" btree (f2) WHERE f1 = 'a'::text
+    "concur_index5" btree (f2) WHERE f1 = 'x'::text
     "std_index" btree (f2)
+Distributed by: (dk)
 
 DROP TABLE concur_heap;
+--end_ignore
 --
 -- Test ADD CONSTRAINT USING INDEX
 --
@@ -1444,6 +1535,7 @@ ALTER TABLE cwi_test ADD primary key USING INDEX cwi_uniq_idx;
  c      | character(1)          |           |          | 
 Indexes:
     "cwi_uniq_idx" PRIMARY KEY, btree (a, b)
+Distributed by: (a)
 
 \d cwi_uniq_idx
             Index "public.cwi_uniq_idx"
@@ -1467,6 +1559,7 @@ NOTICE:  ALTER TABLE / ADD CONSTRAINT USING INDEX will rename index "cwi_uniq2_i
  c      | character(1)          |           |          | 
 Indexes:
     "cwi_replaced_pkey" PRIMARY KEY, btree (b, a)
+Distributed by: (a)
 
 \d cwi_replaced_pkey
           Index "public.cwi_replaced_pkey"
@@ -1503,7 +1596,7 @@ DROP TABLE syscol_table;
 --
 -- Tests for IS NULL/IS NOT NULL with b-tree indexes
 --
-SELECT unique1, unique2 INTO onek_with_null FROM onek;
+CREATE TABLE onek_with_null AS SELECT unique1, unique2 FROM onek DISTRIBUTED BY (unique1);
 INSERT INTO onek_with_null (unique1,unique2) VALUES (NULL, -1), (NULL, NULL);
 CREATE UNIQUE INDEX onek_nulltest ON onek_with_null (unique2,unique1);
 SET enable_seqscan = OFF;
@@ -1662,6 +1755,8 @@ SELECT count(*) FROM onek_with_null WHERE unique1 IS NULL AND unique1 > 500;
 DROP INDEX onek_nulltest;
 -- Check initial-positioning logic too
 CREATE UNIQUE INDEX onek_nulltest ON onek_with_null (unique2);
+ERROR:  UNIQUE index must contain all columns in the table's distribution key
+DETAIL:  Distribution key column "unique1" is not included in the constraint.
 SET enable_seqscan = OFF;
 SET enable_indexscan = ON;
 SET enable_bitmapscan = OFF;
@@ -1723,18 +1818,16 @@ DROP TABLE onek_with_null;
 EXPLAIN (COSTS OFF)
 SELECT * FROM tenk1
   WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42);
-                                                               QUERY PLAN                                                                
------------------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on tenk1
-   Recheck Cond: (((thousand = 42) AND (tenthous = 1)) OR ((thousand = 42) AND (tenthous = 3)) OR ((thousand = 42) AND (tenthous = 42)))
-   ->  BitmapOr
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on tenk1
+         Recheck Cond: (thousand = 42)
+         Filter: ((tenthous = 1) OR (tenthous = 3) OR (tenthous = 42))
          ->  Bitmap Index Scan on tenk1_thous_tenthous
-               Index Cond: ((thousand = 42) AND (tenthous = 1))
-         ->  Bitmap Index Scan on tenk1_thous_tenthous
-               Index Cond: ((thousand = 42) AND (tenthous = 3))
-         ->  Bitmap Index Scan on tenk1_thous_tenthous
-               Index Cond: ((thousand = 42) AND (tenthous = 42))
-(9 rows)
+               Index Cond: (thousand = 42)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT * FROM tenk1
   WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42);
@@ -1746,20 +1839,22 @@ SELECT * FROM tenk1
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM tenk1
   WHERE hundred = 42 AND (thousand = 42 OR thousand = 99);
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on tenk1
-         Recheck Cond: ((hundred = 42) AND ((thousand = 42) OR (thousand = 99)))
-         ->  BitmapAnd
-               ->  Bitmap Index Scan on tenk1_hundred
-                     Index Cond: (hundred = 42)
-               ->  BitmapOr
-                     ->  Bitmap Index Scan on tenk1_thous_tenthous
-                           Index Cond: (thousand = 42)
-                     ->  Bitmap Index Scan on tenk1_thous_tenthous
-                           Index Cond: (thousand = 99)
-(11 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Bitmap Heap Scan on tenk1
+               Recheck Cond: ((hundred = 42) AND ((thousand = 42) OR (thousand = 99)))
+               ->  BitmapAnd
+                     ->  Bitmap Index Scan on tenk1_hundred
+                           Index Cond: (hundred = 42)
+                     ->  BitmapOr
+                           ->  Bitmap Index Scan on tenk1_thous_tenthous
+                                 Index Cond: (thousand = 42)
+                           ->  Bitmap Index Scan on tenk1_thous_tenthous
+                                 Index Cond: (thousand = 99)
+ Optimizer: Postgres query optimizer
+(13 rows)
 
 SELECT count(*) FROM tenk1
   WHERE hundred = 42 AND (thousand = 42 OR thousand = 99);
@@ -1778,14 +1873,17 @@ ANALYZE dupindexcols;
 EXPLAIN (COSTS OFF)
   SELECT count(*) FROM dupindexcols
     WHERE f1 BETWEEN 'WA' AND 'ZZZ' and id < 1000 and f1 ~<~ 'YX';
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
- Aggregate
-   ->  Bitmap Heap Scan on dupindexcols
-         Recheck Cond: ((f1 >= 'WA'::text) AND (f1 <= 'ZZZ'::text) AND (id < 1000) AND (f1 ~<~ 'YX'::text))
-         ->  Bitmap Index Scan on dupindexcols_i
-               Index Cond: ((f1 >= 'WA'::text) AND (f1 <= 'ZZZ'::text) AND (id < 1000) AND (f1 ~<~ 'YX'::text))
-(5 rows)
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Bitmap Heap Scan on dupindexcols
+                     Recheck Cond: ((f1 >= 'WA'::text) AND (f1 <= 'ZZZ'::text) AND (id < 1000) AND (f1 ~<~ 'YX'::text))
+                     ->  Bitmap Index Scan on dupindexcols_i
+                           Index Cond: ((f1 >= 'WA'::text) AND (f1 <= 'ZZZ'::text) AND (id < 1000) AND (f1 ~<~ 'YX'::text))
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 SELECT count(*) FROM dupindexcols
   WHERE f1 BETWEEN 'WA' AND 'ZZZ' and id < 1000 and f1 ~<~ 'YX';
@@ -1802,11 +1900,14 @@ explain (costs off)
 SELECT unique1 FROM tenk1
 WHERE unique1 IN (1,42,7)
 ORDER BY unique1;
-                      QUERY PLAN                       
--------------------------------------------------------
- Index Only Scan using tenk1_unique1 on tenk1
-   Index Cond: (unique1 = ANY ('{1,42,7}'::integer[]))
-(2 rows)
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)
+   Merge Key: unique1
+   ->  Index Only Scan using tenk1_unique1 on tenk1
+         Index Cond: (unique1 = ANY ('{1,42,7}'::integer[]))
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 SELECT unique1 FROM tenk1
 WHERE unique1 IN (1,42,7)
@@ -1822,12 +1923,15 @@ explain (costs off)
 SELECT thousand, tenthous FROM tenk1
 WHERE thousand < 2 AND tenthous IN (1001,3000)
 ORDER BY thousand;
-                      QUERY PLAN                       
--------------------------------------------------------
- Index Only Scan using tenk1_thous_tenthous on tenk1
-   Index Cond: (thousand < 2)
-   Filter: (tenthous = ANY ('{1001,3000}'::integer[]))
-(3 rows)
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: thousand
+   ->  Index Only Scan using tenk1_thous_tenthous on tenk1
+         Index Cond: (thousand < 2)
+         Filter: (tenthous = ANY ('{1001,3000}'::integer[]))
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 SELECT thousand, tenthous FROM tenk1
 WHERE thousand < 2 AND tenthous IN (1001,3000)
@@ -1843,13 +1947,16 @@ explain (costs off)
 SELECT thousand, tenthous FROM tenk1
 WHERE thousand < 2 AND tenthous IN (1001,3000)
 ORDER BY thousand;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Sort
-   Sort Key: thousand
-   ->  Index Scan using tenk1_thous_tenthous on tenk1
-         Index Cond: ((thousand < 2) AND (tenthous = ANY ('{1001,3000}'::integer[])))
-(4 rows)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: thousand
+   ->  Sort
+         Sort Key: thousand
+         ->  Index Scan using tenk1_thous_tenthous on tenk1
+               Index Cond: ((thousand < 2) AND (tenthous = ANY ('{1001,3000}'::integer[])))
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT thousand, tenthous FROM tenk1
 WHERE thousand < 2 AND tenthous IN (1001,3000)
@@ -1866,11 +1973,13 @@ RESET enable_indexonlyscan;
 --
 explain (costs off)
   select * from tenk1 where (thousand, tenthous) in ((1,1001), (null,null));
-                      QUERY PLAN                      
-------------------------------------------------------
- Index Scan using tenk1_thous_tenthous on tenk1
-   Index Cond: ((thousand = 1) AND (tenthous = 1001))
-(2 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Index Scan using tenk1_thous_tenthous on tenk1
+         Index Cond: ((thousand = 1) AND (tenthous = 1001))
+ Optimizer: Postgres query optimizer
+(4 rows)
 
 --
 -- Check matching of boolean index columns to WHERE conditions and sort keys
@@ -1878,56 +1987,104 @@ explain (costs off)
 create temp table boolindex (b bool, i int, unique(b, i), junk float);
 explain (costs off)
   select * from boolindex order by b, i limit 10;
-                      QUERY PLAN                       
--------------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Limit
-   ->  Index Scan using boolindex_b_i_key on boolindex
-(2 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: b, i
+         ->  Limit
+               ->  Index Scan using boolindex_b_i_key on boolindex
+ Optimizer: Postgres query optimizer
+(6 rows)
 
+-- In PostgreSQL, this uses an Index Scan. In GPDB, the logic to deduce
+-- which path keys are useful for ordering miss this case. That's because
+-- we build a path key to also represent the DISTRIBUTED BY key, which is 'b'
+-- for this table, and the index is deemed not useful for that path key.
+-- We can live with that. But to cover the same codepaths as in upstream,
+-- run the test again with different distribution key so that index scans
+-- are used.
 explain (costs off)
   select * from boolindex where b order by i limit 10;
-                      QUERY PLAN                       
--------------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Limit
-   ->  Index Scan using boolindex_b_i_key on boolindex
-         Index Cond: (b = true)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: i
+         ->  Limit
+               ->  Sort
+                     Sort Key: i
+                     ->  Seq Scan on boolindex
+                           Filter: b
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+-- Repeate with different distribution key
+alter table boolindex set distributed by (i);
+explain (costs off)
+  select * from boolindex where b order by i limit 10;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Limit
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: i
+         ->  Limit
+               ->  Index Scan using boolindex_b_i_key on boolindex
+                     Index Cond: (b = true)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 explain (costs off)
   select * from boolindex where b = true order by i desc limit 10;
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Limit
-   ->  Index Scan Backward using boolindex_b_i_key on boolindex
-         Index Cond: (b = true)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: i
+         ->  Limit
+               ->  Index Scan Backward using boolindex_b_i_key on boolindex
+                     Index Cond: (b = true)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 explain (costs off)
   select * from boolindex where not b order by i limit 10;
-                      QUERY PLAN                       
--------------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Limit
-   ->  Index Scan using boolindex_b_i_key on boolindex
-         Index Cond: (b = false)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: i
+         ->  Limit
+               ->  Index Scan using boolindex_b_i_key on boolindex
+                     Index Cond: (b = false)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 explain (costs off)
   select * from boolindex where b is true order by i desc limit 10;
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Limit
-   ->  Index Scan Backward using boolindex_b_i_key on boolindex
-         Index Cond: (b = true)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: i
+         ->  Limit
+               ->  Index Scan Backward using boolindex_b_i_key on boolindex
+                     Index Cond: (b = true)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 explain (costs off)
   select * from boolindex where b is false order by i desc limit 10;
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Limit
-   ->  Index Scan Backward using boolindex_b_i_key on boolindex
-         Index Cond: (b = false)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: i
+         ->  Limit
+               ->  Index Scan Backward using boolindex_b_i_key on boolindex
+                     Index Cond: (b = false)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 --
 -- REINDEX (VERBOSE)
@@ -1946,14 +2103,14 @@ CREATE TABLE concur_reindex_tab (c1 int);
 REINDEX TABLE concur_reindex_tab; -- notice
 NOTICE:  table "concur_reindex_tab" has no indexes to reindex
 REINDEX TABLE CONCURRENTLY concur_reindex_tab; -- notice
-NOTICE:  table "concur_reindex_tab" has no indexes that can be reindexed concurrently
+ERROR:  REINDEX CONCURRENTLY is not supported
 ALTER TABLE concur_reindex_tab ADD COLUMN c2 text; -- add toast index
 -- Normal index with integer column
 CREATE UNIQUE INDEX concur_reindex_ind1 ON concur_reindex_tab(c1);
 -- Normal index with text column
 CREATE INDEX concur_reindex_ind2 ON concur_reindex_tab(c2);
 -- UNIQUE index with expression
-CREATE UNIQUE INDEX concur_reindex_ind3 ON concur_reindex_tab(abs(c1));
+CREATE UNIQUE INDEX concur_reindex_ind3 ON concur_reindex_tab(c1, abs(c1));
 -- Duplicate column names
 CREATE INDEX concur_reindex_ind4 ON concur_reindex_tab(c1, c1, c2);
 -- Create table for check on foreign key dependence switch with indexes swapped
@@ -1963,19 +2120,33 @@ INSERT INTO concur_reindex_tab VALUES  (1, 'a');
 INSERT INTO concur_reindex_tab VALUES  (2, 'a');
 -- Reindex concurrently of exclusion constraint currently not supported
 CREATE TABLE concur_reindex_tab3 (c1 int, c2 int4range, EXCLUDE USING gist (c2 WITH &&));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  exclusion constraint is not compatible with the table's distribution policy
+DETAIL:  Distribution key column "c1" is not included in the constraint.
+HINT:  Add "c1" to the constraint with the =(integer,integer) operator.
+-- GPDB: The above fails, because the exclusion constraint doesn't include the
+-- distribution key. But this works.
+CREATE TABLE concur_reindex_tab3 (c1 int, c2 int4range,
+      distkey int4range DEFAULT 'empty',
+      EXCLUDE USING gist (c2 WITH &&, distkey WITH =))
+DISTRIBUTED BY (distkey);
 INSERT INTO concur_reindex_tab3 VALUES  (3, '[1,2]');
 REINDEX INDEX CONCURRENTLY  concur_reindex_tab3_c2_excl;  -- error
-ERROR:  concurrent index creation for exclusion constraints is not supported
+ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX TABLE CONCURRENTLY concur_reindex_tab3;  -- succeeds with warning
-WARNING:  cannot reindex exclusion constraint index "public.concur_reindex_tab3_c2_excl" concurrently, skipping
+ERROR:  REINDEX CONCURRENTLY is not supported
 INSERT INTO concur_reindex_tab3 VALUES  (4, '[2,4]');
-ERROR:  conflicting key value violates exclusion constraint "concur_reindex_tab3_c2_excl"
-DETAIL:  Key (c2)=([2,5)) conflicts with existing key (c2)=([1,3)).
+ERROR:  conflicting key value violates exclusion constraint "concur_reindex_tab3_c2_distkey_excl"  (seg1 127.0.0.1:40001 pid=28895)
+DETAIL:  Key (c2, distkey)=([2,5), empty) conflicts with existing key (c2, distkey)=([1,3), empty).
 -- Check materialized views
 CREATE MATERIALIZED VIEW concur_reindex_matview AS SELECT * FROM concur_reindex_tab;
 REINDEX INDEX CONCURRENTLY concur_reindex_ind1;
+ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX TABLE CONCURRENTLY concur_reindex_tab;
+ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX TABLE CONCURRENTLY concur_reindex_matview;
+ERROR:  REINDEX CONCURRENTLY is not supported
 -- Check that comments are preserved
 CREATE TABLE testcomment (i int);
 CREATE INDEX testcomment_idx1 ON testcomment (i);
@@ -1994,6 +2165,7 @@ SELECT obj_description('testcomment_idx1'::regclass, 'pg_class');
 (1 row)
 
 REINDEX TABLE CONCURRENTLY testcomment ;
+ERROR:  REINDEX CONCURRENTLY is not supported
 SELECT obj_description('testcomment_idx1'::regclass, 'pg_class');
  obj_description 
 -----------------
@@ -2035,18 +2207,6 @@ SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_ind
  concur_reindex_part_index_0_2 | concur_reindex_part_index_0 |     2
 (5 rows)
 
--- REINDEX fails for partitioned indexes
-REINDEX INDEX concur_reindex_part_index_10;
-ERROR:  REINDEX is not yet implemented for partitioned indexes
-REINDEX INDEX CONCURRENTLY concur_reindex_part_index_10;
-ERROR:  REINDEX is not yet implemented for partitioned indexes
--- REINDEX is a no-op for partitioned tables
-REINDEX TABLE concur_reindex_part_10;
-WARNING:  REINDEX of partitioned tables is not yet implemented, skipping "concur_reindex_part_10"
-NOTICE:  table "concur_reindex_part_10" has no indexes to reindex
-REINDEX TABLE CONCURRENTLY concur_reindex_part_10;
-WARNING:  REINDEX of partitioned tables is not yet implemented, skipping "concur_reindex_part_10"
-NOTICE:  table "concur_reindex_part_10" has no indexes that can be reindexed concurrently
 SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_index')
   ORDER BY relid, level;
              relid             |         parentrelid         | level 
@@ -2060,7 +2220,9 @@ SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_ind
 
 -- REINDEX should preserve dependencies of partition tree.
 REINDEX INDEX CONCURRENTLY concur_reindex_part_index_0_1;
+ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX INDEX CONCURRENTLY concur_reindex_part_index_0_2;
+ERROR:  REINDEX CONCURRENTLY is not supported
 SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_index')
   ORDER BY relid, level;
              relid             |         parentrelid         | level 
@@ -2073,7 +2235,9 @@ SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_ind
 (5 rows)
 
 REINDEX TABLE CONCURRENTLY concur_reindex_part_0_1;
+ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX TABLE CONCURRENTLY concur_reindex_part_0_2;
+ERROR:  REINDEX CONCURRENTLY is not supported
 SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_index')
   ORDER BY relid, level;
              relid             |         parentrelid         | level 
@@ -2085,27 +2249,175 @@ SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_ind
  concur_reindex_part_index_0_2 | concur_reindex_part_index_0 |     2
 (5 rows)
 
+-- REINDEX for partitioned indexes
+-- REINDEX TABLE fails for partitioned indexes
+-- Top-most parent index
+REINDEX TABLE concur_reindex_part_index; -- error
+ERROR:  "concur_reindex_part_index" is not a table or materialized view
+REINDEX TABLE CONCURRENTLY concur_reindex_part_index; -- error
+ERROR:  REINDEX CONCURRENTLY is not supported
+-- Partitioned index with no leaves
+REINDEX TABLE concur_reindex_part_index_10; -- error
+ERROR:  "concur_reindex_part_index_10" is not a table or materialized view
+REINDEX TABLE CONCURRENTLY concur_reindex_part_index_10; -- error
+ERROR:  REINDEX CONCURRENTLY is not supported
+-- Cannot run in a transaction block
+BEGIN;
+REINDEX INDEX concur_reindex_part_index;
+ERROR:  REINDEX INDEX cannot run inside a transaction block
+CONTEXT:  while reindexing partitioned index "public.concur_reindex_part_index"
+ROLLBACK;
+-- Helper functions to track changes of relfilenodes in a partition tree.
+-- Create a table tracking the relfilenode state.
+CREATE OR REPLACE FUNCTION create_relfilenode_part(relname text, indname text)
+  RETURNS VOID AS
+  $func$
+  BEGIN
+  EXECUTE format('
+    CREATE TABLE %I AS
+      SELECT oid, relname, relfilenode, relkind, reltoastrelid
+      FROM pg_class
+      WHERE oid IN
+         (SELECT relid FROM pg_partition_tree(''%I''));',
+	 relname, indname);
+  END
+  $func$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION compare_relfilenode_part(tabname text)
+  RETURNS TABLE (relname name, relkind "char", state text) AS
+  $func$
+  BEGIN
+    RETURN QUERY EXECUTE
+      format(
+        'SELECT  b.relname,
+                 b.relkind,
+                 CASE WHEN a.relfilenode = b.relfilenode THEN ''relfilenode is unchanged''
+                 ELSE ''relfilenode has changed'' END
+           -- Do not join with OID here as CONCURRENTLY changes it.
+           FROM %I b JOIN pg_class a ON b.relname = a.relname
+           ORDER BY 1;', tabname);
+  END
+  $func$ LANGUAGE plpgsql;
+--  Check that expected relfilenodes are changed, non-concurrent case.
+SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
+ create_relfilenode_part 
+-------------------------
+ 
+(1 row)
+
+REINDEX INDEX concur_reindex_part_index;
+SELECT * FROM compare_relfilenode_part('reindex_index_status');
+            relname            | relkind |          state           
+-------------------------------+---------+--------------------------
+ concur_reindex_part_index     | I       | relfilenode is unchanged
+ concur_reindex_part_index_0   | I       | relfilenode is unchanged
+ concur_reindex_part_index_0_1 | i       | relfilenode has changed
+ concur_reindex_part_index_0_2 | i       | relfilenode has changed
+ concur_reindex_part_index_10  | I       | relfilenode is unchanged
+(5 rows)
+
+DROP TABLE reindex_index_status;
+-- concurrent case.
+SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
+ create_relfilenode_part 
+-------------------------
+ 
+(1 row)
+
+REINDEX INDEX CONCURRENTLY concur_reindex_part_index;
+ERROR:  REINDEX CONCURRENTLY is not supported
+SELECT * FROM compare_relfilenode_part('reindex_index_status');
+            relname            | relkind |          state           
+-------------------------------+---------+--------------------------
+ concur_reindex_part_index     | I       | relfilenode is unchanged
+ concur_reindex_part_index_0   | I       | relfilenode is unchanged
+ concur_reindex_part_index_0_1 | i       | relfilenode is unchanged
+ concur_reindex_part_index_0_2 | i       | relfilenode is unchanged
+ concur_reindex_part_index_10  | I       | relfilenode is unchanged
+(5 rows)
+
+DROP TABLE reindex_index_status;
+-- REINDEX for partitioned tables
+-- REINDEX INDEX fails for partitioned tables
+-- Top-most parent
+REINDEX INDEX concur_reindex_part; -- error
+ERROR:  "concur_reindex_part" is not an index
+REINDEX INDEX CONCURRENTLY concur_reindex_part; -- error
+ERROR:  REINDEX CONCURRENTLY is not supported
+-- Partitioned with no leaves
+REINDEX INDEX concur_reindex_part_10; -- error
+ERROR:  "concur_reindex_part_10" is not an index
+REINDEX INDEX CONCURRENTLY concur_reindex_part_10; -- error
+ERROR:  REINDEX CONCURRENTLY is not supported
+-- Cannot run in a transaction block
+BEGIN;
+REINDEX TABLE concur_reindex_part;
+ERROR:  REINDEX TABLE cannot run inside a transaction block
+CONTEXT:  while reindexing partitioned table "public.concur_reindex_part"
+ROLLBACK;
+-- Check that expected relfilenodes are changed, non-concurrent case.
+-- Note that the partition tree changes of the *indexes* need to be checked.
+SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
+ create_relfilenode_part 
+-------------------------
+ 
+(1 row)
+
+REINDEX TABLE concur_reindex_part;
+SELECT * FROM compare_relfilenode_part('reindex_index_status');
+            relname            | relkind |          state           
+-------------------------------+---------+--------------------------
+ concur_reindex_part_index     | I       | relfilenode is unchanged
+ concur_reindex_part_index_0   | I       | relfilenode is unchanged
+ concur_reindex_part_index_0_1 | i       | relfilenode has changed
+ concur_reindex_part_index_0_2 | i       | relfilenode has changed
+ concur_reindex_part_index_10  | I       | relfilenode is unchanged
+(5 rows)
+
+DROP TABLE reindex_index_status;
+-- concurrent case.
+SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
+ create_relfilenode_part 
+-------------------------
+ 
+(1 row)
+
+REINDEX TABLE CONCURRENTLY concur_reindex_part;
+ERROR:  REINDEX CONCURRENTLY is not supported
+SELECT * FROM compare_relfilenode_part('reindex_index_status');
+            relname            | relkind |          state           
+-------------------------------+---------+--------------------------
+ concur_reindex_part_index     | I       | relfilenode is unchanged
+ concur_reindex_part_index_0   | I       | relfilenode is unchanged
+ concur_reindex_part_index_0_1 | i       | relfilenode is unchanged
+ concur_reindex_part_index_0_2 | i       | relfilenode is unchanged
+ concur_reindex_part_index_10  | I       | relfilenode is unchanged
+(5 rows)
+
+DROP TABLE reindex_index_status;
+DROP FUNCTION create_relfilenode_part;
+DROP FUNCTION compare_relfilenode_part;
+-- Cleanup of partition tree used for REINDEX test.
 DROP TABLE concur_reindex_part;
 -- Check errors
 -- Cannot run inside a transaction block
 BEGIN;
 REINDEX TABLE CONCURRENTLY concur_reindex_tab;
-ERROR:  REINDEX CONCURRENTLY cannot run inside a transaction block
+ERROR:  REINDEX CONCURRENTLY is not supported
 COMMIT;
 REINDEX TABLE CONCURRENTLY pg_class; -- no catalog relation
-ERROR:  cannot reindex system catalogs concurrently
+ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX INDEX CONCURRENTLY pg_class_oid_index; -- no catalog index
-ERROR:  cannot reindex system catalogs concurrently
+ERROR:  REINDEX CONCURRENTLY is not supported
 -- These are the toast table and index of pg_authid.
 REINDEX TABLE CONCURRENTLY pg_toast.pg_toast_1260; -- no catalog toast table
-ERROR:  cannot reindex system catalogs concurrently
+ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX INDEX CONCURRENTLY pg_toast.pg_toast_1260_index; -- no catalog toast index
-ERROR:  cannot reindex system catalogs concurrently
+ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX SYSTEM CONCURRENTLY postgres; -- not allowed for SYSTEM
-ERROR:  cannot reindex system catalogs concurrently
+ERROR:  REINDEX CONCURRENTLY is not supported
 -- Warns about catalog relations
 REINDEX SCHEMA CONCURRENTLY pg_catalog;
-WARNING:  cannot reindex system catalogs concurrently, skipping all
+ERROR:  REINDEX CONCURRENTLY is not supported
 -- Check the relation status, there should not be invalid indexes
 \d concur_reindex_tab
          Table "public.concur_reindex_tab"
@@ -2116,7 +2428,7 @@ WARNING:  cannot reindex system catalogs concurrently, skipping all
 Indexes:
     "concur_reindex_ind1" PRIMARY KEY, btree (c1)
     "concur_reindex_ind2" btree (c2)
-    "concur_reindex_ind3" UNIQUE, btree (abs(c1))
+    "concur_reindex_ind3" UNIQUE, btree (c1, abs(c1))
     "concur_reindex_ind4" btree (c1, c1, c2)
 Referenced by:
     TABLE "concur_reindex_tab2" CONSTRAINT "concur_reindex_tab2_c1_fkey" FOREIGN KEY (c1) REFERENCES concur_reindex_tab(c1)
@@ -2128,66 +2440,58 @@ CREATE TABLE concur_reindex_tab4 (c1 int);
 INSERT INTO concur_reindex_tab4 VALUES (1), (1), (2);
 -- This trick creates an invalid index.
 CREATE UNIQUE INDEX CONCURRENTLY concur_reindex_ind5 ON concur_reindex_tab4 (c1);
-ERROR:  could not create unique index "concur_reindex_ind5"
-DETAIL:  Key (c1)=(1) is duplicated.
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 -- Reindexing concurrently this index fails with the same failure.
 -- The extra index created is itself invalid, and can be dropped.
 REINDEX INDEX CONCURRENTLY concur_reindex_ind5;
-ERROR:  could not create unique index "concur_reindex_ind5_ccnew"
-DETAIL:  Key (c1)=(1) is duplicated.
+ERROR:  REINDEX CONCURRENTLY is not supported
 \d concur_reindex_tab4
         Table "public.concur_reindex_tab4"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
-Indexes:
-    "concur_reindex_ind5" UNIQUE, btree (c1) INVALID
-    "concur_reindex_ind5_ccnew" UNIQUE, btree (c1) INVALID
 
 DROP INDEX concur_reindex_ind5_ccnew;
+ERROR:  index "concur_reindex_ind5_ccnew" does not exist
 -- This makes the previous failure go away, so the index can become valid.
 DELETE FROM concur_reindex_tab4 WHERE c1 = 1;
 -- The invalid index is not processed when running REINDEX TABLE.
 REINDEX TABLE CONCURRENTLY concur_reindex_tab4;
-WARNING:  cannot reindex invalid index "public.concur_reindex_ind5" concurrently, skipping
-NOTICE:  table "concur_reindex_tab4" has no indexes that can be reindexed concurrently
+ERROR:  REINDEX CONCURRENTLY is not supported
 \d concur_reindex_tab4
         Table "public.concur_reindex_tab4"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
-Indexes:
-    "concur_reindex_ind5" UNIQUE, btree (c1) INVALID
 
 -- But it is fixed with REINDEX INDEX.
 REINDEX INDEX CONCURRENTLY concur_reindex_ind5;
+ERROR:  REINDEX CONCURRENTLY is not supported
 \d concur_reindex_tab4
         Table "public.concur_reindex_tab4"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
-Indexes:
-    "concur_reindex_ind5" UNIQUE, btree (c1)
 
 DROP TABLE concur_reindex_tab4;
 -- Check handling of indexes with expressions and predicates.  The
 -- definitions of the rebuilt indexes should match the original
 -- definitions.
-CREATE TABLE concur_exprs_tab (c1 int , c2 boolean);
+CREATE TABLE concur_exprs_tab (c1 int , c2 boolean) DISTRIBUTED BY (c1);
 INSERT INTO concur_exprs_tab (c1, c2) VALUES (1369652450, FALSE),
   (414515746, TRUE),
   (897778963, FALSE);
 CREATE UNIQUE INDEX concur_exprs_index_expr
-  ON concur_exprs_tab ((c1::text COLLATE "C"));
+  ON concur_exprs_tab (c1, (c1::text COLLATE "C"));
 CREATE UNIQUE INDEX concur_exprs_index_pred ON concur_exprs_tab (c1)
   WHERE (c1::text > 500000000::text COLLATE "C");
 CREATE UNIQUE INDEX concur_exprs_index_pred_2
-  ON concur_exprs_tab ((1 / c1))
+  ON concur_exprs_tab (c1, (1 / c1))
   WHERE ('-H') >= (c2::TEXT) COLLATE "C";
 SELECT pg_get_indexdef('concur_exprs_index_expr'::regclass);
-                                                pg_get_indexdef                                                
----------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX concur_exprs_index_expr ON public.concur_exprs_tab USING btree (((c1)::text) COLLATE "C")
+                                                  pg_get_indexdef                                                  
+-------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX concur_exprs_index_expr ON public.concur_exprs_tab USING btree (c1, ((c1)::text) COLLATE "C")
 (1 row)
 
 SELECT pg_get_indexdef('concur_exprs_index_pred'::regclass);
@@ -2197,16 +2501,17 @@ SELECT pg_get_indexdef('concur_exprs_index_pred'::regclass);
 (1 row)
 
 SELECT pg_get_indexdef('concur_exprs_index_pred_2'::regclass);
-                                                                 pg_get_indexdef                                                                  
---------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX concur_exprs_index_pred_2 ON public.concur_exprs_tab USING btree (((1 / c1))) WHERE ('-H'::text >= ((c2)::text COLLATE "C"))
+                                                                   pg_get_indexdef                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX concur_exprs_index_pred_2 ON public.concur_exprs_tab USING btree (c1, ((1 / c1))) WHERE ('-H'::text >= ((c2)::text COLLATE "C"))
 (1 row)
 
 REINDEX TABLE CONCURRENTLY concur_exprs_tab;
+ERROR:  REINDEX CONCURRENTLY is not supported
 SELECT pg_get_indexdef('concur_exprs_index_expr'::regclass);
-                                                pg_get_indexdef                                                
----------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX concur_exprs_index_expr ON public.concur_exprs_tab USING btree (((c1)::text) COLLATE "C")
+                                                  pg_get_indexdef                                                  
+-------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX concur_exprs_index_expr ON public.concur_exprs_tab USING btree (c1, ((c1)::text) COLLATE "C")
 (1 row)
 
 SELECT pg_get_indexdef('concur_exprs_index_pred'::regclass);
@@ -2216,17 +2521,17 @@ SELECT pg_get_indexdef('concur_exprs_index_pred'::regclass);
 (1 row)
 
 SELECT pg_get_indexdef('concur_exprs_index_pred_2'::regclass);
-                                                                 pg_get_indexdef                                                                  
---------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX concur_exprs_index_pred_2 ON public.concur_exprs_tab USING btree (((1 / c1))) WHERE ('-H'::text >= ((c2)::text COLLATE "C"))
+                                                                   pg_get_indexdef                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX concur_exprs_index_pred_2 ON public.concur_exprs_tab USING btree (c1, ((1 / c1))) WHERE ('-H'::text >= ((c2)::text COLLATE "C"))
 (1 row)
 
 -- ALTER TABLE recreates the indexes, which should keep their collations.
 ALTER TABLE concur_exprs_tab ALTER c2 TYPE TEXT;
 SELECT pg_get_indexdef('concur_exprs_index_expr'::regclass);
-                                                pg_get_indexdef                                                
----------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX concur_exprs_index_expr ON public.concur_exprs_tab USING btree (((c1)::text) COLLATE "C")
+                                                  pg_get_indexdef                                                  
+-------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX concur_exprs_index_expr ON public.concur_exprs_tab USING btree (c1, ((c1)::text) COLLATE "C")
 (1 row)
 
 SELECT pg_get_indexdef('concur_exprs_index_pred'::regclass);
@@ -2236,9 +2541,9 @@ SELECT pg_get_indexdef('concur_exprs_index_pred'::regclass);
 (1 row)
 
 SELECT pg_get_indexdef('concur_exprs_index_pred_2'::regclass);
-                                                             pg_get_indexdef                                                              
-------------------------------------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX concur_exprs_index_pred_2 ON public.concur_exprs_tab USING btree (((1 / c1))) WHERE ('-H'::text >= (c2 COLLATE "C"))
+                                                               pg_get_indexdef                                                                
+----------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX concur_exprs_index_pred_2 ON public.concur_exprs_tab USING btree (c1, ((1 / c1))) WHERE ('-H'::text >= (c2 COLLATE "C"))
 (1 row)
 
 DROP TABLE concur_exprs_tab;
@@ -2303,6 +2608,7 @@ ERROR:  REINDEX SCHEMA cannot run inside a transaction block
 END;
 -- concurrently
 REINDEX SCHEMA CONCURRENTLY schema_to_reindex;
+ERROR:  REINDEX CONCURRENTLY is not supported
 -- Failure for unauthorized user
 CREATE ROLE regress_reindexuser NOLOGIN;
 SET SESSION ROLE regress_reindexuser;

@@ -703,7 +703,7 @@ extern IndexScanDesc btbeginscan(Relation rel, int nkeys, int norderbys);
 extern Size btestimateparallelscan(void);
 extern void btinitparallelscan(void *target);
 extern bool btgettuple(IndexScanDesc scan, ScanDirection dir);
-extern int64 btgetbitmap(IndexScanDesc scan, TIDBitmap *tbm);
+extern int64 btgetbitmap(IndexScanDesc scan, Node **bmNodeP);
 extern void btrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 					 ScanKey orderbys, int norderbys);
 extern void btparallelrescan(IndexScanDesc scan);
@@ -818,6 +818,7 @@ extern void _bt_check_third_page(Relation rel, Relation heap,
  * prototypes for functions in nbtvalidate.c
  */
 extern bool btvalidate(Oid opclassoid);
+extern bool btree_or_bitmap_validate(Oid opclassoid, const char *amname);
 
 /*
  * prototypes for functions in nbtsort.c

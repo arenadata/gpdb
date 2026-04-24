@@ -1560,6 +1560,78 @@ SELECT '' AS to_char_9, to_char(d1, 'YYYY A.D. YYYY a.d. YYYY bc HH:MI:SS P.M. H
            | 2001 A.D. 2001 a.d. 2001 ad 05:32:01 P.M. 05:32:01 p.m. 05:32:01 pm
 (66 rows)
 
+SELECT '' AS to_char_10, to_char(d1, 'YYYY WW IYYY IYY IY I IW') 
+   FROM TIMESTAMPTZ_TBL;
+ to_char_10 |         to_char          
+------------+--------------------------
+            | 1969 53 1970 970 70 0 01
+            | 1997 01 1997 997 97 7 01
+            | 2001 38 2001 001 01 1 38
+            | 2000 11 2000 000 00 0 11
+            | 0097 07 0097 097 97 7 07
+            | 1097 07 1097 097 97 7 07
+            | 1797 07 1797 797 97 7 07
+            | 1997 09 1997 997 97 7 09
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 01 1997 997 97 7 01
+            | 2000 11 2000 000 00 0 11
+            | 1997 23 1997 997 97 7 24
+            | 1997 06 1997 997 97 7 07
+            | 1997 07 1997 997 97 7 07
+            | 1697 07 1697 697 97 7 07
+            | 1996 09 1996 996 96 6 09
+            | 1996 09 1996 996 96 6 09
+            | 1996 53 1997 997 97 7 01
+            | 1997 01 1997 997 97 7 01
+            | 1997 09 1997 997 97 7 09
+            | 1997 53 1998 998 98 8 01
+            | 2000 01 1999 999 99 9 52
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 2000 11 2000 000 00 0 11
+            | 2000 11 2000 000 00 0 11
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 07 1997 997 97 7 07
+            | 0097 07 0097 097 97 7 07
+            | 0597 07 0597 597 97 7 07
+            | 1997 07 1997 997 97 7 07
+            | 1996 09 1996 996 96 6 09
+            | 1996 53 1997 997 97 7 01
+            | 1997 52 1998 998 98 8 01
+            | 1999 53 1999 999 99 9 52
+            | 
+            | 
+            | 1997 06 1997 997 97 7 07
+            | 1997 23 1997 997 97 7 24
+            | 2000 11 2000 000 00 0 11
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 06 1997 997 97 7 07
+            | 1997 28 1997 997 97 7 28
+            | 1997 07 1997 997 97 7 07
+            | 1997 07 1997 997 97 7 07
+            | 1997 07 1997 997 97 7 07
+            | 1897 07 1897 897 97 7 07
+            | 2097 07 2097 097 97 7 07
+            | 2000 53 2000 000 00 0 52
+            | 2001 01 2001 001 01 1 01
+(66 rows)
+
 SELECT '' AS to_char_10, to_char(d1, 'IYYY IYY IY I IW IDDD ID')
    FROM TIMESTAMPTZ_TBL;
  to_char_10 |        to_char         
@@ -1778,7 +1850,7 @@ INSERT INTO TIMESTAMPTZ_TST VALUES(3, '10000 Mar 12 23:58:48 IST');
 INSERT INTO TIMESTAMPTZ_TST VALUES(4, '100000312 23:58:48 IST');
 INSERT INTO TIMESTAMPTZ_TST VALUES(4, '1000000312 23:58:48 IST');
 --Verify data
-SELECT * FROM TIMESTAMPTZ_TST ORDER BY a;
+SELECT * FROM TIMESTAMPTZ_TST;
  a |               b                
 ---+--------------------------------
  1 | Wed Mar 12 13:58:48 1000 PST
@@ -1899,6 +1971,23 @@ SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'PST8PDT');
 (1 row)
 
 RESET TimeZone;
+-- MPP-18998
+create table dttm_com
+(id int primary key,
+t1 timestamp not null,
+t2 timestamp not null,
+d1 date not null,
+d2 date not null )
+distributed by (id);
+insert into dttm_com values
+     (1, now(), current_timestamp, now(), current_date),
+     (2, current_timestamp, localtimestamp::date, current_date::date, date_in(date_out(current_date))),
+     (3, now(), current_timestamp, now(), current_date);
+select id from dttm_com where d1 <> current_date;
+ id 
+----
+(0 rows)
+
 --
 -- Test behavior with a dynamic (time-varying) timezone abbreviation.
 -- These tests rely on the knowledge that MSK (Europe/Moscow standard time)
@@ -2519,11 +2608,13 @@ create temp table tmptz (f1 timestamptz primary key);
 insert into tmptz values ('2017-01-18 00:00+00');
 explain (costs off)
 select * from tmptz where f1 at time zone 'utc' = '2017-01-18 00:00';
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
- Seq Scan on tmptz
-   Filter: (timezone('utc'::text, f1) = 'Wed Jan 18 00:00:00 2017'::timestamp without time zone)
-(2 rows)
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on tmptz
+         Filter: (timezone('utc'::text, f1) = 'Wed Jan 18 00:00:00 2017'::timestamp without time zone)
+ Optimizer: Postgres query optimizer
+(4 rows)
 
 select * from tmptz where f1 at time zone 'utc' = '2017-01-18 00:00';
               f1              

@@ -476,9 +476,12 @@ ExecParallelInitializeDSM(PlanState *planstate,
 											d->pcxt);
 			break;
 		case T_BitmapHeapScanState:
-			if (planstate->plan->parallel_aware)
-				ExecBitmapHeapInitializeDSM((BitmapHeapScanState *) planstate,
-											d->pcxt);
+			/* GPDB_12_MERGE_FEATURE_NOT_SUPPORTED: the parallel StreamBitmap scan is not implemented */
+			/*
+			 * if (planstate->plan->parallel_aware)
+			 *     ExecBitmapHeapInitializeDSM((BitmapHeapScanState *) planstate,
+			 *                                 d->pcxt);
+			 */
 			break;
 		case T_HashJoinState:
 			if (planstate->plan->parallel_aware)
@@ -593,7 +596,7 @@ ExecInitParallelPlan(PlanState *planstate, EState *estate,
 	 * it doesn't seem worth complicating this function's API to pass it a
 	 * shorter-lived ExprContext.  This might need to change someday.
 	 */
-	ExecSetParamPlanMulti(sendParams, GetPerTupleExprContext(estate));
+	ExecSetParamPlanMulti(sendParams, GetPerTupleExprContext(estate), NULL);
 
 	/* Allocate object for return value. */
 	pei = palloc0(sizeof(ParallelExecutorInfo));
@@ -869,7 +872,7 @@ ExecParallelReinitialize(PlanState *planstate,
 	 * evaluated, if they weren't already (see comments in
 	 * ExecInitParallelPlan).
 	 */
-	ExecSetParamPlanMulti(sendParams, GetPerTupleExprContext(estate));
+	ExecSetParamPlanMulti(sendParams, GetPerTupleExprContext(estate), NULL);
 
 	ReinitializeParallelDSM(pei->pcxt);
 	pei->tqueue = ExecParallelSetupTupleQueues(pei->pcxt, true);

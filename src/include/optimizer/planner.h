@@ -19,6 +19,7 @@
 #define PLANNER_H
 
 #include "nodes/pathnodes.h"
+#include "nodes/plannerconfig.h"
 #include "nodes/plannodes.h"
 
 
@@ -42,7 +43,8 @@ extern PlannedStmt *standard_planner(Query *parse, int cursorOptions,
 
 extern PlannerInfo *subquery_planner(PlannerGlobal *glob, Query *parse,
 									 PlannerInfo *parent_root,
-									 bool hasRecursion, double tuple_fraction);
+									 bool hasRecursion, double tuple_fraction,
+									 PlannerConfig *config);
 
 extern RowMarkType select_rowmark_type(RangeTblEntry *rte,
 									   LockClauseStrength strength);

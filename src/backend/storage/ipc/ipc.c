@@ -23,6 +23,9 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#include "cdb/cdbdisp.h"
+#include "cdb/ml_ipc.h"
+#include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #ifdef PROFILE_PID_DIR
 #include "postmaster/autovacuum.h"
@@ -49,9 +52,6 @@ bool		shmem_exit_inprogress = false;
  * (or in the parent postmaster).
  */
 static bool atexit_callback_setup = false;
-
-/* local functions */
-static void proc_exit_prepare(int code);
 
 
 /* ----------------------------------------------------------------
@@ -103,6 +103,8 @@ static int	on_proc_exit_index,
 void
 proc_exit(int code)
 {
+	pqsignal(SIGALRM, SIG_IGN);
+
 	/* Clean up everything that must be cleaned up */
 	proc_exit_prepare(code);
 
@@ -157,9 +159,19 @@ proc_exit(int code)
  * normal exit through proc_exit, this will actually be called twice ...
  * but the second call will have nothing to do.
  */
-static void
+void
 proc_exit_prepare(int code)
 {
+	/*
+	 * If we came here from any critical section, we don't have safe way to
+	 * clean up shared memory or transaction state.  Though it's not a pleasant
+	 * solution, this is better than messing up database.  This is the least
+	 * desirable bail-out, and whenever you should see this situation, you
+	 * should consider to resolve the actual programming error.
+	 */
+	if (CritSectionCount > 0)
+		elog(PANIC, "process is dying from critical section");
+
 	/*
 	 * Once we set this flag, we are committed to exit.  Any ereport() will
 	 * NOT send control back to the main loop, but right back here.
@@ -189,6 +201,21 @@ proc_exit_prepare(int code)
 	error_context_stack = NULL;
 	/* For the same reason, reset debug_query_string before it's clobbered */
 	debug_query_string = NULL;
+
+	/*
+	* Make sure interconnect thread quit before shmem_exit() in FATAL case.
+	* Otherwise, shmem_exit() may free MemoryContex of MotionConns in connHtab unexpectedly;
+	*
+	* For example: PORTAL_MULTI_QUERY strategy doesn't bind estate with portal,
+	* so when fatal occurs, MotionConns of estate don't get removed through
+	* TeardownInterconnect(), but MemoryContex of these MotionConns are freed.
+	*
+	* It's ok to shutdown Interconnect background thread here, process is dying, no
+	* necessary to receive more motion data.
+	*/
+	WaitInterconnectQuit();
+
+	elog(DEBUG3, "proc_exit(%d)", code);
 
 	/* do our shared memory exits first */
 	shmem_exit(code);

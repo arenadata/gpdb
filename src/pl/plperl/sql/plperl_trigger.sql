@@ -13,6 +13,11 @@ CREATE TABLE trigger_test_generated (
     j int GENERATED ALWAYS AS (i * 2) STORED
 );
 
+-- GPDB: The UPDATEs below fail otherwise:
+-- ERROR:  UPDATE on distributed key column not allowed on relation with update triggers
+alter table trigger_test set distributed randomly;
+alter table trigger_test_generated set distributed randomly;
+
 CREATE OR REPLACE FUNCTION trigger_data() RETURNS trigger LANGUAGE plperl AS $$
 
   # make sure keys are sorted for consistent results - perl no longer
@@ -93,6 +98,8 @@ DROP TRIGGER show_trigger_data_trig_after ON trigger_test_generated;
 insert into trigger_test values(1,'insert', '("(1)")');
 CREATE VIEW trigger_test_view AS SELECT * FROM trigger_test;
 
+--start_ignore
+-- INSTEAD OF triggers are not yet supported in Greenplum
 CREATE TRIGGER show_trigger_data_trig
 INSTEAD OF INSERT OR UPDATE OR DELETE ON trigger_test_view
 FOR EACH ROW EXECUTE PROCEDURE trigger_data(24,'skidoo view');
@@ -100,6 +107,7 @@ FOR EACH ROW EXECUTE PROCEDURE trigger_data(24,'skidoo view');
 insert into trigger_test_view values(2,'insert', '("(2)")');
 update trigger_test_view set v = 'update', foo = '("(3)")' where i = 1;
 delete from trigger_test_view;
+--end_ignore
 
 DROP VIEW trigger_test_view;
 delete from trigger_test;
@@ -214,6 +222,8 @@ $$
     return undef;
 $$;
 
+-- GPDB: this test doesn't work properly on GPDB, because statement triggers
+-- are not fired.
 CREATE TRIGGER a_t AFTER UPDATE ON transition_table_test
   REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
   FOR EACH STATEMENT EXECUTE PROCEDURE transition_table_test_f();

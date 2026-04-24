@@ -277,6 +277,7 @@ BEGIN
 END;
 $$;
 CREATE TRIGGER t1 BEFORE INSERT ON test1 EXECUTE PROCEDURE triggerfunc1();
+ERROR:  Triggers for statements are not yet supported
 INSERT INTO test1 VALUES (1), (2), (3);
 UPDATE test1 SET a = 22 WHERE a = 2;
 SELECT * FROM test1 ORDER BY a;

@@ -358,6 +358,7 @@ _PG_init(void)
 	sprintf(worker.bgw_library_name, "worker_spi");
 	sprintf(worker.bgw_function_name, "worker_spi_main");
 	worker.bgw_notify_pid = 0;
+	worker.bgw_start_rule = NULL;
 
 	/*
 	 * Now fill in worker-specific data, and do the actual registrations.

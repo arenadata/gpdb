@@ -74,7 +74,14 @@
 
 #define RELMAPPER_FILEMAGIC		0x592717	/* version ID value */
 
-#define MAX_MAPPINGS			62	/* 62 * 8 + 16 = 512 */
+/*
+ * In Postgres, MAX_MAPPINGS is 62, but GPDB has exceeded this number due to
+ * additional GPDB specific shared relations. Increased to 126 to occupy
+ * exactly 1 kilobyte.
+ *
+ * New math: 126 * 8 + 16 = 1024
+ */
+#define MAX_MAPPINGS			126		/* 62 * 8 + 16 = 512 */
 
 typedef struct RelMapping
 {
@@ -974,7 +981,7 @@ perform_relmap_update(bool shared, const RelMapFile *updates)
 	 * Apply the updates to newmap.  No new mappings should appear, unless
 	 * somebody is adding indexes to system catalogs.
 	 */
-	merge_map_updates(&newmap, updates, allowSystemTableMods);
+	merge_map_updates(&newmap, updates, false);
 
 	/* Write out the updated map and do other necessary tasks */
 	write_relmap_file(shared, &newmap, true, true, true,

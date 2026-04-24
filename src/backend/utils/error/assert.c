@@ -3,6 +3,8 @@
  * assert.c
  *	  Assert code.
  *
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -17,6 +19,9 @@
  */
 #include "postgres.h"
 
+#include "libpq/pqsignal.h"
+#include "cdb/cdbvars.h"                /* gp_reraise_signal */
+
 #include <unistd.h>
 
 /*
@@ -28,17 +33,20 @@ ExceptionalCondition(const char *conditionName,
 					 const char *fileName,
 					 int lineNumber)
 {
+    /* CDB: Try to tell the QD or client what happened. */
 	if (!PointerIsValid(conditionName)
 		|| !PointerIsValid(fileName)
 		|| !PointerIsValid(errorType))
-		write_stderr("TRAP: ExceptionalCondition: bad arguments\n");
+		ereport(FATAL,
+				errFatalReturn(gp_reraise_signal),
+				errmsg("TRAP: ExceptionalCondition: bad arguments"));
 	else
-	{
-		write_stderr("TRAP: %s(\"%s\", File: \"%s\", Line: %d)\n",
-					 errorType, conditionName,
-					 fileName, lineNumber);
-	}
-
+		ereport(FATAL,
+				errFatalReturn(gp_reraise_signal),
+				errmsg("Unexpected internal error"),
+				errdetail("%s(\"%s\", File: \"%s\", Line: %d)\n",
+						  errorType, conditionName, fileName, lineNumber));
+				
 	/* Usually this shouldn't be needed, but make sure the msg went out */
 	fflush(stderr);
 

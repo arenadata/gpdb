@@ -1,6 +1,12 @@
 --
 -- Test access privileges
 --
+-- start_matchsubs
+-- m/DETAIL:  Failing row contains \(.*\) = \(.*\)/
+-- s/DETAIL:  Failing row contains \(.*\) = \(.*\)/DETAIL:  Failing row contains (#####)/
+-- end_matchsubs
+set optimizer=off;
+set enable_nestloop=on;
 -- Clean up in case a prior regression run failed
 -- Suppress NOTICE messages when users/groups don't exist
 SET client_min_messages TO 'warning';
@@ -12,11 +18,13 @@ DROP ROLE IF EXISTS regress_priv_user3;
 DROP ROLE IF EXISTS regress_priv_user4;
 DROP ROLE IF EXISTS regress_priv_user5;
 DROP ROLE IF EXISTS regress_priv_user6;
+-- start_ignore
 SELECT lo_unlink(oid) FROM pg_largeobject_metadata WHERE oid >= 1000 AND oid < 3000 ORDER BY oid;
  lo_unlink 
 -----------
 (0 rows)
 
+-- end_ignore
 RESET client_min_messages;
 -- test proper begins here
 CREATE USER regress_priv_user1;
@@ -41,7 +49,7 @@ SELECT session_user, current_user;
  regress_priv_user1 | regress_priv_user1
 (1 row)
 
-CREATE TABLE atest1 ( a int, b text );
+CREATE TABLE atest1 ( a int, b text ) distributed randomly;
 SELECT * FROM atest1;
  a | b 
 ---+---
@@ -55,6 +63,7 @@ BEGIN;
 LOCK atest1 IN ACCESS EXCLUSIVE MODE;
 COMMIT;
 REVOKE ALL ON atest1 FROM PUBLIC;
+NOTICE:  no privileges could be revoked
 SELECT * FROM atest1;
  a | b 
 ---+---
@@ -206,41 +215,53 @@ GRANT SELECT ON atest12v TO PUBLIC;
 GRANT SELECT ON atest12sbv TO PUBLIC;
 -- This plan should use nestloop, knowing that few rows will be selected.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
-                   QUERY PLAN                    
--------------------------------------------------
- Nested Loop
-   ->  Seq Scan on atest12 atest12_1
-         Filter: (b <<< 5)
-   ->  Index Scan using atest12_a_idx on atest12
-         Index Cond: (a = atest12_1.b)
-         Filter: (b <<< 5)
-(6 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Hash Key: atest12_1.b
+               ->  Seq Scan on atest12 atest12_1
+                     Filter: (b <<< 5)
+         ->  Index Scan using atest12_a_idx on atest12
+               Index Cond: (a = atest12_1.b)
+               Filter: (b <<< 5)
+ Optimizer: Postgres query optimizer
+(10 rows)
 
 -- And this one.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
   WHERE x.a = y.b and abs(y.a) <<< 5;
-                    QUERY PLAN                     
----------------------------------------------------
- Nested Loop
-   ->  Seq Scan on atest12 y
-         Filter: (abs(a) <<< 5)
-   ->  Index Scan using atest12_a_idx on atest12 x
-         Index Cond: (a = y.b)
-(5 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Hash Key: y.b
+               ->  Seq Scan on atest12 y
+                     Filter: (abs(a) <<< 5)
+         ->  Index Scan using atest12_a_idx on atest12 x
+               Index Cond: (a = y.b)
+ Optimizer: Postgres query optimizer
+(9 rows)
 
 -- This should also be a nestloop, but the security barrier forces the inner
 -- scan to be materialized
 EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y WHERE x.a = y.b;
-                QUERY PLAN                 
--------------------------------------------
- Nested Loop
-   Join Filter: (atest12.a = atest12_1.b)
-   ->  Seq Scan on atest12
-         Filter: (b <<< 5)
-   ->  Materialize
-         ->  Seq Scan on atest12 atest12_1
-               Filter: (b <<< 5)
-(7 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         Join Filter: (atest12_1.a = atest12.b)
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Hash Key: atest12.b
+               ->  Seq Scan on atest12
+                     Filter: (b <<< 5)
+         ->  Materialize
+               ->  Seq Scan on atest12 atest12_1
+                     Filter: (b <<< 5)
+ Optimizer: Postgres query optimizer
+(11 rows)
 
 -- Check if regress_priv_user2 can break security.
 SET SESSION AUTHORIZATION regress_priv_user2;
@@ -255,55 +276,72 @@ ERROR:  permission denied for table atest12
 -- These plans should continue to use a nestloop, since they execute with the
 -- privileges of the view owner.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
-                   QUERY PLAN                    
--------------------------------------------------
- Nested Loop
-   ->  Seq Scan on atest12 atest12_1
-         Filter: (b <<< 5)
-   ->  Index Scan using atest12_a_idx on atest12
-         Index Cond: (a = atest12_1.b)
-         Filter: (b <<< 5)
-(6 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Hash Key: atest12_1.b
+               ->  Seq Scan on atest12 atest12_1
+                     Filter: (b <<< 5)
+         ->  Index Scan using atest12_a_idx on atest12
+               Index Cond: (a = atest12_1.b)
+               Filter: (b <<< 5)
+ Optimizer: Postgres query optimizer
+(10 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y WHERE x.a = y.b;
-                QUERY PLAN                 
--------------------------------------------
- Nested Loop
-   Join Filter: (atest12.a = atest12_1.b)
-   ->  Seq Scan on atest12
-         Filter: (b <<< 5)
-   ->  Materialize
-         ->  Seq Scan on atest12 atest12_1
-               Filter: (b <<< 5)
-(7 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         Join Filter: (atest12_1.a = atest12.b)
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Hash Key: atest12.b
+               ->  Seq Scan on atest12
+                     Filter: (b <<< 5)
+         ->  Materialize
+               ->  Seq Scan on atest12 atest12_1
+                     Filter: (b <<< 5)
+ Optimizer: Postgres query optimizer
+(11 rows)
 
 -- A non-security barrier view does not guard against information leakage.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y
   WHERE x.a = y.b and abs(y.a) <<< 5;
-                   QUERY PLAN                    
--------------------------------------------------
- Nested Loop
-   ->  Seq Scan on atest12 atest12_1
-         Filter: ((b <<< 5) AND (abs(a) <<< 5))
-   ->  Index Scan using atest12_a_idx on atest12
-         Index Cond: (a = atest12_1.b)
-         Filter: (b <<< 5)
-(6 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Hash Key: atest12_1.b
+               ->  Seq Scan on atest12 atest12_1
+                     Filter: ((b <<< 5) AND (abs(a) <<< 5))
+         ->  Index Scan using atest12_a_idx on atest12
+               Index Cond: (a = atest12_1.b)
+               Filter: (b <<< 5)
+ Optimizer: Postgres query optimizer
+(10 rows)
 
 -- But a security barrier view isolates the leaky operator.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y
   WHERE x.a = y.b and abs(y.a) <<< 5;
-             QUERY PLAN              
--------------------------------------
- Nested Loop
-   Join Filter: (atest12_1.a = y.b)
-   ->  Subquery Scan on y
-         Filter: (abs(y.a) <<< 5)
-         ->  Seq Scan on atest12
-               Filter: (b <<< 5)
-   ->  Seq Scan on atest12 atest12_1
-         Filter: (b <<< 5)
-(8 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         Join Filter: (atest12_1.a = y.b)
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Hash Key: y.b
+               ->  Subquery Scan on y
+                     Filter: (abs(y.a) <<< 5)
+                     ->  Seq Scan on atest12
+                           Filter: (b <<< 5)
+         ->  Materialize
+               ->  Seq Scan on atest12 atest12_1
+                     Filter: (b <<< 5)
+ Optimizer: Postgres query optimizer
+(13 rows)
 
 -- Now regress_priv_user1 grants sufficient access to regress_priv_user2.
 SET SESSION AUTHORIZATION regress_priv_user1;
@@ -311,29 +349,37 @@ GRANT SELECT (a, b) ON atest12 TO PUBLIC;
 SET SESSION AUTHORIZATION regress_priv_user2;
 -- regress_priv_user2 should continue to get a good row estimate.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
-                   QUERY PLAN                    
--------------------------------------------------
- Nested Loop
-   ->  Seq Scan on atest12 atest12_1
-         Filter: (b <<< 5)
-   ->  Index Scan using atest12_a_idx on atest12
-         Index Cond: (a = atest12_1.b)
-         Filter: (b <<< 5)
-(6 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Hash Key: atest12_1.b
+               ->  Seq Scan on atest12 atest12_1
+                     Filter: (b <<< 5)
+         ->  Index Scan using atest12_a_idx on atest12
+               Index Cond: (a = atest12_1.b)
+               Filter: (b <<< 5)
+ Optimizer: Postgres query optimizer
+(10 rows)
 
 -- But not for this, due to lack of table-wide permissions needed
 -- to make use of the expression index's statistics.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
   WHERE x.a = y.b and abs(y.a) <<< 5;
-              QUERY PLAN              
---------------------------------------
- Hash Join
-   Hash Cond: (x.a = y.b)
-   ->  Seq Scan on atest12 x
-   ->  Hash
-         ->  Seq Scan on atest12 y
-               Filter: (abs(a) <<< 5)
-(6 rows)
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Hash Join
+         Hash Cond: (x.a = y.b)
+         ->  Seq Scan on atest12 x
+         ->  Hash
+               ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                     Hash Key: y.b
+                     ->  Seq Scan on atest12 y
+                           Filter: (abs(a) <<< 5)
+ Optimizer: Postgres query optimizer
+(10 rows)
 
 -- clean up (regress_priv_user1's objects are all dropped later)
 DROP FUNCTION leak2(integer, integer) CASCADE;
@@ -423,7 +469,7 @@ SELECT * FROM atestv2; -- fail (even though regress_priv_user2 can access underl
 ERROR:  permission denied for table atest2
 -- Test column level permissions
 SET SESSION AUTHORIZATION regress_priv_user1;
-CREATE TABLE atest5 (one int, two int unique, three int, four int unique);
+CREATE TABLE atest5 (one int, two int unique, three int, four int unique) distributed replicated;
 CREATE TABLE atest6 (one int, two int, blue int);
 GRANT SELECT (one), INSERT (two), UPDATE (three) ON atest5 TO regress_priv_user4;
 GRANT ALL (one) ON atest5 TO regress_priv_user3;
@@ -884,6 +930,7 @@ ALTER TYPE test8b ALTER ATTRIBUTE b TYPE priv_testdomain1;
 CREATE TABLE test11b AS (SELECT 1::priv_testdomain1 AS a);
 REVOKE ALL ON TYPE priv_testtype1 FROM PUBLIC;
 WARNING:  no privileges could be revoked for "priv_testtype1"
+NOTICE:  no privileges could be revoked
 \c -
 DROP AGGREGATE priv_testagg1b(priv_testdomain1);
 DROP DOMAIN priv_testdomain2b;
@@ -1259,6 +1306,7 @@ GRANT UPDATE ON atest4 TO regress_priv_user3; -- fail
 WARNING:  no privileges were granted for "atest4"
 SET SESSION AUTHORIZATION regress_priv_user1;
 REVOKE SELECT ON atest4 FROM regress_priv_user3; -- does nothing
+NOTICE:  no privileges could be revoked
 SELECT has_table_privilege('regress_priv_user3', 'atest4', 'SELECT'); -- true
  has_table_privilege 
 ---------------------
@@ -1344,6 +1392,7 @@ SELECT has_sequence_privilege('x_seq', 'USAGE');
 -- largeobject privilege tests
 \c -
 SET SESSION AUTHORIZATION regress_priv_user1;
+-- start_ignore
 SELECT lo_create(1001);
  lo_create 
 -----------
@@ -1385,8 +1434,10 @@ GRANT SELECT, UPDATE ON LARGE OBJECT 1001 TO nosuchuser;	-- to be failed
 ERROR:  role "nosuchuser" does not exist
 GRANT SELECT, UPDATE ON LARGE OBJECT  999 TO PUBLIC;	-- to be failed
 ERROR:  large object 999 does not exist
+-- end_ignore
 \c -
 SET SESSION AUTHORIZATION regress_priv_user2;
+-- start_ignore
 SELECT lo_create(2001);
  lo_create 
 -----------
@@ -1456,7 +1507,9 @@ SELECT lo_unlink(2002);
          1
 (1 row)
 
+-- end_ignore
 \c -
+-- start_ignore
 -- confirm ACL setting
 SELECT oid, pg_get_userbyid(lomowner) ownername, lomacl FROM pg_largeobject_metadata WHERE oid >= 1000 AND oid < 3000 ORDER BY oid;
  oid  |     ownername      |                                                            lomacl                                                            
@@ -1469,7 +1522,9 @@ SELECT oid, pg_get_userbyid(lomowner) ownername, lomacl FROM pg_largeobject_meta
  2001 | regress_priv_user2 | {regress_priv_user2=rw/regress_priv_user2,regress_priv_user3=rw/regress_priv_user2}
 (6 rows)
 
+-- end_ignore
 SET SESSION AUTHORIZATION regress_priv_user3;
+-- start_ignore
 SELECT loread(lo_open(1001, x'40000'::int), 32);
    loread   
 ------------
@@ -1492,10 +1547,12 @@ SELECT lo_truncate(lo_open(2001, x'20000'::int), 10);
            0
 (1 row)
 
+-- end_ignore
 -- compatibility mode in largeobject permission
 \c -
 SET lo_compat_privileges = false;	-- default setting
 SET SESSION AUTHORIZATION regress_priv_user4;
+-- start_ignore
 SELECT loread(lo_open(1002, x'40000'::int), 32);	-- to be denied
 ERROR:  permission denied for large object 1002
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');	-- to be denied
@@ -1512,9 +1569,11 @@ SELECT lo_import('/dev/null');				-- to be denied
 ERROR:  permission denied for function lo_import
 SELECT lo_import('/dev/null', 2003);			-- to be denied
 ERROR:  permission denied for function lo_import
+-- end_ignore
 \c -
 SET lo_compat_privileges = true;	-- compatibility mode
 SET SESSION AUTHORIZATION regress_priv_user4;
+-- start_ignore
 SELECT loread(lo_open(1002, x'40000'::int), 32);
  loread 
 --------
@@ -1541,6 +1600,7 @@ SELECT lo_unlink(1002);
 
 SELECT lo_export(1001, '/dev/null');			-- to be denied
 ERROR:  permission denied for function lo_export
+-- end_ignore
 -- don't allow unpriv users to access pg_largeobject contents
 \c -
 SELECT * FROM pg_largeobject LIMIT 0;
@@ -1783,14 +1843,64 @@ SELECT d.*     -- check that entries went away
 
 -- Grant on all objects of given type in a schema
 \c -
+-- GPDB: Create a helper function to inspect the segment information also
+DROP FUNCTION IF EXISTS has_table_privilege_seg(u text, r text, p text);
+NOTICE:  function has_table_privilege_seg(text,text,text) does not exist, skipping
+CREATE FUNCTION has_table_privilege_seg(us text, rel text, priv text)
+RETURNS TABLE (
+	segid int,
+	has_table_privilege bool
+) AS $$
+	SELECT
+		gp_execution_segment() AS gegid,
+		p.*
+	FROM
+		has_table_privilege($1, $2, $3) p
+$$ LANGUAGE SQL VOLATILE
+CONTAINS SQL EXECUTE ON ALL SEGMENTS;
 CREATE SCHEMA testns;
 CREATE TABLE testns.t1 (f1 int);
 CREATE TABLE testns.t2 (f1 int);
+CREATE TABLE testns.t3 (f1 int) PARTITION BY RANGE (f1) (START (2018) END (2020) EVERY (1),DEFAULT PARTITION extra );
+CREATE TABLE testns.t4 (f1 int) inherits (testns.t1);
+NOTICE:  merging column "f1" with inherited definition
 SELECT has_table_privilege('regress_priv_user1', 'testns.t1', 'SELECT'); -- false
  has_table_privilege 
 ---------------------
  f
 (1 row)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t1', 'SELECT'); -- false
+ segid | has_table_privilege 
+-------+---------------------
+     2 | f
+     0 | f
+     1 | f
+(3 rows)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t3', 'SELECT'); -- false
+ segid | has_table_privilege 
+-------+---------------------
+     0 | f
+     1 | f
+     2 | f
+(3 rows)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t3_1_prt_extra', 'SELECT'); -- false
+ segid | has_table_privilege 
+-------+---------------------
+     0 | f
+     1 | f
+     2 | f
+(3 rows)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t4', 'SELECT'); -- false
+ segid | has_table_privilege 
+-------+---------------------
+     0 | f
+     1 | f
+     2 | f
+(3 rows)
 
 GRANT ALL ON ALL TABLES IN SCHEMA testns TO regress_priv_user1;
 SELECT has_table_privilege('regress_priv_user1', 'testns.t1', 'SELECT'); -- true
@@ -1805,6 +1915,38 @@ SELECT has_table_privilege('regress_priv_user1', 'testns.t2', 'SELECT'); -- true
  t
 (1 row)
 
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t1', 'SELECT'); -- true
+ segid | has_table_privilege 
+-------+---------------------
+     0 | t
+     1 | t
+     2 | t
+(3 rows)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t3', 'SELECT'); -- true
+ segid | has_table_privilege 
+-------+---------------------
+     0 | t
+     1 | t
+     2 | t
+(3 rows)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t3_1_prt_extra', 'SELECT'); -- true
+ segid | has_table_privilege 
+-------+---------------------
+     0 | t
+     1 | t
+     2 | t
+(3 rows)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t4', 'SELECT'); -- true
+ segid | has_table_privilege 
+-------+---------------------
+     0 | t
+     1 | t
+     2 | t
+(3 rows)
+
 REVOKE ALL ON ALL TABLES IN SCHEMA testns FROM regress_priv_user1;
 SELECT has_table_privilege('regress_priv_user1', 'testns.t1', 'SELECT'); -- false
  has_table_privilege 
@@ -1817,6 +1959,30 @@ SELECT has_table_privilege('regress_priv_user1', 'testns.t2', 'SELECT'); -- fals
 ---------------------
  f
 (1 row)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t3', 'SELECT'); -- false
+ segid | has_table_privilege 
+-------+---------------------
+     0 | f
+     1 | f
+     2 | f
+(3 rows)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t3_1_prt_extra', 'SELECT'); -- false
+ segid | has_table_privilege 
+-------+---------------------
+     0 | f
+     1 | f
+     2 | f
+(3 rows)
+
+SELECT * FROM has_table_privilege_seg('regress_priv_user1', 'testns.t4', 'SELECT'); -- false
+ segid | has_table_privilege 
+-------+---------------------
+     0 | f
+     1 | f
+     2 | f
+(3 rows)
 
 CREATE FUNCTION testns.priv_testfunc(int) RETURNS int AS 'select 3 * $1;' LANGUAGE sql;
 CREATE AGGREGATE testns.priv_testagg(int) (sfunc = int4pl, stype = int4);
@@ -1885,9 +2051,11 @@ SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testproc(int)',
 (1 row)
 
 DROP SCHEMA testns CASCADE;
-NOTICE:  drop cascades to 5 other objects
+NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table testns.t1
 drop cascades to table testns.t2
+drop cascades to table testns.t3
+drop cascades to table testns.t4
 drop cascades to function testns.priv_testfunc(integer)
 drop cascades to function testns.priv_testagg(integer)
 drop cascades to function testns.priv_testproc(integer)
@@ -1967,6 +2135,121 @@ revoke select on dep_priv_test from regress_priv_user4 cascade;
 
 set session role regress_priv_user1;
 drop table dep_priv_test;
+-- security-restricted operations
+\c -
+CREATE ROLE regress_sro_user;
+SET SESSION AUTHORIZATION regress_sro_user;
+CREATE FUNCTION unwanted_grant() RETURNS void LANGUAGE sql AS
+	'GRANT regress_priv_group2 TO regress_sro_user';
+CREATE FUNCTION mv_action() RETURNS bool LANGUAGE sql AS
+	'DECLARE c CURSOR WITH HOLD FOR SELECT unwanted_grant(); SELECT true';
+-- REFRESH of this MV will queue a GRANT at end of transaction
+CREATE MATERIALIZED VIEW sro_mv AS SELECT mv_action() WITH NO DATA;
+REFRESH MATERIALIZED VIEW sro_mv;
+ERROR:  cannot create a cursor WITH HOLD within security-restricted operation
+CONTEXT:  SQL function "mv_action" statement 1
+\c -
+REFRESH MATERIALIZED VIEW sro_mv;
+ERROR:  cannot create a cursor WITH HOLD within security-restricted operation
+CONTEXT:  SQL function "mv_action" statement 1
+SET SESSION AUTHORIZATION regress_sro_user;
+-- INSERT to this table will queue a GRANT at end of transaction
+CREATE TABLE sro_trojan_table ();
+CREATE FUNCTION sro_trojan() RETURNS trigger LANGUAGE plpgsql AS
+	'BEGIN PERFORM unwanted_grant(); RETURN NULL; END';
+CREATE CONSTRAINT TRIGGER t AFTER INSERT ON sro_trojan_table
+    INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE sro_trojan();
+-- Now, REFRESH will issue such an INSERT, queueing the GRANT
+CREATE OR REPLACE FUNCTION mv_action() RETURNS bool LANGUAGE sql AS
+	'INSERT INTO sro_trojan_table DEFAULT VALUES; SELECT true';
+REFRESH MATERIALIZED VIEW sro_mv;
+ERROR:  cannot fire deferred trigger within security-restricted operation
+CONTEXT:  SQL function "mv_action" statement 1
+\c -
+REFRESH MATERIALIZED VIEW sro_mv;
+ERROR:  cannot fire deferred trigger within security-restricted operation
+CONTEXT:  SQL function "mv_action" statement 1
+BEGIN; SET allow_segment_DML = ON; SET CONSTRAINTS ALL IMMEDIATE; REFRESH MATERIALIZED VIEW sro_mv; COMMIT;
+ERROR:  must have admin option on role "regress_priv_group2"
+CONTEXT:  SQL function "unwanted_grant" statement 1
+SQL statement "SELECT unwanted_grant()"
+PL/pgSQL function sro_trojan() line 1 at PERFORM
+SQL function "mv_action" statement 1
+DROP OWNED BY regress_sro_user;
+DROP ROLE regress_sro_user;
+-- Test sandbox escape with CVE-2020-25695 on Greenplum.
+--
+-- The idea of CVE-2020-25695 is to make superuser fire a defered
+-- trigger with security invoker function that executes some malicious
+-- code with superuser privileges.
+--
+-- We create a two-step trap for a superuser running a maintenance
+-- operation (ANALYZE) on a "trap" table. First of all we create
+-- an index with stable function and replace it with volatile one after
+-- creation. This index function is invoked by ANALYZE and acts as a
+-- vulnerability firestarter - it inserts data to some table aside ("executor").
+-- "Executor" table has a defered insert trigger with security invoker
+-- function that executes malicious code under superuser. In a current example
+-- we give superuser to our unprivileged user on segments (not on coordinator node).
+\c -
+CREATE ROLE regress_sro_user;
+SET SESSION AUTHORIZATION regress_sro_user;
+CREATE TABLE executor (s varchar) DISTRIBUTED REPLICATED;
+CREATE TABLE trap (a int) WITH(appendonly = true) DISTRIBUTED REPLICATED;
+-- Create a "firestarter" stable index funcion
+CREATE OR REPLACE FUNCTION trap_sfunc(integer) RETURNS integer
+LANGUAGE sql IMMUTABLE AS
+'SELECT $1';
+CREATE INDEX trap_idx ON trap (trap_sfunc(a));
+-- and replace it with volatile security invoker to prodice insert operation on ANALYZE.
+CREATE OR REPLACE FUNCTION trap_sfunc(integer) RETURNS integer
+LANGUAGE sql SECURITY INVOKER AS
+'SET allow_segment_DML = ON; INSERT INTO executor VALUES (current_user); SELECT $1';
+-- Populate data in a "trap" table to run ANALYZE on.
+SET allow_segment_DML = ON;
+INSERT INTO trap VALUES(1);
+-- Create malicious function to run in defered trigger
+CREATE OR REPLACE FUNCTION executor_sfunc(integer) RETURNS integer
+LANGUAGE sql SECURITY INVOKER AS
+'SET allow_segment_DML = ON; ALTER USER regress_sro_user WITH superuser; SELECT $1';
+-- and the trigger itself.
+CREATE OR REPLACE FUNCTION executor_trig_sfunc() RETURNS trigger
+AS $$
+BEGIN PERFORM executor_sfunc(1000); RETURN NEW; END
+$$ LANGUAGE plpgsql;
+CREATE CONSTRAINT TRIGGER executor_trig
+AFTER INSERT ON executor
+INITIALLY DEFERRED FOR EACH ROW
+EXECUTE PROCEDURE executor_trig_sfunc();
+-- Check "regress_sro_user" superuser privileges on segments.
+CREATE OR REPLACE FUNCTION is_superuser_on_segments(username text) RETURNS setof boolean AS $$
+SELECT rolsuper FROM pg_roles WHERE rolname = $1;
+$$ LANGUAGE sql EXECUTE ON ALL SEGMENTS;
+SELECT DISTINCT is_superuser_on_segments('regress_sro_user');
+ is_superuser_on_segments 
+--------------------------
+ f
+(1 row)
+
+-- Execute a trap with superuser.
+RESET SESSION AUTHORIZATION;
+ANALYZE trap;
+ERROR:  cannot fire deferred trigger within security-restricted operation
+CONTEXT:  SQL function "trap_sfunc" statement 2
+-- Check "regress_sro_user" superuser privileges on segments.
+SELECT DISTINCT is_superuser_on_segments('regress_sro_user');
+ is_superuser_on_segments 
+--------------------------
+ f
+(1 row)
+
+DROP TABLE trap;
+DROP TABLE executor;
+DROP FUNCTION trap_sfunc(integer);
+DROP FUNCTION executor_sfunc(integer);
+DROP FUNCTION executor_trig_sfunc();
+DROP FUNCTION is_superuser_on_segments(text);
+DROP ROLE regress_sro_user;
 -- clean up
 \c
 drop sequence x_seq;
@@ -1992,6 +2275,7 @@ DROP TABLE atest6;
 DROP TABLE atestc;
 DROP TABLE atestp1;
 DROP TABLE atestp2;
+-- start_ignore
 SELECT lo_unlink(oid) FROM pg_largeobject_metadata WHERE oid >= 1000 AND oid < 3000 ORDER BY oid;
  lo_unlink 
 -----------
@@ -2002,6 +2286,7 @@ SELECT lo_unlink(oid) FROM pg_largeobject_metadata WHERE oid >= 1000 AND oid < 3
          1
 (5 rows)
 
+-- end_ignore
 DROP GROUP regress_priv_group1;
 DROP GROUP regress_priv_group2;
 -- these are needed to clean up permissions

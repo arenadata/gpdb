@@ -19,5 +19,6 @@
 extern SubqueryScanState *ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags);
 extern void ExecEndSubqueryScan(SubqueryScanState *node);
 extern void ExecReScanSubqueryScan(SubqueryScanState *node);
+extern void ExecSquelchSubqueryScan(SubqueryScanState *node);
 
 #endif							/* NODESUBQUERYSCAN_H */

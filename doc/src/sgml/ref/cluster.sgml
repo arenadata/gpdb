@@ -16,7 +16,7 @@ PostgreSQL documentation
 
  <refnamediv>
   <refname>CLUSTER</refname>
-  <refpurpose>cluster a table according to an index</refpurpose>
+  <refpurpose>cluster a heap storage table according to an index</refpurpose>
  </refnamediv>
 
  <refsynopsisdiv>
@@ -112,6 +112,17 @@ CLUSTER [VERBOSE]
 
  <refsect1>
   <title>Notes</title>
+
+   <para>
+    <command>CLUSTER</command> loses all visibility information of tuples,
+    which makes the table look empty to any snapshot that was taken
+    before the <command>CLUSTER</command> command finished. That makes
+    <command>CLUSTER</command> unsuitable for applications where
+    transactions that access the table being clustered are run concurrently
+    with <command>CLUSTER</command>. This is most visible with serializable
+    transactions, because they take only one snapshot at the beginning of the
+    transaction, but read-committed transactions are also affected.
+   </para>
 
    <para>
     In cases where you are accessing single rows randomly

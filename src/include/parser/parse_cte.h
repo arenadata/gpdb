@@ -6,6 +6,8 @@
  *
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2011 - present, EMC Greenplum.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  *
  * src/include/parser/parse_cte.h
  *
@@ -17,6 +19,7 @@
 #include "parser/parse_node.h"
 
 extern List *transformWithClause(ParseState *pstate, WithClause *withClause);
+extern CommonTableExpr *GetCTEForRTE(ParseState *pstate, RangeTblEntry *rte, int rtelevelsup);
 
 extern void analyzeCTETargetList(ParseState *pstate, CommonTableExpr *cte,
 								 List *tlist);

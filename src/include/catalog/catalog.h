@@ -15,8 +15,17 @@
 #define CATALOG_H
 
 #include "catalog/pg_class.h"
+#include "storage/relfilenode.h"
 #include "utils/relcache.h"
 
+/*
+ * This file is used to store internal configuration information specific to a
+ * server that's not same between primary and mirror pair. For example it
+ * stores gp_dbid, which is different for primary and mirror pair, even if
+ * contentid is same for them. This file is not copied over during
+ * pg_basebackup and pg_rewind to mirror from primary.
+ */
+#define GP_INTERNAL_AUTO_CONF_FILE_NAME "internal.auto.conf"
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);
@@ -29,14 +38,20 @@ extern bool IsCatalogRelationOid(Oid relid);
 
 extern bool IsCatalogNamespace(Oid namespaceId);
 extern bool IsToastNamespace(Oid namespaceId);
+extern bool IsAoSegmentNamespace(Oid namespaceId);
 
 extern bool IsReservedName(const char *name);
+extern char* GetReservedPrefix(const char *name);
 
 extern bool IsSharedRelation(Oid relationId);
 
-extern Oid	GetNewOidWithIndex(Relation relation, Oid indexId,
-							   AttrNumber oidcolumn);
-extern Oid	GetNewRelFileNode(Oid reltablespace, Relation pg_class,
-							  char relpersistence);
+extern Oid GetNewOidWithIndex(Relation relation, Oid indexId,
+							  AttrNumber oidcolumn);
+extern Oid GetNewRelFileNode(Oid reltablespace, Relation pg_class,
+							 char relpersistence);
+
+extern void reldir_and_filename(RelFileNode rnode, BackendId backend, ForkNumber forknum,
+					char **dir, char **filename);
+extern char *aorelpathbackend(RelFileNode node, BackendId backend, int32 segno);
 
 #endif							/* CATALOG_H */

@@ -10,7 +10,7 @@ CREATE TABLE arrtest (
 	e 			float8[],
 	f			char(5)[],
 	g			varchar(5)[]
-);
+) DISTRIBUTED RANDOMLY;
 
 --
 -- only the 'e' array is 0-based, the others are 1-based.
@@ -52,6 +52,9 @@ SELECT a[1:3],
           c[1:2],
           d[1:1][1:2]
    FROM arrtest;
+
+SELECT array_ndims(a) AS a,array_ndims(b) AS b,array_ndims(c) AS c
+    FROM arrtest;
 
 SELECT array_ndims(a) AS a,array_ndims(b) AS b,array_ndims(c) AS c
    FROM arrtest;
@@ -167,7 +170,7 @@ UPDATE point_tbl SET f1[3] = 10 WHERE f1::text = '(-10,-10)'::point::text RETURN
 --
 -- test array extension
 --
-CREATE TEMP TABLE arrtest1 (i int[], t text[]);
+CREATE TEMP TABLE arrtest1 (i int[], t text[]) DISTRIBUTED RANDOMLY;
 insert into arrtest1 values(array[1,2,null,4], array['one','two',null,'four']);
 select * from arrtest1;
 update arrtest1 set i[2] = 22, t[2] = 'twenty-two';
@@ -205,7 +208,7 @@ select * from arrtest1;
 --
 
 -- table creation and INSERTs
-CREATE TEMP TABLE arrtest2 (i integer ARRAY[4], f float8[], n numeric[], t text[], d timestamp[]);
+CREATE TEMP TABLE arrtest2 (i integer ARRAY[4], f float8[], n numeric[], t text[], d timestamp[]) DISTRIBUTED RANDOMLY;
 INSERT INTO arrtest2 VALUES(
   ARRAY[[[113,142],[1,147]]],
   ARRAY[1.1,1.2,1.3]::float8[],
@@ -215,7 +218,7 @@ INSERT INTO arrtest2 VALUES(
 );
 
 -- some more test data
-CREATE TEMP TABLE arrtest_f (f0 int, f1 text, f2 float8);
+CREATE TEMP TABLE arrtest_f (f0 int, f1 text, f2 float8) DISTRIBUTED RANDOMLY;
 insert into arrtest_f values(1,'cat1',1.21);
 insert into arrtest_f values(2,'cat1',1.24);
 insert into arrtest_f values(3,'cat1',1.18);
@@ -226,7 +229,7 @@ insert into arrtest_f values(7,'cat2',1.26);
 insert into arrtest_f values(8,'cat2',1.32);
 insert into arrtest_f values(9,'cat2',1.30);
 
-CREATE TEMP TABLE arrtest_i (f0 int, f1 text, f2 int);
+CREATE TEMP TABLE arrtest_i (f0 int, f1 text, f2 int) DISTRIBUTED RANDOMLY;
 insert into arrtest_i values(1,'cat1',21);
 insert into arrtest_i values(2,'cat1',24);
 insert into arrtest_i values(3,'cat1',18);
@@ -243,7 +246,9 @@ SELECT t.f[1][3][1] AS "131", t.f[2][2][1] AS "221" FROM (
 ) AS t;
 SELECT ARRAY[[[[[['hello'],['world']]]]]];
 SELECT ARRAY[ARRAY['hello'],ARRAY['world']];
-SELECT ARRAY(select f2 from arrtest_f order by f2) AS "ARRAY";
+SELECT ARRAY(select f2 from arrtest_f order by f2) AS "ARRAY" ORDER BY 1; -- MPP-11853
+-- check no merge on Motion
+EXPLAIN SELECT ARRAY(select f2 from arrtest_f) AS "ARRAY";
 
 -- with nulls
 SELECT '{1,null,3}'::int[];
@@ -376,7 +381,7 @@ select 33 = all ('{33,null,33}');
 SELECT -1 != ALL(ARRAY(SELECT NULLIF(g.i, 900) FROM generate_series(1,1000) g(i)));
 
 -- test indexes on arrays
-create temp table arr_tbl (f1 int[] unique);
+create temp table arr_tbl (f1 int[] unique) DISTRIBUTED BY (f1);
 insert into arr_tbl values ('{1,2,3}');
 insert into arr_tbl values ('{1,2}');
 -- failure expected:
@@ -387,8 +392,8 @@ insert into arr_tbl values ('{1,2,10}');
 
 set enable_seqscan to off;
 set enable_bitmapscan to off;
-select * from arr_tbl where f1 > '{1,2,3}' and f1 <= '{1,5,3}';
-select * from arr_tbl where f1 >= '{1,2,3}' and f1 < '{1,5,3}';
+select * from arr_tbl where f1 > '{1,2,3}' and f1 <= '{1,5,3}' ORDER BY 1;
+select * from arr_tbl where f1 >= '{1,2,3}' and f1 < '{1,5,3}' ORDER BY 1;
 
 -- test ON CONFLICT DO UPDATE with arrays
 create temp table arr_pk_tbl (pk int4 primary key, f1 int[]);
@@ -446,7 +451,7 @@ select '[0:1]={1.1,2.2}'::float8[];
 -- all of the above should be accepted
 
 -- tests for array aggregates
-CREATE TEMP TABLE arraggtest ( f1 INT[], f2 TEXT[][], f3 FLOAT[]);
+CREATE TEMP TABLE arraggtest ( f1 INT[], f2 TEXT[][], f3 FLOAT[]) DISTRIBUTED RANDOMLY;
 
 INSERT INTO arraggtest (f1, f2, f3) VALUES
 ('{1,2,3,4}','{{grey,red},{blue,blue}}','{1.6, 0.0}');
@@ -474,7 +479,7 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 
 create type comptype as (f1 int, f2 text);
 
-create table comptable (c1 comptype, c2 comptype[]);
+create table comptable (c1 comptype, c2 comptype[], distkey int4) distributed by (distkey);
 
 -- XXX would like to not have to specify row() construct types here ...
 insert into comptable
@@ -483,7 +488,7 @@ insert into comptable
 -- check that implicitly named array type _comptype isn't a problem
 create type _comptype as enum('fooey');
 
-select * from comptable;
+select c1, c2 from comptable;
 select c2[2].f2 from comptable;
 
 drop type _comptype;
@@ -567,11 +572,10 @@ select cardinality('{{1,2}}'::int[]);
 select cardinality('{{1,2},{3,4},{5,6}}'::int[]);
 select cardinality('{{{1,9},{5,6}},{{2,3},{3,4}}}'::int[]);
 
--- array_agg(anynonarray)
-select array_agg(unique1) from (select unique1 from tenk1 where unique1 < 15 order by unique1) ss;
-select array_agg(ten) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
-select array_agg(nullif(ten, 4)) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
-select array_agg(unique1) from tenk1 where unique1 < -15;
+select array_agg(unique1 order by unique1) from (select unique1 from tenk1 where unique1 < 15 order by unique1) ss;
+select array_agg(ten order by ten) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
+select array_agg(nullif(ten, 4) order by ten) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
+select array_agg(unique1 order by unique1) from tenk1 where unique1 < -15;
 
 -- array_agg(anyarray)
 select array_agg(ar)
@@ -616,11 +620,11 @@ select array(select array['Hello', i::text] from generate_series(9,11) i);
 
 -- Insert/update on a column that is array of composite
 
-create temp table t1 (f1 int8_tbl[]);
+create temp table t1 (f1 int8_tbl[], distkey int4) distributed by (distkey);
 insert into t1 (f1[5].q1) values(42);
-select * from t1;
+select f1 from t1;
 update t1 set f1[5].q2 = 43;
-select * from t1;
+select f1 from t1;
 
 -- Check that arrays of composites are safely detoasted when needed
 
@@ -640,7 +644,6 @@ drop table dest;
 drop type textandtext;
 
 -- Tests for polymorphic-array form of width_bucket()
-
 -- this exercises the varwidth and float8 code paths
 SELECT
     op,
@@ -700,3 +703,114 @@ SELECT width_bucket(5, '{}');
 SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
 SELECT width_bucket(5, ARRAY[3, 4, NULL]);
 SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]);
+
+-- Suppress NOTICE messages when users/groups don't exist
+SET client_min_messages TO 'error';
+
+-- create a non-superuser
+DROP ROLE IF EXISTS user_internal_stype;
+CREATE USER user_internal_stype;
+SET SESSION AUTHORIZATION user_internal_stype;
+
+RESET client_min_messages;
+
+-- Internal function for the aggregate
+-- Is called for each item in an aggregation
+CREATE FUNCTION int_agg_state (internal, int4)
+RETURNS internal
+AS 'array_agg_transfn'
+LANGUAGE INTERNAL;
+
+-- Internal function for the aggregate
+-- Is called at the end of the aggregation, and returns an array.
+CREATE FUNCTION int_agg_final_array (internal)
+RETURNS int4[]
+AS 'array_agg_finalfn'
+LANGUAGE INTERNAL;
+
+-- The aggregate function itself
+-- uses the above functions to create an array of integers from an aggregation.
+CREATE ORDERED AGGREGATE int_array_aggregate (
+	BASETYPE = int4,
+	SFUNC = int_agg_state,
+	STYPE = internal,
+	FINALFUNC = int_agg_final_array
+);
+
+-- change to superuser
+-- start_ignore
+\c -
+-- end_ignore
+
+-- Internal function for the aggregate
+-- Is called for each item in an aggregation
+CREATE FUNCTION int_agg_state (internal, int4)
+RETURNS internal
+AS 'array_agg_transfn'
+LANGUAGE INTERNAL;
+
+-- Internal function for the aggregate
+-- Is called at the end of the aggregation, and returns an array.
+CREATE FUNCTION int_agg_final_array (internal)
+RETURNS int4[]
+AS 'array_agg_finalfn'
+LANGUAGE INTERNAL;
+
+-- The aggregate function itself
+-- uses the above functions to create an array of integers from an aggregation.
+CREATE ORDERED AGGREGATE int_array_aggregate (
+	BASETYPE = int4,
+	SFUNC = int_agg_state,
+	STYPE = internal,
+	FINALFUNC = int_agg_final_array
+);
+
+-- Tests
+select int_array_aggregate(i) from generate_series(1,10,2) i;
+
+CREATE TEMP TABLE int_test_tbl1 AS (
+	SELECT id FROM generate_series(11, 1000, 11) as id
+) DISTRIBUTED BY ( id );
+
+CREATE TEMP TABLE int_test_tbl2 AS (
+	SELECT id FROM generate_series(7, 1000, 7) as id
+) DISTRIBUTED BY ( id );
+
+
+SELECT l.id as "number % 11 in left",
+	int_array_aggregate(r.id ORDER BY r.id) "array of those % 7 too in right"
+FROM int_test_tbl1 l, int_test_tbl2 r
+WHERE l.id % r.id = 0
+GROUP BY l.id
+ORDER BY l.id;
+
+-- Array types are GPDB hashable
+CREATE TEMP TABLE text_array_table (t text[]) DISTRIBUTED BY ( t );
+INSERT INTO text_array_table VALUES ('{foo}');
+
+CREATE TEMP TABLE int2_array_table (f1 int2[]) DISTRIBUTED BY (f1);
+INSERT INTO int2_array_table VALUES ('{1,2,3}');
+
+CREATE TEMP TABLE int4_array_table (f1 int4[]) DISTRIBUTED BY (f1);
+INSERT INTO int4_array_table VALUES ('{1,2,3}');
+
+CREATE TEMP TABLE int8_array_table (f1 int8[]) DISTRIBUTED BY (f1);
+INSERT INTO int8_array_table VALUES ('{1,2,3}');
+
+CREATE TEMP TABLE float4_array_table (f1 float4[]) DISTRIBUTED BY (f1);
+INSERT INTO float4_array_table VALUES ('{1.1,2.1,3.1}');
+
+CREATE TEMP TABLE float8_array_table (f1 float8[]) DISTRIBUTED BY (f1);
+INSERT INTO float8_array_table VALUES ('{1.1,2.1,3.1}');
+
+-- clean up
+-- start_ignore
+-- Drop above three functions
+DROP AGGREGATE int_array_aggregate (int4);
+DROP FUNCTION int_agg_final_array (internal);
+DROP FUNCTION int_agg_state (internal, int4);
+-- Drop user and group
+--DROP ROLE IF EXISTS user_group;
+RESET SESSION AUTHORIZATION;
+DROP USER IF EXISTS user_internal_stype;
+-- end_ignore

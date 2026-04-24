@@ -51,5 +51,6 @@
 #define PM_STATUS_STOPPING		"stopping"	/* in shutdown sequence */
 #define PM_STATUS_READY			"ready   "	/* ready for connections */
 #define PM_STATUS_STANDBY		"standby "	/* up, won't accept connections */
+#define PM_STATUS_DTM_RECOVERED "dtmready"  /* ready for distributed connections */
 
 #endif							/* UTILS_PIDFILE_H */

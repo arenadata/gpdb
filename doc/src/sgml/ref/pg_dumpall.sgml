@@ -151,7 +151,42 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-r</option></term>
+      <term><option>--resource-queues</option></term>
+      <listitem>
+       <para>
+        Dump <literal>resource queues</literal> and <literal>role</literal>
+        to <literal>resource queue</literal> associations. 
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--resource-groups</option></term>
+      <listitem>
+       <para>
+        Dump <literal>resource groups</literal> and <literal>role</literal>
+        to <literal>resource groups</literal> associations.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--lock-wait-timeout=<replaceable class="parameter">timeout</replaceable></option></term>
+      <listitem>
+       <para>
+        Do not wait forever to acquire shared table locks at the beginning of
+        the dump. Instead, fail if unable to lock a table within the specified
+        <replaceable class="parameter">timeout</>. The timeout may be
+        specified in any of the formats accepted by <command>SET
+        statement_timeout</>.  Allowed values vary depending on the server
+        version you are dumping from, but an integer number of milliseconds
+        is accepted by all versions since 7.3.  This option is ignored when
+        dumping from a pre-7.3 server.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--roles-only</option></term>
       <listitem>
        <para>
@@ -762,6 +797,12 @@ PostgreSQL documentation
    database creation will fail for databases in non-default
    locations.
   </para>
+
+  <para>
+   <application>pg_dump</application> also supports a
+   <literal>--binary-upgrade</> option for upgrade utility usage.
+  </para>
+
  </refsect1>
 
 

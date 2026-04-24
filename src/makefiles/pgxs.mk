@@ -119,6 +119,19 @@ incmoduledir := contrib
 endif
 endif
 
+ifdef MODULEDIR
+datamoduledir := $(MODULEDIR)
+docmoduledir := $(MODULEDIR)
+else
+ifdef EXTENSION
+datamoduledir := extension
+docmoduledir := extension
+else
+datamoduledir := contrib
+docmoduledir := contrib
+endif
+endif
+
 ifdef PG_CPPFLAGS
 override CPPFLAGS := $(PG_CPPFLAGS) $(CPPFLAGS)
 endif

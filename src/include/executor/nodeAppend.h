@@ -20,6 +20,7 @@
 extern AppendState *ExecInitAppend(Append *node, EState *estate, int eflags);
 extern void ExecEndAppend(AppendState *node);
 extern void ExecReScanAppend(AppendState *node);
+extern void ExecSquelchAppend(AppendState *node);
 extern void ExecAppendEstimate(AppendState *node, ParallelContext *pcxt);
 extern void ExecAppendInitializeDSM(AppendState *node, ParallelContext *pcxt);
 extern void ExecAppendReInitializeDSM(AppendState *node, ParallelContext *pcxt);

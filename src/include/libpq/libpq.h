@@ -20,7 +20,6 @@
 #include "libpq/libpq-be.h"
 #include "storage/latch.h"
 
-
 typedef struct
 {
 	void		(*comm_reset) (void);
@@ -63,6 +62,7 @@ extern void StreamClose(pgsocket sock);
 extern void TouchSocketFiles(void);
 extern void RemoveSocketFiles(void);
 extern void pq_init(void);
+extern void pq_comm_close_fatal(void);                                  /* GPDB only */
 extern int	pq_getbytes(char *s, size_t len);
 extern int	pq_getstring(StringInfo s);
 extern void pq_startmsgread(void);
@@ -73,6 +73,8 @@ extern int	pq_getbyte(void);
 extern int	pq_peekbyte(void);
 extern int	pq_getbyte_if_available(unsigned char *c);
 extern int	pq_putbytes(const char *s, size_t len);
+extern bool pq_waitForDataUsingSelect(void);                /* GPDB only */
+extern bool pq_check_connection(void);
 
 /*
  * prototypes for functions in be-secure.c

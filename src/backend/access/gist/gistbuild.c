@@ -80,7 +80,7 @@ typedef struct
 static void gistInitBuffering(GISTBuildState *buildstate);
 static int	calculatePagesPerBuffer(GISTBuildState *buildstate, int levelStep);
 static void gistBuildCallback(Relation index,
-							  HeapTuple htup,
+							  ItemPointer tupleId,
 							  Datum *values,
 							  bool *isnull,
 							  bool tupleIsAlive,
@@ -459,7 +459,7 @@ calculatePagesPerBuffer(GISTBuildState *buildstate, int levelStep)
  */
 static void
 gistBuildCallback(Relation index,
-				  HeapTuple htup,
+				  ItemPointer tupleId,
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive,
@@ -473,7 +473,7 @@ gistBuildCallback(Relation index,
 
 	/* form an index tuple and point it at the heap tuple */
 	itup = gistFormTuple(buildstate->giststate, index, values, isnull, true);
-	itup->t_tid = htup->t_self;
+	itup->t_tid = *tupleId;
 
 	if (buildstate->bufferingMode == GIST_BUFFERING_ACTIVE)
 	{

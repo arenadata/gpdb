@@ -135,6 +135,13 @@ get_raw_page_internal(text *relname, ForkNumber forknum, BlockNumber blkno)
 				 errmsg("cannot get raw page from partitioned index \"%s\"",
 						RelationGetRelationName(rel))));
 
+	/* Check that this relation has the right kind of storage */
+	if (RelationIsAppendOptimized(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot get raw page from append-optimized relation \"%s\"",
+						RelationGetRelationName(rel))));
+
 	/*
 	 * Reject attempts to read non-local temporary relations; we would be
 	 * likely to get wrong data since we have no visibility into the owning
@@ -255,7 +262,7 @@ page_header(PG_FUNCTION_ARGS)
 
 	/* Extract information from the page header */
 
-	lsn = PageGetLSN(page);
+	lsn = PageGetLSN((Page) page);
 
 	/* pageinspect >= 1.2 uses pg_lsn instead of text for the LSN field. */
 	if (TupleDescAttr(tupdesc, 0)->atttypid == TEXTOID)

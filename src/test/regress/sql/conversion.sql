@@ -21,9 +21,20 @@ COMMENT ON CONVERSION myconv_bad IS 'foo';
 COMMENT ON CONVERSION myconv IS 'bar';
 COMMENT ON CONVERSION myconv IS NULL;
 --
+-- rename conversion
+--
+ALTER CONVERSION myconv RENAME TO myconv1;
+ALTER CONVERSION myconv1 OWNER TO regress_conversion_user;
+
+-- 
+-- list all conversions 
+-- 
+\dc;
+
+--
 -- drop user defined conversion
 --
-DROP CONVERSION myconv;
+DROP CONVERSION myconv1;
 DROP CONVERSION mydef;
 --
 -- Note: the built-in conversions are exercised in opr_sanity.sql,

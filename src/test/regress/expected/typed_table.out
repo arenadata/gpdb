@@ -16,6 +16,7 @@ SELECT * FROM persons;
  id     | integer |           |          | 
  name   | text    |           |          | 
 Typed table of type: person_type
+Distributed by: (id)
 
 CREATE FUNCTION get_all_persons() RETURNS SETOF person_type
 LANGUAGE SQL
@@ -41,20 +42,45 @@ ALTER TABLE persons INHERIT stuff;
 ERROR:  cannot change inheritance of typed table
 CREATE TABLE personsx OF person_type (myname WITH OPTIONS NOT NULL); -- error
 ERROR:  column "myname" does not exist
+-- This test comes from postgres, and we expect it to fail on Greenplum
+-- because Greenplum does not support having two primary key / unique
+-- constraints with no columns in common.
 CREATE TABLE persons2 OF person_type (
     id WITH OPTIONS PRIMARY KEY,
     UNIQUE (name)
 );
+ERROR:  UNIQUE or PRIMARY KEY definitions are incompatible with each other
+HINT:  When there are multiple PRIMARY KEY / UNIQUE constraints, they must have at least one column in common.
 \d persons2
-              Table "public.persons2"
+-- These are added for Greenplum, as the previous table creation statement
+-- should have failed.
+CREATE TABLE gppersons1 OF person_type (
+    id WITH OPTIONS PRIMARY KEY
+);
+\d gppersons1
+             Table "public.gppersons1"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  id     | integer |           | not null | 
  name   | text    |           |          | 
 Indexes:
-    "persons2_pkey" PRIMARY KEY, btree (id)
-    "persons2_name_key" UNIQUE CONSTRAINT, btree (name)
+    "gppersons1_pkey" PRIMARY KEY, btree (id)
 Typed table of type: person_type
+Distributed by: (id)
+
+CREATE TABLE gppersons2 OF person_type (
+    UNIQUE (name)
+);
+\d gppersons2
+             Table "public.gppersons2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ name   | text    |           |          | 
+Indexes:
+    "gppersons2_name_key" UNIQUE CONSTRAINT, btree (name)
+Typed table of type: person_type
+Distributed by: (name)
 
 CREATE TABLE persons3 OF person_type (
     PRIMARY KEY (id),
@@ -69,6 +95,7 @@ CREATE TABLE persons3 OF person_type (
 Indexes:
     "persons3_pkey" PRIMARY KEY, btree (id)
 Typed table of type: person_type
+Distributed by: (id)
 
 CREATE TABLE persons4 OF person_type (
     name WITH OPTIONS NOT NULL,
@@ -79,14 +106,16 @@ DROP TYPE person_type RESTRICT;
 ERROR:  cannot drop type person_type because other objects depend on it
 DETAIL:  table persons depends on type person_type
 function get_all_persons() depends on type person_type
-table persons2 depends on type person_type
+table gppersons1 depends on type person_type
+table gppersons2 depends on type person_type
 table persons3 depends on type person_type
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TYPE person_type CASCADE;
-NOTICE:  drop cascades to 4 other objects
+NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to table persons
 drop cascades to function get_all_persons()
-drop cascades to table persons2
+drop cascades to table gppersons1
+drop cascades to table gppersons2
 drop cascades to table persons3
 CREATE TABLE persons5 OF stuff; -- only CREATE TYPE AS types may be used
 ERROR:  type stuff is not a composite type
@@ -106,17 +135,9 @@ CREATE TABLE persons2 OF person_type (
     id WITH OPTIONS PRIMARY KEY,
     UNIQUE (name)
 );
+ERROR:  UNIQUE or PRIMARY KEY definitions are incompatible with each other
+HINT:  When there are multiple PRIMARY KEY / UNIQUE constraints, they must have at least one column in common.
 \d persons2
-              Table "public.persons2"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- id     | integer |           | not null | 
- name   | text    |           |          | 
-Indexes:
-    "persons2_pkey" PRIMARY KEY, btree (id)
-    "persons2_name_key" UNIQUE CONSTRAINT, btree (name)
-Typed table of type: person_type
-
 CREATE TABLE persons3 OF person_type (
     PRIMARY KEY (id),
     name NOT NULL DEFAULT ''

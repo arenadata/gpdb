@@ -4,6 +4,8 @@
  *	  Virtual file descriptor definitions.
  *
  *
+ * Portions Copyright (c) 2007-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -74,19 +76,21 @@ extern int	max_safe_fds;
 /* Operations on virtual Files --- equivalent to Unix kernel file ops */
 extern File PathNameOpenFile(const char *fileName, int fileFlags);
 extern File PathNameOpenFilePerm(const char *fileName, int fileFlags, mode_t fileMode);
-extern File OpenTemporaryFile(bool interXact);
+
+extern File OpenTemporaryFile(bool interXact, const char *filePrefix);
 extern void FileClose(File file);
 extern int	FilePrefetch(File file, off_t offset, int amount, uint32 wait_event_info);
 extern int	FileRead(File file, char *buffer, int amount, off_t offset, uint32 wait_event_info);
 extern int	FileWrite(File file, char *buffer, int amount, off_t offset, uint32 wait_event_info);
 extern int	FileSync(File file, uint32 wait_event_info);
 extern off_t FileSize(File file);
-extern int	FileTruncate(File file, off_t offset, uint32 wait_event_info);
+extern int	FileTruncate(File file, int64 offset, uint32 wait_event_info);
 extern void FileWriteback(File file, off_t offset, off_t nbytes, uint32 wait_event_info);
 extern char *FilePathName(File file);
 extern int	FileGetRawDesc(File file);
 extern int	FileGetRawFlags(File file);
 extern mode_t FileGetRawMode(File file);
+extern int64 FileDiskSize(File file);
 
 /* Operations used for sharing named temporary files */
 extern File PathNameCreateTemporaryFile(const char *name, bool error_on_failure);
@@ -146,11 +150,18 @@ extern void fsync_fname(const char *fname, bool isdir);
 extern int	durable_rename(const char *oldfile, const char *newfile, int loglevel);
 extern int	durable_unlink(const char *fname, int loglevel);
 extern int	durable_link_or_rename(const char *oldfile, const char *newfile, int loglevel);
+extern void SyncAllXLogFiles(void);
 extern void SyncDataDirectory(void);
 extern int	data_sync_elevel(int elevel);
+
+extern int gp_retry_close(int fd);
 
 /* Filename components */
 #define PG_TEMP_FILES_DIR "pgsql_tmp"
 #define PG_TEMP_FILE_PREFIX "pgsql_tmp"
+
+extern const char *FileGetFilename(File file);
+
+extern void FileSetIsWorkfile(File file);
 
 #endif							/* FD_H */

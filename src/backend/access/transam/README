@@ -637,6 +637,9 @@ If you do decide to optimise away a WAL record, then any calls to
 MarkBufferDirty() must be replaced by MarkBufferDirtyHint(),
 otherwise you will expose the risk of partial page writes.
 
+In GPDB, gp_disable_tuple_hints GUC dictates whether a buffer is marked dirty
+by a hint bit change. If the GUC is on, hint bit changes do not mark a buffer
+dirty.
 
 Write-Ahead Logging for Filesystem Actions
 ------------------------------------------

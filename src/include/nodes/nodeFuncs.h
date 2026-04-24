@@ -122,6 +122,9 @@ get_notclausearg(const void *notclause)
 	return (Expr *) linitial(((const BoolExpr *) notclause)->args);
 }
 
+extern Node *get_leftscalararrayop(const Expr *clause);
+extern Node *get_rightscalararrayop(const Expr *clause);
+
 extern bool check_functions_in_node(Node *node, check_function_callback checker,
 									void *context);
 

@@ -30,7 +30,6 @@ extern void AlterTableCreateToastTable(Oid relOid, Datum reloptions,
 extern void BootstrapToastTable(char *relName,
 								Oid toastOid, Oid toastIndexOid);
 
-
 /*
  * This macro is just to keep the C compiler from spitting up on the
  * upcoming commands for Catalog.pm.
@@ -104,5 +103,16 @@ DECLARE_TOAST(pg_subscription, 4183, 4184);
 DECLARE_TOAST(pg_tablespace, 4185, 4186);
 #define PgTablespaceToastTable 4185
 #define PgTablespaceToastIndex 4186
+
+/* GPDB additional normal catalogs */
+DECLARE_TOAST(gp_partition_template, 5024, 5025);
+DECLARE_TOAST(pg_attribute_encoding, 6233, 6234);
+DECLARE_TOAST(pg_type_encoding, 6222, 6223);
+DECLARE_TOAST(pg_extprotocol, 7173, 7174);
+
+/* GPDB additional shared catalogs */
+DECLARE_TOAST(gp_segment_configuration, 6092, 6093);
+#define GpSegmentConfigToastTable	6092
+#define GpSegmentConfigToastIndex	6093
 
 #endif							/* TOASTING_H */

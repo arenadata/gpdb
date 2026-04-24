@@ -567,6 +567,21 @@ list_truncate(List *list, int new_size)
 }
 
 /*
+ * Replace the n-th data pointer in the list with newvalue.
+ * Returns oldvalue. Assumes that n is a valid offset.
+ */
+void *
+list_nth_replace(List *list, int n, void *new_data)
+{
+	ListCell *lc = NULL;
+	lc = list_nth_cell(list, n);
+	Assert(lc);
+	void *old_data = lc->ptr_value;
+	lc->ptr_value = new_data;
+	return old_data;
+}
+
+/*
  * Return true iff 'datum' is a member of the list. Equality is
  * determined via equal(), so callers should ensure that they pass a
  * Node as 'datum'.

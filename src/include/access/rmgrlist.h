@@ -23,7 +23,6 @@
  *
  * Changes to this list possibly need an XLOG_PAGE_MAGIC bump.
  */
-
 /* symbol name, textual name, redo, desc, identify, startup, cleanup */
 PG_RMGR(RM_XLOG_ID, "XLOG", xlog_redo, xlog_desc, xlog_identify, NULL, NULL, NULL)
 PG_RMGR(RM_XACT_ID, "Transaction", xact_redo, xact_desc, xact_identify, NULL, NULL, NULL)
@@ -47,3 +46,8 @@ PG_RMGR(RM_COMMIT_TS_ID, "CommitTs", commit_ts_redo, commit_ts_desc, commit_ts_i
 PG_RMGR(RM_REPLORIGIN_ID, "ReplicationOrigin", replorigin_redo, replorigin_desc, replorigin_identify, NULL, NULL, NULL)
 PG_RMGR(RM_GENERIC_ID, "Generic", generic_redo, generic_desc, generic_identify, NULL, NULL, generic_mask)
 PG_RMGR(RM_LOGICALMSG_ID, "LogicalMessage", logicalmsg_redo, logicalmsg_desc, logicalmsg_identify, NULL, NULL, NULL)
+
+/* Greenplum-specific resource managers */
+PG_RMGR(RM_BITMAP_ID, "Bitmap", bitmap_redo, bitmap_desc, bitmap_identify, NULL, NULL, NULL)
+PG_RMGR(RM_DISTRIBUTEDLOG_ID, "DistributedLog", DistributedLog_redo, DistributedLog_desc, DistributedLog_identify, NULL, NULL, NULL)
+PG_RMGR(RM_APPEND_ONLY_ID, "Appendonly", appendonly_redo, appendonly_desc, appendonly_identify, NULL, NULL, NULL)

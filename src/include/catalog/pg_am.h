@@ -40,6 +40,9 @@ CATALOG(pg_am,2601,AccessMethodRelationId)
 	char		amtype;
 } FormData_pg_am;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(amhandler REFERENCES pg_proc(oid));
+
 /* ----------------
  *		Form_pg_am corresponds to a pointer to a tuple with
  *		the format of pg_am relation.

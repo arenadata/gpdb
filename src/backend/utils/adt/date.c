@@ -21,6 +21,7 @@
 #include <time.h>
 
 #include "access/xact.h"
+#include "common/hashfn.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "nodes/supportnodes.h"
@@ -29,7 +30,6 @@
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
-#include "utils/hashutils.h"
 #include "utils/sortsupport.h"
 
 /*
@@ -1787,6 +1787,22 @@ time_mi_time(PG_FUNCTION_ARGS)
 	PG_RETURN_INTERVAL_P(result);
 }
 
+/* time_pl_interval_internal()
+ * Common code to add interval to time.
+ */
+static inline TimeADT
+time_pl_interval_internal(TimeADT time, Interval *span)
+{
+	TimeADT		result;
+
+	result = time + span->time;
+	result -= result / USECS_PER_DAY * USECS_PER_DAY;
+	if (result < INT64CONST(0))
+		result += USECS_PER_DAY;
+	
+	return result;
+}
+
 /* time_pl_interval()
  * Add interval to time.
  */
@@ -1795,16 +1811,74 @@ time_pl_interval(PG_FUNCTION_ARGS)
 {
 	TimeADT		time = PG_GETARG_TIMEADT(0);
 	Interval   *span = PG_GETARG_INTERVAL_P(1);
-	TimeADT		result;
-
-	result = time + span->time;
-	result -= result / USECS_PER_DAY * USECS_PER_DAY;
-	if (result < INT64CONST(0))
-		result += USECS_PER_DAY;
-
+	TimeADT		result = time_pl_interval_internal(time, span);
+	
 	PG_RETURN_TIMEADT(result);
 }
 
+
+/*
+ * time_li_fraction
+ *
+ * What fraction of interval <x0, x1> does <x0, x> represent?
+ */
+float8
+time_li_fraction(TimeADT x, TimeADT x0, TimeADT x1, 
+				 bool *eq_bounds, bool *eq_abscissas)
+{
+	float8 result;
+	Interval diffx;
+	Interval diffx1;
+	
+	Assert(eq_bounds && eq_abscissas);
+	*eq_bounds = false;
+	*eq_abscissas = false;
+	
+	diffx.time = x - x0;
+	diffx.month = 0;
+	diffx.day = 0;
+	
+	diffx1.time = x1 - x0;
+	diffx1.month = 0;
+	diffx1.day = 0;
+	
+	if ( ! interval_div_internal(&diffx, &diffx1, &result, NULL) )
+	{
+		*eq_bounds = true;
+		*eq_abscissas = (x == x0);
+		result = NAN;
+	}
+	return result;
+}
+
+/*
+ * time_li_value
+ *
+ * What interval value lies fraction <f> of the way into interval
+ * <y0, y1>? 
+ * 
+ * Note
+ *		li_value(0.0, y0, y1) --> y0
+ *		li_value(1.0, y0, y1) --> y1
+ */
+Timestamp
+time_li_value(float8 f, TimeADT y0, TimeADT y1)
+{
+	TimeADT y;
+	Interval diffy;
+	Interval *offset;
+	
+	diffy.month = 0;
+	diffy.day = 0;
+	diffy.time = y1 - y0;
+	
+	offset = DatumGetIntervalP(DirectFunctionCall2(interval_mul, IntervalPGetDatum(&diffy),
+									Float8GetDatum(f)));
+	y = time_pl_interval_internal(y0, offset);
+	pfree(offset);
+	
+	return y;
+}
 /* time_mi_interval()
  * Subtract interval from time.
  */

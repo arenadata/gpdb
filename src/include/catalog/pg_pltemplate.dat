@@ -48,4 +48,18 @@
   tmplvalidator => 'plpython3_validator', tmpllibrary => '$libdir/plpython3',
   tmplacl => '_null_' },
 
+# Additional languages installed in GPDB
+{ tmplname => 'plr', tmpltrusted => 'f', tmpldbacreate => 'f',
+  tmplhandler => 'plr_call_handler', tmplinline => '_null_',
+  tmplvalidator => '_null_', tmpllibrary => '$libdir/plr',
+  tmplacl => '_null_' },
+{ tmplname => 'pljava', tmpltrusted => 't', tmpldbacreate => 't',
+  tmplhandler => 'pljava_call_handler', tmplinline => '_null_',
+  tmplvalidator => '_null_', tmpllibrary => '$libdir/pljava',
+  tmplacl => '_null_' },
+{ tmplname => 'pljavau', tmpltrusted => 'f', tmpldbacreate => 'f',
+  tmplhandler => 'pljavau_call_handler', tmplinline => '_null_',
+  tmplvalidator => '_null_', tmpllibrary => '$libdir/pljava',
+  tmplacl => '_null_' },
+
 ]

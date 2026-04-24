@@ -51,7 +51,6 @@ static bool provider_failed_loading = false;
 static bool provider_init(void);
 static bool file_exists(const char *name);
 
-
 /*
  * SQL level function returning whether JIT is available in the current
  * backend. Will attempt to load JIT provider if necessary.
@@ -74,7 +73,7 @@ provider_init(void)
 	JitProviderInit init;
 
 	/* don't even try to load if not enabled */
-	if (!jit_enabled)
+	if (!optimizer_jit_enabled && !jit_enabled)
 		return false;
 
 	/*

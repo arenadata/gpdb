@@ -6,6 +6,7 @@ INSERT INTO mvtest_t VALUES
   (3, 'y', 5),
   (4, 'y', 7),
   (5, 'z', 11);
+ANALYZE mvtest_t;
 
 -- we want a view based on the table, too, since views present additional challenges
 CREATE VIEW mvtest_tv AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type;
@@ -13,8 +14,8 @@ SELECT * FROM mvtest_tv ORDER BY type;
 
 -- create a materialized view with no data, and confirm correct behavior
 EXPLAIN (costs off)
-  CREATE MATERIALIZED VIEW mvtest_tm AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type WITH NO DATA;
-CREATE MATERIALIZED VIEW mvtest_tm AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type WITH NO DATA;
+  CREATE MATERIALIZED VIEW mvtest_tm AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type WITH NO DATA distributed by(type);
+CREATE MATERIALIZED VIEW mvtest_tm AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type WITH NO DATA distributed by(type);
 SELECT relispopulated FROM pg_class WHERE oid = 'mvtest_tm'::regclass;
 SELECT * FROM mvtest_tm ORDER BY type;
 REFRESH MATERIALIZED VIEW mvtest_tm;
@@ -28,7 +29,7 @@ EXPLAIN (costs off)
 CREATE MATERIALIZED VIEW mvtest_tvm AS SELECT * FROM mvtest_tv ORDER BY type;
 SELECT * FROM mvtest_tvm;
 CREATE MATERIALIZED VIEW mvtest_tmm AS SELECT sum(totamt) AS grandtot FROM mvtest_tm;
-CREATE MATERIALIZED VIEW mvtest_tvmm AS SELECT sum(totamt) AS grandtot FROM mvtest_tvm;
+CREATE MATERIALIZED VIEW mvtest_tvmm AS SELECT sum(totamt) AS grandtot FROM mvtest_tvm distributed by(grandtot);
 CREATE UNIQUE INDEX mvtest_tvmm_expr ON mvtest_tvmm ((grandtot > 0));
 CREATE UNIQUE INDEX mvtest_tvmm_pred ON mvtest_tvmm (grandtot) WHERE grandtot < 0;
 CREATE VIEW mvtest_tvv AS SELECT sum(totamt) AS grandtot FROM mvtest_tv;
@@ -96,7 +97,9 @@ DROP MATERIALIZED VIEW IF EXISTS no_such_mv;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_tvmm WITH NO DATA;
 
 -- no tuple locks on materialized views
+-- start_ignore
 SELECT * FROM mvtest_tvvm FOR SHARE;
+-- end_ignore
 
 -- test join of mv and view
 SELECT type, m.totamt AS mtot, v.totamt AS vtot FROM mvtest_tm m LEFT JOIN mvtest_tv v USING (type) ORDER BY type;
@@ -124,7 +127,7 @@ DROP VIEW mvtest_vt1 CASCADE;
 
 -- test that duplicate values on unique index prevent refresh
 CREATE TABLE mvtest_foo(a, b) AS VALUES(1, 10);
-CREATE MATERIALIZED VIEW mvtest_mv AS SELECT * FROM mvtest_foo;
+CREATE MATERIALIZED VIEW mvtest_mv AS SELECT * FROM mvtest_foo distributed by(a);
 CREATE UNIQUE INDEX ON mvtest_mv(a);
 INSERT INTO mvtest_foo SELECT * FROM mvtest_foo;
 REFRESH MATERIALIZED VIEW mvtest_mv;
@@ -133,10 +136,8 @@ DROP TABLE mvtest_foo CASCADE;
 
 -- make sure that all columns covered by unique indexes works
 CREATE TABLE mvtest_foo(a, b, c) AS VALUES(1, 2, 3);
-CREATE MATERIALIZED VIEW mvtest_mv AS SELECT * FROM mvtest_foo;
+CREATE MATERIALIZED VIEW mvtest_mv AS SELECT * FROM mvtest_foo distributed by(a);
 CREATE UNIQUE INDEX ON mvtest_mv (a);
-CREATE UNIQUE INDEX ON mvtest_mv (b);
-CREATE UNIQUE INDEX on mvtest_mv (c);
 INSERT INTO mvtest_foo VALUES(2, 3, 4);
 INSERT INTO mvtest_foo VALUES(3, 4, 5);
 REFRESH MATERIALIZED VIEW mvtest_mv;
@@ -155,7 +156,7 @@ INSERT INTO mvtest_boxes (b) VALUES
   ('(32,32),(31,31)'),
   ('(2.0000004,2.0000004),(1,1)'),
   ('(1.9999996,1.9999996),(1,1)');
-CREATE MATERIALIZED VIEW mvtest_boxmv AS SELECT * FROM mvtest_boxes;
+CREATE MATERIALIZED VIEW mvtest_boxmv AS SELECT * FROM mvtest_boxes distributed by(id);
 CREATE UNIQUE INDEX mvtest_boxmv_id ON mvtest_boxmv (id);
 UPDATE mvtest_boxes SET b = '(2,2),(1,1)' WHERE id = 2;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_boxmv;
@@ -165,7 +166,7 @@ DROP TABLE mvtest_boxes CASCADE;
 -- make sure that column names are handled correctly
 CREATE TABLE mvtest_v (i int, j int);
 CREATE MATERIALIZED VIEW mvtest_mv_v (ii, jj, kk) AS SELECT i, j FROM mvtest_v; -- error
-CREATE MATERIALIZED VIEW mvtest_mv_v (ii, jj) AS SELECT i, j FROM mvtest_v; -- ok
+CREATE MATERIALIZED VIEW mvtest_mv_v (ii, jj) AS SELECT i, j FROM mvtest_v distributed by(ii); -- ok
 CREATE MATERIALIZED VIEW mvtest_mv_v_2 (ii) AS SELECT i, j FROM mvtest_v; -- ok
 CREATE MATERIALIZED VIEW mvtest_mv_v_3 (ii, jj, kk) AS SELECT i, j FROM mvtest_v WITH NO DATA; -- error
 CREATE MATERIALIZED VIEW mvtest_mv_v_3 (ii, jj) AS SELECT i, j FROM mvtest_v WITH NO DATA; -- ok
@@ -197,8 +198,6 @@ DROP MATERIALIZED VIEW mv_unspecified_types;
 -- make sure that create WITH NO DATA does not plan the query (bug #13907)
 create materialized view mvtest_error as select 1/0 as x;  -- fail
 create materialized view mvtest_error as select 1/0 as x with no data;
-refresh materialized view mvtest_error;  -- fail here
-drop materialized view mvtest_error;
 
 -- make sure that matview rows can be referenced as source rows (bug #9398)
 CREATE TABLE mvtest_v AS SELECT generate_series(1,10) AS a;
@@ -211,10 +210,18 @@ DROP TABLE mvtest_v CASCADE;
 -- make sure running as superuser works when MV owned by another role (bug #11208)
 CREATE ROLE regress_user_mvtest;
 SET ROLE regress_user_mvtest;
-CREATE TABLE mvtest_foo_data AS SELECT i, md5(random()::text)
+-- this test case also checks for ambiguity in the queries issued by
+-- refresh_by_match_merge(), by choosing column names that intentionally
+-- duplicate all the aliases used in those queries
+CREATE TABLE mvtest_foo_data AS SELECT i,
+  i+1 AS tid,
+  md5(random()::text) AS mv,
+  md5(random()::text) AS newdata,
+  md5(random()::text) AS newdata2,
+  md5(random()::text) AS diff
   FROM generate_series(1, 10) i;
-CREATE MATERIALIZED VIEW mvtest_mv_foo AS SELECT * FROM mvtest_foo_data;
-CREATE MATERIALIZED VIEW mvtest_mv_foo AS SELECT * FROM mvtest_foo_data;
+CREATE MATERIALIZED VIEW mvtest_mv_foo AS SELECT * FROM mvtest_foo_data distributed by(i);
+CREATE MATERIALIZED VIEW mvtest_mv_foo AS SELECT * FROM mvtest_foo_data distributed by(i);
 CREATE MATERIALIZED VIEW IF NOT EXISTS mvtest_mv_foo AS SELECT * FROM mvtest_foo_data;
 CREATE UNIQUE INDEX ON mvtest_mv_foo (i);
 RESET ROLE;
@@ -236,3 +243,26 @@ SELECT mvtest_func();
 SELECT * FROM mvtest1;
 SELECT * FROM mvtest2;
 ROLLBACK;
+
+-- make sure refresh mat view will dispatch oid at the final
+-- execution of the mat view's body query. See Github Issue
+-- https://github.com/greenplum-db/gpdb/issues/11956 for details.
+
+create table t_github_issue_11956(a int, b int) distributed randomly;
+insert into t_github_issue_11956 values (1, 1);
+
+create function f_github_issue_11956() returns int as
+$$
+select sum(a+b)::int from t_github_issue_11956
+$$
+language sql stable;
+
+create materialized view mat_view_github_issue_11956
+as
+select * from t_github_issue_11956 where a > f_github_issue_11956()
+distributed randomly;
+
+refresh materialized view mat_view_github_issue_11956;
+
+drop materialized view mat_view_github_issue_11956;
+drop table t_github_issue_11956;

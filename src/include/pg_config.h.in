@@ -54,12 +54,15 @@
 /* Define to build with GSSAPI support. (--with-gssapi) */
 #undef ENABLE_GSS
 
-/* Define to 1 if you want National Language Support. (--enable-nls) */
-#undef ENABLE_NLS
+/* Define to 1 to build with ic-proxy support (--enable-ic-proxy) */
+#undef ENABLE_IC_PROXY
 
 /* Define to 1 to build client libraries as thread-safe code.
    (--enable-thread-safety) */
 #undef ENABLE_THREAD_SAFETY
+
+/* Define to 1 to build with fault injector. (--enable-debug-extensions) */
+#undef FAULT_INJECTOR
 
 /* Define to nothing if C supports flexible array members, and to 1 if it does
    not. That way, with a declaration like `struct s { int n; double
@@ -70,11 +73,12 @@
    MSVC and with C++ compilers. */
 #undef FLEXIBLE_ARRAY_MEMBER
 
-/* float4 values are passed by value if 'true', by reference if 'false' */
+/* float4 values are passed by value if 'true', by reference if 'false'
+   (always true in GPDB) */
 #undef FLOAT4PASSBYVAL
 
 /* float8, int8, and related values are passed by value if 'true', by
-   reference if 'false' */
+   reference if 'false' (always true in GPDB) */
 #undef FLOAT8PASSBYVAL
 
 /* Define to 1 if gettimeofday() takes only 1 argument. */
@@ -84,8 +88,26 @@
 # define gettimeofday(a,b) gettimeofday(a)
 #endif
 
+/* Define to 1 to build ORCA in debug (GPOS_DEBUG=1) */
+#undef GPOS_DEBUG
+
+/* Define to 1 to build ORCA for MacOS (GPOS_Darwin=1) */
+#undef GPOS_Darwin
+
+/* Greenplum major version as a string */
+#undef GP_MAJORVERSION
+
+/* A string containing the Greenplum version number */
+#undef GP_VERSION
+
+/* Greenplum version as a number */
+#undef GP_VERSION_NUM
+
 /* Define to 1 if you have the `append_history' function. */
 #undef HAVE_APPEND_HISTORY
+
+/* Define to 1 if you have the <apr_getopt.h> header file. */
+#undef HAVE_APR_GETOPT_H
 
 /* Define to 1 if you have the `ASN1_STRING_get0_data' function. */
 #undef HAVE_ASN1_STRING_GET0_DATA
@@ -95,6 +117,9 @@
 
 /* Define to 1 if you have the <atomic.h> header file. */
 #undef HAVE_ATOMIC_H
+
+/* Define to 1 if you have the `backtrace_symbols' function. */
+#undef HAVE_BACKTRACE_SYMBOLS
 
 /* Define to 1 if you have the `BIO_get_data' function. */
 #undef HAVE_BIO_GET_DATA
@@ -131,6 +156,9 @@
 
 /* Define to 1 if you have the <crypt.h> header file. */
 #undef HAVE_CRYPT_H
+
+/* define if the compiler supports basic C++14 syntax */
+#undef HAVE_CXX14
 
 /* Define to 1 if you have the declaration of `fdatasync', and to 0 if you
    don't. */
@@ -201,6 +229,12 @@
 /* Define to 1 if you have the <editline/readline.h> header file. */
 #undef HAVE_EDITLINE_READLINE_H
 
+/* Define to 1 if you have the <event.h> header file. */
+#undef HAVE_EVENT_H
+
+/* Define to 1 if you have the <execinfo.h> header file. */
+#undef HAVE_EXECINFO_H
+
 /* Define to 1 if you have the `fdatasync' function. */
 #undef HAVE_FDATASYNC
 
@@ -227,6 +261,9 @@
 
 /* Define to 1 if your compiler understands __FUNCTION__. */
 #undef HAVE_FUNCNAME__FUNCTION
+
+/* Define to 1 if you have __sync_lock_test_and_set(int *) and friends. */
+#undef HAVE_GCC_INT_ATOMICS
 
 /* Define to 1 if you have __atomic_compare_exchange_n(int *, int *, int). */
 #undef HAVE_GCC__ATOMIC_INT32_CAS
@@ -305,6 +342,9 @@
 /* Define to 1 if you have the `inet_aton' function. */
 #undef HAVE_INET_ATON
 
+/* Define to 1 if you have the `inet_ntop' function. */
+#undef HAVE_INET_NTOP
+
 /* Define to 1 if the system has the type `int64'. */
 #undef HAVE_INT64
 
@@ -341,8 +381,14 @@
 /* Define to 1 if you have the `ldap_initialize' function. */
 #undef HAVE_LDAP_INITIALIZE
 
+/* Define to 1 if you have the `bz2' library (-lbz2). */
+#undef HAVE_LIBBZ2
+
 /* Define to 1 if you have the `crypto' library (-lcrypto). */
 #undef HAVE_LIBCRYPTO
+
+/* Define to 1 if you have the `execinfo' library (-lexecinfo). */
+#undef HAVE_LIBEXECINFO
 
 /* Define to 1 if you have the `ldap' library (-lldap). */
 #undef HAVE_LIBLDAP
@@ -353,11 +399,20 @@
 /* Define to 1 if you have the `m' library (-lm). */
 #undef HAVE_LIBM
 
+/* Define to 1 if you have the `numa' library (-lnuma). */
+#undef HAVE_LIBNUMA
+
 /* Define to 1 if you have the `pam' library (-lpam). */
 #undef HAVE_LIBPAM
 
+/* Define to 1 if you have the `quicklz' library (-lquicklz). */
+#undef HAVE_LIBQUICKLZ
+
 /* Define if you have a function readline library */
 #undef HAVE_LIBREADLINE
+
+/* Define to 1 if you have the `rt' library (-lrt). */
+#undef HAVE_LIBRT
 
 /* Define to 1 if you have the `selinux' library (-lselinux). */
 #undef HAVE_LIBSELINUX
@@ -365,8 +420,14 @@
 /* Define to 1 if you have the `ssl' library (-lssl). */
 #undef HAVE_LIBSSL
 
+/* Define to 1 if you have the `uv' library (-luv). */
+#undef HAVE_LIBUV
+
 /* Define to 1 if you have the `wldap32' library (-lwldap32). */
 #undef HAVE_LIBWLDAP32
+
+/* Define to 1 if you have the `xerces-c' library (-lxerces-c). */
+#undef HAVE_LIBXERCES_C
 
 /* Define to 1 if you have the `xml2' library (-lxml2). */
 #undef HAVE_LIBXML2
@@ -412,6 +473,9 @@
 
 /* Define to 1 if you have the <net/if.h> header file. */
 #undef HAVE_NET_IF_H
+
+/* Define to 1 if you have the <numa.h> header file. */
+#undef HAVE_NUMA_H
 
 /* Define to 1 if you have the `OPENSSL_init_ssl' function. */
 #undef HAVE_OPENSSL_INIT_SSL
@@ -654,6 +718,9 @@
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
 
+/* Define to 1 if you have the <time.h> header file. */
+#undef HAVE_TIME_H
+
 /* Define to 1 if your `struct tm' has `tm_zone'. Deprecated, use
    `HAVE_STRUCT_TM_TM_ZONE' instead. */
 #undef HAVE_TM_ZONE
@@ -730,11 +797,17 @@
 /* Define to 1 if you have the <winldap.h> header file. */
 #undef HAVE_WINLDAP_H
 
+/* Define to 1 if you have the <winsock2.h> header file. */
+#undef HAVE_WINSOCK2_H
+
 /* Define to 1 if you have the `X509_get_signature_nid' function. */
 #undef HAVE_X509_GET_SIGNATURE_NID
 
 /* Define to 1 if the assembler supports X86_64's POPCNTQ instruction. */
 #undef HAVE_X86_64_POPCNTQ
+
+/* Define to 1 if you have the <yaml.h> header file. */
+#undef HAVE_YAML_H
 
 /* Define to 1 if the system has the type `_Bool'. */
 #undef HAVE__BOOL
@@ -756,6 +829,9 @@
 
 /* Define to 1 if your compiler understands __builtin_ctz. */
 #undef HAVE__BUILTIN_CTZ
+
+/* Define to 1 if your compiler understands __builtin_frame_address. */
+#undef HAVE__BUILTIN_FRAME_ADDRESS
 
 /* Define to 1 if your compiler understands __builtin_$op_overflow. */
 #undef HAVE__BUILTIN_OP_OVERFLOW
@@ -833,7 +909,7 @@
 /* Define to best printf format archetype, usually gnu_printf if available. */
 #undef PG_PRINTF_ATTRIBUTE
 
-/* PostgreSQL version as a string */
+/* Postgres version Greenplum Database is based on */
 #undef PG_VERSION
 
 /* PostgreSQL version as a number */
@@ -902,16 +978,22 @@
 /* Define to 1 to build with BSD Authentication support. (--with-bsd-auth) */
 #undef USE_BSD_AUTH
 
+/* Define to 1 to build with libcurl support. (--with-libcurl) */
+#undef USE_CURL
+
 /* Define to use /dev/urandom for random number generation */
 #undef USE_DEV_URANDOM
 
-/* Define to 1 if you want float4 values to be passed by value.
-   (--enable-float4-byval) */
+/* Define to 1 if you want float4 values to be passed by value. (Always
+   defined in GPDB) */
 #undef USE_FLOAT4_BYVAL
 
 /* Define to 1 if you want float8, int8, etc values to be passed by value.
-   (--enable-float8-byval) */
+   (Always defined in GPDB) */
 #undef USE_FLOAT8_BYVAL
+
+/* Define to 1 to build with gpcloud (--enable-gpcloud) */
+#undef USE_GPCLOUD
 
 /* Define to build with ICU support. (--with-icu) */
 #undef USE_ICU
@@ -929,6 +1011,9 @@
 /* Define to 1 to build with LLVM based JIT support. (--with-llvm) */
 #undef USE_LLVM
 
+/* Define to 1 to build with Mapreduce capabilities (--enable-mapreduce) */
+#undef USE_MAPREDUCE
+
 /* Define to select named POSIX semaphores. */
 #undef USE_NAMED_POSIX_SEMAPHORES
 
@@ -937,6 +1022,9 @@
 
 /* Define to use OpenSSL for random number generation */
 #undef USE_OPENSSL_RANDOM
+
+/* Define to 1 to build with Greenplum ORCA optimizer. (--enable-orca) */
+#undef USE_ORCA
 
 /* Define to 1 to build with PAM support. (--with-pam) */
 #undef USE_PAM
@@ -971,6 +1059,9 @@
 /* Define to select Win32-style shared memory. */
 #undef USE_WIN32_SHARED_MEMORY
 
+/* Define to build with zstd support. (--with-zstd) */
+#undef USE_ZSTD
+
 /* Define to 1 if `wcstombs_l' requires <xlocale.h>. */
 #undef WCSTOMBS_L_IN_XLOCALE
 
@@ -993,7 +1084,10 @@
    */
 #undef XLOG_BLCKSZ
 
-
+/* Enable large inode numbers on Mac OS X 10.5.  */
+#ifndef _DARWIN_USE_64_BIT_INODE
+# define _DARWIN_USE_64_BIT_INODE 1
+#endif
 
 /* Number of bits in a file offset, on hosts where this is settable. */
 #undef _FILE_OFFSET_BITS

@@ -282,7 +282,7 @@ COMMIT;
 select * from xacttest;
 
 create or replace function max_xacttest() returns smallint language sql as
-'select max(a) from xacttest' stable;
+'select max(a) from xacttest' stable READS SQL DATA;
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
@@ -291,7 +291,7 @@ rollback;
 
 -- But a volatile function can see the partial results of the calling query
 create or replace function max_xacttest() returns smallint language sql as
-'select max(a) from xacttest' volatile;
+'select max(a) from xacttest' volatile READS SQL DATA;
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
@@ -300,7 +300,7 @@ rollback;
 
 -- Now the same test with plpgsql (since it depends on SPI which is different)
 create or replace function max_xacttest() returns smallint language plpgsql as
-'begin return max(a) from xacttest; end' stable;
+'begin return max(a) from xacttest; end' stable READS SQL DATA;
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
@@ -308,7 +308,7 @@ select * from xacttest;
 rollback;
 
 create or replace function max_xacttest() returns smallint language plpgsql as
-'begin return max(a) from xacttest; end' volatile;
+'begin return max(a) from xacttest; end' volatile READS SQL DATA;
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;

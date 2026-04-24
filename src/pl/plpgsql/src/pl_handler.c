@@ -28,6 +28,8 @@
 
 #include "plpgsql.h"
 
+#include "cdb/cdbvars.h"
+
 
 static bool plpgsql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
 static void plpgsql_extra_warnings_assign_hook(const char *newvalue, void *extra);
@@ -128,7 +130,13 @@ plpgsql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source)
 static void
 plpgsql_extra_warnings_assign_hook(const char *newvalue, void *extra)
 {
-	plpgsql_extra_warnings = *((int *) extra);
+	/*
+	 * Don't emit parsing warnings in segments. We will emit them in the
+	 * QD, that's enough. The user won't appreciate getting the same warning
+	 * many times.
+	 */
+	if (Gp_role != GP_ROLE_EXECUTE)
+		plpgsql_extra_warnings = *((int *) extra);
 }
 
 static void

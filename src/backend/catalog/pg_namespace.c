@@ -25,6 +25,8 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "catalog/oid_dispatch.h"
+
 
 /* ----------------
  * NamespaceCreate
@@ -79,8 +81,9 @@ NamespaceCreate(const char *nspName, Oid ownerId, bool isTemp)
 		values[i] = (Datum) NULL;
 	}
 
-	nspoid = GetNewOidWithIndex(nspdesc, NamespaceOidIndexId,
-								Anum_pg_namespace_oid);
+	nspoid = GetNewOidForNamespace(nspdesc, NamespaceOidIndexId,
+								   Anum_pg_namespace_oid,
+								   unconstify(char *, nspName));
 	values[Anum_pg_namespace_oid - 1] = ObjectIdGetDatum(nspoid);
 	namestrcpy(&nname, nspName);
 	values[Anum_pg_namespace_nspname - 1] = NameGetDatum(&nname);

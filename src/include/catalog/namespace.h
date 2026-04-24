@@ -17,7 +17,6 @@
 #include "nodes/primnodes.h"
 #include "storage/lock.h"
 
-
 /*
  *	This structure holds a list of possible functions or operators
  *	found by namespace lookup.  Each function/operator is identified
@@ -125,6 +124,12 @@ extern Oid	LookupNamespaceNoError(const char *nspname);
 extern Oid	LookupExplicitNamespace(const char *nspname, bool missing_ok);
 extern Oid	get_namespace_oid(const char *nspname, bool missing_ok);
 
+extern void DropTempTableNamespaceForResetSession(Oid namespaceOid);
+extern void SetTempNamespace(Oid namespaceOid, Oid toastNamespaceOid);
+extern Oid  ResetTempNamespace(void);
+extern bool TempNamespaceOidIsValid(void);  /* GPDB only:  used by cdbgang.c */
+extern void InitTempTableNamespace(void);
+
 extern Oid	LookupCreationNamespace(const char *nspname);
 extern void CheckSetNamespace(Oid oldNspOid, Oid nspOid);
 extern Oid	QualifiedNameGetCreationNamespace(List *names, char **objname_p);
@@ -144,6 +149,8 @@ extern void GetTempNamespaceState(Oid *tempNamespaceId,
 								  Oid *tempToastNamespaceId);
 extern void SetTempNamespaceState(Oid tempNamespaceId,
 								  Oid tempToastNamespaceId);
+extern void SetTempNamespaceStateAfterBoot(Oid tempNamespaceId,
+								  Oid tempToastNamespaceId); /* GPDB only */
 extern void ResetTempTableNamespace(void);
 
 extern OverrideSearchPath *GetOverrideSearchPath(MemoryContext context);

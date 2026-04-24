@@ -23,7 +23,9 @@
  */
 #include "postgres.h"
 
+#include "access/heapam_xlog.h"
 #include "access/htup_details.h"
+#include "access/xlog.h"
 #include "access/xlogutils.h"
 #include "miscadmin.h"
 #include "storage/freespace.h"
@@ -898,8 +900,17 @@ fsm_vacuum_page(Relation rel, FSMAddress addr,
 	 * relation.  We don't bother with a lock here, nor with marking the page
 	 * dirty if it wasn't already, since this is just a hint.
 	 */
+#ifdef MPROTECT_BUFFERS
+	/*
+	 * When mprotect() is used to detect shared buffer access violations, lock
+	 * must be acquired so that write access is allowed on this buffer.
+	 */
+	LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+#endif
 	((FSMPage) PageGetContents(page))->fp_next_slot = 0;
-
+#ifdef MPROTECT_BUFFERS
+	LockBuffer(buf, BUFFER_LOCK_UNLOCK);
+#endif
 	ReleaseBuffer(buf);
 
 	return max_avail;

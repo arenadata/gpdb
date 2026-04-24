@@ -15,6 +15,7 @@
 #define NODESUBPLAN_H
 
 #include "nodes/execnodes.h"
+#include "executor/execdesc.h"
 
 extern SubPlanState *ExecInitSubPlan(SubPlan *subplan, PlanState *parent);
 
@@ -26,8 +27,11 @@ extern Datum ExecAlternativeSubPlan(AlternativeSubPlanState *node, ExprContext *
 
 extern void ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent);
 
-extern void ExecSetParamPlan(SubPlanState *node, ExprContext *econtext);
+/*
+ * MPP Change: Added a parameter (ParamListInfo p) to this function.  See comments in nodeSubplan.cpp
+ */
+extern void ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_queryDesc);
 
-extern void ExecSetParamPlanMulti(const Bitmapset *params, ExprContext *econtext);
+extern void ExecSetParamPlanMulti(const Bitmapset *params, ExprContext *econtext, QueryDesc *gbl_queryDesc);
 
 #endif							/* NODESUBPLAN_H */

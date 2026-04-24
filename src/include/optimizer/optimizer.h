@@ -23,6 +23,7 @@
 #define OPTIMIZER_H
 
 #include "nodes/parsenodes.h"
+#include "nodes/plannodes.h"
 
 /*
  * We don't want to include nodes/pathnodes.h here, because non-planner
@@ -57,18 +58,21 @@ extern Selectivity clause_selectivity(PlannerInfo *root,
 									  Node *clause,
 									  int varRelid,
 									  JoinType jointype,
-									  SpecialJoinInfo *sjinfo);
+									  SpecialJoinInfo *sjinfo,
+									  bool use_damping);
+extern Selectivity clauselist_selectivity(PlannerInfo *root,
+										  List *clauses,
+										  int varRelid,
+										  JoinType jointype,
+										  SpecialJoinInfo *sjinfo,
+										  bool use_damping);
 extern Selectivity clauselist_selectivity_simple(PlannerInfo *root,
 												 List *clauses,
 												 int varRelid,
 												 JoinType jointype,
 												 SpecialJoinInfo *sjinfo,
-												 Bitmapset *estimatedclauses);
-extern Selectivity clauselist_selectivity(PlannerInfo *root,
-										  List *clauses,
-										  int varRelid,
-										  JoinType jointype,
-										  SpecialJoinInfo *sjinfo);
+												 Bitmapset *estimatedclauses,
+												 bool use_damping);
 
 /* in path/costsize.c: */
 
@@ -81,8 +85,6 @@ extern PGDLLIMPORT double cpu_operator_cost;
 extern PGDLLIMPORT double parallel_tuple_cost;
 extern PGDLLIMPORT double parallel_setup_cost;
 extern PGDLLIMPORT int effective_cache_size;
-
-extern double clamp_row_est(double nrows);
 
 /* in path/indxpath.c: */
 
@@ -182,8 +184,11 @@ extern void pull_varattnos(Node *node, Index varno, Bitmapset **varattnos);
 extern List *pull_vars_of_level(Node *node, int levelsup);
 extern bool contain_var_clause(Node *node);
 extern bool contain_vars_of_level(Node *node, int levelsup);
+extern bool contain_vars_of_level_or_above(Node *node, int levelsup);
 extern int	locate_var_of_level(Node *node, int levelsup);
 extern List *pull_var_clause(Node *node, int flags);
 extern Node *flatten_join_alias_vars(Query *query, Node *node);
+
+extern bool contain_ctid_var_reference(Scan *scan);
 
 #endif							/* OPTIMIZER_H */

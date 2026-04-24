@@ -1,8 +1,9 @@
 --
 -- VACUUM
 --
-CREATE TABLE vactst (i INT);
-INSERT INTO vactst VALUES (1);
+CREATE TABLE vactst (j INT DEFAULT 1,i INT);
+INSERT INTO vactst(i) VALUES (1);
+ANALYZE vactst;
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
@@ -14,7 +15,7 @@ INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
-INSERT INTO vactst VALUES (0);
+INSERT INTO vactst(i) VALUES (0);
 SELECT count(*) FROM vactst;
  count 
 -------
@@ -22,7 +23,7 @@ SELECT count(*) FROM vactst;
 (1 row)
 
 DELETE FROM vactst WHERE i != 0;
-SELECT * FROM vactst;
+SELECT i FROM vactst ORDER BY 1;
  i 
 ---
  0
@@ -41,7 +42,7 @@ INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
-INSERT INTO vactst VALUES (0);
+INSERT INTO vactst(i) VALUES (0);
 SELECT count(*) FROM vactst;
  count 
 -------
@@ -51,7 +52,7 @@ SELECT count(*) FROM vactst;
 DELETE FROM vactst WHERE i != 0;
 VACUUM (FULL) vactst;
 DELETE FROM vactst;
-SELECT * FROM vactst;
+SELECT i FROM vactst ORDER BY 1;
  i 
 ---
 (0 rows)
@@ -66,11 +67,14 @@ CREATE FUNCTION do_analyze() RETURNS VOID VOLATILE LANGUAGE SQL
 CREATE FUNCTION wrap_do_analyze(c INT) RETURNS INT IMMUTABLE LANGUAGE SQL
 	AS 'SELECT $1 FROM do_analyze()';
 CREATE INDEX ON vaccluster(wrap_do_analyze(i));
+-- GPDB_94_MERGE_FIXME: GPDB does not support this but I do not think we will
+-- support that in short time. Note this causes "ANALYZE/VACUUM FULL vaccluster"
+-- succeed (On PG it fails: "ERROR:  ANALYZE cannot be executed from VACUUM or ANALYZE")
 INSERT INTO vaccluster VALUES (1), (2);
-ANALYZE vaccluster;
-ERROR:  ANALYZE cannot be executed from VACUUM or ANALYZE
-CONTEXT:  SQL function "do_analyze" statement 1
+ERROR:  function cannot execute on a QE slice because it issues a non-SELECT statement  (seg1 127.0.0.1:25433 pid=15126)
+CONTEXT:  SQL function "do_analyze" during startup
 SQL function "wrap_do_analyze" statement 1
+ANALYZE vaccluster;
 -- Test ANALYZE in transaction, where the transaction surrounding
 -- analyze performed modifications. This tests for the bug at
 -- https://postgr.es/m/c7988239-d42c-ddc4-41db-171b23b35e4f%40ssinger.info
@@ -87,9 +91,6 @@ VACUUM FULL pg_am;
 VACUUM FULL pg_class;
 VACUUM FULL pg_database;
 VACUUM FULL vaccluster;
-ERROR:  ANALYZE cannot be executed from VACUUM or ANALYZE
-CONTEXT:  SQL function "do_analyze" statement 1
-SQL function "wrap_do_analyze" statement 1
 VACUUM FULL vactst;
 VACUUM (DISABLE_PAGE_SKIPPING) vaccluster;
 -- INDEX_CLEANUP option
@@ -99,6 +100,7 @@ CREATE INDEX no_index_cleanup_idx ON no_index_cleanup(t);
 ALTER TABLE no_index_cleanup ALTER COLUMN t SET STORAGE EXTERNAL;
 INSERT INTO no_index_cleanup(i, t) VALUES (generate_series(1,30),
     repeat('1234567890',300));
+ANALYZE no_index_cleanup;
 -- index cleanup option is ignored if VACUUM FULL
 VACUUM (INDEX_CLEANUP TRUE, FULL TRUE) no_index_cleanup;
 VACUUM (FULL TRUE) no_index_cleanup;
@@ -158,9 +160,9 @@ VACUUM (FULL) vacparted;
 VACUUM (FREEZE) vacparted;
 -- check behavior with duplicate column mentions
 VACUUM ANALYZE vacparted(a,b,a);
-ERROR:  column "a" of relation "vacparted" appears more than once
+ERROR:  column "a" of relation "vacparted1" appears more than once
 ANALYZE vacparted(a,b,b);
-ERROR:  column "b" of relation "vacparted" appears more than once
+ERROR:  column "b" of relation "vacparted1" appears more than once
 -- multiple tables specified
 VACUUM vaccluster, vactst;
 VACUUM vacparted, does_not_exist;
@@ -179,7 +181,7 @@ ANALYZE vacparted (b), vactst;
 ANALYZE vactst, does_not_exist, vacparted;
 ERROR:  relation "does_not_exist" does not exist
 ANALYZE vactst (i), vacparted (does_not_exist);
-ERROR:  column "does_not_exist" of relation "vacparted" does not exist
+ERROR:  column "does_not_exist" of relation "vacparted1" does not exist
 -- parenthesized syntax for ANALYZE
 ANALYZE (VERBOSE) does_not_exist;
 ERROR:  relation "does_not_exist" does not exist
@@ -271,7 +273,7 @@ WARNING:  skipping "vacowned_part2" --- only table or database owner can vacuum 
 RESET ROLE;
 -- Partitioned table and one partition owned by other user.
 ALTER TABLE vacowned_parted OWNER TO regress_vacuum;
-ALTER TABLE vacowned_part1 OWNER TO regress_vacuum;
+ALTER TABLE vacowned_part2 OWNER TO CURRENT_USER;
 SET ROLE regress_vacuum;
 VACUUM vacowned_parted;
 WARNING:  skipping "vacowned_part2" --- only table or database owner can vacuum it
@@ -291,6 +293,7 @@ WARNING:  skipping "vacowned_part2" --- only table or database owner can vacuum 
 RESET ROLE;
 -- Only one partition owned by other user.
 ALTER TABLE vacowned_parted OWNER TO CURRENT_USER;
+ALTER TABLE vacowned_part1 OWNER TO regress_vacuum;
 SET ROLE regress_vacuum;
 VACUUM vacowned_parted;
 WARNING:  skipping "vacowned_parted" --- only table or database owner can vacuum it
@@ -314,6 +317,7 @@ RESET ROLE;
 -- Only partitioned table owned by other user.
 ALTER TABLE vacowned_parted OWNER TO regress_vacuum;
 ALTER TABLE vacowned_part1 OWNER TO CURRENT_USER;
+ALTER TABLE vacowned_part2 OWNER TO CURRENT_USER;
 SET ROLE regress_vacuum;
 VACUUM vacowned_parted;
 WARNING:  skipping "vacowned_part1" --- only table or database owner can vacuum it

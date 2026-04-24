@@ -20,6 +20,14 @@
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 
+#include "catalog/heap.h"
+#include "catalog/pg_authid.h"
+#include "catalog/pg_database.h"
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbvars.h"
+#include "utils/builtins.h"
+#include "utils/syscache.h"
+
 void
 AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 {
@@ -156,6 +164,118 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 								 databaseid, 0, roleid, false);
 
 	systable_endscan(scan);
+
+	/* update pg_stat_last_shoperation for metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		char	   *alter_subtype;
+
+		if (setstmt->kind == VAR_RESET_ALL)
+			alter_subtype = "RESET ALL";
+		else if (setstmt->kind == VAR_RESET)
+			alter_subtype = "RESET";
+		else
+			alter_subtype = "SET";
+
+		/* roleoid is only valid for ALTER ROLE */
+		MetaTrackUpdObject(DatabaseRelationId,
+						   OidIsValid(roleid) ? roleid : databaseid,
+						   GetUserId(),
+						   "ALTER", alter_subtype);
+	}
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		StringInfoData buffer;
+		char	   *rolename;
+		char	   *dbname;
+		HeapTuple	htup;
+
+		if (roleid)
+		{
+			htup = SearchSysCache1(AUTHOID, roleid);
+			if (!HeapTupleIsValid(htup))
+				elog(ERROR, "cache lookup failed for role %u", roleid);
+			rolename = pstrdup(NameStr(((Form_pg_authid) GETSTRUCT(htup))->rolname));
+			ReleaseSysCache(htup);
+		}
+		else
+			rolename = NULL;
+
+		if (databaseid)
+		{
+			htup = SearchSysCache1(DATABASEOID, databaseid);
+			if (!htup)
+				elog(ERROR, "cache lookup failed for database %u", databaseid);
+			dbname = pstrdup(NameStr(((Form_pg_database) GETSTRUCT(htup))->datname));
+			ReleaseSysCache(htup);
+		}
+		else
+			dbname = NULL;
+
+		initStringInfo(&buffer);
+
+		if (databaseid && roleid)
+			appendStringInfo(&buffer, "ALTER ROLE %s IN DATABASE %s ",
+							 quote_identifier(rolename), quote_identifier(dbname));
+		else if (roleid)
+			appendStringInfo(&buffer, "ALTER ROLE %s ",
+							 quote_identifier(rolename));
+		else if (databaseid)
+			appendStringInfo(&buffer, "ALTER DATABASE %s ",
+							 quote_identifier(dbname));
+		else
+			appendStringInfo(&buffer, "ALTER ROLE ALL ");
+
+		if (setstmt->kind ==  VAR_RESET_ALL)
+			appendStringInfo(&buffer, "RESET ALL");
+		else if (valuestr == NULL)
+			appendStringInfo(&buffer, "RESET %s", quote_identifier(setstmt->name));
+		else if (setstmt->kind ==  VAR_SET_CURRENT)
+			appendStringInfo(&buffer, "SET %s TO %s", quote_identifier(setstmt->name), quote_literal_cstr(valuestr));
+		else
+		{
+			ListCell   *l;
+			bool		first;
+
+			appendStringInfo(&buffer, "SET %s TO ", quote_identifier(setstmt->name));
+
+			/* Parse string into list of identifiers */
+			first = true;
+			foreach(l, setstmt->args)
+			{
+				A_Const	   *arg = (A_Const *) lfirst(l);
+
+				if (!first)
+					appendStringInfo(&buffer, ",");
+				first = false;
+
+				switch (nodeTag(&arg->val))
+				{
+					case T_Integer:
+						appendStringInfo(&buffer, "%d", intVal(&arg->val));
+						break;
+					case T_Float:
+						/* represented as a string, so just copy it */
+						appendStringInfoString(&buffer, strVal(&arg->val));
+						break;
+					case T_String:
+						appendStringInfoString(&buffer, quote_literal_cstr(strVal(&arg->val)));
+						break;
+					default:
+						elog(ERROR, "unexpected constant type: %d", nodeTag(&arg->val));
+				}
+			}
+		}
+
+		CdbDispatchCommand(buffer.data,
+						   DF_CANCEL_ON_ERROR|
+						   DF_NEED_TWO_PHASE|
+						   DF_WITH_SNAPSHOT,
+						   NULL);
+
+		pfree(buffer.data);
+	}
 
 	/* Close pg_db_role_setting, but keep lock till commit */
 	table_close(rel, NoLock);

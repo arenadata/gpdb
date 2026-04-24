@@ -111,7 +111,7 @@ static int	get_attnum_pk_pos(int *pkattnums, int pknumatts, int key);
 static HeapTuple get_tuple_of_interest(Relation rel, int *pkattnums, int pknumatts, char **src_pkattvals);
 static Relation get_rel_from_relname(text *relname_text, LOCKMODE lockmode, AclMode aclmode);
 static char *generate_relation_name(Relation rel);
-static void dblink_connstr_check(const char *connstr);
+static char *dblink_connstr_check(const char *connstr);
 static void dblink_security_check(PGconn *conn, remoteConn *rconn);
 static void dblink_res_error(PGconn *conn, const char *conname, PGresult *res,
 							 bool fail, const char *fmt,...) pg_attribute_printf(5, 6);
@@ -282,7 +282,7 @@ dblink_connect(PG_FUNCTION_ARGS)
 		connstr = conname_or_str;
 
 	/* check password in connection string if not superuser */
-	dblink_connstr_check(connstr);
+	connstr = dblink_connstr_check(connstr);
 	conn = PQconnectdb(connstr);
 
 	if (PQstatus(conn) == CONNECTION_BAD)
@@ -1289,7 +1289,7 @@ dblink_get_connections(PG_FUNCTION_ARGS)
 	}
 
 	if (astate)
-		PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate,
+		PG_RETURN_DATUM(makeArrayResult(astate,
 											  CurrentMemoryContext));
 	else
 		PG_RETURN_NULL();
@@ -2642,32 +2642,71 @@ dblink_security_check(PGconn *conn, remoteConn *rconn)
  * prevents a password from being picked up from .pgpass, a service file,
  * the environment, etc.  We don't want the postgres user's passwords
  * to be accessible to non-superusers.
+ *
+ * For Greenplum, dblink uses built libpq to construct conninfo, whose user is
+ * environment variable PGUSER, which is wrong, modifies this function to add
+ * the session's username into connstr.
+ *
  */
-static void
+static char *
 dblink_connstr_check(const char *connstr)
 {
+	char	*connstr_modified = (char *) connstr;
+
 	if (!superuser())
 	{
-		PQconninfoOption *options;
-		PQconninfoOption *option;
-		bool		connstr_gives_password = false;
+		PQconninfoOption   *options;
+		PQconninfoOption   *option;
+		bool				connstr_gives_password = false;
+		bool				username_is_set = false;
+		bool				host_is_set = false;
 
 		options = PQconninfoParse(connstr, NULL);
 		if (options)
 		{
 			for (option = options; option->keyword != NULL; option++)
 			{
+				if (strcmp(option->keyword, "host") == 0)
+				{
+					if (option->val != NULL && option->val[0] != '\0')
+					{
+						host_is_set = true;
+					}
+				}
+
+				if (strcmp(option->keyword, "user") == 0)
+				{
+					if (option->val == NULL || option->val[0] == '\0')
+					{
+						char *username = GetUserNameFromId(GetUserId(), false);
+
+						/* 7 is strlen("user= ") + length of '\0' */
+						connstr_modified = palloc0(7 + strlen(username) + strlen(connstr));
+						sprintf(connstr_modified, "user=%s %s", username, connstr);
+					}
+
+					username_is_set = true;
+				}
+
 				if (strcmp(option->keyword, "password") == 0)
 				{
 					if (option->val != NULL && option->val[0] != '\0')
 					{
 						connstr_gives_password = true;
-						break;
 					}
 				}
+
+				if (host_is_set && username_is_set && connstr_gives_password)
+					break;
 			}
 			PQconninfoFree(options);
 		}
+
+		if (!host_is_set)
+			ereport(ERROR,
+					(errcode(ERRCODE_S_R_E_PROHIBITED_SQL_STATEMENT_ATTEMPTED),
+					 errmsg("host is required"),
+					 errdetail("Non-superusers must provide a host in the connection string.")));
 
 		if (!connstr_gives_password)
 			ereport(ERROR,
@@ -2675,6 +2714,8 @@ dblink_connstr_check(const char *connstr)
 					 errmsg("password is required"),
 					 errdetail("Non-superusers must provide a password in the connection string.")));
 	}
+
+	return connstr_modified;
 }
 
 /*

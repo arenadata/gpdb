@@ -33,11 +33,16 @@
 
 #include "executor/tuptable.h"
 
+#include "storage/sharedfileset.h"
+
+struct Instrumentation;                 /* #include "executor/instrument.h" */
 
 /* Tuplestorestate is an opaque type whose details are not known outside
  * tuplestore.c.
  */
 typedef struct Tuplestorestate Tuplestorestate;
+
+extern char * tuplestore_get_buffilename(Tuplestorestate *state);
 
 /*
  * Currently we only need to store MinimalTuples, but it would be easy
@@ -87,5 +92,13 @@ extern void tuplestore_rescan(Tuplestorestate *state);
 extern void tuplestore_clear(Tuplestorestate *state);
 
 extern void tuplestore_end(Tuplestorestate *state);
+
+extern void tuplestore_set_instrument(Tuplestorestate *state,
+									  struct Instrumentation *instrument);
+
+extern void tuplestore_make_shared(Tuplestorestate *state, SharedFileSet *fileset,
+								   const char *filename);
+extern void tuplestore_freeze(Tuplestorestate *state);
+extern Tuplestorestate *tuplestore_open_shared(SharedFileSet *fileset, const char *filename);
 
 #endif							/* TUPLESTORE_H */

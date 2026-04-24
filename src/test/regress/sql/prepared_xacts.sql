@@ -16,10 +16,10 @@ INSERT INTO pxtest1 VALUES ('aaa');
 -- Test PREPARE TRANSACTION
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 UPDATE pxtest1 SET foobar = 'bbb' WHERE foobar = 'aaa';
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 PREPARE TRANSACTION 'foo1';
 
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 
 -- Test pg_prepared_xacts system view
 SELECT gid FROM pg_prepared_xacts;
@@ -27,7 +27,7 @@ SELECT gid FROM pg_prepared_xacts;
 -- Test ROLLBACK PREPARED
 ROLLBACK PREPARED 'foo1';
 
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 
 SELECT gid FROM pg_prepared_xacts;
 
@@ -35,19 +35,19 @@ SELECT gid FROM pg_prepared_xacts;
 -- Test COMMIT PREPARED
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 INSERT INTO pxtest1 VALUES ('ddd');
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 PREPARE TRANSACTION 'foo2';
 
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 
 COMMIT PREPARED 'foo2';
 
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 
 -- Test duplicate gids
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 UPDATE pxtest1 SET foobar = 'eee' WHERE foobar = 'ddd';
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 PREPARE TRANSACTION 'foo3';
 
 SELECT gid FROM pg_prepared_xacts;
@@ -58,11 +58,11 @@ INSERT INTO pxtest1 VALUES ('fff');
 -- This should fail, because the gid foo3 is already in use
 PREPARE TRANSACTION 'foo3';
 
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 
 ROLLBACK PREPARED 'foo3';
 
-SELECT * FROM pxtest1;
+SELECT * from pxtest1;
 
 -- Test serialization failure (SSI)
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;

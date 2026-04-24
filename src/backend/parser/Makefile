@@ -18,6 +18,8 @@ OBJS= analyze.o gram.o scan.o parser.o \
       parse_param.o parse_relation.o parse_target.o parse_type.o \
       parse_utilcmd.o scansup.o
 
+OBJS+= parse_partition_gp.o
+
 include $(top_srcdir)/src/backend/common.mk
 
 

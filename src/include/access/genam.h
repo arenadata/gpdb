@@ -164,7 +164,8 @@ struct TupleTableSlot;
 extern bool index_fetch_heap(IndexScanDesc scan, struct TupleTableSlot *slot);
 extern bool index_getnext_slot(IndexScanDesc scan, ScanDirection direction,
 							   struct TupleTableSlot *slot);
-extern int64 index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap);
+extern int64 index_getbitmap(IndexScanDesc scan, Node **bitmapP);
+extern void index_initbitmap(IndexScanDesc scan, Node **bitmapP);
 
 extern IndexBulkDeleteResult *index_bulk_delete(IndexVacuumInfo *info,
 												IndexBulkDeleteResult *stats,
@@ -178,7 +179,9 @@ extern RegProcedure index_getprocid(Relation irel, AttrNumber attnum,
 extern FmgrInfo *index_getprocinfo(Relation irel, AttrNumber attnum,
 								   uint16 procnum);
 extern void index_store_float8_orderby_distances(IndexScanDesc scan,
-												 Oid *orderByTypes, double *distances,
+												 Oid *orderByTypes,
+												 double *distanceValues,
+												 bool *distanceNulls,
 												 bool recheckOrderBy);
 
 /*

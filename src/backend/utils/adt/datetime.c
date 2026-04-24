@@ -27,10 +27,23 @@
 #include "nodes/nodeFuncs.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
+#include "utils/guc.h"
 #include "utils/datetime.h"
 #include "utils/memutils.h"
 #include "utils/tzparser.h"
 
+/*
+ * We don't support locale-aware month names or day-of-week names, or non-arabic numbers,
+ * and we know the only alpha or numeric chars we can handle are in the ASCII7 set.
+ * So we can use these replacements for the standard versions.
+ * I think these are faster.
+ */
+#undef isdigit
+#define isdigit(x) ((x) >= '0' && (x) <= '9')
+#undef isalpha
+#define isalpha(x) (((x) >= 'a' && (x) <= 'z') || ((x) >= 'A' && (x) <= 'Z'))
+#undef isalnum
+#define isalnum(x) (isalpha(x) || isdigit(x))
 
 static int	DecodeNumber(int flen, char *field, bool haveTextMonth,
 						 int fmask, int *tmask,
@@ -44,7 +57,7 @@ static const datetkn *datebsearch(const char *key, const datetkn *base, int nel)
 static int	DecodeDate(char *str, int fmask, int *tmask, bool *is2digits,
 					   struct pg_tm *tm);
 static char *AppendSeconds(char *cp, int sec, fsec_t fsec,
-						   int precision, bool fillzeros);
+                           int precision, bool fillzeros);
 static void AdjustFractSeconds(double frac, struct pg_tm *tm, fsec_t *fsec,
 							   int scale);
 static void AdjustFractDays(double frac, struct pg_tm *tm, fsec_t *fsec,
@@ -389,6 +402,31 @@ static char *
 AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 {
 	Assert(precision >= 0);
+
+	/* GPDB_96_MERGE_FIXME: We had this faster version in GPDB. PostgreSQL
+	 * also added faster versions in commit aa2387e2fd. Performance test is
+	 * the old GPDB variants are even faster, or if we could drop the diff
+	 * and just use upstream code. For now, the GPDB version is disabled
+	 * and we use the upstream code.
+	 */
+#if 0
+		int			j = 0;
+
+		if (fillzeros || abs(sec)  > 9)
+			cp[j++] = abs(sec)  / 10 + '0';
+		cp[j++] = abs(sec)  % 10 + '0';
+		cp[j++] = '.';
+		cp[j++] =  ((int) Abs(fsec) )/ 100000 + '0';
+		cp[j++] = ((int) Abs(fsec) ) / 10000 % 10 + '0';
+		cp[j++] = ((int) Abs(fsec) ) / 1000 % 10 + '0';
+		cp[j++] = ((int) Abs(fsec) ) / 100 % 10 + '0';
+		cp[j++] = ((int) Abs(fsec) ) / 10 % 10 + '0';
+		cp[j++] = ((int) Abs(fsec) ) % 10 + '0';
+		cp[j] = '\0';
+
+#endif
+
+	/* fsec_t is just an int32 */
 
 	if (fillzeros)
 		cp = pg_ltostr_zeropad(cp, Abs(sec), 2);
@@ -1112,8 +1150,11 @@ DecodeDateTime(char **field, int *ftype, int nf,
 					flen = strlen(field[i]);
 					cp = strchr(field[i], '.');
 
-					/* Embedded decimal and no date yet? */
-					if (cp != NULL && !(fmask & DTK_DATE_M))
+					/* 
+					 * Embedded decimal and no date yet? Only do this if
+					 * we're not looking at something like YYYYMMDDHHMMSS.mm
+					 */
+					if (cp != NULL && !(fmask & DTK_DATE_M) && flen <= 14)
 					{
 						dterr = DecodeDate(field[i], fmask,
 										   &tmask, &is2digits, tm);
@@ -2345,6 +2386,7 @@ DecodeDate(char *str, int fmask, int *tmask, bool *is2digits,
 				val,
 				dmask = 0;
 	char	   *field[MAXDATEFIELDS];
+	int			fieldlens[MAXDATEFIELDS];
 
 	*tmask = 0;
 
@@ -2370,6 +2412,7 @@ DecodeDate(char *str, int fmask, int *tmask, bool *is2digits,
 				str++;
 		}
 
+		fieldlens[nf] = str - field[nf];
 		/* Just get rid of any non-digit, non-alpha characters... */
 		if (*str != '\0')
 			*str++ = '\0';
@@ -2413,7 +2456,7 @@ DecodeDate(char *str, int fmask, int *tmask, bool *is2digits,
 		if (field[i] == NULL)
 			continue;
 
-		if ((len = strlen(field[i])) <= 0)
+		if ((len = fieldlens[i]) <= 0)
 			return DTERR_BAD_FORMAT;
 
 		dterr = DecodeNumber(len, field[i], haveTextMonth, fmask,
@@ -2826,6 +2869,8 @@ DecodeNumberField(int len, char *str, int fmask,
 			tm->tm_year = atoi(str);
 			if ((len - 4) == 2)
 				*is2digits = true;
+			else if (((len - 4 ) == 3) && !gp_allow_date_field_width_5digits)
+				return DTERR_BAD_FORMAT;
 
 			return DTK_DATE;
 		}
@@ -3845,6 +3890,45 @@ EncodeTimezone(char *str, int tz, int style)
 	return str;
 }
 
+
+/* 
+ * Convenience routine for encoding dates faster than sprintf does.
+ * tm is the timestamp structure, str is the string, pos is position in
+ * the string which we are at. Upon returning, it is set to the offset of the
+ * last character we set in str.
+ */
+inline static void
+fast_encode_date(struct pg_tm * tm, char *str, int *pos)
+{
+	/*
+	 * sprintf() is very slow so we just convert the numbers to
+	 * a string manually. Since we allow dates in the range
+	 * 4713 BC to 5874897 AD, we have to check for years
+	 * with 7, 6 and 5 digits, being careful to not add
+	 * leading zeros for those. We only zero pad to four digits.
+	 */
+	int y = (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1);
+	
+	if (y >= 1000000)
+		str[(*pos)++] = y / 1000000 % 10 + '0';
+	if (y >= 100000)
+		str[(*pos)++] = y / 100000 % 10 + '0';
+	if (y >= 10000)
+		str[(*pos)++] = y / 10000 % 10 + '0';
+	
+	str[(*pos)++] = y/1000 % 10 + '0';
+	str[(*pos)++] = y/100 % 10 + '0';
+	str[(*pos)++] = y/10 % 10 + '0';
+	str[(*pos)++] = y % 10 + '0';
+	str[(*pos)++] = '-';
+	str[(*pos)++] = tm->tm_mon/10 + '0'; 
+	str[(*pos)++] = tm->tm_mon % 10 + '0';
+	str[(*pos)++] = '-';
+	str[(*pos)++] = tm->tm_mday/10 + '0';
+	str[(*pos)++] = tm->tm_mday % 10 + '0';
+	str[(*pos)] = '\0';
+}
+
 /* EncodeDateOnly()
  * Encode date as local time.
  */
@@ -3858,12 +3942,32 @@ EncodeDateOnly(struct pg_tm *tm, int style, char *str)
 		case USE_ISO_DATES:
 		case USE_XSD_DATES:
 			/* compatible with ISO date formats */
+
+			/* GPDB_96_MERGE_FIXME: We had this faster version in GPDB. PostgreSQL
+			 * also added faster versions in commit aa2387e2fd. Performance test is
+			 * the old GPDB variants are even faster, or if we could drop the diff
+			 * and just use upstream code. For now, the GPDB version is disabled
+			 * and we use the upstream code.
+			 */
+#if 0
+			if (tm->tm_year > 0)
+			{
+				//				sprintf(str, "%04d-%02d-%02d",
+				//		tm->tm_year, tm->tm_mon, tm->tm_mday);
+				int j = 0;
+				fast_encode_date(tm, str, &j);
+			}
+			else
+				sprintf(str, "%04d-%02d-%02d %s",
+						-(tm->tm_year - 1), tm->tm_mon, tm->tm_mday, "BC");
+#else
 			str = pg_ltostr_zeropad(str,
 									(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1), 4);
 			*str++ = '-';
 			str = pg_ltostr_zeropad(str, tm->tm_mon, 2);
 			*str++ = '-';
 			str = pg_ltostr_zeropad(str, tm->tm_mday, 2);
+#endif
 			break;
 
 		case USE_SQL_DATES:
@@ -3936,6 +4040,28 @@ EncodeDateOnly(struct pg_tm *tm, int style, char *str)
 void
 EncodeTimeOnly(struct pg_tm *tm, fsec_t fsec, bool print_tz, int tz, int style, char *str)
 {
+	/* GPDB_96_MERGE_FIXME: We had this faster version in GPDB. PostgreSQL
+	 * also added faster versions in commit aa2387e2fd. Performance test is
+	 * the old GPDB variants are even faster, or if we could drop the diff
+	 * and just use upstream code. For now, the GPDB version is disabled
+	 * and we use the upstream code.
+	 *
+	 * If we still need the old GPDB version, make sure it was actually correct.
+	 * It seems to ignore the 'print_tz' argument...
+	 */
+#if 0
+	str[0] = tm->tm_hour/10 + '0';
+	str[1] = tm->tm_hour % 10 + '0';
+	str[2] = ':';
+	str[3] = tm->tm_min/10 + '0';
+	str[4] = tm->tm_min % 10 + '0';
+	str[5] = ':';
+	str[6] = '\0';
+	str += strlen(str);
+
+	AppendSeconds(str, tm->tm_sec, fsec, MAX_TIME_PRECISION, true);
+#else
+
 	str = pg_ltostr_zeropad(str, tm->tm_hour, 2);
 	*str++ = ':';
 	str = pg_ltostr_zeropad(str, tm->tm_min, 2);
@@ -3944,6 +4070,7 @@ EncodeTimeOnly(struct pg_tm *tm, fsec_t fsec, bool print_tz, int tz, int style, 
 	if (print_tz)
 		str = EncodeTimezone(str, tz, style);
 	*str = '\0';
+#endif
 }
 
 

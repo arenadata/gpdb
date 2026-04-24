@@ -8,6 +8,8 @@
  * None of this code is used during normal system operation.
  *
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -443,8 +445,11 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 
 	Assert(blkno != P_NEW);
 
-	/* Open the relation at smgr level */
-	smgr = smgropen(rnode, InvalidBackendId);
+	/*
+	 * Open the relation at smgr level.  Relations using shared buffers need
+	 * the default SMGR implementation.
+	 */
+	smgr = smgropen(rnode, InvalidBackendId, SMGR_MD);
 
 	/*
 	 * Create the target file if it doesn't already exist.  This lets us cope
@@ -520,6 +525,21 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 	}
 
 	return buffer;
+}
+
+/*
+ * If the AO segment file does not exist, log the relfilenode into the
+ * invalid_page_table hash table using the segment file number as the block
+ * number to avoid creating a new hash table specifically for AO.  The entry
+ * will be removed if there is a following xlog redo commit prepared record
+ * for deleting the relfilenode.  The segment file number here is only used
+ * for a debug message since XLogDropRelation logic will remove all
+ * invalid_page_tab entries that have the same relfilenode and fork number.
+ */
+void
+XLogAOSegmentFile(RelFileNode rnode, uint32 segmentFileNum)
+{
+	log_invalid_page(rnode, MAIN_FORKNUM, segmentFileNum, false);
 }
 
 /*
@@ -998,24 +1018,15 @@ read_local_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr,
 		}
 	}
 
+	/* more than one block available */
 	if (targetPagePtr + XLOG_BLCKSZ <= read_upto)
-	{
-		/*
-		 * more than one block available; read only that block, have caller
-		 * come back if they need more.
-		 */
 		count = XLOG_BLCKSZ;
-	}
+	/* not enough data there */
 	else if (targetPagePtr + reqLen > read_upto)
-	{
-		/* not enough data there */
 		return -1;
-	}
+	/* part of the page available */
 	else
-	{
-		/* enough bytes available to satisfy the request */
 		count = read_upto - targetPagePtr;
-	}
 
 	/*
 	 * Even though we just determined how much of the page can be validly read
@@ -1025,6 +1036,5 @@ read_local_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr,
 	XLogRead(cur_page, state->wal_segment_size, *pageTLI, targetPagePtr,
 			 XLOG_BLCKSZ);
 
-	/* number of valid bytes in the buffer */
 	return count;
 }

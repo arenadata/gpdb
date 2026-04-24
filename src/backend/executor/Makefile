@@ -11,6 +11,8 @@
 subdir = src/backend/executor
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
+override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
+
 
 OBJS = execAmi.o execCurrent.o execExpr.o execExprInterp.o \
        execGrouping.o execIndexing.o execJunk.o \
@@ -27,8 +29,22 @@ OBJS = execAmi.o execCurrent.o execExpr.o execExprInterp.o \
        nodeSamplescan.o nodeSeqscan.o nodeSetOp.o nodeSort.o nodeUnique.o \
        nodeValuesscan.o \
        nodeCtescan.o nodeNamedtuplestorescan.o nodeWorktablescan.o \
-       nodeGroup.o nodeSubplan.o nodeSubqueryscan.o nodeTidscan.o \
+       nodeSubplan.o nodeSubqueryscan.o nodeTidscan.o \
        nodeForeignscan.o nodeWindowAgg.o tstoreReceiver.o tqueue.o spi.o \
        nodeTableFuncscan.o
+
+OBJS += nodeMotion.o \
+       nodeShareInputScan.o \
+       nodeTableFunction.o \
+       nodeSequence.o \
+       nodeAssertOp.o \
+       nodeSplitUpdate.o \
+       nodeTupleSplit.o \
+       nodePartitionSelector.o
+
+OBJS += nodeDynamicSeqscan.o \
+        nodeDynamicIndexscan.o \
+        nodeDynamicBitmapHeapscan.o \
+        nodeDynamicBitmapIndexscan.o
 
 include $(top_srcdir)/src/backend/common.mk

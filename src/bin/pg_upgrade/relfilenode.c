@@ -13,12 +13,19 @@
 
 #include <sys/stat.h>
 #include "catalog/pg_class_d.h"
+#include "access/aomd.h"
+#include "access/appendonlytid.h"
+#include "access/htup_details.h"
 #include "access/transam.h"
 
+#include "greenplum/pg_upgrade_greenplum.h"
 
 static void transfer_single_new_db(FileNameMap *maps, int size, char *old_tablespace);
 static void transfer_relfile(FileNameMap *map, const char *suffix, bool vm_must_add_frozenbit);
 
+static bool transfer_relfile_segment(int segno, FileNameMap *map, const char *suffix, bool vm_must_add_frozenbit);
+static void transfer_ao(FileNameMap *map);
+static bool transfer_ao_perFile(const int segno, void *ctx);
 
 /*
  * transfer_all_new_tablespaces()
@@ -165,23 +172,31 @@ transfer_single_new_db(FileNameMap *maps, int size, char *old_tablespace)
 		if (old_tablespace == NULL ||
 			strcmp(maps[mapnum].old_tablespace, old_tablespace) == 0)
 		{
-			/* transfer primary file */
-			transfer_relfile(&maps[mapnum], "", vm_must_add_frozenbit);
+			RelType type = maps[mapnum].type;
 
-			/* fsm/vm files added in PG 8.4 */
-			if (GET_MAJOR_VERSION(old_cluster.major_version) >= 804)
+			if (type == AO || type == AOCS)
 			{
-				/*
-				 * Copy/link any fsm and vm files, if they exist
-				 */
-				transfer_relfile(&maps[mapnum], "_fsm", vm_must_add_frozenbit);
-				if (vm_crashsafe_match)
-					transfer_relfile(&maps[mapnum], "_vm", vm_must_add_frozenbit);
+				transfer_ao(&maps[mapnum]);
+			}
+			else
+			{
+				/* transfer primary file */
+				transfer_relfile(&maps[mapnum], "", vm_must_add_frozenbit);
+
+				/* fsm/vm files added in PG 8.4 */
+				if (GET_MAJOR_VERSION(old_cluster.major_version) >= 804)
+				{
+					/*
+					 * Copy/link any fsm and vm files, if they exist
+					 */
+					transfer_relfile(&maps[mapnum], "_fsm", vm_must_add_frozenbit);
+					if (vm_crashsafe_match)
+						transfer_relfile(&maps[mapnum], "_vm", vm_must_add_frozenbit);
+				}
 			}
 		}
 	}
 }
-
 
 /*
  * transfer_relfile()
@@ -193,11 +208,7 @@ transfer_single_new_db(FileNameMap *maps, int size, char *old_tablespace)
 static void
 transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_must_add_frozenbit)
 {
-	char		old_file[MAXPGPATH];
-	char		new_file[MAXPGPATH];
 	int			segno;
-	char		extent_suffix[65];
-	struct stat statbuf;
 
 	/*
 	 * Now copy/link any related segments as well. Remember, PG breaks large
@@ -206,75 +217,125 @@ transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_must_add_fro
 	 */
 	for (segno = 0;; segno++)
 	{
-		if (segno == 0)
-			extent_suffix[0] = '\0';
-		else
-			snprintf(extent_suffix, sizeof(extent_suffix), ".%d", segno);
-
-		snprintf(old_file, sizeof(old_file), "%s%s/%u/%u%s%s",
-				 map->old_tablespace,
-				 map->old_tablespace_suffix,
-				 map->old_db_oid,
-				 map->old_relfilenode,
-				 type_suffix,
-				 extent_suffix);
-		snprintf(new_file, sizeof(new_file), "%s%s/%u/%u%s%s",
-				 map->new_tablespace,
-				 map->new_tablespace_suffix,
-				 map->new_db_oid,
-				 map->new_relfilenode,
-				 type_suffix,
-				 extent_suffix);
-
-		/* Is it an extent, fsm, or vm file? */
-		if (type_suffix[0] != '\0' || segno != 0)
-		{
-			/* Did file open fail? */
-			if (stat(old_file, &statbuf) != 0)
-			{
-				/* File does not exist?  That's OK, just return */
-				if (errno == ENOENT)
-					return;
-				else
-					pg_fatal("error while checking for file existence \"%s.%s\" (\"%s\" to \"%s\"): %s\n",
-							 map->nspname, map->relname, old_file, new_file,
-							 strerror(errno));
-			}
-
-			/* If file is empty, just return */
-			if (statbuf.st_size == 0)
-				return;
-		}
-
-		unlink(new_file);
-
-		/* Copying files might take some time, so give feedback. */
-		pg_log(PG_STATUS, "%s", old_file);
-
-		if (vm_must_add_frozenbit && strcmp(type_suffix, "_vm") == 0)
-		{
-			/* Need to rewrite visibility map format */
-			pg_log(PG_VERBOSE, "rewriting \"%s\" to \"%s\"\n",
-				   old_file, new_file);
-			rewriteVisibilityMap(old_file, new_file, map->nspname, map->relname);
-		}
-		else
-			switch (user_opts.transfer_mode)
-			{
-				case TRANSFER_MODE_CLONE:
-					pg_log(PG_VERBOSE, "cloning \"%s\" to \"%s\"\n",
-						   old_file, new_file);
-					cloneFile(old_file, new_file, map->nspname, map->relname);
-					break;
-				case TRANSFER_MODE_COPY:
-					pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\"\n",
-						   old_file, new_file);
-					copyFile(old_file, new_file, map->nspname, map->relname);
-					break;
-				case TRANSFER_MODE_LINK:
-					pg_log(PG_VERBOSE, "linking \"%s\" to \"%s\"\n",
-						   old_file, new_file);
-					linkFile(old_file, new_file, map->nspname, map->relname);
-			}
+		if (!transfer_relfile_segment(segno, map, type_suffix, vm_must_add_frozenbit))
+			break;
 	}
+}
+
+/*
+ * GPDB: the body of transfer_relfile(), above, has moved into this function to
+ * facilitate the implementation of transfer_ao().
+ *
+ * Returns true if the segment file was found, and false if it was not. Failures
+ * during transfer are fatal. The case where we cannot find the segment-zero
+ * file (the one without an extent suffix) for a relation is also fatal, since
+ * we expect that to exist for both heap and AO tables in any case.
+ *
+ * TODO: verify that AO tables must always have a segment zero.
+ */
+static bool
+transfer_relfile_segment(int segno, FileNameMap *map,
+						 const char *type_suffix, bool vm_must_add_frozenbit)
+{
+	char		old_file[MAXPGPATH * 3];
+	char		new_file[MAXPGPATH * 3];
+	char		extent_suffix[65];
+	struct stat statbuf;
+
+	/*
+	 * Extra indentation is on purpose, to reduce merge conflicts with upstream.
+	 */
+
+	if (segno == 0)
+		extent_suffix[0] = '\0';
+	else
+		snprintf(extent_suffix, sizeof(extent_suffix), ".%d", segno);
+
+	snprintf(old_file, sizeof(old_file), "%s%s/%u/%u%s%s",
+			map->old_tablespace,
+			map->old_tablespace_suffix,
+			map->old_db_oid,
+			map->old_relfilenode,
+			type_suffix,
+			extent_suffix);
+	snprintf(new_file, sizeof(new_file), "%s%s/%u/%u%s%s",
+			map->new_tablespace,
+			map->new_tablespace_suffix,
+			map->new_db_oid,
+			map->new_relfilenode,
+			type_suffix,
+			extent_suffix);
+
+	/* Is it an extent, fsm, or vm file? */
+	if (type_suffix[0] != '\0' || segno != 0)
+	{
+		/* Did file open fail? */
+		if (stat(old_file, &statbuf) != 0)
+		{
+			/* File does not exist?  That's OK, just return */
+			if (errno == ENOENT)
+				return false;
+			else
+				pg_fatal("error while checking for file existence \"%s.%s\" (\"%s\" to \"%s\"): %s\n",
+						map->nspname, map->relname, old_file, new_file,
+						strerror(errno));
+		}
+
+		/* If file is empty, just return */
+		if (statbuf.st_size == 0)
+			return true;
+	}
+
+	unlink(new_file);
+
+	/* Copying files might take some time, so give feedback. */
+	pg_log(PG_STATUS, "%s", old_file);
+
+	/* Rewrite visibility map if needed */
+	if (vm_must_add_frozenbit && (strcmp(type_suffix, "_vm") == 0))
+	{
+		/* Need to rewrite visibility map format */
+		pg_log(PG_VERBOSE, "rewriting \"%s\" to \"%s\"\n",
+			   old_file, new_file);
+		rewriteVisibilityMap(old_file, new_file, map->nspname, map->relname);
+	}
+	else
+		switch (user_opts.transfer_mode)
+		{
+			case TRANSFER_MODE_CLONE:
+				pg_log(PG_VERBOSE, "cloning \"%s\" to \"%s\"\n",
+					   old_file, new_file);
+				cloneFile(old_file, new_file, map->nspname, map->relname);
+				break;
+			case TRANSFER_MODE_COPY:
+				pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\"\n",
+					   old_file, new_file);
+				copyFile(old_file, new_file, map->nspname, map->relname);
+				break;
+			case TRANSFER_MODE_LINK:
+				pg_log(PG_VERBOSE, "linking \"%s\" to \"%s\"\n",
+					   old_file, new_file);
+				linkFile(old_file, new_file, map->nspname, map->relname);
+		}
+
+	return true;
+}
+
+static void
+transfer_ao(FileNameMap *map)
+{
+	transfer_relfile_segment(0, map, "", false);
+
+	ao_foreach_extent_file(transfer_ao_perFile, map);
+}
+
+static bool
+transfer_ao_perFile(const int segno, void *ctx)
+{
+	FileNameMap *map = ctx;
+
+	if (!transfer_relfile_segment(segno, map , "", false))
+		return false;
+
+	return true;
 }

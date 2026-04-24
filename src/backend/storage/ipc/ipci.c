@@ -14,6 +14,8 @@
  */
 #include "postgres.h"
 
+#include <signal.h>
+
 #include "access/clog.h"
 #include "access/commit_ts.h"
 #include "access/heapam.h"
@@ -21,13 +23,18 @@
 #include "access/nbtree.h"
 #include "access/subtrans.h"
 #include "access/twophase.h"
+#include "access/distributedlog.h"
+#include "cdb/cdblocaldistribxact.h"
+#include "cdb/cdbvars.h"
 #include "commands/async.h"
+#include "executor/nodeShareInputScan.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgworker_internals.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
+#include "postmaster/fts.h"
 #include "replication/logicallauncher.h"
 #include "replication/slot.h"
 #include "replication/walreceiver.h"
@@ -44,7 +51,25 @@
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
+#include "utils/backend_cancel.h"
+#include "utils/resource_manager.h"
+#include "utils/faultinjector.h"
+#include "utils/sharedsnapshot.h"
+#include "utils/gpexpand.h"
 #include "utils/snapmgr.h"
+
+#include "libpq-fe.h"
+#include "libpq-int.h"
+#include "cdb/cdbfts.h"
+#include "cdb/cdbtm.h"
+#include "postmaster/backoff.h"
+#include "cdb/memquota.h"
+#include "executor/instrument.h"
+#include "executor/spi.h"
+#include "utils/workfile_mgr.h"
+#include "utils/session_state.h"
+#include "cdb/cdbendpoint.h"
+#include "replication/gp_replication.h"
 
 /* GUCs */
 int			shared_memory_type = DEFAULT_SHARED_MEMORY_TYPE;
@@ -105,6 +130,7 @@ CreateSharedMemoryAndSemaphores(int port)
 		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
 
+        elog(DEBUG3,"reserving %d semaphores",numSemas);
 		/*
 		 * Size of the Postgres shared-memory block is estimated via
 		 * moderately-accurate estimates for the big hogs, plus 100K for the
@@ -114,7 +140,7 @@ CreateSharedMemoryAndSemaphores(int port)
 		 * request doesn't overflow size_t.  If this gets through, we don't
 		 * need to be so careful during the actual allocation phase.
 		 */
-		size = 100000;
+		size = 150000;
 		size = add_size(size, PGSemaphoreShmemSize(numSemas));
 		size = add_size(size, SpinlockSemaSize());
 		size = add_size(size, hash_estimate_size(SHMEM_INDEX_SIZE,
@@ -122,8 +148,21 @@ CreateSharedMemoryAndSemaphores(int port)
 		size = add_size(size, BufferShmemSize());
 		size = add_size(size, LockShmemSize());
 		size = add_size(size, PredicateLockShmemSize());
+
+		if (IsResQueueEnabled() && Gp_role == GP_ROLE_DISPATCH)
+		{
+			size = add_size(size, ResSchedulerShmemSize());
+			size = add_size(size, ResPortalIncrementShmemSize());
+		}
+		else if (IsResGroupEnabled())
+			size = add_size(size, ResGroupShmemSize());
+		size = add_size(size, SharedSnapshotShmemSize());
+		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+			size = add_size(size, FtsShmemSize());
+
 		size = add_size(size, ProcGlobalShmemSize());
 		size = add_size(size, XLOGShmemSize());
+		size = add_size(size, DistributedLog_ShmemSize());
 		size = add_size(size, CLOGShmemSize());
 		size = add_size(size, CommitTsShmemSize());
 		size = add_size(size, SUBTRANSShmemSize());
@@ -143,6 +182,7 @@ CreateSharedMemoryAndSemaphores(int port)
 		size = add_size(size, WalSndShmemSize());
 		size = add_size(size, WalRcvShmemSize());
 		size = add_size(size, ApplyLauncherShmemSize());
+		size = add_size(size, FTSReplicationStatusShmemSize());
 		size = add_size(size, SnapMgrShmemSize());
 		size = add_size(size, BTreeShmemSize());
 		size = add_size(size, SyncScanShmemSize());
@@ -151,12 +191,41 @@ CreateSharedMemoryAndSemaphores(int port)
 		size = add_size(size, ShmemBackendArraySize());
 #endif
 
+		size = add_size(size, tmShmemSize());
+		size = add_size(size, CheckpointerShmemSize());
+		size = add_size(size, CancelBackendMsgShmemSize());
+		size = add_size(size, WorkFileShmemSize());
+		size = add_size(size, ShareInputShmemSize());
+
+#ifdef FAULT_INJECTOR
+		size = add_size(size, FaultInjector_ShmemSize());
+#endif			
+
+		/* This elog happens before we know the name of the log file we are supposed to use */
+		elog(DEBUG1, "Size not including the buffer pool %lu",
+			 (unsigned long) size);
+
 		/* freeze the addin request size and include it */
 		addin_request_allowed = false;
 		size = add_size(size, total_addin_request);
 
 		/* might as well round it off to a multiple of a typical page size */
-		size = add_size(size, 8192 - (size % 8192));
+		size = add_size(size, BLCKSZ - (size % BLCKSZ));
+
+		/* Consider the size of the SessionState array */
+		size = add_size(size, SessionState_ShmemSize());
+
+		/* size of Instrumentation slots */
+		size = add_size(size, InstrShmemSize());
+
+		/* size of expand version */
+		size = add_size(size, GpExpandVersionShmemSize());
+
+		/* size of token and endpoint shared memory */
+		size = add_size(size, EndpointShmemSize());
+
+		/* size of parallel cursor count */
+		size = add_size(size, ParallelCursorCountSize());
 
 		elog(DEBUG3, "invoking IpcMemoryCreate(size=%zu)", size);
 
@@ -213,9 +282,13 @@ CreateSharedMemoryAndSemaphores(int port)
 	 */
 	XLOGShmemInit();
 	CLOGShmemInit();
+	DistributedLog_ShmemInit();
 	CommitTsShmemInit();
 	SUBTRANSShmemInit();
 	MultiXactShmemInit();
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+		FtsShmemInit();
+	tmShmemInit();
 	InitBufferPool();
 
 	/*
@@ -229,12 +302,33 @@ CreateSharedMemoryAndSemaphores(int port)
 	InitPredicateLocks();
 
 	/*
+	 * Set up resource manager 
+	 */
+	ResManagerShmemInit();
+
+	/*
 	 * Set up process table
 	 */
 	if (!IsUnderPostmaster)
 		InitProcGlobal();
+
+	/* Initialize SessionState shared memory array */
+	SessionState_ShmemInit();
+	/* Initialize vmem protection */
+	GPMemoryProtect_ShmemInit();
+
 	CreateSharedProcArray();
 	CreateSharedBackendStatus();
+	
+	/*
+	 * Set up Shared snapshot slots
+	 *
+	 * TODO: only need to do this if we aren't the QD. for now we are just 
+	 *		 doing it all the time and wasting shemem on the QD.  This is 
+	 *		 because this happens at postmaster startup time when we don't
+	 *		 know who we are.  
+	 */
+	CreateSharedSnapshotArray();
 	TwoPhaseShmemInit();
 	BackgroundWorkerShmemInit();
 
@@ -255,6 +349,11 @@ CreateSharedMemoryAndSemaphores(int port)
 	WalSndShmemInit();
 	WalRcvShmemInit();
 	ApplyLauncherShmemInit();
+	FTSReplicationStatusShmemInit();
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_ShmemInit();
+#endif
 
 	/*
 	 * Set up other modules that need some shared memory space
@@ -263,6 +362,17 @@ CreateSharedMemoryAndSemaphores(int port)
 	BTreeShmemInit();
 	SyncScanShmemInit();
 	AsyncShmemInit();
+	BackendCancelShmemInit();
+	WorkFileShmemInit();
+	ShareInputShmemInit();
+
+	/*
+	 * Set up Instrumentation free list
+	 */
+	if (!IsUnderPostmaster)
+		InstrShmemInit();
+
+	GpExpandVersionShmemInit();
 
 #ifdef EXEC_BACKEND
 
@@ -273,9 +383,19 @@ CreateSharedMemoryAndSemaphores(int port)
 		ShmemBackendArrayAllocation();
 #endif
 
+	if (gp_enable_resqueue_priority)
+		BackoffStateInit();
+
 	/* Initialize dynamic shared memory facilities. */
 	if (!IsUnderPostmaster)
 		dsm_postmaster_startup(shim);
+
+	/* Initialize shared memory for parallel retrieve cursor */
+	if (!IsUnderPostmaster)
+		EndpointShmemInit();
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+		ParallelCursorCountInit();
 
 	/*
 	 * Now give loadable modules a chance to set up their shmem allocations

@@ -32,6 +32,7 @@
 #include "executor/execdebug.h"
 #include "executor/nodeSeqscan.h"
 #include "utils/rel.h"
+#include "nodes/nodeFuncs.h"
 
 static TupleTableSlot *SeqNext(SeqScanState *node);
 
@@ -68,9 +69,15 @@ SeqNext(SeqScanState *node)
 		 * We reach here if the scan is not parallel, or if we're serially
 		 * executing a scan that was planned to be parallel.
 		 */
-		scandesc = table_beginscan(node->ss.ss_currentRelation,
-								   estate->es_snapshot,
-								   0, NULL);
+		/*
+		 * GPDB: we are using table_beginscan_es in order to also initialize the
+		 * scan state with the column info needed for AOCO relations. Check the
+		 * comment in table_beginscan_es() for more info.
+		 */
+		scandesc = table_beginscan_es(node->ss.ss_currentRelation,
+									  estate->es_snapshot,
+									  node->ss.ps.plan->targetlist,
+									  node->ss.ps.plan->qual);
 		node->ss.ss_currentScanDesc = scandesc;
 	}
 
@@ -114,13 +121,27 @@ ExecSeqScan(PlanState *pstate)
 					(ExecScanRecheckMtd) SeqRecheck);
 }
 
-
 /* ----------------------------------------------------------------
  *		ExecInitSeqScan
  * ----------------------------------------------------------------
  */
 SeqScanState *
 ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
+{
+	Relation	currentRelation;
+
+	/*
+	 * get the relation object id from the relid'th entry in the range table,
+	 * open that relation and acquire appropriate lock on it.
+	 */
+	currentRelation = ExecOpenScanRelation(estate, node->scanrelid, eflags);
+
+	return ExecInitSeqScanForPartition(node, estate, currentRelation);
+}
+
+SeqScanState *
+ExecInitSeqScanForPartition(SeqScan *node, EState *estate,
+							Relation currentRelation)
 {
 	SeqScanState *scanstate;
 
@@ -149,10 +170,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	/*
 	 * open the scan relation
 	 */
-	scanstate->ss.ss_currentRelation =
-		ExecOpenScanRelation(estate,
-							 node->scanrelid,
-							 eflags);
+	scanstate->ss.ss_currentRelation = currentRelation;
 
 	/* and create slot with the appropriate rowtype */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,

@@ -52,6 +52,12 @@ extern void PGSemaphoreReset(PGSemaphore sema);
 /* Lock a semaphore (decrement count), blocking if count would be < 0 */
 extern void PGSemaphoreLock(PGSemaphore sema);
 
+/*
+ * Lock a semaphore (decrement count), blocking if count would be < 0.
+ * Return true if the lock obtained or false if an interrupt occurred.
+ */
+extern bool PGSemaphoreLockInterruptable(PGSemaphore sema);
+
 /* Unlock a semaphore (increment count) */
 extern void PGSemaphoreUnlock(PGSemaphore sema);
 

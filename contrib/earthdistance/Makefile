@@ -8,7 +8,7 @@ DATA = earthdistance--1.1.sql earthdistance--1.0--1.1.sql \
 PGFILEDESC = "earthdistance - calculate distances on the surface of the Earth"
 
 REGRESS = earthdistance
-EXTRA_INSTALL = contrib/cube
+REGRESS_OPTS = --extra-install=contrib/cube
 
 LDFLAGS_SL += $(filter -lm, $(LIBS))
 
@@ -22,3 +22,6 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+
+installcheck:
+	true

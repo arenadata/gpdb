@@ -6,6 +6,8 @@
  *	  pg_shadow and pg_group are now publicly accessible views on pg_authid.
  *
  *
+ * Portions Copyright (c) 2006-2010, Greenplum inc.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -45,8 +47,31 @@ CATALOG(pg_authid,1260,AuthIdRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(284
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	text		rolpassword;	/* password, if any */
 	timestamptz rolvaliduntil;	/* password expiration time, if any */
+
+	/*
+	 * GP added fields
+	 */
+
+	/* ID of resource queue for this role */
+	Oid			rolresqueue BKI_DEFAULT(6055);
+
+	/* allowed to create readable gpfdist tbl?  */
+	bool		rolcreaterextgpfd BKI_DEFAULT(f);
+
+	/* allowed to create readable http tbl?  */
+	bool		rolcreaterexthttp BKI_DEFAULT(f);
+
+	/* allowed to create writable gpfdist tbl?  */
+	bool		rolcreatewextgpfd BKI_DEFAULT(f);
+
+	/* ID of resource group for this role  */
+	Oid			rolresgroup BKI_DEFAULT(6438);
 #endif
 } FormData_pg_authid;
+
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(rolresqueue REFERENCES pg_resqueue(oid));
+FOREIGN_KEY(rolresgroup REFERENCES pg_resgroup(oid));
 
 /* ----------------
  *		Form_pg_authid corresponds to a pointer to a tuple with

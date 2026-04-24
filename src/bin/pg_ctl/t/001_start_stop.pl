@@ -6,9 +6,9 @@ use Fcntl ':mode';
 use File::stat qw{lstat};
 use PostgresNode;
 use TestLib;
-use Test::More tests => 24;
+use Test::More tests => 26;
 
-my $tempdir       = TestLib::tempdir;
+my $tempdir = TestLib::tempdir;
 my $tempdir_short = TestLib::tempdir_short;
 
 program_help_ok('pg_ctl');
@@ -18,7 +18,7 @@ program_options_handling_ok('pg_ctl');
 command_exit_is([ 'pg_ctl', 'start', '-D', "$tempdir/nonexistent" ],
 	1, 'pg_ctl start with nonexistent directory');
 
-command_ok([ 'pg_ctl', 'initdb', '-D', "$tempdir/data", '-o', '-N' ],
+command_ok([ 'pg_ctl', 'initdb', '-D', "$tempdir/data", '-o', '-N'],
 	'pg_ctl initdb');
 command_ok([ $ENV{PG_REGRESS}, '--config-auth', "$tempdir/data" ],
 	'configure authentication');
@@ -40,6 +40,7 @@ close $conf;
 my $ctlcmd = [
 	'pg_ctl', 'start', '-D', "$tempdir/data", '-l',
 	"$TestLib::log_path/001_start_stop_server.log"
+	,'-o', '-c gp_role=utility --gp_dbid=-1 --gp_contentid=-1',
 ];
 if ($Config{osname} ne 'msys')
 {
@@ -94,7 +95,9 @@ SKIP:
 	chmod_recursive("$tempdir/data", 0750, 0640);
 
 	command_ok(
-		[ 'pg_ctl', 'start', '-D', "$tempdir/data", '-l', $logFileName ],
+		[ 'pg_ctl', 'start', '-D', "$tempdir/data", '-l', $logFileName,
+		  '-o', '-c gp_role=utility --gp_dbid=-1 --gp_contentid=-1 -c log_file_mode=0640',
+		],
 		'start server to check group permissions');
 
 	ok(-f $logFileName);
@@ -105,3 +108,27 @@ command_ok([ 'pg_ctl', 'restart', '-D', "$tempdir/data" ],
 	'pg_ctl restart with server running');
 
 system_or_bail 'pg_ctl', 'stop', '-D', "$tempdir/data";
+
+# gpdb specific: verify that --wrapper and --wrapper-args work as expected
+if (not $windows_os)
+{
+	my $keypair = 'TESTKEY=hello';
+	my $file;
+
+	# launch the server with the env command as a wrapper
+	command_ok([ 'pg_ctl', 'start', '-D', "$tempdir/data", '-w',
+			'--wrapper=env', "--wrapper-args=$keypair",
+			'-o', '-c gp_role=utility --gp_dbid=-1 --gp_contentid=-1' ],
+		'pg_ctl start --wrapper');
+
+	# read the pid
+	open($file, '<', "$tempdir/data/postmaster.pid");
+	my $pid = 0 + <$file>;
+	close($file);
+
+	# verify that the envvar is successfully set
+	command_ok([ 'grep', '-z', $keypair, "/proc/$pid/environ" ],
+		'verify wrapper effect');
+
+	system_or_bail 'pg_ctl', 'stop', '-D', "$tempdir/data", '-m', 'fast';
+}

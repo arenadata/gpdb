@@ -40,6 +40,7 @@
 #include "catalog/pg_ts_dict.h"
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
+#include "catalog/pg_extprotocol.h"
 #include "commands/alter.h"
 #include "commands/collationcmds.h"
 #include "commands/conversioncmds.h"
@@ -47,6 +48,7 @@
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
+#include "commands/extprotocolcmds.h"
 #include "commands/policy.h"
 #include "commands/proclang.h"
 #include "commands/publicationcmds.h"
@@ -66,6 +68,9 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp_query.h"
 
 
 static Oid	AlterObjectNamespace_internal(Relation rel, Oid objid, Oid nspOid);
@@ -92,6 +97,9 @@ report_name_conflict(Oid classId, const char *name)
 			break;
 		case LanguageRelationId:
 			msgfmt = gettext_noop("language \"%s\" already exists");
+			break;
+		case ExtprotocolRelationId:
+			msgfmt = gettext_noop("protocol \"%s\" already exists");
 			break;
 		case PublicationRelationId:
 			msgfmt = gettext_noop("publication \"%s\" already exists");
@@ -328,8 +336,8 @@ AlterObjectRename_internal(Relation rel, Oid objectId, const char *new_name)
  *
  * Return value is the address of the renamed object.
  */
-ObjectAddress
-ExecRenameStmt(RenameStmt *stmt)
+static ObjectAddress
+ExecRenameStmt_internal(RenameStmt *stmt)
 {
 	switch (stmt->renameType)
 	{
@@ -375,6 +383,7 @@ ExecRenameStmt(RenameStmt *stmt)
 		case OBJECT_TYPE:
 			return RenameType(stmt);
 
+		case OBJECT_EXTPROTOCOL:
 		case OBJECT_AGGREGATE:
 		case OBJECT_COLLATION:
 		case OBJECT_CONVERSION:
@@ -421,6 +430,26 @@ ExecRenameStmt(RenameStmt *stmt)
 	}
 }
 
+ObjectAddress
+ExecRenameStmt(RenameStmt *stmt)
+{
+	ObjectAddress	result;
+
+	result = ExecRenameStmt_internal(stmt);
+
+	if (Gp_role == GP_ROLE_DISPATCH && shouldDispatchForObject(stmt->renameType))
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NIL,
+									NULL);
+	}
+
+	return result;
+}
+
 /*
  * Executes an ALTER OBJECT / DEPENDS ON [EXTENSION] statement.
  *
@@ -454,6 +483,16 @@ ExecAlterObjectDependsStmt(AlterObjectDependsStmt *stmt, ObjectAddress *refAddre
 
 	recordDependencyOn(&address, &refAddr, DEPENDENCY_AUTO_EXTENSION);
 
+	if (Gp_role == GP_ROLE_DISPATCH && shouldDispatchForObject(stmt->objectType))
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+										DF_WITH_SNAPSHOT|
+										DF_NEED_TWO_PHASE,
+									NIL,
+									NULL);
+	}
+
 	return address;
 }
 
@@ -466,8 +505,8 @@ ExecAlterObjectDependsStmt(AlterObjectDependsStmt *stmt, ObjectAddress *refAddre
  * oldSchemaAddr is an output argument which, if not NULL, is set to the object
  * address of the original schema.
  */
-ObjectAddress
-ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt,
+static ObjectAddress
+ExecAlterObjectSchemaStmt_internal(AlterObjectSchemaStmt *stmt,
 						  ObjectAddress *oldSchemaAddr)
 {
 	ObjectAddress address;
@@ -543,6 +582,27 @@ ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt,
 		ObjectAddressSet(*oldSchemaAddr, NamespaceRelationId, oldNspOid);
 
 	return address;
+}
+
+ObjectAddress
+ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt,
+						  ObjectAddress *oldSchemaAddr)
+{
+	ObjectAddress	result;
+
+	result = ExecAlterObjectSchemaStmt_internal(stmt, oldSchemaAddr);
+
+	if (Gp_role == GP_ROLE_DISPATCH && shouldDispatchForObject(stmt->objectType))
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NIL,
+									NULL);
+	}
+
+	return result;
 }
 
 /*
@@ -638,6 +698,7 @@ AlterObjectNamespace_oid(Oid classId, Oid objid, Oid nspOid,
 		case OCLASS_PUBLICATION_REL:
 		case OCLASS_SUBSCRIPTION:
 		case OCLASS_TRANSFORM:
+		case OCLASS_EXTPROTOCOL:
 			/* ignore object types that don't have schema-qualified names */
 			break;
 
@@ -805,8 +866,8 @@ AlterObjectNamespace_internal(Relation rel, Oid objid, Oid nspOid)
  * Executes an ALTER OBJECT / OWNER TO statement.  Based on the object
  * type, the function appropriate to that type is executed.
  */
-ObjectAddress
-ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
+static ObjectAddress
+ExecAlterOwnerStmt_internal(AlterOwnerStmt *stmt)
 {
 	Oid			newowner = get_rolespec_oid(stmt->newowner, false);
 
@@ -844,6 +905,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 										  newowner);
 
 			/* Generic cases */
+		case OBJECT_EXTPROTOCOL:
 		case OBJECT_AGGREGATE:
 		case OBJECT_COLLATION:
 		case OBJECT_CONVERSION:
@@ -895,6 +957,26 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 				 (int) stmt->objectType);
 			return InvalidObjectAddress;	/* keep compiler happy */
 	}
+}
+
+ObjectAddress
+ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
+{
+	ObjectAddress	result;
+
+	result = ExecAlterOwnerStmt_internal(stmt);
+
+	if (Gp_role == GP_ROLE_DISPATCH && shouldDispatchForObject(stmt->objectType))
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NIL,
+									NULL);
+	}
+
+	return result;
 }
 
 /*
@@ -986,6 +1068,34 @@ AlterObjectOwner_internal(Relation rel, Oid objectId, Oid new_ownerId)
 					aclcheck_error(aclresult, OBJECT_SCHEMA,
 								   get_namespace_name(namespaceId));
 			}
+		}
+
+		/* MPP-14592: untrusted? don't allow ALTER OWNER to non-super user */
+		if(classId == ExtprotocolRelationId) 
+		{
+			char *old_name;
+			bool is_trusted;
+
+			datum = heap_getattr(oldtup, Anum_name,
+                                                 RelationGetDescr(rel), &isnull);
+
+			Assert(!isnull);
+		
+			old_name = NameStr(*(DatumGetName(datum)));
+		
+			datum = heap_getattr(oldtup, Anum_pg_extprotocol_ptctrusted,
+						 RelationGetDescr(rel), &isnull);
+			if (isnull)
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 	errmsg("internal error: protocol \"%s\" has no trust attribute defined", old_name)));
+			
+			is_trusted = DatumGetBool(datum);
+			
+			if(!is_trusted && !superuser_arg(new_ownerId))
+				ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					errmsg("untrusted protocol \"%s\" can't be owned by non superuser", old_name)));
 		}
 
 		/* Build a modified tuple */

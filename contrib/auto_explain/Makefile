@@ -4,6 +4,9 @@ MODULE_big = auto_explain
 OBJS = auto_explain.o $(WIN32RES)
 PGFILEDESC = "auto_explain - logging facility for execution plans"
 
+REGRESS = auto_explain bfv_preload_auto_explain
+REGRESS_OPTS = --init-file=init_file
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

@@ -3,6 +3,23 @@
 -- Test various data entry syntaxes.
 --
 
+-- create required tables
+CREATE TABLE CHAR_STRINGS_TBL(f1 char(4));
+INSERT INTO CHAR_STRINGS_TBL (f1) VALUES ('a'),
+('ab'),
+('abcd'),
+('abcd    ');
+
+CREATE TABLE VARCHAR_STRINGS_TBL(f1 varchar(4));
+INSERT INTO VARCHAR_STRINGS_TBL (f1) VALUES ('a'),
+('ab'),
+('abcd'),
+('abcd    ');
+
+CREATE TABLE TEXT_STRINGS_TBL (f1 text);
+INSERT INTO TEXT_STRINGS_TBL VALUES ('doh!'),
+('hi de ho neighbor');
+
 -- SQL string continuation syntax
 -- E021-03 character string literals
 SELECT 'first line'
@@ -15,6 +32,27 @@ SELECT 'first line'
 ' - next line' /* this comment is not allowed here */
 ' - third line'
 	AS "Illegal comment within continuation";
+
+-- bytea
+SET bytea_output TO hex;
+SELECT E'\\xDeAdBeEf'::bytea;
+SELECT E'\\x De Ad Be Ef '::bytea;
+SELECT E'\\xDeAdBeE'::bytea;
+SELECT E'\\xDeAdBeEx'::bytea;
+SELECT E'\\xDe00BeEf'::bytea;
+SELECT E'DeAdBeEf'::bytea;
+SELECT E'De\\000dBeEf'::bytea;
+SELECT E'De\123dBeEf'::bytea;
+SELECT E'De\\123dBeEf'::bytea;
+SELECT E'De\\678dBeEf'::bytea;
+
+SET bytea_output TO escape;
+SELECT E'\\xDeAdBeEf'::bytea;
+SELECT E'\\x De Ad Be Ef '::bytea;
+SELECT E'\\xDe00BeEf'::bytea;
+SELECT E'DeAdBeEf'::bytea;
+SELECT E'De\\000dBeEf'::bytea;
+SELECT E'De\\123dBeEf'::bytea;
 
 -- Unicode escapes
 SET standard_conforming_strings TO on;
@@ -69,25 +107,25 @@ SELECT E'De\\123dBeEf'::bytea;
 -- E021-10 implicit casting among the character data types
 --
 
-SELECT CAST(f1 AS text) AS "text(char)" FROM CHAR_TBL;
+SELECT CAST(f1 AS text) AS "text(char)" FROM CHAR_STRINGS_TBL;
 
-SELECT CAST(f1 AS text) AS "text(varchar)" FROM VARCHAR_TBL;
+SELECT CAST(f1 AS text) AS "text(varchar)" FROM VARCHAR_STRINGS_TBL;
 
 SELECT CAST(name 'namefield' AS text) AS "text(name)";
 
 -- since this is an explicit cast, it should truncate w/o error:
-SELECT CAST(f1 AS char(10)) AS "char(text)" FROM TEXT_TBL;
+SELECT CAST(f1 AS char(10)) AS "char(text)" FROM TEXT_STRINGS_TBL;
 -- note: implicit-cast case is tested in char.sql
 
-SELECT CAST(f1 AS char(20)) AS "char(text)" FROM TEXT_TBL;
+SELECT CAST(f1 AS char(20)) AS "char(text)" FROM TEXT_STRINGS_TBL;
 
-SELECT CAST(f1 AS char(10)) AS "char(varchar)" FROM VARCHAR_TBL;
+SELECT CAST(f1 AS char(10)) AS "char(varchar)" FROM VARCHAR_STRINGS_TBL;
 
 SELECT CAST(name 'namefield' AS char(10)) AS "char(name)";
 
-SELECT CAST(f1 AS varchar) AS "varchar(text)" FROM TEXT_TBL;
+SELECT CAST(f1 AS varchar) AS "varchar(text)" FROM TEXT_STRINGS_TBL;
 
-SELECT CAST(f1 AS varchar) AS "varchar(char)" FROM CHAR_TBL;
+SELECT CAST(f1 AS varchar) AS "varchar(char)" FROM CHAR_STRINGS_TBL;
 
 SELECT CAST(name 'namefield' AS varchar) AS "varchar(name)";
 
@@ -398,11 +436,14 @@ SELECT substr(f1, 99995) from toasttest;
 -- string length
 SELECT substr(f1, 99995, 10) from toasttest;
 
+-- GPDB: These tests are sensitive to block size. In GPDB, the block
+-- size is 32 kB, whereas in PostgreSQL it's 8kB. Therefore make
+-- the data 4x larger here.
 TRUNCATE TABLE toasttest;
-INSERT INTO toasttest values (repeat('1234567890',300));
-INSERT INTO toasttest values (repeat('1234567890',300));
-INSERT INTO toasttest values (repeat('1234567890',300));
-INSERT INTO toasttest values (repeat('1234567890',300));
+INSERT INTO toasttest values (repeat('1234567890',300*4));
+INSERT INTO toasttest values (repeat('1234567890',300*4));
+INSERT INTO toasttest values (repeat('1234567890',300*4));
+INSERT INTO toasttest values (repeat('1234567890',300*4));
 -- expect >0 blocks
 SELECT pg_relation_size(reltoastrelid) = 0 AS is_empty
   FROM pg_class where relname = 'toasttest';
@@ -424,16 +465,16 @@ DROP TABLE toasttest;
 --
 CREATE TABLE toasttest(f1 bytea);
 
-insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
-insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+insert into toasttest values("decode"(repeat('1234567890',10000),'escape'));
+insert into toasttest values(pg_catalog.decode(repeat('1234567890',10000),'escape'));
 
 --
 -- Ensure that some values are uncompressed, to test the faster substring
 -- operation used in that case
 --
 alter table toasttest alter column f1 set storage external;
-insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
-insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+insert into toasttest values("decode"(repeat('1234567890',10000),'escape'));
+insert into toasttest values(pg_catalog.decode(repeat('1234567890',10000),'escape'));
 
 -- If the starting position is zero or less, then return from the start of the string
 -- adjusting the length to be consistent with the "negative start" per SQL.
@@ -587,6 +628,15 @@ set standard_conforming_strings = off;
 
 select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd' as f5, '\\\\' as f6;
 
+--
+-- test unicode escape
+--
+select E'A\u0041' as f1, E'\u0127' as f2;
+select E'\u0000';
+select E'\udsfs';
+select E'\uD843\uE001';
+select E'\uDC01';
+select E'\uD834';
 
 --
 -- Additional string functions
@@ -628,3 +678,9 @@ SELECT btrim(E'\\000trim\\000'::bytea, ''::bytea);
 SELECT encode(overlay(E'Th\\000omas'::bytea placing E'Th\\001omas'::bytea from 2),'escape');
 SELECT encode(overlay(E'Th\\000omas'::bytea placing E'\\002\\003'::bytea from 8),'escape');
 SELECT encode(overlay(E'Th\\000omas'::bytea placing E'\\002\\003'::bytea from 5 for 3),'escape');
+
+
+-- Clean up GPDB-added tables
+DROP TABLE char_strings_tbl;
+DROP TABLE varchar_strings_tbl;
+DROP TABLE text_strings_tbl;

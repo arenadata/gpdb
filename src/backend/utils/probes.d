@@ -28,6 +28,19 @@ provider postgresql {
 	probe transaction__commit(LocalTransactionId);
 	probe transaction__abort(LocalTransactionId);
 
+	probe execprocnode__enter(int, int, int, int);
+	probe execprocnode__exit(int, int, int, int);
+
+	probe tuplesort__begin(int, int, int);
+	probe tuplesort__end(int, int);
+	probe tuplesort__perform__sort();
+	probe tuplesort__mergeonerun(int);
+	probe tuplesort__dumptuples(int, int, int);
+	probe tuplesort__switch__external(int);
+	
+	probe backoff__localcheck(int);
+	probe backoff__globalcheck();
+
 	probe lwlock__acquire(const char *, LWLockMode);
 	probe lwlock__release(const char *);
 	probe lwlock__wait__start(const char *, LWLockMode);

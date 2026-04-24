@@ -32,8 +32,12 @@
 #include "utils/memutils.h"
 #include "pg_trace.h"
 
-/* Buffer size required to store a compressed version of backup block image */
-#define PGLZ_MAX_BLCKSZ PGLZ_MAX_OUTPUT(BLCKSZ)
+#ifdef USE_ZSTD
+/* Zstandard library is provided */
+#include <zstd.h>
+/* zstandard compression level to use. */
+#define COMPRESS_LEVEL 3
+#endif
 
 /*
  * For each block reference registered with XLogRegisterBuffer, we fill in
@@ -57,7 +61,7 @@ typedef struct
 								 * backup block data in XLogRecordAssemble() */
 
 	/* buffer to store a compressed version of backup block image */
-	char		compressed_page[PGLZ_MAX_BLCKSZ];
+	char		compressed_page[BLCKSZ];
 } registered_buffer;
 
 static registered_buffer *registered_buffers;
@@ -108,9 +112,11 @@ static MemoryContext xloginsert_cxt;
 
 static XLogRecData *XLogRecordAssemble(RmgrId rmid, uint8 info,
 									   XLogRecPtr RedoRecPtr, bool doPageWrites,
-									   XLogRecPtr *fpw_lsn);
+									   XLogRecPtr *fpw_lsn, TransactionId overrideXid);
 static bool XLogCompressBackupBlock(char *page, uint16 hole_offset,
 									uint16 hole_length, char *dest, uint16 *dlen);
+static XLogRecPtr XLogInsert_Internal(RmgrId rmid, uint8 info, TransactionId
+									  headerXid);
 
 /*
  * Begin constructing a WAL record. This must be called before the
@@ -414,6 +420,18 @@ XLogSetRecordFlags(uint8 flags)
 XLogRecPtr
 XLogInsert(RmgrId rmid, uint8 info)
 {
+	return XLogInsert_Internal(rmid, info, GetCurrentTransactionIdIfAny());
+}
+
+XLogRecPtr
+XLogInsert_OverrideXid(RmgrId rmid, uint8 info, TransactionId overrideXid)
+{
+	return XLogInsert_Internal(rmid, info, overrideXid);
+}
+
+static XLogRecPtr
+XLogInsert_Internal(RmgrId rmid, uint8 info, TransactionId headerXid)
+{
 	XLogRecPtr	EndPos;
 
 	/* XLogBeginInsert() must have been called. */
@@ -457,7 +475,7 @@ XLogInsert(RmgrId rmid, uint8 info)
 		GetFullPageWriteInfo(&RedoRecPtr, &doPageWrites);
 
 		rdt = XLogRecordAssemble(rmid, info, RedoRecPtr, doPageWrites,
-								 &fpw_lsn);
+								 &fpw_lsn, headerXid);
 
 		EndPos = XLogInsertRecord(rdt, fpw_lsn, curinsert_flags);
 	} while (EndPos == InvalidXLogRecPtr);
@@ -482,7 +500,7 @@ XLogInsert(RmgrId rmid, uint8 info)
 static XLogRecData *
 XLogRecordAssemble(RmgrId rmid, uint8 info,
 				   XLogRecPtr RedoRecPtr, bool doPageWrites,
-				   XLogRecPtr *fpw_lsn)
+				   XLogRecPtr *fpw_lsn, TransactionId headerXid)
 {
 	XLogRecData *rdt;
 	uint32		total_len = 0;
@@ -784,7 +802,7 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 	 * once we know where in the WAL the record will be inserted. The CRC does
 	 * not include the record header yet.
 	 */
-	rechdr->xl_xid = GetCurrentTransactionIdIfAny();
+	rechdr->xl_xid = headerXid;
 	rechdr->xl_tot_len = total_len;
 	rechdr->xl_info = info;
 	rechdr->xl_rmid = rmid;
@@ -805,6 +823,8 @@ static bool
 XLogCompressBackupBlock(char *page, uint16 hole_offset, uint16 hole_length,
 						char *dest, uint16 *dlen)
 {
+#ifdef USE_ZSTD
+	static ZSTD_CCtx  *cxt = NULL;      /* ZSTD compression context */
 	int32		orig_len = BLCKSZ - hole_length;
 	int32		len;
 	int32		extra_bytes = 0;
@@ -829,18 +849,34 @@ XLogCompressBackupBlock(char *page, uint16 hole_offset, uint16 hole_length,
 	else
 		source = page;
 
+	if (!cxt)
+	{
+		cxt = ZSTD_createCCtx();
+		if (!cxt)
+			elog(ERROR, "out of memory");
+	}
+
+	len = ZSTD_compressCCtx(cxt,
+							dest, BLCKSZ,
+							source, orig_len,
+							COMPRESS_LEVEL);
+
+	if (ZSTD_isError(len))
+		elog(ERROR, "compression failed: %s uncompressed len %d",
+			 ZSTD_getErrorName(len), orig_len);
+
 	/*
-	 * We recheck the actual size even if pglz_compress() reports success and
+	 * We recheck the actual size even if ZSTD reports success and
 	 * see if the number of bytes saved by compression is larger than the
 	 * length of extra data needed for the compressed version of block image.
 	 */
-	len = pglz_compress(source, orig_len, dest, PGLZ_strategy_default);
 	if (len >= 0 &&
 		len + extra_bytes < orig_len)
 	{
 		*dlen = (uint16) len;	/* successful compression */
 		return true;
 	}
+#endif
 	return false;
 }
 
@@ -951,6 +987,8 @@ XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
 		XLogRegisterBlock(0, &rnode, forkno, blkno, copied_buffer.data, flags);
 
 		recptr = XLogInsert(RM_XLOG_ID, XLOG_FPI_FOR_HINT);
+
+		wait_to_avoid_large_repl_lag();
 	}
 
 	return recptr;

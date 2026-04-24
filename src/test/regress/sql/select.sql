@@ -89,6 +89,7 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 RESET enable_seqscan;
 RESET enable_bitmapscan;
 RESET enable_sort;
+RESET optimizer_enable_tablescan;
 
 
 SELECT two, stringu1, ten, string4
@@ -190,8 +191,9 @@ SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
 --
 -- Test planning of some cases with partial indexes
 --
-
 -- partial index is usable
+SET enable_seqscan TO off;
+SET optimizer_enable_tablescan TO off;
 explain (costs off)
 select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
 select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
@@ -262,3 +264,33 @@ create table list_parted_tbl1 partition of list_parted_tbl
   for values in (1) partition by list(b);
 explain (costs off) select * from list_parted_tbl;
 drop table list_parted_tbl;
+
+-- Test unsupported sorting operators
+CREATE TABLE nosort (i int);
+INSERT INTO nosort VALUES(1), (2);
+-- << is the bitwise shift left operator, it makes no sense to sort
+-- using this operator. This query should result in error.
+SELECT * FROM nosort ORDER BY i USING <<;
+DROP TABLE nosort;
+
+-- Test dispatch of recursive functions: MPP-8382
+
+create table select_t (k int, v int) distributed by (k);
+insert into select_t values (0, 1), (1, 2), (2, 4), (3, 8), (4, 16);
+create function select_i(int) returns int as $$
+	select v from select_t where k = $1;
+	$$ language sql READS SQL DATA;
+create function select_f(int) returns int as $$
+	begin
+		if $1 <= 0 then
+		    return $1;
+		end if;
+		return select_f($1-1) + select_i($1);
+	end;
+	$$ language plpgsql READS SQL DATA;
+	
+select x, select_f(x) from (values (0), (1), (2), (3), (4), (5), (6)) r(x);
+
+drop table if exists select_t cascade; --ignore
+drop function if exists select_i(int); -- ignore
+drop function if exists select_f(int); -- ignore

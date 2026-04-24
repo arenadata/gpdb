@@ -29,6 +29,17 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
     [ TABLESPACE <replaceable class="parameter">tablespace_name</replaceable> ]
     AS <replaceable>query</replaceable>
     [ WITH [ NO ] DATA ]
+   [DISTRIBUTED BY (column [opclass], [ ... ] ) | DISTRIBUTED RANDOMLY | DISTRIBUTED REPLICATED]
+where storage_parameter is:
+   APPENDONLY={TRUE|FALSE}
+   BLOCKSIZE={8192-2097152}
+   ORIENTATION={COLUMN|ROW}
+   COMPRESSTYPE={ZLIB|QUICKLZ|RLE_TYPE|NONE}
+   COMPRESSLEVEL={0-9}
+   CHECKSUM={TRUE|FALSE}
+   FILLFACTOR={10-100}
+   OIDS[=TRUE|FALSE]
+
 </synopsis>
  </refsynopsisdiv>
 

@@ -1,0 +1,7 @@
+#! /usr/bin/env python3
+
+__unittest = True
+
+from unittest.main import main_
+
+main_()

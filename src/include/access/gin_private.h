@@ -371,7 +371,7 @@ extern void ginNewScanKey(IndexScanDesc scan);
 extern void ginFreeScanKeys(GinScanOpaque so);
 
 /* ginget.c */
-extern int64 gingetbitmap(IndexScanDesc scan, TIDBitmap *tbm);
+extern int64 gingetbitmap(IndexScanDesc scan, Node **bmNodeP);
 
 /* ginlogic.c */
 extern void ginInitConsistentFunction(GinState *ginstate, GinScanKey key);

@@ -1,0 +1,28 @@
+<!--
+doc/src/sgml/ref/drop_resource_group.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-dropresourcegroup">
+ <indexterm zone="sql-dropresourcegroup">
+  <primary>DROP RESOURCE GROUP</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP RESOURCE GROUP</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP RESOURCE GROUP</refname>
+  <refpurpose>remove a resource group</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP RESOURCE GROUP <replaceable class="PARAMETER">group_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+</refentry>
