@@ -67,6 +67,7 @@ binary_upgrade_set_next_array_pg_type_oid(PG_FUNCTION_ARGS)
 }
 
 Datum
+<<<<<<< HEAD
 binary_upgrade_set_next_toast_pg_type_oid(PG_FUNCTION_ARGS)
 {
 	Oid			typoid = PG_GETARG_OID(0);
@@ -81,6 +82,8 @@ binary_upgrade_set_next_toast_pg_type_oid(PG_FUNCTION_ARGS)
 }
 
 Datum
+=======
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 binary_upgrade_set_next_heap_pg_class_oid(PG_FUNCTION_ARGS)
 {
 	Oid			reloid = PG_GETARG_OID(0);

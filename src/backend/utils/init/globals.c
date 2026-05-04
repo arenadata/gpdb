@@ -89,7 +89,7 @@ char		postgres_exec_path[MAXPGPATH];	/* full path to backend */
 
 BackendId	MyBackendId = InvalidBackendId;
 
-BackendId	ParallelMasterBackendId = InvalidBackendId;
+BackendId	ParallelLeaderBackendId = InvalidBackendId;
 
 Oid			MyDatabaseId = InvalidOid;
 
@@ -134,6 +134,7 @@ int			IntervalStyle = INTSTYLE_POSTGRES;
 
 bool		enableFsync = true;
 bool		allowSystemTableMods = false;
+<<<<<<< HEAD
 int			planner_work_mem = 32768;
 int			work_mem = 32768;
 int			statement_mem = 256000;
@@ -143,6 +144,10 @@ int			max_statement_mem = 2048000;
  * do not enforce per-query memory limit
  */
 int			gp_vmem_limit_per_query = 0;
+=======
+int			work_mem = 4096;
+double		hash_mem_multiplier = 1.0;
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 int			maintenance_work_mem = 65536;
 int			max_parallel_maintenance_workers = 2;
 

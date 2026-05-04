@@ -98,6 +98,155 @@ typedef enum CopyInsertMethod
 } CopyInsertMethod;
 
 /*
+<<<<<<< HEAD
+=======
+ * This struct contains all the state variables used throughout a COPY
+ * operation. For simplicity, we use the same struct for all variants of COPY,
+ * even though some fields are used in only some cases.
+ *
+ * Multi-byte encodings: all supported client-side encodings encode multi-byte
+ * characters by having the first byte's high bit set. Subsequent bytes of the
+ * character can have the high bit not set. When scanning data in such an
+ * encoding to look for a match to a single-byte (ie ASCII) character, we must
+ * use the full pg_encoding_mblen() machinery to skip over multibyte
+ * characters, else we might find a false match to a trailing byte. In
+ * supported server encodings, there is no possibility of a false match, and
+ * it's faster to make useless comparisons to trailing bytes than it is to
+ * invoke pg_encoding_mblen() to skip over them. encoding_embeds_ascii is true
+ * when we have to do it the hard way.
+ */
+typedef struct CopyStateData
+{
+	/* low-level state data */
+	CopyDest	copy_dest;		/* type of copy source/destination */
+	FILE	   *copy_file;		/* used if copy_dest == COPY_FILE */
+	StringInfo	fe_msgbuf;		/* used for all dests during COPY TO, only for
+								 * dest == COPY_NEW_FE in COPY FROM */
+	bool		is_copy_from;	/* COPY TO, or COPY FROM? */
+	bool		reached_eof;	/* true if we read to end of copy data (not
+								 * all copy_dest types maintain this) */
+	EolType		eol_type;		/* EOL type of input */
+	int			file_encoding;	/* file or remote side's character encoding */
+	bool		need_transcoding;	/* file encoding diff from server? */
+	bool		encoding_embeds_ascii;	/* ASCII can be non-first byte? */
+
+	/* parameters from the COPY command */
+	Relation	rel;			/* relation to copy to or from */
+	QueryDesc  *queryDesc;		/* executable query to copy from */
+	List	   *attnumlist;		/* integer list of attnums to copy */
+	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
+	bool		is_program;		/* is 'filename' a program to popen? */
+	copy_data_source_cb data_source_cb; /* function for reading data */
+	bool		binary;			/* binary format? */
+	bool		freeze;			/* freeze rows on loading? */
+	bool		csv_mode;		/* Comma Separated Value format? */
+	bool		header_line;	/* CSV header line? */
+	char	   *null_print;		/* NULL marker string (server encoding!) */
+	int			null_print_len; /* length of same */
+	char	   *null_print_client;	/* same converted to file encoding */
+	char	   *delim;			/* column delimiter (must be 1 byte) */
+	char	   *quote;			/* CSV quote char (must be 1 byte) */
+	char	   *escape;			/* CSV escape char (must be 1 byte) */
+	List	   *force_quote;	/* list of column names */
+	bool		force_quote_all;	/* FORCE_QUOTE *? */
+	bool	   *force_quote_flags;	/* per-column CSV FQ flags */
+	List	   *force_notnull;	/* list of column names */
+	bool	   *force_notnull_flags;	/* per-column CSV FNN flags */
+	List	   *force_null;		/* list of column names */
+	bool	   *force_null_flags;	/* per-column CSV FN flags */
+	bool		convert_selectively;	/* do selective binary conversion? */
+	List	   *convert_select; /* list of column names (can be NIL) */
+	bool	   *convert_select_flags;	/* per-column CSV/TEXT CS flags */
+	Node	   *whereClause;	/* WHERE condition (or NULL) */
+
+	/* these are just for error messages, see CopyFromErrorCallback */
+	const char *cur_relname;	/* table name for error messages */
+	uint64		cur_lineno;		/* line number for error messages */
+	const char *cur_attname;	/* current att for error messages */
+	const char *cur_attval;		/* current att value for error messages */
+
+	/*
+	 * Working state for COPY TO/FROM
+	 */
+	MemoryContext copycontext;	/* per-copy execution context */
+
+	/*
+	 * Working state for COPY TO
+	 */
+	FmgrInfo   *out_functions;	/* lookup info for output functions */
+	MemoryContext rowcontext;	/* per-row evaluation context */
+
+	/*
+	 * Working state for COPY FROM
+	 */
+	AttrNumber	num_defaults;
+	FmgrInfo   *in_functions;	/* array of input functions for each attrs */
+	Oid		   *typioparams;	/* array of element types for in_functions */
+	int		   *defmap;			/* array of default att numbers */
+	ExprState **defexprs;		/* array of default att expressions */
+	bool		volatile_defexprs;	/* is any of defexprs volatile? */
+	List	   *range_table;
+	ExprState  *qualexpr;
+
+	TransitionCaptureState *transition_capture;
+
+	/*
+	 * These variables are used to reduce overhead in COPY FROM.
+	 *
+	 * attribute_buf holds the separated, de-escaped text for each field of
+	 * the current line.  The CopyReadAttributes functions return arrays of
+	 * pointers into this buffer.  We avoid palloc/pfree overhead by re-using
+	 * the buffer on each cycle.
+	 *
+	 * In binary COPY FROM, attribute_buf holds the binary data for the
+	 * current field, but the usage is otherwise similar.
+	 */
+	StringInfoData attribute_buf;
+
+	/* field raw data pointers found by COPY FROM */
+
+	int			max_fields;
+	char	  **raw_fields;
+
+	/*
+	 * Similarly, line_buf holds the whole input line being processed. The
+	 * input cycle is first to read the whole line into line_buf, convert it
+	 * to server encoding there, and then extract the individual attribute
+	 * fields into attribute_buf.  line_buf is preserved unmodified so that we
+	 * can display it in error messages if appropriate.  (In binary mode,
+	 * line_buf is not used.)
+	 */
+	StringInfoData line_buf;
+	bool		line_buf_converted; /* converted to server encoding? */
+	bool		line_buf_valid; /* contains the row being processed? */
+
+	/*
+	 * Finally, raw_buf holds raw data read from the data source (file or
+	 * client connection).  In text mode, CopyReadLine parses this data
+	 * sufficiently to locate line boundaries, then transfers the data to
+	 * line_buf and converts it.  In binary mode, CopyReadBinaryData fetches
+	 * appropriate amounts of data from this buffer.  In both modes, we
+	 * guarantee that there is a \0 at raw_buf[raw_buf_len].
+	 */
+#define RAW_BUF_SIZE 65536		/* we palloc RAW_BUF_SIZE+1 bytes */
+	char	   *raw_buf;
+	int			raw_buf_index;	/* next byte to process */
+	int			raw_buf_len;	/* total # of bytes stored */
+	/* Shorthand for number of unconsumed bytes available in raw_buf */
+#define RAW_BUF_BYTES(cstate) ((cstate)->raw_buf_len - (cstate)->raw_buf_index)
+} CopyStateData;
+
+/* DestReceiver for COPY (query) TO */
+typedef struct
+{
+	DestReceiver pub;			/* publicly-known function pointers */
+	CopyState	cstate;			/* CopyStateData for the command */
+	uint64		processed;		/* # of tuples processed */
+} DR_copy;
+
+
+/*
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
  * No more than this many tuples per CopyMultiInsertBuffer
  *
  * Caution: Don't make this too big, as we could end up with this many
@@ -226,10 +375,16 @@ static uint64 CopyDispatchOnSegment(CopyState cstate, const CopyStmt *stmt);
 static uint64 CopyToQueryOnSegment(CopyState cstate);
 static bool CopyReadLine(CopyState cstate);
 static bool CopyReadLineText(CopyState cstate);
+<<<<<<< HEAD
 static int	CopyReadAttributesText(CopyState cstate, int stop_processing_at_field);
 static int	CopyReadAttributesCSV(CopyState cstate, int stop_processing_at_field);
 static Datum CopyReadBinaryAttribute(CopyState cstate,
 									 int column_no, FmgrInfo *flinfo,
+=======
+static int	CopyReadAttributesText(CopyState cstate);
+static int	CopyReadAttributesCSV(CopyState cstate);
+static Datum CopyReadBinaryAttribute(CopyState cstate, FmgrInfo *flinfo,
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 									 Oid typioparam, int32 typmod,
 									 bool *isnull);
 static void CopyAttributeOutText(CopyState cstate, char *string);
@@ -248,6 +403,8 @@ static void CopySendInt32(CopyState cstate, int32 val);
 static bool CopyGetInt32(CopyState cstate, int32 *val);
 static void CopySendInt16(CopyState cstate, int16 val);
 static bool CopyGetInt16(CopyState cstate, int16 *val);
+static bool CopyLoadRawBuf(CopyState cstate);
+static int	CopyReadBinaryData(CopyState cstate, char *dest, int nbytes);
 
 static void SendCopyFromForwardedTuple(CopyState cstate,
 						   CdbCopy *cdbCopy,
@@ -857,7 +1014,7 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 /*
  * CopySendInt32 sends an int32 in network byte order
  */
-static void
+static inline void
 CopySendInt32(CopyState cstate, int32 val)
 {
 	uint32		buf;
@@ -871,12 +1028,16 @@ CopySendInt32(CopyState cstate, int32 val)
  *
  * Returns true if OK, false if EOF
  */
-static bool
+static inline bool
 CopyGetInt32(CopyState cstate, int32 *val)
 {
 	uint32		buf;
 
+<<<<<<< HEAD
 	if (CopyGetData(cstate, &buf, sizeof(buf)) != sizeof(buf))
+=======
+	if (CopyReadBinaryData(cstate, (char *) &buf, sizeof(buf)) != sizeof(buf))
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	{
 		*val = 0;				/* suppress compiler warning */
 		return false;
@@ -888,7 +1049,7 @@ CopyGetInt32(CopyState cstate, int32 *val)
 /*
  * CopySendInt16 sends an int16 in network byte order
  */
-static void
+static inline void
 CopySendInt16(CopyState cstate, int16 val)
 {
 	uint16		buf;
@@ -900,12 +1061,16 @@ CopySendInt16(CopyState cstate, int16 val)
 /*
  * CopyGetInt16 reads an int16 that appears in network byte order
  */
-static bool
+static inline bool
 CopyGetInt16(CopyState cstate, int16 *val)
 {
 	uint16		buf;
 
+<<<<<<< HEAD
 	if (CopyGetData(cstate, &buf, sizeof(buf)) != sizeof(buf))
+=======
+	if (CopyReadBinaryData(cstate, (char *) &buf, sizeof(buf)) != sizeof(buf))
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	{
 		*val = 0;				/* suppress compiler warning */
 		return false;
@@ -920,26 +1085,20 @@ CopyGetInt16(CopyState cstate, int16 *val)
  *
  * Returns true if able to obtain at least one more byte, else false.
  *
- * If raw_buf_index < raw_buf_len, the unprocessed bytes are transferred
- * down to the start of the buffer and then we load more data after that.
- * This case is used only when a frontend multibyte character crosses a
- * bufferload boundary.
+ * If RAW_BUF_BYTES(cstate) > 0, the unprocessed bytes are moved to the start
+ * of the buffer and then we load more data after that.  This case occurs only
+ * when a multibyte character crosses a bufferload boundary.
  */
 static bool
 CopyLoadRawBuf(CopyState cstate)
 {
-	int			nbytes;
+	int			nbytes = RAW_BUF_BYTES(cstate);
 	int			inbytes;
 
-	if (cstate->raw_buf_index < cstate->raw_buf_len)
-	{
-		/* Copy down the unprocessed data */
-		nbytes = cstate->raw_buf_len - cstate->raw_buf_index;
+	/* Copy down the unprocessed data if any. */
+	if (nbytes > 0)
 		memmove(cstate->raw_buf, cstate->raw_buf + cstate->raw_buf_index,
 				nbytes);
-	}
-	else
-		nbytes = 0;				/* no data need be saved */
 
 	inbytes = CopyGetData(cstate, cstate->raw_buf + nbytes,
 						  RAW_BUF_SIZE - nbytes);
@@ -948,6 +1107,54 @@ CopyLoadRawBuf(CopyState cstate)
 	cstate->raw_buf_index = 0;
 	cstate->raw_buf_len = nbytes;
 	return (inbytes > 0);
+}
+
+/*
+ * CopyReadBinaryData
+ *
+ * Reads up to 'nbytes' bytes from cstate->copy_file via cstate->raw_buf
+ * and writes them to 'dest'.  Returns the number of bytes read (which
+ * would be less than 'nbytes' only if we reach EOF).
+ */
+static int
+CopyReadBinaryData(CopyState cstate, char *dest, int nbytes)
+{
+	int			copied_bytes = 0;
+
+	if (RAW_BUF_BYTES(cstate) >= nbytes)
+	{
+		/* Enough bytes are present in the buffer. */
+		memcpy(dest, cstate->raw_buf + cstate->raw_buf_index, nbytes);
+		cstate->raw_buf_index += nbytes;
+		copied_bytes = nbytes;
+	}
+	else
+	{
+		/*
+		 * Not enough bytes in the buffer, so must read from the file.  Need
+		 * to loop since 'nbytes' could be larger than the buffer size.
+		 */
+		do
+		{
+			int			copy_bytes;
+
+			/* Load more data if buffer is empty. */
+			if (RAW_BUF_BYTES(cstate) == 0)
+			{
+				if (!CopyLoadRawBuf(cstate))
+					break;		/* EOF */
+			}
+
+			/* Transfer some bytes. */
+			copy_bytes = Min(nbytes - copied_bytes, RAW_BUF_BYTES(cstate));
+			memcpy(dest, cstate->raw_buf + cstate->raw_buf_index, copy_bytes);
+			cstate->raw_buf_index += copy_bytes;
+			dest += copy_bytes;
+			copied_bytes += copy_bytes;
+		} while (copied_bytes < nbytes);
+	}
+
+	return copied_bytes;
 }
 
 
@@ -3391,11 +3598,7 @@ CopyFromErrorCallback(void *arg)
 /*
  * Make sure we don't print an unreasonable amount of COPY data in a message.
  *
- * It would seem a lot easier to just use the sprintf "precision" limit to
- * truncate the string.  However, some versions of glibc have a bug/misfeature
- * that vsnprintf will always fail (return -1) if it is asked to truncate
- * a string that contains invalid byte sequences for the current encoding.
- * So, do our own truncation.  We return a pstrdup'd copy of the input.
+ * Returns a pstrdup'd copy of the input.
  */
 char *
 limit_printout_length(const char *str)
@@ -3693,6 +3896,9 @@ CopyMultiInsertInfoCleanup(CopyMultiInsertInfo *miinfo)
  * Get the next TupleTableSlot that the next tuple should be stored in.
  *
  * Callers must ensure that the buffer is not full.
+ *
+ * Note: 'miinfo' is unused but has been included for consistency with the
+ * other functions in this area.
  */
 static inline TupleTableSlot *
 CopyMultiInsertInfoNextFreeSlot(CopyMultiInsertInfo *miinfo,
@@ -4767,12 +4973,19 @@ BeginCopyFrom(ParseState *pstate,
 	cstate->cur_attname = NULL;
 	cstate->cur_attval = NULL;
 
-	/* Set up variables to avoid per-attribute overhead. */
+	/*
+	 * Set up variables to avoid per-attribute overhead.  attribute_buf and
+	 * raw_buf are used in both text and binary modes, but we use line_buf
+	 * only in text mode.
+	 */
 	initStringInfo(&cstate->attribute_buf);
-	initStringInfo(&cstate->line_buf);
-	cstate->line_buf_converted = false;
 	cstate->raw_buf = (char *) palloc(RAW_BUF_SIZE + 1);
 	cstate->raw_buf_index = cstate->raw_buf_len = 0;
+	if (!cstate->binary)
+	{
+		initStringInfo(&cstate->line_buf);
+		cstate->line_buf_converted = false;
+	}
 
 	/* Assign range table, we'll need it in CopyFrom. */
 	if (pstate)
@@ -4968,7 +5181,11 @@ BeginCopyFrom(ParseState *pstate,
 		int32		tmp;
 
 		/* Signature */
+<<<<<<< HEAD
 		if (CopyGetData(cstate, readSig, 11) != 11 ||
+=======
+		if (CopyReadBinaryData(cstate, readSig, 11) != 11 ||
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 			memcmp(readSig, BinarySignature, 11) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
@@ -4996,7 +5213,11 @@ BeginCopyFrom(ParseState *pstate,
 		/* Skip extension header, if present */
 		while (tmp-- > 0)
 		{
+<<<<<<< HEAD
 			if (CopyGetData(cstate, readSig, 1) != 1)
+=======
+			if (CopyReadBinaryData(cstate, readSig, 1) != 1)
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 						 errmsg("invalid COPY file header (wrong length)")));
@@ -5427,7 +5648,11 @@ NextCopyFromX(CopyState cstate, ExprContext *econtext,
 			char		dummy;
 
 			if (cstate->copy_dest != COPY_OLD_FE &&
+<<<<<<< HEAD
 				CopyGetData(cstate, &dummy, 1) > 0)
+=======
+				CopyReadBinaryData(cstate, &dummy, 1) > 0)
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 						 errmsg("received copy data after EOF marker")));
@@ -5440,17 +5665,19 @@ NextCopyFromX(CopyState cstate, ExprContext *econtext,
 					 errmsg("row field count is %d, expected %d",
 							(int) fld_count, attr_count)));
 
+<<<<<<< HEAD
 		i = 0;
 		foreach(cur, attnumlist)
+=======
+		foreach(cur, cstate->attnumlist)
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		{
 			int			attnum = lfirst_int(cur);
 			int			m = attnum - 1;
 			Form_pg_attribute att = TupleDescAttr(tupDesc, m);
 
 			cstate->cur_attname = NameStr(att->attname);
-			i++;
 			values[m] = CopyReadBinaryAttribute(cstate,
-												i,
 												&in_functions[m],
 												typioparams[m],
 												att->atttypmod,
@@ -7048,8 +7275,7 @@ endfield:
  * Read a binary attribute
  */
 static Datum
-CopyReadBinaryAttribute(CopyState cstate,
-						int column_no, FmgrInfo *flinfo,
+CopyReadBinaryAttribute(CopyState cstate, FmgrInfo *flinfo,
 						Oid typioparam, int32 typmod,
 						bool *isnull)
 {
@@ -7074,8 +7300,13 @@ CopyReadBinaryAttribute(CopyState cstate,
 	resetStringInfo(&cstate->attribute_buf);
 
 	enlargeStringInfo(&cstate->attribute_buf, fld_size);
+<<<<<<< HEAD
 	if (CopyGetData(cstate, cstate->attribute_buf.data,
 					fld_size) != fld_size)
+=======
+	if (CopyReadBinaryData(cstate, cstate->attribute_buf.data,
+						   fld_size) != fld_size)
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("unexpected EOF in COPY data")));

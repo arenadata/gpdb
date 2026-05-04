@@ -3,7 +3,7 @@ use warnings;
 
 use PostgresNode;
 use TestLib;
-use Test::More tests => 49;
+use Test::More tests => 55;
 
 program_help_ok('vacuumdb');
 program_version_ok('vacuumdb');
@@ -51,6 +51,20 @@ $node->command_fails(
 # GPDB: VACUUM (PARALLEL ...) doesn't work on GPDB, skip.
 SKIP: {
 	skip "VACUUM (PARALLEL ...) not implemented on GPDB", 4;
+$node->issues_sql_like(
+	[ 'vacuumdb', '--no-index-cleanup', 'postgres' ],
+	qr/statement: VACUUM \(INDEX_CLEANUP FALSE\).*;/,
+	'vacuumdb --no-index-cleanup');
+$node->command_fails(
+	[ 'vacuumdb', '--analyze-only', '--no-index-cleanup', 'postgres' ],
+	'--analyze-only and --no-index-cleanup specified together');
+$node->issues_sql_like(
+    [ 'vacuumdb', '--no-truncate', 'postgres' ],
+    qr/statement: VACUUM \(TRUNCATE FALSE\).*;/,
+    'vacuumdb --no-truncate');
+$node->command_fails(
+    [ 'vacuumdb', '--analyze-only', '--no-truncate', 'postgres' ],
+    '--analyze-only and --no-truncate specified together');
 $node->issues_sql_like(
 	[ 'vacuumdb', '-P', 2, 'postgres' ],
 	qr/statement: VACUUM \(PARALLEL 2\).*;/,

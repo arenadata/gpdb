@@ -16,12 +16,16 @@
 
 #include "access/transam.h"
 #include "access/xlogreader.h"
+#include "datatype/timestamp.h"
 #include "lib/stringinfo.h"
 #include "nodes/pg_list.h"
 #include "storage/relfilenode.h"
 #include "storage/sinval.h"
+<<<<<<< HEAD
 #include "storage/dbdirnode.h"
 #include "utils/datetime.h"
+=======
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 #include "cdb/cdbpublic.h"
 #include "cdb/cdbtm.h"
@@ -84,6 +88,10 @@ typedef enum
 
 /* Synchronous commit level */
 extern int	synchronous_commit;
+
+/* used during logical streaming of a transaction */
+extern PGDLLIMPORT TransactionId CheckXidAlive;
+extern PGDLLIMPORT bool bsysscan;
 
 /*
  * Miscellaneous flag bits to record events which occur on the top level
@@ -153,9 +161,14 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 #define XLOG_XACT_COMMIT_PREPARED	0x30
 #define XLOG_XACT_ABORT_PREPARED	0x40
 #define XLOG_XACT_ASSIGNMENT		0x50
+<<<<<<< HEAD
 /* GPDB takes the last available three opcodes */
 #define XLOG_XACT_DISTRIBUTED_COMMIT 0x60
 #define XLOG_XACT_DISTRIBUTED_FORGET 0x70
+=======
+#define XLOG_XACT_INVALIDATIONS		0x60
+/* free opcode 0x70 */
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /* mask for filtering opcodes out of xl_info */
 #define XLOG_XACT_OPMASK			0x70
@@ -495,7 +508,12 @@ extern void UnregisterXactCallbackOnce(XactCallback callback, void *arg);
 extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
 extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
+<<<<<<< HEAD
 extern void RecordDistributedForgetCommitted(DistributedTransactionId gxid);
+=======
+extern bool IsSubTransactionAssignmentPending(void);
+extern void MarkSubTransactionAssigned(void);
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 
@@ -504,9 +522,15 @@ extern XLogRecPtr XactLogCommitRecord(TimestampTz commit_time,
 									  int nsubxacts, TransactionId *subxacts,
 									  int nrels, RelFileNodePendingDelete *rels,
 									  int nmsgs, SharedInvalidationMessage *msgs,
+<<<<<<< HEAD
 									  int ndeldbs, DbDirNode *deldbs,
 									  bool relcacheInval, bool forceSync,
 									  int xactflags, TransactionId twophase_xid,
+=======
+									  bool relcacheInval,
+									  int xactflags,
+									  TransactionId twophase_xid,
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 									  const char *twophase_gid);
 
 extern XLogRecPtr XactLogAbortRecord(TimestampTz abort_time,

@@ -42,32 +42,35 @@
  */
 #define PGPROC_MAX_CACHED_SUBXIDS 64	/* XXX guessed-at value */
 
+typedef struct XidCacheStatus
+{
+	/* number of cached subxids, never more than PGPROC_MAX_CACHED_SUBXIDS */
+	uint8	count;
+	/* has PGPROC->subxids overflowed */
+	bool	overflowed;
+} XidCacheStatus;
+
 struct XidCache
 {
 	TransactionId xids[PGPROC_MAX_CACHED_SUBXIDS];
 };
 
 /*
- * Flags for PGXACT->vacuumFlags
- *
- * Note: If you modify these flags, you need to modify PROCARRAY_XXX flags
- * in src/include/storage/procarray.h.
- *
- * PROC_RESERVED may later be assigned for use in vacuumFlags, but its value is
- * used for PROCARRAY_SLOTS_XMIN in procarray.h, so GetOldestXmin won't be able
- * to match and ignore processes with this flag set.
+ * Flags for ProcGlobal->vacuumFlags[]
  */
 #define		PROC_IS_AUTOVACUUM	0x01	/* is it an autovac worker? */
 #define		PROC_IN_VACUUM		0x02	/* currently running lazy vacuum */
-#define		PROC_IN_ANALYZE		0x04	/* currently running analyze */
 #define		PROC_VACUUM_FOR_WRAPAROUND	0x08	/* set by autovac only */
 #define		PROC_IN_LOGICAL_DECODING	0x10	/* currently doing logical
 												 * decoding outside xact */
-#define		PROC_RESERVED				0x20	/* reserved for procarray */
 
 /* flags reset at EOXact */
 #define		PROC_VACUUM_STATE_MASK \
+<<<<<<< HEAD
 	(/* PROC_IN_VACUUM | */ PROC_IN_ANALYZE | PROC_VACUUM_FOR_WRAPAROUND)
+=======
+	(PROC_IN_VACUUM | PROC_VACUUM_FOR_WRAPAROUND)
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /*
  * We allow a small number of "weak" relation locks (AccessShareLock,
@@ -105,6 +108,17 @@ typedef enum
  * distinguished from a real one at need by the fact that it has pid == 0.
  * The semaphore and lock-activity fields in a prepared-xact PGPROC are unused,
  * but its myProcLocks[] lists are valid.
+ *
+ * Mirrored fields:
+ *
+ * Some fields in PGPROC (see "mirrored in ..." comment) are mirrored into an
+ * element of more densely packed ProcGlobal arrays. These arrays are indexed
+ * by PGPROC->pgxactoff. Both copies need to be maintained coherently.
+ *
+ * NB: The pgxactoff indexed value can *never* be accessed without holding
+ * locks.
+ *
+ * See PROC_HDR for details.
  */
 struct PGPROC
 {
@@ -116,6 +130,17 @@ struct PGPROC
 	ProcWaitStatus waitStatus;
 
 	Latch		procLatch;		/* generic latch for process */
+
+
+	TransactionId xid;			/* id of top-level transaction currently being
+								 * executed by this proc, if running and XID
+								 * is assigned; else InvalidTransactionId.
+								 * mirrored in ProcGlobal->xids[pgxactoff] */
+
+	TransactionId xmin;			/* minimal running XID as it was when we were
+								 * starting our xact, excluding LAZY VACUUM:
+								 * vacuum must not remove tuples deleted by
+								 * xid >= xmin ! */
 
 	LocalTransactionId lxid;	/* local id of top-level transaction currently
 								 * being executed by this proc, if running;
@@ -132,6 +157,9 @@ struct PGPROC
 	LocalDistribXactData localDistribXactData;
 
 	int			pid;			/* Backend's process ID; 0 if prepared xact */
+
+	int			pgxactoff;		/* offset into various ProcGlobal->arrays
+								 * with data mirrored from this PGPROC */
 	int			pgprocno;
 
 	/* These fields are zero while a backend is still starting up: */
@@ -172,6 +200,9 @@ struct PGPROC
 
 	bool		delayChkpt;		/* true if this proc delays checkpoint start */
 
+	uint8		vacuumFlags;    /* this backend's vacuum flags, see PROC_*
+								 * above. mirrored in
+								 * ProcGlobal->vacuumFlags[pgxactoff] */
 	/*
 	 * Info to allow us to wait for synchronous replication, if needed.
 	 * waitLSN is InvalidXLogRecPtr if not waiting; set only by user backend.
@@ -189,6 +220,8 @@ struct PGPROC
 	 */
 	SHM_QUEUE	myProcLocks[NUM_LOCK_PARTITIONS];
 
+	XidCacheStatus subxidStatus; /* mirrored with
+								  * ProcGlobal->subxidStates[i] */
 	struct XidCache subxids;	/* cache for subtransaction XIDs */
 
 	/*
@@ -270,6 +303,7 @@ struct PGPROC
 
 
 extern PGDLLIMPORT PGPROC *MyProc;
+<<<<<<< HEAD
 extern PGDLLIMPORT struct PGXACT *MyPgXact;
 extern PGDLLIMPORT struct TMGXACT *MyTmGxact;
 extern PGDLLIMPORT struct TMGXACTLOCAL *MyTmGxactLocal;
@@ -301,18 +335,90 @@ typedef struct PGXACT
 
 	uint8		nxids;
 } PGXACT;
+=======
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /*
  * There is one ProcGlobal struct for the whole database cluster.
+ *
+ * Adding/Removing an entry into the procarray requires holding *both*
+ * ProcArrayLock and XidGenLock in exclusive mode (in that order). Both are
+ * needed because the dense arrays (see below) are accessed from
+ * GetNewTransactionId() and GetSnapshotData(), and we don't want to add
+ * further contention by both using the same lock. Adding/Removing a procarray
+ * entry is much less frequent.
+ *
+ * Some fields in PGPROC are mirrored into more densely packed arrays (e.g.
+ * xids), with one entry for each backend. These arrays only contain entries
+ * for PGPROCs that have been added to the shared array with ProcArrayAdd()
+ * (in contrast to PGPROC array which has unused PGPROCs interspersed).
+ *
+ * The dense arrays are indexed by PGPROC->pgxactoff. Any concurrent
+ * ProcArrayAdd() / ProcArrayRemove() can lead to pgxactoff of a procarray
+ * member to change.  Therefore it is only safe to use PGPROC->pgxactoff to
+ * access the dense array while holding either ProcArrayLock or XidGenLock.
+ *
+ * As long as a PGPROC is in the procarray, the mirrored values need to be
+ * maintained in both places in a coherent manner.
+ *
+ * The denser separate arrays are beneficial for three main reasons: First, to
+ * allow for as tight loops accessing the data as possible. Second, to prevent
+ * updates of frequently changing data (e.g. xmin) from invalidating
+ * cachelines also containing less frequently changing data (e.g. xid,
+ * vacuumFlags). Third to condense frequently accessed data into as few
+ * cachelines as possible.
+ *
+ * There are two main reasons to have the data mirrored between these dense
+ * arrays and PGPROC. First, as explained above, a PGPROC's array entries can
+ * only be accessed with either ProcArrayLock or XidGenLock held, whereas the
+ * PGPROC entries do not require that (obviously there may still be locking
+ * requirements around the individual field, separate from the concerns
+ * here). That is particularly important for a backend to efficiently checks
+ * it own values, which it often can safely do without locking.  Second, the
+ * PGPROC fields allow to avoid unnecessary accesses and modification to the
+ * dense arrays. A backend's own PGPROC is more likely to be in a local cache,
+ * whereas the cachelines for the dense array will be modified by other
+ * backends (often removing it from the cache for other cores/sockets). At
+ * commit/abort time a check of the PGPROC value can avoid accessing/dirtying
+ * the corresponding array value.
+ *
+ * Basically it makes sense to access the PGPROC variable when checking a
+ * single backend's data, especially when already looking at the PGPROC for
+ * other reasons already.  It makes sense to look at the "dense" arrays if we
+ * need to look at many / most entries, because we then benefit from the
+ * reduced indirection and better cross-process cache-ability.
+ *
+ * When entering a PGPROC for 2PC transactions with ProcArrayAdd(), the data
+ * in the dense arrays is initialized from the PGPROC while it already holds
+ * ProcArrayLock.
  */
 typedef struct PROC_HDR
 {
 	/* Array of PGPROC structures (not including dummies for prepared txns) */
 	PGPROC	   *allProcs;
+<<<<<<< HEAD
 	/* Array of PGXACT structures (not including dummies for prepared txns) */
 	PGXACT	   *allPgXact;
 	/* Array of TMGXACT structures (not including dummies for prepared txns) */
 	TMGXACT	   *allTmGxact;
+=======
+
+	/* Array mirroring PGPROC.xid for each PGPROC currently in the procarray */
+	TransactionId *xids;
+
+	/*
+	 * Array mirroring PGPROC.subxidStatus for each PGPROC currently in the
+	 * procarray.
+	 */
+	XidCacheStatus *subxidStates;
+
+	/*
+	 * Array mirroring PGPROC.vacuumFlags for each PGPROC currently in the
+	 * procarray.
+	 */
+	uint8	   *vacuumFlags;
+
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	/* Length of allProcs array */
 	uint32		allProcCount;
 	/* Head of list of free PGPROC structures */

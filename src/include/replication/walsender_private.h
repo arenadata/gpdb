@@ -98,6 +98,7 @@ typedef struct WalSnd
 	 * Timestamp of the last message received from standby.
 	 */
 	TimestampTz replyTime;
+<<<<<<< HEAD
 
 	/* Statistics for transactions spilled to disk. */
 	int64		spillTxns;
@@ -109,6 +110,8 @@ typedef struct WalSnd
 	 * mirror in streaming mode
 	 */
 	bool 		is_for_gp_walreceiver;
+=======
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 } WalSnd;
 
 extern WalSnd *MyWalSnd;

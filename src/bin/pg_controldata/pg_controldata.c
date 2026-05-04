@@ -257,10 +257,15 @@ main(int argc, char *argv[])
 	printf(_("Latest checkpoint's full_page_writes: %s\n"),
 		   ControlFile->checkPointCopy.fullPageWrites ? _("on") : _("off"));
 	printf(_("Latest checkpoint's NextXID:          %u:%u\n"),
+<<<<<<< HEAD
 		   EpochFromFullTransactionId(ControlFile->checkPointCopy.nextFullXid),
 		   XidFromFullTransactionId(ControlFile->checkPointCopy.nextFullXid));
 	printf(_("Latest checkpoint's NextGxid:         "UINT64_FORMAT"\n"),
 		   ControlFile->checkPointCopy.nextGxid);
+=======
+		   EpochFromFullTransactionId(ControlFile->checkPointCopy.nextXid),
+		   XidFromFullTransactionId(ControlFile->checkPointCopy.nextXid));
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	printf(_("Latest checkpoint's NextOID:          %u\n"),
 		   ControlFile->checkPointCopy.nextOid);
 	printf(_("Latest checkpoint's NextRelfilenode:  %u\n"),

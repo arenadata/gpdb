@@ -977,6 +977,47 @@ execute_extension_script(Node *stmt,
 								 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
+<<<<<<< HEAD
+=======
+	 * Similarly disable check_function_bodies, to ensure that SQL functions
+	 * won't be parsed during creation.
+	 */
+	if (check_function_bodies)
+		(void) set_config_option("check_function_bodies", "off",
+								 PGC_USERSET, PGC_S_SESSION,
+								 GUC_ACTION_SAVE, true, 0, false);
+
+	/*
+	 * Set up the search path to have the target schema first, making it be
+	 * the default creation target namespace.  Then add the schemas of any
+	 * prerequisite extensions, unless they are in pg_catalog which would be
+	 * searched anyway.  (Listing pg_catalog explicitly in a non-first
+	 * position would be bad for security.)  Finally add pg_temp to ensure
+	 * that temp objects can't take precedence over others.
+	 *
+	 * Note: it might look tempting to use PushOverrideSearchPath for this,
+	 * but we cannot do that.  We have to actually set the search_path GUC in
+	 * case the extension script examines or changes it.  In any case, the
+	 * GUC_ACTION_SAVE method is just as convenient.
+	 */
+	initStringInfo(&pathbuf);
+	appendStringInfoString(&pathbuf, quote_identifier(schemaName));
+	foreach(lc, requiredSchemas)
+	{
+		Oid			reqschema = lfirst_oid(lc);
+		char	   *reqname = get_namespace_name(reqschema);
+
+		if (reqname && strcmp(reqname, "pg_catalog") != 0)
+			appendStringInfo(&pathbuf, ", %s", quote_identifier(reqname));
+	}
+	appendStringInfoString(&pathbuf, ", pg_temp");
+
+	(void) set_config_option("search_path", pathbuf.data,
+							 PGC_USERSET, PGC_S_SESSION,
+							 GUC_ACTION_SAVE, true, 0, false);
+
+	/*
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	 * Set creating_extension and related variables so that
 	 * recordDependencyOnCurrentExtension and other functions do the right
 	 * things.  On failure, ensure we reset these variables.
@@ -1919,6 +1960,7 @@ InsertExtensionTuple(const char *extName, Oid extOwner,
 	HeapTuple	tuple;
 	ObjectAddress myself;
 	ObjectAddress nsp;
+	ObjectAddresses *refobjs;
 	ListCell   *lc;
 
 	/*
@@ -1962,27 +2004,26 @@ InsertExtensionTuple(const char *extName, Oid extOwner,
 	 */
 	recordDependencyOnOwner(ExtensionRelationId, extensionOid, extOwner);
 
-	myself.classId = ExtensionRelationId;
-	myself.objectId = extensionOid;
-	myself.objectSubId = 0;
+	refobjs = new_object_addresses();
 
-	nsp.classId = NamespaceRelationId;
-	nsp.objectId = schemaOid;
-	nsp.objectSubId = 0;
+	ObjectAddressSet(myself, ExtensionRelationId, extensionOid);
 
-	recordDependencyOn(&myself, &nsp, DEPENDENCY_NORMAL);
+	ObjectAddressSet(nsp, NamespaceRelationId, schemaOid);
+	add_exact_object_address(&nsp, refobjs);
 
 	foreach(lc, requiredExtensions)
 	{
 		Oid			reqext = lfirst_oid(lc);
 		ObjectAddress otherext;
 
-		otherext.classId = ExtensionRelationId;
-		otherext.objectId = reqext;
-		otherext.objectSubId = 0;
-
-		recordDependencyOn(&myself, &otherext, DEPENDENCY_NORMAL);
+		ObjectAddressSet(otherext, ExtensionRelationId, reqext);
+		add_exact_object_address(&otherext, refobjs);
 	}
+
+	/* Record all of them (this includes duplicate elimination) */
+	record_object_address_dependencies(&myself, refobjs, DEPENDENCY_NORMAL);
+	free_object_addresses(refobjs);
+
 	/* Post creation hook for new extension */
 	InvokeObjectPostCreateHook(ExtensionRelationId, extensionOid, 0);
 
@@ -3056,7 +3097,7 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 					 errmsg("extension \"%s\" does not support SET SCHEMA",
 							NameStr(extForm->extname)),
 					 errdetail("%s is not in the extension's schema \"%s\"",
-							   getObjectDescription(&dep),
+							   getObjectDescription(&dep, false),
 							   get_namespace_name(oldNspOid))));
 	}
 
@@ -3526,7 +3567,7 @@ ExecAlterExtensionContentsStmt_internal(AlterExtensionContentsStmt *stmt,
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("%s is already a member of extension \"%s\"",
-							getObjectDescription(&object),
+							getObjectDescription(&object, false),
 							get_extension_name(oldExtension))));
 
 		/*
@@ -3566,7 +3607,7 @@ ExecAlterExtensionContentsStmt_internal(AlterExtensionContentsStmt *stmt,
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("%s is not a member of extension \"%s\"",
-							getObjectDescription(&object),
+							getObjectDescription(&object, false),
 							stmt->extname)));
 
 		/*

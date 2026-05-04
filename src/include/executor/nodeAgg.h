@@ -14,6 +14,7 @@
 #ifndef NODEAGG_H
 #define NODEAGG_H
 
+#include "access/parallel.h"
 #include "nodes/execnodes.h"
 
 
@@ -322,11 +323,23 @@ extern void ExecReScanAgg(AggState *node);
 
 extern Size hash_agg_entry_size(int numTrans, Size tupleWidth,
 								Size transitionSpace);
+<<<<<<< HEAD
 extern void hash_agg_set_limits(AggState *aggstate, double hashentrysize, uint64 input_groups,
 								int used_bits, Size *mem_limit,
 								uint64 *ngroups_limit, int *num_partitions);
 
 extern void ExecSquelchAgg(AggState *aggstate);
 extern bool ReuseHashTable(AggState *node);
+=======
+extern void hash_agg_set_limits(double hashentrysize, double input_groups,
+								int used_bits, Size *mem_limit,
+								uint64 *ngroups_limit, int *num_partitions);
+
+/* parallel instrumentation support */
+extern void ExecAggEstimate(AggState *node, ParallelContext *pcxt);
+extern void ExecAggInitializeDSM(AggState *node, ParallelContext *pcxt);
+extern void ExecAggInitializeWorker(AggState *node, ParallelWorkerContext *pwcxt);
+extern void ExecAggRetrieveInstrumentation(AggState *node);
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 #endif							/* NODEAGG_H */

@@ -93,10 +93,14 @@ typedef struct TuplesortInstrumentation
 {
 	TuplesortMethod sortMethod; /* sort algorithm used */
 	TuplesortSpaceType spaceType;	/* type of space spaceUsed represents */
+<<<<<<< HEAD
 	long		spaceUsed;		/* space consumption, in kB */
 
 	Size		workmemused;
 	Size		execmemused;
+=======
+	int64		spaceUsed;		/* space consumption, in kB */
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 } TuplesortInstrumentation;
 
 

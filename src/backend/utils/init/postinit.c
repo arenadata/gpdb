@@ -818,10 +818,16 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * to prune them even if the process doesn't attempt to modify any
 	 * tuples.)
 	 *
+<<<<<<< HEAD
 	 * Skip these steps if we are responding to a FTS message on mirror.
 	 * Mirror operates in standby mode and is not ready to start a
 	 * transaction or create a snapshot.  Neither are they required to
 	 * respond to a FTS message.
+=======
+	 * FIXME: This comment is inaccurate / the code buggy. A snapshot that is
+	 * not pushed/active does not reliably prevent HOT pruning (->xmin could
+	 * e.g. be cleared when cache invalidations are processed).
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	 */
 	if (!bootstrap && !am_mirror)
 	{
@@ -904,7 +910,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	if ((!am_superuser || am_walsender) &&
 		MyProcPort != NULL &&
-		MyProcPort->canAcceptConnections == CAC_WAITBACKUP)
+		MyProcPort->canAcceptConnections == CAC_SUPERUSER)
 	{
 		if (am_walsender)
 			ereport(FATAL,

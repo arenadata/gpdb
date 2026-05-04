@@ -134,8 +134,11 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	Relation	toast_rel;
 	Relation	class_rel;
 	Oid			toast_relid;
+<<<<<<< HEAD
 	Oid			toast_idxid;
 	Oid			toast_typid = InvalidOid;
+=======
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	Oid			namespaceid;
 	char		toast_relname[NAMEDATALEN];
 	char		toast_idxname[NAMEDATALEN];
@@ -195,6 +198,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 		 * problem that it might take up an OID that will conflict with some
 		 * old-cluster table we haven't seen yet.
 		 */
+<<<<<<< HEAD
 		if (IsBinaryUpgrade)
 		{
 			Assert(toastOid == InvalidOid);
@@ -205,6 +209,10 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 			if (!OidIsValid(toast_typid))
 				return false;
 		}
+=======
+		if (!OidIsValid(binary_upgrade_next_toast_pg_class_oid))
+			return false;
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	}
 
 	/*
@@ -243,12 +251,22 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	TupleDescAttr(tupdesc, 2)->attstorage = TYPSTORAGE_PLAIN;
 
 	/*
+<<<<<<< HEAD
 	 * Use binary-upgrade override for pg_type.oid, if supplied.  We might be
 	 * in the post-schema-restore phase where we are doing ALTER TABLE to
 	 * create TOAST tables that didn't exist in the old cluster.
 	 *
 	 * GPDB: already got the OIDs above
 	 */
+=======
+	 * Toast tables for regular relations go in pg_toast; those for temp
+	 * relations go into the per-backend temp-toast-table namespace.
+	 */
+	if (isTempOrTempToastNamespace(rel->rd_rel->relnamespace))
+		namespaceid = GetTempToastNamespace();
+	else
+		namespaceid = PG_TOAST_NAMESPACE;
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/* Toast table is shared if and only if its parent is. */
 	shared_relation = rel->rd_rel->relisshared;
@@ -260,7 +278,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   namespaceid,
 										   rel->rd_rel->reltablespace,
 										   toastOid,
-										   toast_typid,
+										   InvalidOid,
 										   InvalidOid,
 										   rel->rd_rel->relowner,
 										   RelationIsAoRows(rel) ?
@@ -370,8 +388,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	table_close(class_rel, RowExclusiveLock);
 
 	/*
-	 * Register dependency from the toast table to the master, so that the
-	 * toast table will be deleted if the master is.  Skip this in bootstrap
+	 * Register dependency from the toast table to the main, so that the
+	 * toast table will be deleted if the main is.  Skip this in bootstrap
 	 * mode.
 	 */
 	if (!IsBootstrapProcessingMode())

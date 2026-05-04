@@ -45,7 +45,7 @@ typedef int BackendId;			/* unique currently active backend identifier */
 extern PGDLLIMPORT BackendId MyBackendId;	/* backend id of this backend */
 
 /* backend id of our parallel session leader, or InvalidBackendId if none */
-extern PGDLLIMPORT BackendId ParallelMasterBackendId;
+extern PGDLLIMPORT BackendId ParallelLeaderBackendId;
 
 /*
  * The BackendId to use for our session's temp relations is normally our own,
@@ -53,6 +53,11 @@ extern PGDLLIMPORT BackendId ParallelMasterBackendId;
  *
  * In GPDB, we use TempRelBackendId for everything.
  */
+<<<<<<< HEAD
 #define BackendIdForTempRelations() TempRelBackendId
+=======
+#define BackendIdForTempRelations() \
+	(ParallelLeaderBackendId == InvalidBackendId ? MyBackendId : ParallelLeaderBackendId)
+>>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 #endif							/* BACKENDID_H */
