@@ -1308,7 +1308,7 @@ HeapTupleSatisfiesVacuum(Relation relation, HeapTuple htup, TransactionId Oldest
 	TransactionId dead_after = InvalidTransactionId;
 	HTSV_Result res;
 
-	res = HeapTupleSatisfiesVacuumHorizon(htup, buffer, &dead_after);
+	res = HeapTupleSatisfiesVacuumHorizon(relation, htup, buffer, &dead_after);
 
 	if (res == HEAPTUPLE_RECENTLY_DEAD)
 	{
