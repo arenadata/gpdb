@@ -196,21 +196,13 @@ extern TM_Result HeapTupleSatisfiesUpdate(Relation relation, HeapTuple stup, Com
 										  Buffer buffer);
 extern HTSV_Result HeapTupleSatisfiesVacuum(Relation relation, HeapTuple stup, TransactionId OldestXmin,
 											Buffer buffer);
-<<<<<<< HEAD
+extern HTSV_Result HeapTupleSatisfiesVacuumHorizon(Relation relation, HeapTuple stup, Buffer buffer,
+												   TransactionId *dead_after);
 extern void HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer, Relation rel,
 								 uint16 infomask, TransactionId xid);
 extern bool HeapTupleHeaderIsOnlyLocked(HeapTupleHeader tuple);
-extern bool HeapTupleIsSurelyDead(HeapTuple htup, TransactionId OldestXmin);
-=======
-extern HTSV_Result HeapTupleSatisfiesVacuumHorizon(HeapTuple stup, Buffer buffer,
-												   TransactionId *dead_after);
-extern void HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer,
-								 uint16 infomask, TransactionId xid);
-extern bool HeapTupleHeaderIsOnlyLocked(HeapTupleHeader tuple);
-extern bool XidInMVCCSnapshot(TransactionId xid, Snapshot snapshot);
 extern bool HeapTupleIsSurelyDead(HeapTuple htup,
 								  struct GlobalVisState *vistest);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /*
  * To avoid leaking too much knowledge about reorderbuffer implementation
