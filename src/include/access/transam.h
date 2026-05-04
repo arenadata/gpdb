@@ -199,9 +199,8 @@ typedef struct VariableCacheData
 	/*
 	 * These fields are protected by ProcArrayLock.
 	 */
-<<<<<<< HEAD
-	TransactionId latestCompletedXid;	/* newest XID that has committed or
-										 * aborted */
+	FullTransactionId latestCompletedXid;	/* newest full XID that has
+											 * committed or aborted */
 	DistributedTransactionId latestCompletedGxid;	/* newest distributed XID that has
 													   committed or aborted */
 
@@ -213,9 +212,6 @@ typedef struct VariableCacheData
 	 */
 	DistributedTransactionId nextGxid;	/* next full XID to assign */
 	uint32		GxidCount;		/* Gxids available before must do XLOG work */
-=======
-	FullTransactionId latestCompletedXid;	/* newest full XID that has
-											 * committed or aborted */
 
 	/*
 	 * Number of top-level transactions with xids (i.e. which may have
@@ -225,7 +221,6 @@ typedef struct VariableCacheData
 	 * not. There are likely other users of this.  Always above 1.
 	 */
 	uint64 xactCompletionCount;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/*
 	 * These fields are protected by XactTruncationLock
