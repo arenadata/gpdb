@@ -547,16 +547,11 @@ ExecHashTableCreate(HashState *state, HashJoinState *hjstate,
 	hashtable->spaceAllowed = space_allowed;
 	hashtable->spaceUsedSkew = 0;
 	hashtable->spaceAllowedSkew =
-<<<<<<< HEAD
-		hashtable->spaceAllowed * SKEW_WORK_MEM_PERCENT / 100;
+		hashtable->spaceAllowed * SKEW_HASH_MEM_PERCENT / 100;
 	hashtable->stats = NULL;
 	hashtable->eagerlyReleased = false;
 	hashtable->hjstate = hjstate;
 	hashtable->first_pass = true;
-
-=======
-		hashtable->spaceAllowed * SKEW_HASH_MEM_PERCENT / 100;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	hashtable->chunks = NULL;
 	hashtable->current_chunk = NULL;
 	hashtable->parallel_state = state->parallel_state;
@@ -718,12 +713,8 @@ ExecHashTableCreate(HashState *state, HashJoinState *hjstate,
 
 void
 ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
-<<<<<<< HEAD
                         uint64 operatorMemKB,
-						bool try_combined_work_mem,
-=======
 						bool try_combined_hash_mem,
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 						int parallel_workers,
 						size_t *space_allowed,
 						int *numbuckets,
@@ -757,11 +748,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
 	/*
 	 * Target in-memory hashtable size is hash_mem kilobytes.
 	 */
-<<<<<<< HEAD
 	hash_table_bytes = operatorMemKB * 1024L;
-=======
-	hash_table_bytes = hash_mem * 1024L;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/*
 	 * Parallel Hash tries to use the combined hash_mem of all workers to
@@ -882,13 +869,8 @@ ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
 		/*
 		 * Buckets are simple pointers to hashjoin tuples, while tupsize
 		 * includes the pointer, hash code, and MinimalTupleData.  So buckets
-<<<<<<< HEAD
-		 * should never really exceed 25% of work_mem (even for
-		 * gp_hashjoin_tuples_per_bucket=1); except maybe for work_mem values that are not
-=======
 		 * should never really exceed 25% of hash_mem (even for
-		 * NTUP_PER_BUCKET=1); except maybe for hash_mem values that are not
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+		 * gp_hashjoin_tuples_per_bucket=1); except maybe for hash_mem values that are not
 		 * 2^N bytes, where we might get more because of doubling. So let's
 		 * look for 50% here.
 		 */
