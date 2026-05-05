@@ -2383,12 +2383,8 @@ RecordTransactionCommitPrepared(TransactionId xid,
 								 GetPendingTablespaceForDeletionForCommit(),
 								 nchildren, children, nrels, rels,
 								 ninvalmsgs, invalmsgs,
-<<<<<<< HEAD
 								 ndeldbs, deldbs,
-								 initfileinval, false,
-=======
 								 initfileinval,
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 								 MyXactFlags | XACT_FLAGS_ACQUIREDACCESSEXCLUSIVELOCK,
 								 xid, gid);
 
