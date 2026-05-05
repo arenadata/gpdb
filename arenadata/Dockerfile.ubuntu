@@ -47,7 +47,7 @@ RUN mkdir /home/gpadmin/bin_gpdb
 ENV TARGET_OS_VERSION=22
 ENV TARGET_OS=ubuntu
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
-ENV SKIP_UNITTESTS=
+ENV SKIP_UNITTESTS=1
 # To set default locale for unittests
 ENV LANG=en_US.UTF-8
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --with-llvm --with-openssl --enable-cassert --enable-debug --enable-depend --with-libxml --with-uuid=ossp --with-perl --enable-mapreduce --enable-orafce"

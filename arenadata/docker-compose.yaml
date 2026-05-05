@@ -12,6 +12,7 @@ services:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
       - "$PWD/allure-results:/tmp/allure-results"
+      - "$PWD/:/home/gpadmin/gpdb_src"
     privileged: true
     sysctls:
       kernel.sem: 500 1024000 200 4096
@@ -25,6 +26,7 @@ services:
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
+      - "$PWD/:/home/gpadmin/gpdb_src"
     sysctls:
       kernel.sem: 500 1024000 200 4096
     init: true
@@ -37,6 +39,7 @@ services:
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
+      - "$PWD/:/home/gpadmin/gpdb_src"
     sysctls:
       kernel.sem: 500 1024000 200 4096
     init: true
@@ -49,6 +52,7 @@ services:
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
+      - "$PWD/:/home/gpadmin/gpdb_src"
     sysctls:
       kernel.sem: 500 1024000 200 4096
     init: true
