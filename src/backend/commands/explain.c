@@ -3466,11 +3466,7 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 		CdbExplain_Agg	*agg;
 		const char *sortMethod;
 		const char *spaceType;
-<<<<<<< HEAD
 		int			j;
-=======
-		int64		spaceUsed;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 		/*
 		 * Memory and disk usage statistics are saved separately in GPDB so
@@ -3498,9 +3494,8 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 		if (es->format == EXPLAIN_FORMAT_TEXT)
 		{
 			ExplainIndentText(es);
-<<<<<<< HEAD
-			appendStringInfo(es->str, "Sort Method:  %s  %s: %ldkB",
-				sortMethod, spaceType, (long) agg->vsum);
+			appendStringInfo(es->str, "Sort Method:  %s  %s: " INT64_FORMAT "kB",
+				sortMethod, spaceType, (int64) agg->vsum);
 			if (es->verbose)
 			{
 				appendStringInfo(es->str, "  Max Memory: %ldkB  Avg Memory: %ldkB (%d segments)",
@@ -3509,10 +3504,6 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 								 agg->vcnt);
 			}
 			appendStringInfo(es->str, "\n");
-=======
-			appendStringInfo(es->str, "Sort Method: %s  %s: " INT64_FORMAT "kB\n",
-							 sortMethod, spaceType, spaceUsed);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		}
 		else
 		{
