@@ -27,11 +27,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
-<<<<<<< HEAD
 #include "catalog/oid_dispatch.h"
-#include "catalog/opfam_internal.h"
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
