@@ -751,7 +751,7 @@ CLOGTransactionIsOld(TransactionId xid)
 	if (ShmemVariableCache == NULL)
 		return false;	// In case we are called very early in the life of the backend process, etc.
 
-	nextXid = XidFromFullTransactionId(ShmemVariableCache->nextFullXid);
+	nextXid = XidFromFullTransactionId(ShmemVariableCache->nextXid);
 
 	if (nextXid < xid)
 		return false;	// Not sure what is going on.
