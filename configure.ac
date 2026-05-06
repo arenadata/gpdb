@@ -24,17 +24,10 @@ AC_INIT([Greenplum Database], [8.0.0-alpha.0], [support@greenplum.org], [], [htt
 [PG_PACKAGE_VERSION=14alpha0]
 AC_SUBST(PG_PACKAGE_VERSION)
 
-<<<<<<< HEAD:configure.in
 dnl m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.69], [], [m4_fatal([Autoconf version 2.69 is required.
 dnl Untested combinations of 'autoconf' and PostgreSQL versions are not
-dnl recommended.  You can remove the check from 'configure.in' but it is then
+dnl recommended.  You can remove the check from 'configure.ac' but it is then
 dnl your responsibility whether the result works or not.])])
-=======
-m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.69], [], [m4_fatal([Autoconf version 2.69 is required.
-Untested combinations of 'autoconf' and PostgreSQL versions are not
-recommended.  You can remove the check from 'configure.ac' but it is then
-your responsibility whether the result works or not.])])
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600:configure.ac
 AC_COPYRIGHT([Copyright (c) 1996-2020, PostgreSQL Global Development Group])
 AC_CONFIG_SRCDIR([src/backend/access/common/heaptuple.c])
 AC_CONFIG_AUX_DIR(config)
