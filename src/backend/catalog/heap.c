@@ -1662,6 +1662,9 @@ heap_create_with_catalog(const char *relname,
 		relarrayname = makeArrayTypeName(relname, relnamespace);
 
 		/*
+		 * We'll make an array over the composite type, too.  For largely
+		 * historical reasons, the array type's OID is assigned first.
+		 *
 		 * If we are expected to get a preassigned Oid but receive InvalidOid,
 		 * get a new Oid. This can happen during upgrades from GPDB4 to 5 where
 		 * array types over relation rowtypes were introduced so there are no
