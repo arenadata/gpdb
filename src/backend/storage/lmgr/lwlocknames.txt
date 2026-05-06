@@ -57,7 +57,6 @@ NotifyQueueTailLock					47
 # Additional individual locks in GPDB
 SharedSnapshotLock					48
 DistributedLogControlLock			49
-# 47 is available; was formerly AOSegFileLock
 ResQueueLock						50
 ResGroupLock						51
 ErrorLogLock						52
