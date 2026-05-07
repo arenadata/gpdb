@@ -1308,7 +1308,7 @@ HeapTupleSatisfiesVacuum(Relation relation, HeapTuple htup, TransactionId Oldest
 	TransactionId dead_after = InvalidTransactionId;
 	HTSV_Result res;
 
-	res = HeapTupleSatisfiesVacuumHorizon(htup, buffer, &dead_after);
+	res = HeapTupleSatisfiesVacuumHorizon(relation, htup, buffer, &dead_after);
 
 	if (res == HEAPTUPLE_RECENTLY_DEAD)
 	{
@@ -1336,7 +1336,7 @@ HeapTupleSatisfiesVacuum(Relation relation, HeapTuple htup, TransactionId Oldest
  * transaction aborted.
  */
 HTSV_Result
-HeapTupleSatisfiesVacuumHorizon(HeapTuple htup, Buffer buffer, TransactionId *dead_after)
+HeapTupleSatisfiesVacuumHorizon(Relation relation, HeapTuple htup, Buffer buffer, TransactionId *dead_after)
 {
 	HeapTupleHeader tuple = htup->t_data;
 
@@ -1573,14 +1573,10 @@ HeapTupleSatisfiesNonVacuumable(Relation relation,
 								HeapTuple htup, Snapshot snapshot,
 								Buffer buffer)
 {
-<<<<<<< HEAD
-	return HeapTupleSatisfiesVacuum(relation, htup, snapshot->xmin, buffer)
-		!= HEAPTUPLE_DEAD;
-=======
 	TransactionId dead_after = InvalidTransactionId;
 	HTSV_Result res;
 
-	res = HeapTupleSatisfiesVacuumHorizon(htup, buffer, &dead_after);
+	res = HeapTupleSatisfiesVacuumHorizon(relation, htup, buffer, &dead_after);
 
 	if (res == HEAPTUPLE_RECENTLY_DEAD)
 	{
@@ -1593,7 +1589,6 @@ HeapTupleSatisfiesNonVacuumable(Relation relation,
 		Assert(!TransactionIdIsValid(dead_after));
 
 	return res != HEAPTUPLE_DEAD;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 }
 
 
