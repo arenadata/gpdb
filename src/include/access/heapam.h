@@ -196,8 +196,8 @@ extern TM_Result HeapTupleSatisfiesUpdate(Relation relation, HeapTuple stup, Com
 										  Buffer buffer);
 extern HTSV_Result HeapTupleSatisfiesVacuum(Relation relation, HeapTuple stup, TransactionId OldestXmin,
 											Buffer buffer);
-extern HTSV_Result HeapTupleSatisfiesVacuumHorizon(HeapTuple stup, Buffer buffer,
-		TransactionId *dead_after);
+extern HTSV_Result HeapTupleSatisfiesVacuumHorizon(Relation relation, HeapTuple stup, Buffer buffer,
+												   TransactionId *dead_after);
 extern void HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer, Relation rel,
 								 uint16 infomask, TransactionId xid);
 extern bool HeapTupleHeaderIsOnlyLocked(HeapTupleHeader tuple);

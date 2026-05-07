@@ -73,11 +73,8 @@ extern PGDLLIMPORT bool enable_tidscan;
 extern PGDLLIMPORT bool enable_sort;
 extern PGDLLIMPORT bool enable_incremental_sort;
 extern PGDLLIMPORT bool enable_hashagg;
-<<<<<<< HEAD
 extern PGDLLIMPORT bool enable_groupagg;
 extern PGDLLIMPORT bool hashagg_avoid_disk_plan;
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 extern PGDLLIMPORT bool enable_nestloop;
 extern PGDLLIMPORT bool enable_material;
 extern PGDLLIMPORT bool enable_mergejoin;
