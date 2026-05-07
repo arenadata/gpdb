@@ -1341,16 +1341,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 	if (customplan)
 	{
 		/* Build a custom plan */
-<<<<<<< HEAD
 		plan = BuildCachedPlan(plansource, qlist, boundParams, queryEnv, intoClause);
-		/* Accumulate total costs of custom plans, but 'ware overflow */
-		if (plansource->num_custom_plans < INT_MAX)
-		{
-			plansource->total_custom_cost += cached_plan_cost(plan, true);
-			plansource->num_custom_plans++;
-		}
-=======
-		plan = BuildCachedPlan(plansource, qlist, boundParams, queryEnv);
 		/* Accumulate total costs of custom plans */
 		plansource->total_custom_cost += cached_plan_cost(plan, true);
 
@@ -1359,7 +1350,6 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 	else
 	{
 		plansource->num_generic_plans++;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	}
 
 	Assert(plan != NULL);
