@@ -614,7 +614,7 @@ AppendOptimizedCollectDeadSegments(Relation aorel)
 		else
 		{
 			if (cutoff_xid == InvalidTransactionId)
-				cutoff_xid = GetOldestDistNonRemovableTransactionId(pg_aoseg_rel);
+				cutoff_xid = GetOldestNonRemovableTransactionId(pg_aoseg_rel);
 
 			visible_to_all = TransactionIdPrecedes(xmin, cutoff_xid);
 		}

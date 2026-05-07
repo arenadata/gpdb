@@ -1495,7 +1495,7 @@ acquire_sample_rows(Relation onerel, int elevel,
 		totalblocks = RelationGetNumberOfBlocks(onerel);
 
 	/* Need a cutoff xmin for HeapTupleSatisfiesVacuum */
-	OldestXmin = GetOldestDistNonRemovableTransactionId(onerel);
+	OldestXmin = GetOldestNonRemovableTransactionId(onerel);
 
 	/* Prepare for sampling block numbers */
 	nblocks = BlockSampler_Init(&bs, totalblocks, targrows, random());

@@ -1975,8 +1975,9 @@ TransactionId GetDistOldestXmin(TransactionId local_xmin)
  * This is used by VACUUM to decide which deleted tuples must be preserved in
  * the passed in table.
  */
+
 TransactionId
-GetOldestNonRemovableTransactionId(Relation rel)
+GetOldestLocalNonRemovableTransactionId(Relation rel)
 {
 	ComputeXidHorizonsResult horizons;
 
@@ -1992,10 +1993,11 @@ GetOldestNonRemovableTransactionId(Relation rel)
 }
 
 TransactionId
-GetOldestDistNonRemovableTransactionId(Relation rel)
+GetOldestNonRemovableTransactionId(Relation rel)
 {
-	return GetDistOldestXmin(GetOldestNonRemovableTransactionId(rel));
+	return GetDistOldestXmin(GetOldestLocalNonRemovableTransactionId(rel));
 }
+
 
 /*
  * Return the oldest transaction id any currently running backend might still
@@ -2004,7 +2006,7 @@ GetOldestDistNonRemovableTransactionId(Relation rel)
  * decisions like up to where pg_subtrans can be truncated.
  */
 TransactionId
-GetOldestTransactionIdConsideredRunning(void)
+GetOldestLocalTransactionIdConsideredRunning(void)
 {
 	ComputeXidHorizonsResult horizons;
 
@@ -2014,16 +2016,16 @@ GetOldestTransactionIdConsideredRunning(void)
 }
 
 TransactionId
-GetOldestDistTransactionIdConsideredRunning(void)
+GetOldestTransactionIdConsideredRunning(void)
 {
-	return GetDistOldestXmin(GetOldestTransactionIdConsideredRunning());
+	return GetDistOldestXmin(GetOldestLocalTransactionIdConsideredRunning());
 }
 
 /*
  * Return the visibility horizons for a hot standby feedback message.
  */
 void
-GetReplicationHorizons(TransactionId *xmin, TransactionId *catalog_xmin)
+GetLocalReplicationHorizons(TransactionId *xmin, TransactionId *catalog_xmin)
 {
 	ComputeXidHorizonsResult horizons;
 
@@ -2043,7 +2045,7 @@ GetReplicationHorizons(TransactionId *xmin, TransactionId *catalog_xmin)
  * Return the visibility horizons for a hot standby feedback message.
  */
 void
-GetDistReplicationHorizons(TransactionId *xmin, TransactionId *catalog_xmin)
+GetReplicationHorizons(TransactionId *xmin, TransactionId *catalog_xmin)
 {
 	ComputeXidHorizonsResult horizons;
 

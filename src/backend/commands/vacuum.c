@@ -1182,7 +1182,7 @@ vacuum_set_xid_limits(Relation rel,
 	 * that only one vacuum process can be working on a particular table at
 	 * any time, and that each vacuum is always an independent transaction.
 	 */
-	*oldestXmin = GetOldestDistNonRemovableTransactionId(rel);
+	*oldestXmin = GetOldestNonRemovableTransactionId(rel);
 
 	if (OldSnapshotThresholdActive())
 	{
@@ -1714,7 +1714,7 @@ vac_update_datfrozenxid(void)
 	 * pg_class entries for new tables; see AddNewRelationTuple().  So we
 	 * cannot produce a wrong minimum by starting with this.
 	 */
-	newFrozenXid = GetOldestNonRemovableTransactionId(NULL);
+	newFrozenXid = GetOldestLocalNonRemovableTransactionId(NULL);
 
 	/*
 	 * Similarly, initialize the MultiXact "min" with the value that would be
