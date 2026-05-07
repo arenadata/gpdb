@@ -294,15 +294,11 @@ GetNewTransactionId(bool isSubXact)
 			MyProc->subxidStatus.count = substat->count = nxids + 1;
 		}
 		else
-<<<<<<< HEAD
 		{
-			MyPgXact->overflowed = true;
+			MyProc->subxidStatus.overflowed = substat->overflowed = true;
 			ereportif (gp_log_suboverflow_statement, LOG,
 						(errmsg("Statement caused suboverflow: %s", debug_query_string)));
 		}
-=======
-			MyProc->subxidStatus.overflowed = substat->overflowed = true;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	}
 
 	LWLockRelease(XidGenLock);
@@ -694,7 +690,6 @@ GetNewObjectId(void)
 	return result;
 }
 
-<<<<<<< HEAD
 /*
  * AdvanceObjectId -- advance object id counter for QD and QE nodes
  *
@@ -802,7 +797,6 @@ OidFollowsNextOid(Oid id)
 	diff = (int32) (id - ShmemVariableCache->nextOid);
 	return (diff > 0);
 }
-=======
 
 #ifdef USE_ASSERT_CHECKING
 
@@ -852,4 +846,3 @@ AssertTransactionIdInAllowableRange(TransactionId xid)
 		   TransactionIdPrecedesOrEquals(xid, next_xid));
 }
 #endif
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600

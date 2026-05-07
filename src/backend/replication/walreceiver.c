@@ -1211,7 +1211,7 @@ XLogWalRcvSendHSFeedback(bool immed)
 	 */
 	if (hot_standby_feedback)
 	{
-		GetReplicationHorizons(&xmin, &catalog_xmin);
+		GetDistReplicationHorizons(&xmin, &catalog_xmin);
 	}
 	else
 	{

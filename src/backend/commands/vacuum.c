@@ -1182,7 +1182,7 @@ vacuum_set_xid_limits(Relation rel,
 	 * that only one vacuum process can be working on a particular table at
 	 * any time, and that each vacuum is always an independent transaction.
 	 */
-	*oldestXmin = GetOldestNonRemovableTransactionId(rel);
+	*oldestXmin = GetOldestDistNonRemovableTransactionId(rel);
 
 	if (OldSnapshotThresholdActive())
 	{
@@ -1694,24 +1694,16 @@ vac_update_datfrozenxid(void)
 	bool		dirty = false;
 
 	/*
-<<<<<<< HEAD
-	 * Initialize the "min" calculation with GetOldestXmin, which is a
-	 * reasonable approximation to the minimum relfrozenxid for not-yet-
-	 * committed pg_class entries for new tables; see AddNewRelationTuple().
-	 * So we cannot produce a wrong minimum by starting with this.
-	 *
-	 * GPDB: Use GetLocalOldestXmin here, rather than GetOldestXmin. We don't
-	 * want to include effects of distributed transactions in this. If a
-	 * database's datfrozenxid is past the oldest XID as determined by
-	 * distributed transactions, we will nevertheless never encounter such
-	 * XIDs on disk.
-	 */
-	newFrozenXid = GetLocalOldestXmin(NULL, PROCARRAY_FLAGS_VACUUM);
-=======
 	 * Restrict this task to one backend per database.  This avoids race
 	 * conditions that would move datfrozenxid or datminmxid backward.  It
 	 * avoids calling vac_truncate_clog() with a datfrozenxid preceding a
 	 * datfrozenxid passed to an earlier vac_truncate_clog() call.
+	 *
+	 * GPDB: Use Local xmin here, rather than distributed one. We don't
+	 * want to include effects of distributed transactions in this. If a
+	 * database's datfrozenxid is past the oldest XID as determined by
+	 * distributed transactions, we will nevertheless never encounter such
+	 * XIDs on disk.
 	 */
 	LockDatabaseFrozenIds(ExclusiveLock);
 
@@ -1723,7 +1715,6 @@ vac_update_datfrozenxid(void)
 	 * cannot produce a wrong minimum by starting with this.
 	 */
 	newFrozenXid = GetOldestNonRemovableTransactionId(NULL);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/*
 	 * Similarly, initialize the MultiXact "min" with the value that would be
@@ -2121,13 +2112,9 @@ vacuum_rel(Oid relid, RangeVar *relation, VacuumParams *params,
 		 * might appear to go backwards, which is probably Not Good.
 		 */
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
-<<<<<<< HEAD
 #if 0 /* Upstream code not applicable to GPDB */
-		MyPgXact->vacuumFlags |= PROC_IN_VACUUM;
-#endif
-=======
 		MyProc->vacuumFlags |= PROC_IN_VACUUM;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+#endif
 		if (params->is_wraparound)
 			MyProc->vacuumFlags |= PROC_VACUUM_FOR_WRAPAROUND;
 		ProcGlobal->vacuumFlags[MyProc->pgxactoff] = MyProc->vacuumFlags;

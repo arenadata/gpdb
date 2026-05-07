@@ -98,15 +98,12 @@ extern PGDLLIMPORT SnapshotData CatalogSnapshotData;
 	((snapshot)->snapshot_type == SNAPSHOT_MVCC || \
 	 (snapshot)->snapshot_type == SNAPSHOT_HISTORIC_MVCC)
 
-<<<<<<< HEAD
-=======
 static inline bool
 OldSnapshotThresholdActive(void)
 {
 	return old_snapshot_threshold >= 0;
 }
 
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 extern Snapshot GetTransactionSnapshot(void);
 extern Snapshot GetLatestSnapshot(void);
 extern void SnapshotSetCommandId(CommandId curcid);

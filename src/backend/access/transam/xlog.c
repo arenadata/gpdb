@@ -5322,13 +5322,9 @@ BootStrapXLOG(void)
 	checkPoint.time = (pg_time_t) time(NULL);
 	checkPoint.oldestActiveXid = InvalidTransactionId;
 
-<<<<<<< HEAD
-	ShmemVariableCache->nextFullXid = checkPoint.nextFullXid;
+	ShmemVariableCache->nextXid = checkPoint.nextXid;
 	ShmemVariableCache->nextGxid = checkPoint.nextGxid;
 	ShmemVariableCache->GxidCount = 0;
-=======
-	ShmemVariableCache->nextXid = checkPoint.nextXid;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	ShmemVariableCache->nextOid = checkPoint.nextOid;
 	ShmemVariableCache->oidCount = 0;
 	ShmemVariableCache->nextRelfilenode = checkPoint.nextRelfilenode;
@@ -7014,15 +7010,9 @@ StartupXLOG(void)
 							 (uint32) (checkPoint.redo >> 32), (uint32) checkPoint.redo,
 							 wasShutdown ? "true" : "false")));
 	ereport(DEBUG1,
-<<<<<<< HEAD
 			(errmsg_internal("next transaction ID: " UINT64_FORMAT "; next OID: %u; next relfilenode: %u",
-							 U64FromFullTransactionId(checkPoint.nextFullXid),
-							 checkPoint.nextOid, checkPoint.nextRelfilenode)));
-=======
-			(errmsg_internal("next transaction ID: " UINT64_FORMAT "; next OID: %u",
 							 U64FromFullTransactionId(checkPoint.nextXid),
-							 checkPoint.nextOid)));
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+							 checkPoint.nextOid, checkPoint.nextRelfilenode)));
 	ereport(DEBUG1,
 			(errmsg_internal("next MultiXactId: %u; next MultiXactOffset: %u",
 							 checkPoint.nextMulti, checkPoint.nextMultiOffset)));
@@ -7041,13 +7031,9 @@ StartupXLOG(void)
 				(errmsg("invalid next transaction ID")));
 
 	/* initialize shared memory variables from the checkpoint record */
-<<<<<<< HEAD
-	ShmemVariableCache->nextFullXid = checkPoint.nextFullXid;
+	ShmemVariableCache->nextXid = checkPoint.nextXid;
 	ShmemVariableCache->nextGxid = checkPoint.nextGxid;
 	ShmemVariableCache->GxidCount = 0;
-=======
-	ShmemVariableCache->nextXid = checkPoint.nextXid;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	ShmemVariableCache->nextOid = checkPoint.nextOid;
 	ShmemVariableCache->oidCount = 0;
 	ShmemVariableCache->nextRelfilenode = checkPoint.nextRelfilenode;
@@ -8240,18 +8226,13 @@ StartupXLOG(void)
 
 	/* also initialize latestCompletedXid, to nextXid - 1 */
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
-<<<<<<< HEAD
-	ShmemVariableCache->latestCompletedXid = XidFromFullTransactionId(ShmemVariableCache->nextFullXid);
+	ShmemVariableCache->latestCompletedXid = ShmemVariableCache->nextXid;
 	ShmemVariableCache->latestCompletedGxid = ShmemVariableCache->nextGxid;
-	TransactionIdRetreat(ShmemVariableCache->latestCompletedXid);
+	FullTransactionIdRetreat(&ShmemVariableCache->latestCompletedXid);
 	if (IsNormalProcessingMode())
 		elog(LOG, "latest completed transaction id is %u and next transaction id is %u",
 			 ShmemVariableCache->latestCompletedXid,
 			 XidFromFullTransactionId(ShmemVariableCache->nextFullXid));
-=======
-	ShmemVariableCache->latestCompletedXid = ShmemVariableCache->nextXid;
-	FullTransactionIdRetreat(&ShmemVariableCache->latestCompletedXid);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	LWLockRelease(ProcArrayLock);
 
 	/*
@@ -9636,11 +9617,7 @@ CreateCheckPoint(int flags)
 	 * StartupSUBTRANS hasn't been called yet.
 	 */
 	if (!RecoveryInProgress())
-<<<<<<< HEAD
-		TruncateSUBTRANS(GetLocalOldestXmin(NULL, PROCARRAY_FLAGS_DEFAULT));
-=======
 		TruncateSUBTRANS(GetOldestTransactionIdConsideredRunning());
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/* Real work is done, but log and update stats before releasing lock. */
 	LogCheckpointEnd(false);
@@ -10050,7 +10027,7 @@ CreateRestartPoint(int flags)
 	 * this because StartupSUBTRANS hasn't been called yet.
 	 */
 	if (EnableHotStandby)
-		TruncateSUBTRANS(GetOldestTransactionIdConsideredRunning());
+		TruncateSUBTRANS(GetOldestDistTransactionIdConsideredRunning());
 
 	/* Real work is done, but log and update before releasing lock. */
 	LogCheckpointEnd(true);
