@@ -1152,8 +1152,7 @@ choose_hashed_setop(PlannerInfo *root, List *groupClauses,
 
 	/*
 	 * Don't do it if it doesn't look like the hashtable will fit into
-<<<<<<< HEAD
-	 * work_mem.
+	 * hash_mem.
 	 *
 	 * GPDB: In other places where we are building a Hash Aggregate, we use
 	 * calcHashAggTableSizes(), which takes into account that in GPDB, a Hash
@@ -1165,9 +1164,6 @@ choose_hashed_setop(PlannerInfo *root, List *groupClauses,
 	 * even more lame that we don't account the spilling correctly, if we are
 	 * in fact constructing a Hash Aggregate. A UNION is implemented with a
 	 * Hash Aggregate, only INTERSECT and EXCEPT use Hashed SetOp.
-=======
-	 * hash_mem.
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	 */
 	hashentrysize = MAXALIGN(input_path->pathtarget->width) + MAXALIGN(SizeofMinimalTupleHeader);
 
