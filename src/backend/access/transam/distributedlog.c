@@ -115,7 +115,7 @@ void
 DistributedLog_InitOldestXmin(void)
 {
 	TransactionId oldestXmin = ShmemVariableCache->oldestXid;
-	TransactionId latestXid = ShmemVariableCache->latestCompletedXid;
+	TransactionId latestXid = XidFromFullTransactionId(ShmemVariableCache->latestCompletedXid);
 
 	/*
 	 * Start scanning from oldest datfrozenxid, until we find a
