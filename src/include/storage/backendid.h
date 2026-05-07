@@ -53,11 +53,6 @@ extern PGDLLIMPORT BackendId ParallelLeaderBackendId;
  *
  * In GPDB, we use TempRelBackendId for everything.
  */
-<<<<<<< HEAD
 #define BackendIdForTempRelations() TempRelBackendId
-=======
-#define BackendIdForTempRelations() \
-	(ParallelLeaderBackendId == InvalidBackendId ? MyBackendId : ParallelLeaderBackendId)
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 #endif							/* BACKENDID_H */
