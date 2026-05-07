@@ -7150,15 +7150,11 @@ xact_redo_commit(xl_xact_parsed_commit *parsed,
 
 	max_xid = TransactionIdLatest(xid, parsed->nsubxacts, parsed->subxacts);
 
-<<<<<<< HEAD
 	ereportif(OidIsValid(tablespace_oid_to_delete), DEBUG5,
 		(errmsg("in xact_redo_commit_internal with tablespace oid to delete: %u",
 			tablespace_oid_to_delete)));
 
-	/* Make sure nextFullXid is beyond any XID mentioned in the record. */
-=======
 	/* Make sure nextXid is beyond any XID mentioned in the record. */
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	AdvanceNextFullTransactionIdPastXid(max_xid);
 
 	/* also update distributed commit log */
