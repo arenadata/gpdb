@@ -9,12 +9,12 @@ explain (costs off)
 select * from (select * from tenk1 order by four) t order by four, ten
 limit 1;
 
--- When work_mem is not enough to sort the entire table, incremental sort
+-- When working memory is not enough to sort the entire table, incremental sort
 -- may be faster if individual groups still fit into work_mem.
-set work_mem to '2MB';
+set planner_work_mem=280;
 explain (costs off)
 select * from (select * from tenk1 order by four) t order by four, ten;
-reset work_mem;
+reset planner_work_mem;
 
 create table t(a integer, b integer);
 
