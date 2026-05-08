@@ -88,6 +88,7 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "utils/timestamp.h"
 
 #include "cdb/cdbvars.h"  /* GpIdentity.segindex */
 #include "cdb/cdbtm.h"
