@@ -52,7 +52,7 @@ test_GetNewTransactionId_xid_stop_limit(void **state)
 	 * and it's larger than xidStopLimit to trigger the ereport(ERROR).
 	 */
 	ShmemVariableCache = &data;
-	ShmemVariableCache->nextFullXid.value = 30;
+	ShmemVariableCache->nextXid.value = 30;
 	ShmemVariableCache->xidVacLimit = 10;
 	ShmemVariableCache->xidStopLimit = 20;
 	IsUnderPostmaster = true;
@@ -95,7 +95,7 @@ test_GetNewTransactionId_xid_warn_limit(void **state)
 	 * the ereport(WARNING).
 	 */
 	ShmemVariableCache = &data;
-	ShmemVariableCache->nextFullXid.value = xid;
+	ShmemVariableCache->nextXid.value = xid;
 	ShmemVariableCache->xidVacLimit = 10;
 	ShmemVariableCache->xidWarnLimit = 20;
 	ShmemVariableCache->xidStopLimit = 30;
