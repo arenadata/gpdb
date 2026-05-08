@@ -224,13 +224,13 @@ GetNewTransactionId(bool isSubXact)
 		 */
 		const uint64      page_extend_limit = 4 * 1024;
 
-		xx = U64FromFullTransactionId(ShmemVariableCache->nextFullXid);
+		xx = U64FromFullTransactionId(ShmemVariableCache->nextXid);
 
 		r = xx % page_extend_limit;
 		if (r > 1 && r < (page_extend_limit - 1))
 		{
 			xx += page_extend_limit - r - 1;
-			ShmemVariableCache->nextFullXid.value = xx;
+			ShmemVariableCache->nextXid.value = xx;
 		}
 	}
 
