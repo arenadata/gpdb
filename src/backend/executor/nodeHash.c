@@ -746,7 +746,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
 	inner_rel_bytes = ntuples * tupsize;
 
 	/*
-	 * Target in-memory hashtable size is hash_mem kilobytes.
+	 * Target in-memory hashtable size is operatorMemKB kilobytes.
 	 */
 	hash_table_bytes = operatorMemKB * 1024L;
 
