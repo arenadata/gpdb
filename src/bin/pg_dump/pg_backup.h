@@ -283,11 +283,7 @@ typedef int DumpId;
  * Function pointer prototypes for assorted callback methods.
  */
 
-<<<<<<< HEAD
 typedef int (*DataDumperPtr) (Archive *AH, const void *userArg);
-=======
-typedef int (*DataDumperPtr) (Archive *AH, void *userArg);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 typedef void (*SetupWorkerPtrType) (Archive *AH);
 

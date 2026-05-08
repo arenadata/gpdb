@@ -10097,15 +10097,8 @@ GetWALAvailability(XLogRecPtr targetLSN)
 	 * oldestSlotSeg to the current segment.
 	 */
 	currpos = GetXLogWriteRecPtr();
-<<<<<<< HEAD
-
-	/* calculate oldest segment currently needed by slots */
-	XLByteToSeg(targetLSN, targetSeg, wal_segment_size);
-	KeepLogSeg(currpos, &oldestSlotSeg, InvalidXLogRecPtr);
-=======
 	XLByteToSeg(currpos, oldestSlotSeg, wal_segment_size);
-	KeepLogSeg(currpos, &oldestSlotSeg);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+	KeepLogSeg(currpos, &oldestSlotSeg, InvalidXLogRecPtr);
 
 	/*
 	 * Find the oldest extant segment file. We get 1 until checkpoint removes
@@ -10227,19 +10220,6 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 	/* but, keep at least wal_keep_size if that's set */
 	if (wal_keep_size_mb > 0)
 	{
-<<<<<<< HEAD
-		/* avoid underflow, don't go below 1 */
-		if (currSegNo <= wal_keep_segments)
-			segno = 1;
-		else
-			segno = currSegNo - wal_keep_segments;
-
-		setvalue = true;
-	}
-
-	/* don't delete WAL segments newer than the calculated segment */
-	if (setvalue && (XLogRecPtrIsInvalid(*logSegNo) || segno < *logSegNo))
-=======
 		uint64		keep_segs;
 
 		keep_segs = ConvertToXSegs(wal_keep_size_mb, wal_segment_size);
@@ -10251,11 +10231,12 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 			else
 				segno = currSegNo - keep_segs;
 		}
+
+		setvalue = true;
 	}
 
 	/* don't delete WAL segments newer than the calculated segment */
-	if (segno < *logSegNo)
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+	if (setvalue && segno < *logSegNo)
 		*logSegNo = segno;
 }
 
