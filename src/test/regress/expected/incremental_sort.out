@@ -722,14 +722,17 @@ set local enable_hashjoin = off;
 set local enable_mergejoin = off;
 set local enable_material = off;
 set local enable_sort = off;
-explain (costs off) select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
-                      QUERY PLAN                      
-------------------------------------------------------
+explain (costs off) select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2) order by 1;
+                         QUERY PLAN                         
+------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
-   ->  Nested Loop Left Join
-         Join Filter: (t_1.a = t.a)
-         ->  Seq Scan on t
-               Filter: (a = ANY ('{1,2}'::integer[]))
+   Merge Key: t.a
+   ->  Merge Left Join
+         Merge Cond: (t.a = t_1.a)
+         ->  Sort
+               Sort Key: t.a
+               ->  Seq Scan on t
+                     Filter: (a = ANY ('{1,2}'::integer[]))
          ->  Materialize
                ->  Incremental Sort
                      Sort Key: t_1.a, t_1.b
@@ -738,9 +741,9 @@ explain (costs off) select * from t left join (select * from (select * from t or
                            Sort Key: t_1.a
                            ->  Seq Scan on t t_1
  Optimizer: Postgres query optimizer
-(13 rows)
+(16 rows)
 
-select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
+select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2) order by 1;
  a | b | a | b 
 ---+---+---+---
  1 | 1 | 1 | 1
