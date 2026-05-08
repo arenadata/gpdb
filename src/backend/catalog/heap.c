@@ -839,7 +839,7 @@ static void MetaTrackAddUpdInternal(Oid			classid,
 	{
 		Form_pg_authid authid_tup = (Form_pg_authid) GETSTRUCT(roletup);
 
-		namecpy(&uname, &authid_tup->rolname);
+		namestrcpy(&uname, NameStr(authid_tup->rolname));
 		ReleaseSysCache(roletup);
 	}
 	else
