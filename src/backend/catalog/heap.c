@@ -1509,7 +1509,6 @@ heap_create_with_catalog(const char *relname,
 	Oid			new_type_oid;
 	TransactionId relfrozenxid;
 	MultiXactId relminmxid;
-	char	   *relarrayname = NULL;
 
 	pg_class_desc = table_open(RelationRelationId, RowExclusiveLock);
 
@@ -1627,11 +1626,9 @@ heap_create_with_catalog(const char *relname,
 	new_rel_desc->rd_rel->relrewrite = relrewrite;
 
 	/*
-<<<<<<< HEAD
-	 * Decide whether to create an array type over the relation's rowtype. We
-	 * do not create any array types for system catalogs (ie, those made
-	 * during initdb). We do not create them where the use of a relation as
-	 * such is an implementation detail: toast tables, sequences and indexes.
+	 * Decide whether to create a pg_type entry for the relation's rowtype.
+	 * These types are made except where the use of a relation as such is an
+	 * implementation detail: toast tables, sequences and indexes.
 	 *
 	 * Also not for the auxiliary heaps created for bitmap indexes or append-
 	 * only tables.
@@ -1647,73 +1644,33 @@ heap_create_with_catalog(const char *relname,
 	 * OID first on QD and use the name as key to retrieve the pre-assigned
 	 * OID from QE.
 	 */
-	if (IsUnderPostmaster && ((relkind == RELKIND_RELATION  && !RelationIsAppendOptimized(new_rel_desc)) ||
-							  relkind == RELKIND_VIEW ||
-							  relkind == RELKIND_MATVIEW ||
-							  relkind == RELKIND_FOREIGN_TABLE ||
-							  relkind == RELKIND_COMPOSITE_TYPE ||
-							  relkind == RELKIND_PARTITIONED_TABLE) &&
+	if (!((relkind == RELKIND_RELATION && RelationIsAppendOptimized(new_rel_desc)) ||
+		  relkind == RELKIND_SEQUENCE ||
+		  relkind == RELKIND_TOASTVALUE ||
+		  relkind == RELKIND_INDEX ||
+		  relkind == RELKIND_PARTITIONED_INDEX ||
+		  relkind == RELKIND_AOSEGMENTS ||
+		  relkind == RELKIND_AOBLOCKDIR ||
+		  relkind == RELKIND_AOVISIMAP) &&
 		relnamespace != PG_BITMAPINDEX_NAMESPACE)
 	{
+		Oid			new_array_oid;
+		ObjectAddress new_type_addr;
+		char	   *relarrayname = NULL;
+
 		/* OK, so pre-assign a type OID for the array type */
 		relarrayname = makeArrayTypeName(relname, relnamespace);
 
 		/*
+		 * We'll make an array over the composite type, too.  For largely
+		 * historical reasons, the array type's OID is assigned first.
+		 *
 		 * If we are expected to get a preassigned Oid but receive InvalidOid,
 		 * get a new Oid. This can happen during upgrades from GPDB4 to 5 where
 		 * array types over relation rowtypes were introduced so there are no
 		 * pre-existing array types to dump from the old cluster
 		 */
 		new_array_oid = AssignTypeArrayOid(relarrayname, relnamespace);
-	}
-
-	/*
-	 * Since defining a relation also defines a complex type, we add a new
-	 * system type corresponding to the new relation.  The OID of the type can
-	 * be preselected by the caller, but if reltypeid is InvalidOid, we'll
-	 * generate a new OID for it.
-	 *
-	 * NOTE: we could get a unique-index failure here, in case someone else is
-	 * creating the same type name in parallel but hadn't committed yet when
-	 * we checked for a duplicate name above.
-	 */
-	new_type_addr = AddNewRelationType(relname,
-									   relnamespace,
-									   relid,
-									   relkind,
-									   ownerid,
-									   reltypeid,
-									   new_array_oid);
-	new_type_oid = new_type_addr.objectId;
-	if (typaddress)
-		*typaddress = new_type_addr;
-
-	/*
-	 * Now make the array type if wanted.
-	 */
-	if (OidIsValid(new_array_oid))
-	{
-		if (!relarrayname)
-			relarrayname = makeArrayTypeName(relname, relnamespace);
-=======
-	 * Decide whether to create a pg_type entry for the relation's rowtype.
-	 * These types are made except where the use of a relation as such is an
-	 * implementation detail: toast tables, sequences and indexes.
-	 */
-	if (!(relkind == RELKIND_SEQUENCE ||
-		  relkind == RELKIND_TOASTVALUE ||
-		  relkind == RELKIND_INDEX ||
-		  relkind == RELKIND_PARTITIONED_INDEX))
-	{
-		Oid			new_array_oid;
-		ObjectAddress new_type_addr;
-		char	   *relarrayname;
-
-		/*
-		 * We'll make an array over the composite type, too.  For largely
-		 * historical reasons, the array type's OID is assigned first.
-		 */
-		new_array_oid = AssignTypeArrayOid();
 
 		/*
 		 * Make the pg_type entry for the composite type.  The OID of the
@@ -1736,9 +1693,6 @@ heap_create_with_catalog(const char *relname,
 			*typaddress = new_type_addr;
 
 		/* Now create the array type. */
-		relarrayname = makeArrayTypeName(relname, relnamespace);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
-
 		TypeCreate(new_array_oid,	/* force the type's OID to this */
 				   relarrayname,	/* Array type name */
 				   relnamespace,	/* Same namespace as parent */
