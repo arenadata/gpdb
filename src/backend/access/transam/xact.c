@@ -242,12 +242,8 @@ typedef struct TransactionStateData
 	bool		didLogXid;		/* has xid been included in WAL record? */
 	int			parallelModeLevel;	/* Enter/ExitParallelMode counter */
 	bool		chain;			/* start a new block after this one */
-<<<<<<< HEAD
 	bool		executorSaysXactDoesWrites;	/* GP executor says xact does writes */
-
-=======
 	bool		assigned;		/* assigned to top-level XID */
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	struct TransactionStateData *parent;	/* back link to parent */
 	struct TransactionStateData *fastLink;	/* back link to jump to parent for efficient search */
 } TransactionStateData;
@@ -1660,12 +1656,8 @@ RecordTransactionCommit(void)
 							GetPendingTablespaceForDeletionForCommit(),
 							nchildren, children, nrels, rels,
 							nmsgs, invalMessages,
-<<<<<<< HEAD
 							ndeldbs, deldbs,
-							RelcacheInitFileInval, forceSyncCommit,
-=======
 							RelcacheInitFileInval,
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 							MyXactFlags,
 							InvalidTransactionId, NULL /* plain commit */ );
 
@@ -6350,7 +6342,6 @@ PushTransaction(void)
 	GetUserIdAndSecContext(&s->prevUser, &s->prevSecContext);
 	s->prevXactReadOnly = XactReadOnly;
 	s->parallelModeLevel = 0;
-<<<<<<< HEAD
 	s->executorSaysXactDoesWrites = false;
 
 	fastNodeCount++;
@@ -6360,9 +6351,7 @@ PushTransaction(void)
 		s->fastLink = previousFastLink;
 		previousFastLink = s;
 	}
-=======
 	s->assigned = false;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	CurrentTransactionState = s;
 
@@ -6795,12 +6784,8 @@ XactLogCommitRecord(TimestampTz commit_time,
 					int nsubxacts, TransactionId *subxacts,
 					int nrels, RelFileNodePendingDelete *rels,
 					int nmsgs, SharedInvalidationMessage *msgs,
-<<<<<<< HEAD
 					int ndeldbs, DbDirNode *deldbs,
-					bool relcacheInval, bool forceSync,
-=======
 					bool relcacheInval,
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 					int xactflags, TransactionId twophase_xid,
 					const char *twophase_gid)
 {
