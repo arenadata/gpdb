@@ -703,7 +703,7 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 	 * anyone else's calculation of a snapshot.  We might change their
 	 * estimate of global xmin, but that's OK.
 	 *
-	 * NB: this may reset the pgxact and tmGxact twice (not including the xid
+	 * NB: this may reset the pgproc and tmGxact twice (not including the xid
 	 * and gxid), it should be no harm to the correctness, just an easy way to
 	 * handle the cases like: there's a valid distributed XID but no local XID.
 	 */
@@ -5970,9 +5970,9 @@ LocalXidGetDistributedXid(TransactionId xid)
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		int		 pgprocno = arrayP->pgprocnos[index];
-		volatile PGXACT *pgxact = &allPgXact[pgprocno];
+		volatile PGPROC *pgproc = &allProcs[pgprocno];
 		volatile TMGXACT *tmGxact = &allTmGxact[pgprocno];
-		if (xid == pgxact->xid)
+		if (xid == pgproc->xid)
 		{
 			gxid = tmGxact->gxid;
 			break;
