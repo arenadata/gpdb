@@ -45,12 +45,8 @@ typedef struct CheckPoint
 	TimeLineID	PrevTimeLineID; /* previous TLI, if this record begins a new
 								 * timeline (equals ThisTimeLineID otherwise) */
 	bool		fullPageWrites; /* current full_page_writes */
-<<<<<<< HEAD
-	FullTransactionId nextFullXid;	/* next free full transaction ID */
-	DistributedTransactionId nextGxid;	/* next free gxid */
-=======
 	FullTransactionId nextXid;	/* next free transaction ID */
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+	DistributedTransactionId nextGxid;	/* next free gxid */
 	Oid			nextOid;		/* next free OID */
 	Oid			nextRelfilenode;	/* next free Relfilenode */
 	MultiXactId nextMulti;		/* next free MultiXactId */
