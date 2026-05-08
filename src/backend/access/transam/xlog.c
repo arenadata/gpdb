@@ -5323,6 +5323,7 @@ BootStrapXLOG(void)
 	checkPoint.oldestActiveXid = InvalidTransactionId;
 
 	ShmemVariableCache->nextXid = checkPoint.nextXid;
+	ShmemVariableCache->nextXid = checkPoint.nextXid;
 	ShmemVariableCache->nextGxid = checkPoint.nextGxid;
 	ShmemVariableCache->GxidCount = 0;
 	ShmemVariableCache->nextOid = checkPoint.nextOid;
@@ -9617,7 +9618,7 @@ CreateCheckPoint(int flags)
 	 * StartupSUBTRANS hasn't been called yet.
 	 */
 	if (!RecoveryInProgress())
-		TruncateSUBTRANS(GetOldestTransactionIdConsideredRunning());
+		TruncateSUBTRANS(GetLocalOldestTransactionIdConsideredRunning());
 
 	/* Real work is done, but log and update stats before releasing lock. */
 	LogCheckpointEnd(false);

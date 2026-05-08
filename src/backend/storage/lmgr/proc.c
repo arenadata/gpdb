@@ -83,15 +83,11 @@ bool		log_lock_waits = false;
 
 /* Pointer to this process's PGPROC struct, if any */
 PGPROC	   *MyProc = NULL;
-<<<<<<< HEAD
-PGXACT	   *MyPgXact = NULL;
 TMGXACT	   *MyTmGxact = NULL;
 TMGXACTLOCAL	*MyTmGxactLocal = NULL;
 
 /* Special for MPP reader gangs */
 PGPROC	   *lockHolderProcPtr;
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /*
  * This spinlock protects the freelist of recycled PGPROC structures.
@@ -185,11 +181,7 @@ void
 InitProcGlobal(void)
 {
 	PGPROC	   *procs;
-<<<<<<< HEAD
-	PGXACT	   *pgxacts;
 	TMGXACT	   *tmgxacts;
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	int			i,
 				j;
 	bool		found;
@@ -416,8 +408,7 @@ InitProcess(void)
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 				 errmsg("sorry, too many clients already")));
 	}
-<<<<<<< HEAD
-	MyPgXact = &ProcGlobal->allPgXact[MyProc->pgprocno];
+
 	MyTmGxact = &ProcGlobal->allTmGxact[MyProc->pgprocno];
 	MyTmGxactLocal = (TMGXACTLOCAL*)MemoryContextAllocZero(TopMemoryContext, sizeof(TMGXACTLOCAL));
 	if (MyTmGxactLocal == NULL)
@@ -435,8 +426,6 @@ InitProcess(void)
 
 	/* Set the next pointer to NULL */
 	MyProc->links.next = NULL;
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/*
 	 * Cross-check that the PGPROC is of the type we expect; if this were not
@@ -467,14 +456,9 @@ InitProcess(void)
 	MyProc->lxid = InvalidLocalTransactionId;
 	MyProc->fpVXIDLock = false;
 	MyProc->fpLocalTransactionId = InvalidLocalTransactionId;
-<<<<<<< HEAD
-	MyPgXact->xid = InvalidTransactionId;
-	MyPgXact->xmin = InvalidTransactionId;
 	MyProc->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
-=======
 	MyProc->xid = InvalidTransactionId;
 	MyProc->xmin = InvalidTransactionId;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	MyProc->pid = MyProcPid;
 	/* backendId, databaseId and roleId will be filled in later */
 	MyProc->backendId = InvalidBackendId;
@@ -702,15 +686,11 @@ InitAuxiliaryProcess(void)
 	((volatile PGPROC *) auxproc)->pid = MyProcPid;
 
 	MyProc = auxproc;
-<<<<<<< HEAD
 	lockHolderProcPtr = auxproc;
-	MyPgXact = &ProcGlobal->allPgXact[auxproc->pgprocno];
 	MyTmGxact = &ProcGlobal->allTmGxact[auxproc->pgprocno];
 	MyTmGxactLocal = (TMGXACTLOCAL*)MemoryContextAllocZero(TopMemoryContext, sizeof(TMGXACTLOCAL));
 	if (MyTmGxactLocal == NULL)
 		elog(FATAL, "allocating TMGXACTLOCAL failed");
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	SpinLockRelease(ProcStructLock);
 
@@ -723,14 +703,9 @@ InitAuxiliaryProcess(void)
 	MyProc->lxid = InvalidLocalTransactionId;
 	MyProc->fpVXIDLock = false;
 	MyProc->fpLocalTransactionId = InvalidLocalTransactionId;
-<<<<<<< HEAD
-	MyPgXact->xid = InvalidTransactionId;
-	MyPgXact->xmin = InvalidTransactionId;
 	MyProc->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
-=======
 	MyProc->xid = InvalidTransactionId;
 	MyProc->xmin = InvalidTransactionId;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	MyProc->backendId = InvalidBackendId;
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
