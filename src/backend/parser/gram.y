@@ -2657,7 +2657,7 @@ AlterTableStmt:
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $4;
 					n->cmds = $5;
-					n->relkind = OBJECT_FOREIGN_TABLE;
+					n->objtype = OBJECT_FOREIGN_TABLE;
 					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
