@@ -838,9 +838,12 @@ is_begin_state(const Node *stmt)
 #endif
 
 /*
- * Set up the search path to contain the target schema, then the schemas
- * of any prerequisite extensions, and nothing else.  In particular this
- * makes the target schema be the default creation target namespace.
+ * Set up the search path to have the target schema first, making it be
+ * the default creation target namespace.  Then add the schemas of any
+ * prerequisite extensions, unless they are in pg_catalog which would be
+ * searched anyway.  (Listing pg_catalog explicitly in a non-first
+ * position would be bad for security.)  Finally add pg_temp to ensure
+ * that temp objects can't take precedence over others.
  *
  * Note: it might look tempting to use PushOverrideSearchPath for this,
  * but we cannot do that.  We have to actually set the search_path GUC in
@@ -848,7 +851,7 @@ is_begin_state(const Node *stmt)
  * GUC_ACTION_SAVE method is just as convenient.
  */
 static void
-set_serach_path_for_extension(List *requiredSchemas, const char *schemaName)
+set_search_path_for_extension(List *requiredSchemas, const char *schemaName)
 {
 	StringInfoData pathbuf;
 	ListCell *lc;
@@ -859,9 +862,10 @@ set_serach_path_for_extension(List *requiredSchemas, const char *schemaName)
 		Oid			reqschema = lfirst_oid(lc);
 		char	   *reqname = get_namespace_name(reqschema);
 
-		if (reqname)
+		if (reqname && strcmp(reqname, "pg_catalog") != 0)
 			appendStringInfo(&pathbuf, ", %s", quote_identifier(reqname));
 	}
+	appendStringInfoString(&pathbuf, ", pg_temp");
 
 	(void) set_config_option("search_path", pathbuf.data,
 							 PGC_USERSET, PGC_S_SESSION,
@@ -977,8 +981,6 @@ execute_extension_script(Node *stmt,
 								 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
-<<<<<<< HEAD
-=======
 	 * Similarly disable check_function_bodies, to ensure that SQL functions
 	 * won't be parsed during creation.
 	 */
@@ -988,36 +990,6 @@ execute_extension_script(Node *stmt,
 								 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
-	 * Set up the search path to have the target schema first, making it be
-	 * the default creation target namespace.  Then add the schemas of any
-	 * prerequisite extensions, unless they are in pg_catalog which would be
-	 * searched anyway.  (Listing pg_catalog explicitly in a non-first
-	 * position would be bad for security.)  Finally add pg_temp to ensure
-	 * that temp objects can't take precedence over others.
-	 *
-	 * Note: it might look tempting to use PushOverrideSearchPath for this,
-	 * but we cannot do that.  We have to actually set the search_path GUC in
-	 * case the extension script examines or changes it.  In any case, the
-	 * GUC_ACTION_SAVE method is just as convenient.
-	 */
-	initStringInfo(&pathbuf);
-	appendStringInfoString(&pathbuf, quote_identifier(schemaName));
-	foreach(lc, requiredSchemas)
-	{
-		Oid			reqschema = lfirst_oid(lc);
-		char	   *reqname = get_namespace_name(reqschema);
-
-		if (reqname && strcmp(reqname, "pg_catalog") != 0)
-			appendStringInfo(&pathbuf, ", %s", quote_identifier(reqname));
-	}
-	appendStringInfoString(&pathbuf, ", pg_temp");
-
-	(void) set_config_option("search_path", pathbuf.data,
-							 PGC_USERSET, PGC_S_SESSION,
-							 GUC_ACTION_SAVE, true, 0, false);
-
-	/*
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	 * Set creating_extension and related variables so that
 	 * recordDependencyOnCurrentExtension and other functions do the right
 	 * things.  On failure, ensure we reset these variables.
@@ -1716,7 +1688,7 @@ CreateExtensionInternal(char *extensionName,
 		stmt = NULL;
 	}
 
-	set_serach_path_for_extension(requiredSchemas, schemaName);
+	set_search_path_for_extension(requiredSchemas, schemaName);
 
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
@@ -3442,7 +3414,7 @@ ApplyExtensionUpdates(Oid extensionOid,
 
 		InvokeObjectPostAlterHook(ExtensionRelationId, extensionOid, 0);
 
-		set_serach_path_for_extension(requiredSchemas, schemaName);
+		set_search_path_for_extension(requiredSchemas, schemaName);
 
 		if (Gp_role != GP_ROLE_EXECUTE)
 		{
