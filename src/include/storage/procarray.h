@@ -57,16 +57,16 @@ extern RunningTransactions GetRunningTransactionData(void);
 
 extern bool TransactionIdIsInProgress(TransactionId xid);
 extern bool TransactionIdIsActive(TransactionId xid);
-<<<<<<< HEAD
-extern TransactionId GetOldestXmin(Relation rel, int flags);
-extern TransactionId GetLocalOldestXmin(Relation rel, int flags);
-=======
 extern TransactionId GetOldestNonRemovableTransactionId(Relation rel);
 extern TransactionId GetOldestTransactionIdConsideredRunning(void);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 extern TransactionId GetOldestActiveTransactionId(void);
 extern TransactionId GetOldestSafeDecodingTransactionId(bool catalogOnly);
+
+extern TransactionId GetLocalOldestNonRemovableTransactionId(Relation rel);
+extern TransactionId GetLocalOldestTransactionIdConsideredRunning(void);
+
 extern void GetReplicationHorizons(TransactionId *slot_xmin, TransactionId *catalog_xmin);
+extern void GetLocalReplicationHorizons(TransactionId *slot_xmin, TransactionId *catalog_xmin);
 
 extern VirtualTransactionId *GetVirtualXIDsDelayingChkpt(int *nvxids);
 extern bool HaveVirtualXIDsDelayingChkpt(VirtualTransactionId *vxids, int nvxids);

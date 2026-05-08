@@ -8232,7 +8232,7 @@ StartupXLOG(void)
 	if (IsNormalProcessingMode())
 		elog(LOG, "latest completed transaction id is %u and next transaction id is %u",
 			 ShmemVariableCache->latestCompletedXid,
-			 XidFromFullTransactionId(ShmemVariableCache->nextFullXid));
+			 XidFromFullTransactionId(ShmemVariableCache->nextXid));
 	LWLockRelease(ProcArrayLock);
 
 	/*
@@ -8244,7 +8244,7 @@ StartupXLOG(void)
 		StartupCLOG();
 		StartupSUBTRANS(oldestActiveXID);
 		DistributedLog_Startup(oldestActiveXID,
-							   XidFromFullTransactionId(ShmemVariableCache->nextFullXid));
+							   XidFromFullTransactionId(ShmemVariableCache->nextXid));
 	}
 
 	/*
@@ -9617,7 +9617,7 @@ CreateCheckPoint(int flags)
 	 * StartupSUBTRANS hasn't been called yet.
 	 */
 	if (!RecoveryInProgress())
-		TruncateSUBTRANS(GetOldestTransactionIdConsideredRunning());
+		TruncateSUBTRANS(GetLocalOldestTransactionIdConsideredRunning());
 
 	/* Real work is done, but log and update stats before releasing lock. */
 	LogCheckpointEnd(false);

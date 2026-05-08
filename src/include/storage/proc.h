@@ -66,11 +66,7 @@ struct XidCache
 
 /* flags reset at EOXact */
 #define		PROC_VACUUM_STATE_MASK \
-<<<<<<< HEAD
-	(/* PROC_IN_VACUUM | */ PROC_IN_ANALYZE | PROC_VACUUM_FOR_WRAPAROUND)
-=======
-	(PROC_IN_VACUUM | PROC_VACUUM_FOR_WRAPAROUND)
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+	(/* PROC_IN_VACUUM | */ PROC_VACUUM_FOR_WRAPAROUND)
 
 /*
  * We allow a small number of "weak" relation locks (AccessShareLock,
@@ -303,40 +299,10 @@ struct PGPROC
 
 
 extern PGDLLIMPORT PGPROC *MyProc;
-<<<<<<< HEAD
-extern PGDLLIMPORT struct PGXACT *MyPgXact;
 extern PGDLLIMPORT struct TMGXACT *MyTmGxact;
 extern PGDLLIMPORT struct TMGXACTLOCAL *MyTmGxactLocal;
-
 /* Special for MPP reader gangs */
 extern PGDLLIMPORT PGPROC *lockHolderProcPtr;
-
-/*
- * Prior to PostgreSQL 9.2, the fields below were stored as part of the
- * PGPROC.  However, benchmarking revealed that packing these particular
- * members into a separate array as tightly as possible sped up GetSnapshotData
- * considerably on systems with many CPU cores, by reducing the number of
- * cache lines needing to be fetched.  Thus, think very carefully before adding
- * anything else here.
- */
-typedef struct PGXACT
-{
-	TransactionId xid;			/* id of top-level transaction currently being
-								 * executed by this proc, if running and XID
-								 * is assigned; else InvalidTransactionId */
-
-	TransactionId xmin;			/* minimal running XID as it was when we were
-								 * starting our xact, excluding LAZY VACUUM:
-								 * vacuum must not remove tuples deleted by
-								 * xid >= xmin ! */
-
-	uint8		vacuumFlags;	/* vacuum-related flags, see above */
-	bool		overflowed;
-
-	uint8		nxids;
-} PGXACT;
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /*
  * There is one ProcGlobal struct for the whole database cluster.
@@ -396,12 +362,8 @@ typedef struct PROC_HDR
 {
 	/* Array of PGPROC structures (not including dummies for prepared txns) */
 	PGPROC	   *allProcs;
-<<<<<<< HEAD
-	/* Array of PGXACT structures (not including dummies for prepared txns) */
-	PGXACT	   *allPgXact;
 	/* Array of TMGXACT structures (not including dummies for prepared txns) */
 	TMGXACT	   *allTmGxact;
-=======
 
 	/* Array mirroring PGPROC.xid for each PGPROC currently in the procarray */
 	TransactionId *xids;
@@ -418,7 +380,6 @@ typedef struct PROC_HDR
 	 */
 	uint8	   *vacuumFlags;
 
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	/* Length of allProcs array */
 	uint32		allProcCount;
 	/* Head of list of free PGPROC structures */
