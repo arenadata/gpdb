@@ -338,7 +338,7 @@ ExecuteRecoveryCommand(const char *command, const char *commandName, bool failOn
 					Assert(GpIdentity.segindex != UNINITIALIZED_GP_IDENTITY_VALUE);
 					sp++;
 					pg_ltoa(GpIdentity.segindex, contentid);
-					StrNCpy(dp, contentid, endp - dp);
+					strlcpy(dp, contentid, endp - dp);
 					dp += strlen(dp);
 					break;
 				case '%':

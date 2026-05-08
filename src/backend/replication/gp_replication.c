@@ -128,7 +128,7 @@ FTSReplicationStatusCreateIfNotExist(const char *app_name)
 	if (replication_status != NULL)
 	{
 		replication_status->in_use = true;
-		StrNCpy(NameStr(replication_status->name), application_name, NAMEDATALEN);
+		strlcpy(NameStr(replication_status->name), application_name, NAMEDATALEN);
 		replication_status->con_attempt_count = 0;
 		replication_status->replica_disconnected_at = 0;
 
