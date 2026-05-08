@@ -54,7 +54,7 @@ our @EXPORT = qw(
   start_primary
   create_standby
   promote_standby
-  promote_master
+  promote_primary
   run_pg_rewind
   clean_rewind_test
 );
@@ -197,25 +197,20 @@ primary_conninfo='$connstr_primary'
 
 sub promote_standby
 {
-	my ($stop_master_before_promote) = @_;
+	my ($stop_primary_before_promote) = @_;
 	#### Now run the test-specific parts to run after standby has been started
 	# up standby
 
 	# Wait for the standby to receive and write all WAL.
 	$node_primary->wait_for_catchup($node_standby, 'write');
 
-<<<<<<< HEAD
-	if(defined($stop_master_before_promote) && $stop_master_before_promote)
+	if(defined($stop_primary_before_promote) && $stop_primary_before_promote)
 	{
-		$node_master->stop;
+		$node_primaryr->stop;
 	}
 
-	# Now promote standby and insert some new data on master, this will put
-	# the master out-of-sync with the standby.
-=======
 	# Now promote standby and insert some new data on primary, this will put
 	# the primary out-of-sync with the standby.
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	$node_standby->promote;
 
 	# Force a checkpoint after the promotion. pg_rewind looks at the control
@@ -229,14 +224,14 @@ sub promote_standby
 	return;
 }
 
-sub promote_master
+sub promote_primary
 {
-	# Wait for the master to receive and write all WAL.
-	#$node_standby->wait_for_catchup($node_master, 'write');
+	# Wait for the primary to receive and write all WAL.
+	#$node_standby->wait_for_catchup($node_primary, 'write');
 
-	# Now promote master and insert some new data on master, this will put
-	# the standby out-of-sync with the master.
-	$node_master->promote;
+	# Now promote primary and insert some new data on primary, this will put
+	# the standby out-of-sync with the primary.
+	$node_primary->promote;
 
 	# Force a checkpoint after the promotion. pg_rewind looks at the control
 	# file to determine what timeline the server is on, and that isn't updated
@@ -244,7 +239,7 @@ sub promote_master
 	# pg_rewind in remote mode, it's possible that we complete the test steps
 	# after promotion so quickly that when pg_rewind runs, the standby has not
 	# performed a checkpoint after promotion yet.
-	master_psql("checkpoint");
+	primary_psql("checkpoint");
 
 	return;
 }
@@ -252,17 +247,13 @@ sub promote_master
 sub run_pg_rewind
 {
 	my $test_mode       = shift;
-<<<<<<< HEAD
 	my (%params)        = @_;
-	my $master_pgdata   = $node_master->data_dir;
-=======
-	my $primary_pgdata   = $node_primary->data_dir;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+	my $primary_pgdata  = $node_primary->data_dir;
 	my $standby_pgdata  = $node_standby->data_dir;
 	my $standby_connstr = $node_standby->connstr('postgres');
 	my $tmp_folder      = TestLib::tempdir;
 
-	$params{do_not_start_master} = 0 unless defined $params{do_not_start_master};
+	$params{do_not_start_primary} = 0 unless defined $params{do_not_start_primary};
 
 	# Append the rewind-specific role to the connection string.
 	$standby_connstr = "$standby_connstr user=rewind_user";
@@ -419,20 +410,15 @@ primary_conninfo='port=$port_standby'));
 		$node_primary->set_standby_mode();
 	}
 
-<<<<<<< HEAD
-	unless ($params{do_not_start_master})
+	unless ($params{do_not_start_primary})
 	{
-		# Restart the master to check that rewind went correctly
-		$node_master->start;
+		# Restart the primary to check that rewind went correctly
+		$node_primary->start;
 
-		# GPDB doesn't have hot standby enabled. Hence promote master to
+		# GPDB doesn't have hot standby enabled. Hence promote primary to
 		# perform below validations.
-		RewindTest::promote_master();
+		RewindTest::promote_primary();
 	}
-=======
-	# Restart the primary to check that rewind went correctly
-	$node_primary->start;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	#### Now run the test-specific parts to check the result
 
