@@ -551,13 +551,11 @@ static void init_var_from_num(Numeric value, NumericVar *dest);
 static char *get_str_from_var(const NumericVar *var);
 static char *get_str_from_var_sci(const NumericVar *var, int rscale);
 
-<<<<<<< HEAD
+static Numeric duplicate_numeric(Numeric num);
+
 /* ----------
  * CAUTION: These routines perform a  free_var(var)
  */
-=======
-static Numeric duplicate_numeric(Numeric num);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 static Numeric make_result(const NumericVar *var);
 static Numeric make_result_opt_error(const NumericVar *var, bool *error);
 /*
@@ -819,7 +817,6 @@ numeric_is_nan(Numeric num)
 }
 
 /*
-<<<<<<< HEAD
  * numeric_digits() -
  *
  *	Output function for numeric's digits
@@ -839,7 +836,9 @@ int
 numeric_len(Numeric num)
 {
 	return NUMERIC_NDIGITS(num) * sizeof(NumericDigit);
-=======
+}
+
+/*
  * numeric_is_inf() -
  *
  *	Is Numeric value an infinity?
@@ -872,7 +871,6 @@ numeric_is_integral(Numeric num)
 	init_var_from_num(num, &arg);
 
 	return (arg.ndigits == 0 || arg.ndigits <= arg.weight + 1);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 }
 
 /*
@@ -1445,22 +1443,6 @@ numeric_sign(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-<<<<<<< HEAD
-	/*
-	 * The packed format is known to be totally zero digit trimmed always. So
-	 * we can identify a ZERO by the fact that there are no digits at all.
-	 */
-	if (NUMERIC_NDIGITS(num) == 0)
-		init_ro_var_from_var(&const_zero, &result);
-	else
-	{
-		/*
-		 * And if there are some, we return a copy of ONE with the sign of our
-		 * argument
-		 */
-		init_ro_var_from_var(&const_one, &result);
-		result.sign = NUMERIC_SIGN(num);
-=======
 	switch (numeric_sign_internal(num))
 	{
 		case 0:
@@ -1469,7 +1451,6 @@ numeric_sign(PG_FUNCTION_ARGS)
 			PG_RETURN_NUMERIC(make_result(&const_one));
 		case -1:
 			PG_RETURN_NUMERIC(make_result(&const_minus_one));
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	}
 
 	Assert(false);
@@ -4040,20 +4021,6 @@ numeric_power(PG_FUNCTION_ARGS)
 	}
 
 	/*
-<<<<<<< HEAD
-	 * Initialize things
-	 */
-	init_var(&arg2_trunc);
-	quick_init_var(&result);
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
-
-	set_var_from_var(&arg2, &arg2_trunc);
-	trunc_var(&arg2_trunc, 0);
-
-	/*
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	 * The SQL spec requires that we emit a particular SQLSTATE error code for
 	 * certain error conditions.  Specifically, we don't return a
 	 * divide-by-zero error code for 0 ^ -1.
@@ -4074,7 +4041,7 @@ numeric_power(PG_FUNCTION_ARGS)
 	/*
 	 * Initialize things
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 	init_var_from_num(num1, &arg1);
 	init_var_from_num(num2, &arg2);
 
@@ -7735,21 +7702,15 @@ duplicate_numeric(Numeric num)
  * make_result_opt_error() -
  *
  *	Create the packed db numeric format in palloc()'d memory from
-<<<<<<< HEAD
- *	a variable.  If "*have_error" flag is provided, on error it's set to
- *	true, NULL returned.  This is helpful when caller need to handle errors
- *	by itself.
+ *	a variable.  This will handle NaN and Infinity cases.
+ *
+ *	If "have_error" isn't NULL, on overflow *have_error is set to true and
+ *	NULL is returned.  This is helpful when caller needs to handle errors.
  *
  * We used to free_var(var) here. But that was not cool, at least with the
  * numeric_sum() window aggregate, we call numeric_sum() on the transition
  * value multiple time, and if we free_var() the "state->sumX", then it's
  * garbage on the subsequent calls.
-=======
- *	a variable.  This will handle NaN and Infinity cases.
- *
- *	If "have_error" isn't NULL, on overflow *have_error is set to true and
- *	NULL is returned.  This is helpful when caller needs to handle errors.
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
  */
 static Numeric
 make_result_opt_error(const NumericVar *var, bool *have_error)
@@ -8299,36 +8260,6 @@ int128_to_numericvar(int128 val, NumericVar *var)
 /*
  * Convert a NumericVar to float8; if out of range, return +/- HUGE_VAL
  */
-<<<<<<< HEAD
-double
-numeric_to_double_no_overflow(Numeric num)
-{
-	char	   *tmp;
-	double		val;
-	char	   *endptr;
-
-	tmp = DatumGetCString(DirectFunctionCall1(numeric_out,
-											  NumericGetDatum(num)));
-
-	/* unlike float8in, we ignore ERANGE from strtod */
-	val = strtod(tmp, &endptr);
-	if (*endptr != '\0')
-	{
-		/* shouldn't happen ... */
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid input syntax for type %s: \"%s\"",
-						"double precision", tmp)));
-	}
-
-	pfree(tmp);
-
-	return val;
-}
-
-/* As above, but work from a NumericVar */
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 static double
 numericvar_to_double_no_overflow(const NumericVar *var)
 {
@@ -8352,6 +8283,17 @@ numericvar_to_double_no_overflow(const NumericVar *var)
 	pfree(tmp);
 
 	return val;
+}
+
+/* As above, but work from a Numeric */
+double
+numeric_to_double_no_overflow(Numeric num)
+{
+	NumericVar	x;
+
+	init_var_from_num(num, &x);
+
+	return numericvar_to_double_no_overflow(&x);
 }
 
 
