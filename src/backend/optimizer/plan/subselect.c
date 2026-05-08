@@ -87,14 +87,9 @@ static List *generate_subquery_params(PlannerInfo *root, List *tlist,
 									  List **paramIds);
 static Node *convert_testexpr_mutator(Node *node,
 									  convert_testexpr_context *context);
-<<<<<<< HEAD
 static bool subplan_is_hashable(PlannerInfo *root, Plan *plan);
-static bool testexpr_is_hashable(Node *testexpr);
-=======
-static bool subplan_is_hashable(Plan *plan);
 static bool testexpr_is_hashable(Node *testexpr, List *param_ids);
 static bool test_opexpr_is_hashable(OpExpr *testexpr, List *param_ids);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 static bool hash_ok_operator(OpExpr *expr);
 #if 0
 /*
@@ -744,13 +739,8 @@ build_subplan(PlannerInfo *root, Plan *plan, PlannerInfo *subroot,
 		 */
 		if (subLinkType == ANY_SUBLINK &&
 			splan->parParam == NIL &&
-<<<<<<< HEAD
 			subplan_is_hashable(root, plan) &&
-			testexpr_is_hashable(splan->testexpr))
-=======
-			subplan_is_hashable(plan) &&
 			testexpr_is_hashable(splan->testexpr, splan->paramIds))
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 			splan->useHashTable = true;
 
 		/*
@@ -956,7 +946,6 @@ static bool
 subplan_is_hashable(PlannerInfo *root, Plan *plan)
 {
 	double		subquery_size;
-	int			hash_mem = get_hash_mem();
 
 	/*
 	 * The estimated size of the subquery result must fit in hash_mem. (Note:
@@ -966,11 +955,7 @@ subplan_is_hashable(PlannerInfo *root, Plan *plan)
 	 */
 	subquery_size = plan->plan_rows *
 		(MAXALIGN(plan->plan_width) + MAXALIGN(SizeofHeapTupleHeader));
-<<<<<<< HEAD
 	if (subquery_size > global_work_mem(root))
-=======
-	if (subquery_size > hash_mem * 1024L)
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		return false;
 
 	return true;
