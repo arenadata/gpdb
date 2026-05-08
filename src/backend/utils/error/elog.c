@@ -3004,7 +3004,11 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				break;
 
 			case 'P':
-				if (MyProc)
+				if( Gp_role == GP_ROLE_EXECUTE )
+				{
+					appendStringInfoChar(buf, 'P');
+				}
+				else if (MyProc)
 				{
 					PGPROC	   *leader = MyProc->lockGroupLeader;
 
@@ -3215,12 +3219,6 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				if (j < buf->len &&
 					buf->data[buf->len - 1] == ' ')
 					buf->len--;
-				break;
-			case 'P':
-				if( Gp_role == GP_ROLE_EXECUTE )
-				{
-					appendStringInfoChar(buf, 'P');
-				}
 				break;
 			case 'R':
 				if (!MyProcPort)
