@@ -1940,8 +1940,8 @@ ComputeXidHorizons(ComputeXidHorizonsResult *h)
 	GlobalVisUpdateApply(h);
 }
 
-static
-TransactionId GetDistOldestXmin(TransactionId local_xmin)
+static TransactionId
+GetDistOldestXmin(TransactionId local_xmin)
 {
 	/*
 	 * In QD node, all distributed transactions have an entry in the proc array,
@@ -1975,9 +1975,8 @@ TransactionId GetDistOldestXmin(TransactionId local_xmin)
  * This is used by VACUUM to decide which deleted tuples must be preserved in
  * the passed in table.
  */
-
 TransactionId
-GetOldestLocalNonRemovableTransactionId(Relation rel)
+GetLocalOldestNonRemovableTransactionId(Relation rel)
 {
 	ComputeXidHorizonsResult horizons;
 
@@ -1995,9 +1994,8 @@ GetOldestLocalNonRemovableTransactionId(Relation rel)
 TransactionId
 GetOldestNonRemovableTransactionId(Relation rel)
 {
-	return GetDistOldestXmin(GetOldestLocalNonRemovableTransactionId(rel));
+	return GetDistOldestXmin(GetLocalOldestNonRemovableTransactionId(rel));
 }
-
 
 /*
  * Return the oldest transaction id any currently running backend might still
@@ -2006,7 +2004,7 @@ GetOldestNonRemovableTransactionId(Relation rel)
  * decisions like up to where pg_subtrans can be truncated.
  */
 TransactionId
-GetOldestLocalTransactionIdConsideredRunning(void)
+GetLocalOldestTransactionIdConsideredRunning(void)
 {
 	ComputeXidHorizonsResult horizons;
 
@@ -2018,7 +2016,7 @@ GetOldestLocalTransactionIdConsideredRunning(void)
 TransactionId
 GetOldestTransactionIdConsideredRunning(void)
 {
-	return GetDistOldestXmin(GetOldestLocalTransactionIdConsideredRunning());
+	return GetDistOldestXmin(GetLocalOldestTransactionIdConsideredRunning());
 }
 
 /*
@@ -3072,7 +3070,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		{
 			if (snapshot->haveDistribSnapshot)
 				oldestxid = DistributedLog_AdvanceOldestXmin(oldestxid,
-															  ds->xminAllDistributedSnapshots);
+															 ds->xminAllDistributedSnapshots);
 			else if (!gp_maintenance_mode)
 				oldestxid = DistributedLog_GetOldestXmin(oldestxid);
 		}

@@ -62,8 +62,8 @@ extern TransactionId GetOldestTransactionIdConsideredRunning(void);
 extern TransactionId GetOldestActiveTransactionId(void);
 extern TransactionId GetOldestSafeDecodingTransactionId(bool catalogOnly);
 
-extern TransactionId GetOldestLocalNonRemovableTransactionId(Relation rel);
-extern TransactionId GetOldestLocalTransactionIdConsideredRunning(void);
+extern TransactionId GetLocalOldestNonRemovableTransactionId(Relation rel);
+extern TransactionId GetLocalOldestTransactionIdConsideredRunning(void);
 
 extern void GetReplicationHorizons(TransactionId *slot_xmin, TransactionId *catalog_xmin);
 extern void GetLocalReplicationHorizons(TransactionId *slot_xmin, TransactionId *catalog_xmin);

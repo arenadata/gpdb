@@ -182,7 +182,6 @@ InitProcGlobal(void)
 {
 	PGPROC	   *procs;
 	TMGXACT	   *tmgxacts;
-
 	int			i,
 				j;
 	bool		found;

@@ -1714,7 +1714,7 @@ vac_update_datfrozenxid(void)
 	 * pg_class entries for new tables; see AddNewRelationTuple().  So we
 	 * cannot produce a wrong minimum by starting with this.
 	 */
-	newFrozenXid = GetOldestLocalNonRemovableTransactionId(NULL);
+	newFrozenXid = GetLocalOldestNonRemovableTransactionId(NULL);
 
 	/*
 	 * Similarly, initialize the MultiXact "min" with the value that would be
