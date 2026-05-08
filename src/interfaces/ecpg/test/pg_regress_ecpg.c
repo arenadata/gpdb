@@ -63,14 +63,8 @@ ecpg_filter(const char *sourcefile, const char *outfile)
 			/* plen is one more than the number of . and / characters */
 			if (plen > 1)
 			{
-<<<<<<< HEAD
 				memmove(p + 1, p + plen, strlen(p + plen) + 1);
 				/* we don't bother to fix up linebuf.len */
-=======
-				n = (char *) malloc(plen);
-				strlcpy(n, p + 1, plen);
-				replace_string(linebuf, n, "");
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 			}
 		}
 		fputs(linebuf.data, t);
