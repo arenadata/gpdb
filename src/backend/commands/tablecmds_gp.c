@@ -1422,7 +1422,7 @@ ATExecGPPartCmds(Relation origrel, AlterTableCmd *cmd)
 
 			partrelid = GpFindTargetPartition(rel, pid, false);
 			targetrelation = table_open(partrelid, AccessExclusiveLock);
-			StrNCpy(targetrelname, RelationGetRelationName(targetrelation),
+			strlcpy(targetrelname, RelationGetRelationName(targetrelation),
 					NAMEDATALEN);
 			namespaceId = RelationGetNamespace(targetrelation);
 			table_close(targetrelation, AccessExclusiveLock);
