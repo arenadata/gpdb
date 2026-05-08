@@ -1141,14 +1141,11 @@ extern bool _bt_allequalimage(Relation rel, bool debugmessage);
  * prototypes for functions in nbtvalidate.c
  */
 extern bool btvalidate(Oid opclassoid);
-<<<<<<< HEAD
 extern bool btree_or_bitmap_validate(Oid opclassoid, const char *amname);
-=======
 extern void btadjustmembers(Oid opfamilyoid,
 							Oid opclassoid,
 							List *operators,
 							List *functions);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /*
  * prototypes for functions in nbtsort.c

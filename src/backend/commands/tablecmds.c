@@ -7579,12 +7579,9 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	AlterTableCmd *childcmd;
 	AclResult	aclresult;
 	ObjectAddress address;
-<<<<<<< HEAD
  	List* enc;
-=======
 	TupleDesc	tupdesc;
 	FormData_pg_attribute *aattr[] = {&attribute};
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/* At top level, permission check was done in ATPrepCmd, else do it */
 	if (recursing)

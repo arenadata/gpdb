@@ -10422,13 +10422,6 @@
   proname => 'binary_upgrade_set_next_array_pg_type_oid', provolatile => 'v',
   proparallel => 'r', prorettype => 'void', proargtypes => 'oid oid text',
   prosrc => 'binary_upgrade_set_next_array_pg_type_oid' },
-<<<<<<< HEAD
-{ oid => '3585', descr => 'for use by pg_upgrade',
-  proname => 'binary_upgrade_set_next_toast_pg_type_oid', provolatile => 'v',
-  proparallel => 'r', prorettype => 'void', proargtypes => 'oid oid text',
-  prosrc => 'binary_upgrade_set_next_toast_pg_type_oid' },
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 { oid => '3586', descr => 'for use by pg_upgrade',
   proname => 'binary_upgrade_set_next_heap_pg_class_oid', provolatile => 'v',
   proparallel => 'r', prorettype => 'void', proargtypes => 'oid oid text',

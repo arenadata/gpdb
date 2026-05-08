@@ -2618,7 +2618,7 @@ typedef struct AggState
 	AggStatePerGroup *all_pergroups;	/* array of first ->pergroups, than
 										 * ->hash_pergroup */
 	ProjectionInfo *combinedproj;	/* projection machinery */
-<<<<<<< HEAD
+	SharedAggInfo *shared_info; /* one entry per worker */
 
 	int			group_id;		/* GROUP_ID in current projection. This is passed
 								 * to GroupingSetId expressions, similar to the
@@ -2627,9 +2627,6 @@ typedef struct AggState
 
 	/* if input tuple has an AggExprId, save the Attribute Number */
 	Index       AggExprId_AttrNum;
-=======
-	SharedAggInfo *shared_info; /* one entry per worker */
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 } AggState;
 
 typedef struct TupleSplitState
