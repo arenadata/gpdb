@@ -7789,35 +7789,6 @@ addConstrChildIdxDeps(DumpableObject *dobj, const IndxInfo *refidx)
 }
 
 /*
- * addConstrChildIdxDeps
- *
- * Recursive subroutine for getConstraints
- *
- * Given an object representing a foreign key constraint and an index on the
- * partitioned table it references, mark the constraint object as dependent
- * on the DO_INDEX_ATTACH object of each index partition, recursively
- * drilling down to their partitions if any.  This ensures that the FK is not
- * restored until the index is fully marked valid.
- */
-static void
-addConstrChildIdxDeps(DumpableObject *dobj, IndxInfo *refidx)
-{
-	SimplePtrListCell *cell;
-
-	Assert(dobj->objType == DO_FK_CONSTRAINT);
-
-	for (cell = refidx->partattaches.head; cell; cell = cell->next)
-	{
-		IndexAttachInfo *attach = (IndexAttachInfo *) cell->ptr;
-
-		addObjectDependency(dobj, attach->dobj.dumpId);
-
-		if (attach->partitionIdx->partattaches.head != NULL)
-			addConstrChildIdxDeps(dobj, attach->partitionIdx);
-	}
-}
-
-/*
  * getDomainConstraints
  *
  * Get info about constraints on a domain.
