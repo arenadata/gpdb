@@ -1661,12 +1661,8 @@ RecordTransactionCommit(void)
 							GetPendingTablespaceForDeletionForCommit(),
 							nchildren, children, nrels, rels,
 							nmsgs, invalMessages,
-<<<<<<< HEAD
 							ndeldbs, deldbs,
-							RelcacheInitFileInval, forceSyncCommit,
-=======
 							RelcacheInitFileInval,
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 							MyXactFlags,
 							InvalidTransactionId, NULL /* plain commit */ );
 
@@ -6797,12 +6793,8 @@ XactLogCommitRecord(TimestampTz commit_time,
 					int nsubxacts, TransactionId *subxacts,
 					int nrels, RelFileNodePendingDelete *rels,
 					int nmsgs, SharedInvalidationMessage *msgs,
-<<<<<<< HEAD
 					int ndeldbs, DbDirNode *deldbs,
-					bool relcacheInval, bool forceSync,
-=======
 					bool relcacheInval,
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 					int xactflags, TransactionId twophase_xid,
 					const char *twophase_gid)
 {
