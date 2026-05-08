@@ -554,18 +554,13 @@ main(int argc, char *argv[])
 
 	if (set_oldest_xid != 0)
 	{
-<<<<<<< HEAD
 		ControlFile.checkPointCopy.oldestXid = set_oldest_xid;
 		ControlFile.checkPointCopy.oldestXidDB = InvalidOid;
 	}
 
 	if (set_xid != 0)
-		ControlFile.checkPointCopy.nextFullXid =
-			FullTransactionIdFromEpochAndXid(EpochFromFullTransactionId(ControlFile.checkPointCopy.nextFullXid),
-=======
 		ControlFile.checkPointCopy.nextXid =
 			FullTransactionIdFromEpochAndXid(EpochFromFullTransactionId(ControlFile.checkPointCopy.nextXid),
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 											 set_xid);
 
 	if (set_gxid != 0)
@@ -938,15 +933,10 @@ PrintControlValues(bool guessed)
 	printf(_("Latest checkpoint's full_page_writes: %s\n"),
 		   ControlFile.checkPointCopy.fullPageWrites ? _("on") : _("off"));
 	printf(_("Latest checkpoint's NextXID:          %u:%u\n"),
-<<<<<<< HEAD
-		   EpochFromFullTransactionId(ControlFile.checkPointCopy.nextFullXid),
-		   XidFromFullTransactionId(ControlFile.checkPointCopy.nextFullXid));
-	printf(_("Latest checkpoint's NextGxid:         "UINT64_FORMAT"\n"),
-		   ControlFile.checkPointCopy.nextGxid);
-=======
 		   EpochFromFullTransactionId(ControlFile.checkPointCopy.nextXid),
 		   XidFromFullTransactionId(ControlFile.checkPointCopy.nextXid));
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+	printf(_("Latest checkpoint's NextGxid:         "UINT64_FORMAT"\n"),
+		   ControlFile.checkPointCopy.nextGxid);
 	printf(_("Latest checkpoint's NextOID:          %u\n"),
 		   ControlFile.checkPointCopy.nextOid);
 	printf(_("Latest checkpoint's NextRelfilenode:  %u\n"),
