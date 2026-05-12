@@ -1830,7 +1830,7 @@ RecordDistributedForgetCommitted(DistributedTransactionId gxid)
 	XLogBeginInsert();
 	XLogRegisterData((char *) &xlrec, sizeof(xl_xact_distributed_forget));
 
-	XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_FORGET);
+	XLogInsert(RM_DISTRIBUTEDLOG_ID, DISTRIBUTEDLOG_FORGET);
 }
 
 /*
@@ -7356,13 +7356,6 @@ xact_redo_abort(xl_xact_parsed_abort *parsed, TransactionId xid)
 	DoTablespaceDeletionForRedoXlog(parsed->tablespace_oid_to_delete_on_abort);
 }
 
-static void
-xact_redo_distributed_forget(xl_xact_distributed_forget *xlrec, TransactionId xid pg_attribute_unused() )
-{
-	redoDistributedForgetCommitRecord(xlrec->gxid);
-}
-
-
 void
 xact_redo(XLogReaderState *record)
 {
@@ -7437,12 +7430,6 @@ xact_redo(XLogReaderState *record)
 		Assert(parsed.twophase_xid == InvalidTransactionId);
 		xact_redo_distributed_commit(&parsed, XLogRecGetXid(record),
 									 record->EndRecPtr, XLogRecGetOrigin(record));
-	}
-	else if (info == XLOG_XACT_DISTRIBUTED_FORGET)
-	{
-		xl_xact_distributed_forget *xlrec = (xl_xact_distributed_forget *) XLogRecGetData(record);
-
-		xact_redo_distributed_forget(xlrec, XLogRecGetXid(record));
 	}
 	else if (info == XLOG_XACT_ASSIGNMENT)
 	{
