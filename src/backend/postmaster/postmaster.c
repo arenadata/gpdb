@@ -351,17 +351,10 @@ static bool FatalError = false; /* T if recovering from backend crash */
  *
  * Notice that this state variable does not distinguish *why* we entered
  * states later than PM_RUN --- Shutdown and FatalError must be consulted
-<<<<<<< HEAD
- * to find that out.  FatalError is never true in PM_INIT through PM_RUN
- * states, nor in PM_SHUTDOWN states (because we don't enter those states
- * when trying to recover from a crash).  It can be true in PM_STARTUP state,
- * because we don't clear it until we've successfully started WAL redo.
-=======
  * to find that out.  FatalError is never true in PM_RECOVERY, PM_HOT_STANDBY,
  * or PM_RUN states, nor in PM_SHUTDOWN states (because we don't enter those
  * states when trying to recover from a crash).  It can be true in PM_STARTUP
  * state, because we don't clear it until we've successfully started WAL redo.
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
  */
 typedef enum
 {
@@ -2741,10 +2734,9 @@ retry1:
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("sorry, too many clients already")));
 			break;
-<<<<<<< HEAD
-		case CAC_WAITBACKUP:
-			/* Greenplum does not currently use WAITBACKUP state. */
-			Assert(port->canAcceptConnections != CAC_WAITBACKUP);
+		case CAC_SUPERUSER:
+			/* Greenplum does not currently use SUPERUSER state. */
+			Assert(port->canAcceptConnections != CAC_SUPERUSER);
 			break;
 		case CAC_MIRROR_READY:
 			if (am_ftshandler || am_faulthandler)
@@ -2776,10 +2768,6 @@ retry1:
 							   POSTMASTER_MIRROR_VERSION_DETAIL_MSG " %s",
 							   (uint32) (recptr >> 32), (uint32) recptr,
 							   TextDatumGetCString(pgsql_version(NULL)))));
-=======
-		case CAC_SUPERUSER:
-			/* OK for now, will check in InitPostgres */
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 			break;
 		case CAC_OK:
 			break;
@@ -2939,14 +2927,7 @@ canAcceptConnections(int backend_type)
 				 (pmState == PM_STARTUP ||
 				  pmState == PM_RECOVERY))
 			return CAC_STARTUP; /* normal startup */
-<<<<<<< HEAD
-		else if (!FatalError &&
-				 pmState == PM_HOT_STANDBY)
-			result = CAC_OK;	/* connection OK during hot standby */
 		else if (pmState == PM_STARTUP || pmState == PM_RECOVERY)
-=======
-		else
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 			return CAC_RECOVERY;	/* else must be crash recovery */
 		else
 			/* 
@@ -3297,7 +3278,6 @@ pmdie(SIGNAL_ARGS)
 			sd_notify(0, "STOPPING=1");
 #endif
 
-<<<<<<< HEAD
 			if (pmState == PM_STARTUP)
 			{
 				/*
@@ -3315,9 +3295,6 @@ pmdie(SIGNAL_ARGS)
 				 */
 			}
 
-			if (pmState == PM_RUN || pmState == PM_RECOVERY ||
-				pmState == PM_HOT_STANDBY || pmState == PM_STARTUP)
-=======
 			/*
 			 * If we reached normal running, we have to wait for any online
 			 * backup mode to end; otherwise go straight to waiting for client
@@ -3331,7 +3308,6 @@ pmdie(SIGNAL_ARGS)
 			else if (pmState == PM_HOT_STANDBY)
 				connsAllowed = ALLOW_NO_CONNS;
 			else if (pmState == PM_STARTUP || pmState == PM_RECOVERY)
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 			{
 				/* There should be no clients, so proceed to stop children */
 				pmState = PM_STOP_BACKENDS;
@@ -3376,24 +3352,7 @@ pmdie(SIGNAL_ARGS)
 				/* Report that we're about to zap live client sessions */
 				ereport(LOG,
 						(errmsg("aborting any active transactions")));
-<<<<<<< HEAD
-				/* shut down all backends and workers */
-				SignalSomeChildren(SIGTERM,
-								   BACKEND_TYPE_NORMAL | BACKEND_TYPE_AUTOVAC |
-								   BACKEND_TYPE_BGWORKER);
-				/* and the autovac launcher too */
-				if (AutoVacPID != 0)
-					signal_child(AutoVacPID, SIGTERM);
-				/* and the bgwriter too */
-				if (BgWriterPID != 0)
-					signal_child(BgWriterPID, SIGTERM);
-				/* and the walwriter too */
-				if (WalWriterPID != 0)
-					signal_child(WalWriterPID, SIGTERM);
-				pmState = PM_WAIT_BACKENDS;
-=======
 				pmState = PM_STOP_BACKENDS;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 			}
 
 			/*
@@ -4317,7 +4276,6 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 static void
 PostmasterStateMachine(void)
 {
-<<<<<<< HEAD
 	/*
 	 * This state transition to handle master standby or mirrors receives a
 	 * smart shutdown, no need to wait any additional backends.
@@ -4327,15 +4285,6 @@ PostmasterStateMachine(void)
 		pmState = PM_WAIT_DEAD_END;
 	}
 
-	if (pmState == PM_WAIT_BACKUP)
-	{
-		/*
-		 * PM_WAIT_BACKUP state ends when online backup mode is not active.
-		 */
-		if (!BackupInProgress())
-		{
-			pmState = PM_WAIT_BACKENDS;
-=======
 	/* If we're doing a smart shutdown, try to advance that state. */
 	if (pmState == PM_RUN || pmState == PM_HOT_STANDBY)
 	{
@@ -4357,7 +4306,6 @@ PostmasterStateMachine(void)
 			 */
 			if (CountChildren(BACKEND_TYPE_NORMAL) == 0)
 				pmState = PM_STOP_BACKENDS;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		}
 	}
 
@@ -4753,12 +4701,8 @@ BackendStartup(Port *port)
 	/* Pass down canAcceptConnections state */
 	port->canAcceptConnections = canAcceptConnections(BACKEND_TYPE_NORMAL);
 	bn->dead_end = (port->canAcceptConnections != CAC_OK &&
-<<<<<<< HEAD
-					port->canAcceptConnections != CAC_WAITBACKUP &&
+					port->canAcceptConnections != CAC_SUPERUSER &&
 					port->canAcceptConnections != CAC_MIRROR_READY);
-=======
-					port->canAcceptConnections != CAC_SUPERUSER);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/*
 	 * Unless it's a dead_end child, assign it a child slot number

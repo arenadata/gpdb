@@ -252,11 +252,7 @@ typedef struct ComputeXidHorizonsResult
 static ProcArrayStruct *procArray;
 
 static PGPROC *allProcs;
-<<<<<<< HEAD
-static PGXACT *allPgXact;
 static TMGXACT *allTmGxact;
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /*
  * Bookkeeping for tracking emulated transactions in recovery
@@ -428,11 +424,7 @@ CreateSharedProcArray(void)
 	}
 
 	allProcs = ProcGlobal->allProcs;
-<<<<<<< HEAD
-	allPgXact = ProcGlobal->allPgXact;
 	allTmGxact = ProcGlobal->allTmGxact;
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/* Create or attach to the KnownAssignedXids arrays too, if needed */
 	if (EnableHotStandby)
@@ -572,7 +564,6 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 		Assert(!TransactionIdIsValid(ProcGlobal->xids[proc->pgxactoff]));
 	}
 
-<<<<<<< HEAD
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		/*
@@ -585,12 +576,11 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 			ShmemVariableCache->latestCompletedGxid < gxid)
 			ShmemVariableCache->latestCompletedGxid = gxid;
 	}
-=======
+
 	Assert(TransactionIdIsValid(ProcGlobal->xids[proc->pgxactoff] == 0));
 	Assert(TransactionIdIsValid(ProcGlobal->subxidStates[proc->pgxactoff].count == 0));
 	Assert(TransactionIdIsValid(ProcGlobal->subxidStates[proc->pgxactoff].overflowed == false));
 	ProcGlobal->vacuumFlags[proc->pgxactoff] = 0;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
@@ -668,8 +658,6 @@ ProcArrayEndGxact(TMGXACT *tmGxact)
 void
 ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 {
-<<<<<<< HEAD
-	PGXACT	   *pgxact = &allPgXact[proc->pgprocno];
 	TMGXACT	   *tmGxact = &allTmGxact[proc->pgprocno];
 
 #ifdef FAULT_INJECTOR
@@ -680,9 +668,6 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 #endif
 
 	if (TransactionIdIsValid(latestXid) || TransactionIdIsValid(tmGxact->gxid))
-=======
-	if (TransactionIdIsValid(latestXid))
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	{
 		/*
 		 * We must lock ProcArrayLock while clearing our advertised XID, so
@@ -690,13 +675,9 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		 * else is taking a snapshot.  See discussion in
 		 * src/backend/access/transam/README.
 		 */
-<<<<<<< HEAD
-		Assert(TransactionIdIsValid(allPgXact[proc->pgprocno].xid) ||
+		Assert(TransactionIdIsValid(proc->xid) ||
 			   TransactionIdIsValid(tmGxact->gxid) ||
 			   (IsBootstrapProcessingMode() && latestXid == BootstrapTransactionId));
-=======
-		Assert(TransactionIdIsValid(proc->xid));
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 		/*
 		 * If we can immediately acquire ProcArrayLock, we clear our own XID
@@ -705,76 +686,50 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		 */
 		if (LWLockConditionalAcquire(ProcArrayLock, LW_EXCLUSIVE))
 		{
-<<<<<<< HEAD
 			if (TransactionIdIsValid(latestXid))
-				ProcArrayEndTransactionInternal(proc, pgxact, latestXid);
+				ProcArrayEndTransactionInternal(proc, latestXid);
 
 			if (TransactionIdIsValid(tmGxact->gxid))
 				ProcArrayEndGxact(tmGxact);
 
-=======
-			ProcArrayEndTransactionInternal(proc, latestXid);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 			LWLockRelease(ProcArrayLock);
 		}
 		else
 			ProcArrayGroupClearXid(proc, latestXid);
 	}
-<<<<<<< HEAD
 
 	/*
 	 * If we have no XID, we don't need to lock, since we won't affect
 	 * anyone else's calculation of a snapshot.  We might change their
 	 * estimate of global xmin, but that's OK.
 	 *
-	 * NB: this may reset the pgxact and tmGxact twice (not including the xid
+	 * NB: this may reset the pgproc and tmGxact twice (not including the xid
 	 * and gxid), it should be no harm to the correctness, just an easy way to
 	 * handle the cases like: there's a valid distributed XID but no local XID.
 	 */
-	Assert(!TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
+	Assert(!TransactionIdIsValid(proc->xid));
 	Assert(!TransactionIdIsValid(allTmGxact[proc->pgprocno].gxid));
+	Assert(proc->subxidStatus.count == 0);
+	Assert(!proc->subxidStatus.overflowed);
 
 	proc->lxid = InvalidLocalTransactionId;
-	pgxact->xmin = InvalidTransactionId;
-	/* must be cleared with xid/xmin: */
-	pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
+	proc->xmin = InvalidTransactionId;
 	proc->delayChkpt = false;		/* be sure this is cleared in abort */
 	proc->recoveryConflictPending = false;
 
-	Assert(pgxact->nxids == 0);
-	Assert(pgxact->overflowed == false);
+	/* must be cleared with xid/xmin: */
+	/* avoid unnecessarily dirtying shared cachelines */
+	if (proc->vacuumFlags & PROC_VACUUM_STATE_MASK)
+	{
+		Assert(!LWLockHeldByMe(ProcArrayLock));
+		LWLockAcquire(ProcArrayLock, LW_SHARED);
+		Assert(proc->vacuumFlags == ProcGlobal->vacuumFlags[proc->pgxactoff]);
+		proc->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
+		ProcGlobal->vacuumFlags[proc->pgxactoff] = proc->vacuumFlags;
+		LWLockRelease(ProcArrayLock);
+	}
 
 	resetTmGxact();
-=======
-	else
-	{
-		/*
-		 * If we have no XID, we don't need to lock, since we won't affect
-		 * anyone else's calculation of a snapshot.  We might change their
-		 * estimate of global xmin, but that's OK.
-		 */
-		Assert(!TransactionIdIsValid(proc->xid));
-		Assert(proc->subxidStatus.count == 0);
-		Assert(!proc->subxidStatus.overflowed);
-
-		proc->lxid = InvalidLocalTransactionId;
-		proc->xmin = InvalidTransactionId;
-		proc->delayChkpt = false;	/* be sure this is cleared in abort */
-		proc->recoveryConflictPending = false;
-
-		/* must be cleared with xid/xmin: */
-		/* avoid unnecessarily dirtying shared cachelines */
-		if (proc->vacuumFlags & PROC_VACUUM_STATE_MASK)
-		{
-			Assert(!LWLockHeldByMe(ProcArrayLock));
-			LWLockAcquire(ProcArrayLock, LW_SHARED);
-			Assert(proc->vacuumFlags == ProcGlobal->vacuumFlags[proc->pgxactoff]);
-			proc->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
-			ProcGlobal->vacuumFlags[proc->pgxactoff] = proc->vacuumFlags;
-			LWLockRelease(ProcArrayLock);
-		}
-	}
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 }
 
 /*
@@ -844,12 +799,8 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 	uint32		wakeidx;
 
 	/* We should definitely have an XID to clear. */
-<<<<<<< HEAD
-	Assert(TransactionIdIsValid(allPgXact[proc->pgprocno].xid) ||
+	Assert(TransactionIdIsValid(proc->xid) ||
 		   TransactionIdIsValid(allTmGxact[proc->pgprocno].gxid));
-=======
-	Assert(TransactionIdIsValid(proc->xid));
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/* Add ourselves to the list of processes needing a group XID clear. */
 	proc->procArrayGroupMember = true;
@@ -913,19 +864,13 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 	while (nextidx != INVALID_PGPROCNO)
 	{
 		PGPROC	   *proc = &allProcs[nextidx];
-<<<<<<< HEAD
-		PGXACT	   *pgxact = &allPgXact[nextidx];
 		TMGXACT	   *tmGxact = &allTmGxact[nextidx];
 
 		if (TransactionIdIsValid(proc->procArrayGroupMemberXid))
-			ProcArrayEndTransactionInternal(proc, pgxact, proc->procArrayGroupMemberXid);
+			ProcArrayEndTransactionInternal(proc, proc->procArrayGroupMemberXid);
 
 		if (TransactionIdIsValid(tmGxact->gxid))
 			ProcArrayEndGxact(tmGxact);
-=======
-
-		ProcArrayEndTransactionInternal(proc, proc->procArrayGroupMemberXid);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 		/* Move to next proc in list. */
 		nextidx = pg_atomic_read_u32(&proc->procArrayGroupNext);
@@ -963,13 +908,8 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
  *
  * This is used after successfully preparing a 2-phase transaction.  We are
  * not actually reporting the transaction's XID as no longer running --- it
-<<<<<<< HEAD
  * will still appear as running because the 2PC's tmGxact is in the ProcArray
- * too.  We just have to clear out our own PGXACT.
-=======
- * will still appear as running because the 2PC's gxact is in the ProcArray
  * too.  We just have to clear out our own PGPROC.
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
  */
 void
 ProcArrayClearTransaction(PGPROC *proc)
@@ -977,25 +917,18 @@ ProcArrayClearTransaction(PGPROC *proc)
 	size_t		pgxactoff;
 
 	/*
-<<<<<<< HEAD
-	 * We can skip locking ProcArrayLock here, because this action does not
-	 * actually change anyone's view of the set of running XIDs: our entry is
-	 * duplicate with the tmGxact that has already been inserted into the
-	 * ProcArray.
-=======
 	 * Currently we need to lock ProcArrayLock exclusively here, as we
 	 * increment xactCompletionCount below. We also need it at least in shared
 	 * mode for pgproc->pgxactoff to stay the same below.
 	 *
 	 * We could however, as this action does not actually change anyone's view
-	 * of the set of running XIDs (our entry is duplicate with the gxact that
+	 * of the set of running XIDs (our entry is duplicate with the tmGxact that
 	 * has already been inserted into the ProcArray), lower the lock level to
 	 * shared if we were to make xactCompletionCount an atomic variable. But
 	 * that doesn't seem worth it currently, as a 2PC commit is heavyweight
 	 * enough for this not to be the bottleneck.  If it ever becomes a
 	 * bottleneck it may also be worth considering to combine this with the
 	 * subsequent ProcArrayRemove()
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	 */
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
@@ -1008,13 +941,8 @@ ProcArrayClearTransaction(PGPROC *proc)
 	proc->xmin = InvalidTransactionId;
 	proc->recoveryConflictPending = false;
 
-<<<<<<< HEAD
 	proc->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
 
-	/* redundant, but just in case */
-	pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
-	proc->delayChkpt = false;
-=======
 	Assert(!(proc->vacuumFlags & PROC_VACUUM_STATE_MASK));
 	Assert(!proc->delayChkpt);
 
@@ -1026,7 +954,6 @@ ProcArrayClearTransaction(PGPROC *proc)
 	 * because it might not count the prepared transaction as running.
 	 */
 	ShmemVariableCache->xactCompletionCount++;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/* Clear the subtransaction-XID cache too */
 	Assert(ProcGlobal->subxidStates[pgxactoff].count == proc->subxidStatus.count &&
@@ -1769,26 +1696,6 @@ TransactionIdIsActive(TransactionId xid)
  * Nonetheless it is safe to vacuum a table in the current database with the
  * first result.  There are also replication-related effects: a walsender
  * process can set its xmin based on transactions that are no longer running
-<<<<<<< HEAD
- * in the master but are still being replayed on the standby, thus possibly
- * making the GetOldestXmin reading go backwards.  In this case there is a
- * possibility that we lose data that the standby would like to have, but
- * unless the standby uses a replication slot to make its xmin persistent
- * there is little we can do about that --- data is only protected if the
- * walsender runs continuously while queries are executed on the standby.
- * (The Hot Standby code deals with such cases by failing standby queries
- * that needed to access already-removed data, so there's no integrity bug.)
- * The return value is also adjusted with vacuum_defer_cleanup_age, so
- * increasing that setting on the fly is another easy way to make
- * GetOldestXmin() move backwards, with no consequences for data integrity.
- *
- * GPDB: This also needs to deal with distributed snapshots. We keep track of
- * the oldest local XID that is still visible to any distributed snapshot,
- * in the DistributedLog subsystem. DistributedLog doesn't distinguish between
- * different databases, nor vacuums, however. So in GPDB, the 'allDbs' and
- * 'ignoreVacuum' arguments don't do much, because the value from the
- * distributed log will include everything.
-=======
  * on the primary but are still being replayed on the standby, thus possibly
  * making the values go backwards.  In this case there is a possibility that
  * we lose data that the standby would like to have, but unless the standby
@@ -1807,40 +1714,16 @@ TransactionIdIsActive(TransactionId xid)
  * heap vacuum's call to heap_page_prune() uses a more conservative horizon
  * than later when deciding which tuples can be removed - which the code
  * doesn't expect (breaking HOT).
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+
+ * GPDB: This also needs to deal with distributed snapshots. We keep track of
+ * the oldest local XID that is still visible to any distributed snapshot,
+ * in the DistributedLog subsystem. DistributedLog doesn't distinguish between
+ * different databases, nor vacuums, however. So in GPDB, the 'allDbs' and
+ * 'ignoreVacuum' arguments don't do much, because the value from the
+ * distributed log will include everything.
  */
 static void
 ComputeXidHorizons(ComputeXidHorizonsResult *h)
-{
-	TransactionId result;
-
-	result = GetLocalOldestXmin(rel, flags);
-
-	/*
-	 * In QD node, all distributed transactions have an entry in the proc array,
-	 * so we're done.
-	 *
-	 * During binary upgrade and in maintenance mode, we don't have
-	 * distributed transactions, so we're done there too. This ensures correct
-	 * operation of VACUUM FREEZE during pg_upgrade and maintenance mode.
-	 *
-	 * In bootstrap or standalone backend case as well ignore the distributed
-	 * logs using IsPostmasterEnvironment. Otherwise, during initdb can't
-	 * vacuum freeze template0.
-	 */
-	if (IsPostmasterEnvironment && !IS_QUERY_DISPATCHER() &&
-		!IsBinaryUpgrade && !gp_maintenance_mode)
-		result = DistributedLog_GetOldestXmin(result);
-
-	return result;
-}
-
-/*
- * This is the upstream version of GetOldestXmin(). It doesn't take
- * distributed transactions into account.
- */
-TransactionId
-GetLocalOldestXmin(Relation rel, int flags)
 {
 	ProcArrayStruct *arrayP = procArray;
 	TransactionId kaxmin;
@@ -2057,6 +1940,30 @@ GetLocalOldestXmin(Relation rel, int flags)
 	GlobalVisUpdateApply(h);
 }
 
+static TransactionId
+GetDistOldestXmin(TransactionId local_xmin)
+{
+	/*
+	 * In QD node, all distributed transactions have an entry in the proc array,
+	 * so we're done.
+	 *
+	 * During binary upgrade and in maintenance mode, we don't have
+	 * distributed transactions, so we're done there too. This ensures correct
+	 * operation of VACUUM FREEZE during pg_upgrade and maintenance mode.
+	 *
+	 * In bootstrap or standalone backend case as well ignore the distributed
+	 * logs using IsPostmasterEnvironment. Otherwise, during initdb can't
+	 * vacuum freeze template0.
+	 */
+
+	TransactionId result = local_xmin;
+
+	if (IsPostmasterEnvironment && !IS_QUERY_DISPATCHER() &&
+		!IsBinaryUpgrade && !gp_maintenance_mode)
+		result = DistributedLog_GetOldestXmin(result);
+	return result;
+}
+
 /*
  * Return the oldest XID for which deleted tuples must be preserved in the
  * passed table.
@@ -2069,7 +1976,7 @@ GetLocalOldestXmin(Relation rel, int flags)
  * the passed in table.
  */
 TransactionId
-GetOldestNonRemovableTransactionId(Relation rel)
+GetLocalOldestNonRemovableTransactionId(Relation rel)
 {
 	ComputeXidHorizonsResult horizons;
 
@@ -2084,6 +1991,12 @@ GetOldestNonRemovableTransactionId(Relation rel)
 		return horizons.data_oldest_nonremovable;
 }
 
+TransactionId
+GetOldestNonRemovableTransactionId(Relation rel)
+{
+	return GetDistOldestXmin(GetLocalOldestNonRemovableTransactionId(rel));
+}
+
 /*
  * Return the oldest transaction id any currently running backend might still
  * consider running. This should not be used for visibility / pruning
@@ -2091,13 +2004,39 @@ GetOldestNonRemovableTransactionId(Relation rel)
  * decisions like up to where pg_subtrans can be truncated.
  */
 TransactionId
-GetOldestTransactionIdConsideredRunning(void)
+GetLocalOldestTransactionIdConsideredRunning(void)
 {
 	ComputeXidHorizonsResult horizons;
 
 	ComputeXidHorizons(&horizons);
 
 	return horizons.oldest_considered_running;
+}
+
+TransactionId
+GetOldestTransactionIdConsideredRunning(void)
+{
+	return GetDistOldestXmin(GetLocalOldestTransactionIdConsideredRunning());
+}
+
+/*
+ * Return the visibility horizons for a hot standby feedback message.
+ */
+void
+GetLocalReplicationHorizons(TransactionId *xmin, TransactionId *catalog_xmin)
+{
+	ComputeXidHorizonsResult horizons;
+
+	ComputeXidHorizons(&horizons);
+
+	/*
+	 * Don't want to use shared_oldest_nonremovable here, as that contains the
+	 * effect of replication slot's catalog_xmin. We want to send a separate
+	 * feedback for the catalog horizon, so the primary can remove data table
+	 * contents more aggressively.
+	 */
+	*xmin = horizons.shared_oldest_nonremovable_raw;
+	*catalog_xmin = horizons.slot_catalog_xmin;
 }
 
 /*
@@ -2116,8 +2055,8 @@ GetReplicationHorizons(TransactionId *xmin, TransactionId *catalog_xmin)
 	 * feedback for the catalog horizon, so the primary can remove data table
 	 * contents more aggressively.
 	 */
-	*xmin = horizons.shared_oldest_nonremovable_raw;
-	*catalog_xmin = horizons.slot_catalog_xmin;
+	*xmin = GetDistOldestXmin(horizons.shared_oldest_nonremovable_raw);
+	*catalog_xmin = GetDistOldestXmin(horizons.slot_catalog_xmin);
 }
 
 void
@@ -3096,12 +3035,11 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	replication_slot_xmin = procArray->replication_slot_xmin;
 	replication_slot_catalog_xmin = procArray->replication_slot_catalog_xmin;
 
-<<<<<<< HEAD
-	if (!TransactionIdIsValid(MyPgXact->xmin))
+	if (!TransactionIdIsValid(MyProc->xmin))
 	{
 		/* Not that these values are not set atomically. However,
 		 * each of these assignments is itself assumed to be atomic. */
-		MyPgXact->xmin = TransactionXmin = xmin;
+		MyProc->xmin = TransactionXmin = xmin;
 	}
 
 	/* GP: QD takes a distributed snapshot */
@@ -3113,10 +3051,6 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		ereport(Debug_print_full_dtm ? LOG : DEBUG5,
 				(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
 	}
-=======
-	if (!TransactionIdIsValid(MyProc->xmin))
-		MyProc->xmin = TransactionXmin = xmin;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	LWLockRelease(ProcArrayLock);
 
@@ -3128,36 +3062,29 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		FullTransactionId def_vis_fxid_data;
 		FullTransactionId oldestfxid;
 
-<<<<<<< HEAD
-	/*
-	 * GP: In computing RecentGlobalXmin, also take distributed snapshots into
-	 * account.
-	 */
-	if (!IS_QUERY_DISPATCHER())
-	{
-		if (snapshot->haveDistribSnapshot)
-			globalxmin = DistributedLog_AdvanceOldestXmin(globalxmin,
-														  ds->xminAllDistributedSnapshots);
-		else if (!gp_maintenance_mode)
-			globalxmin = DistributedLog_GetOldestXmin(globalxmin);
-	}
+		/*
+		 * GP: In computing RecentGlobalXmin, also take distributed snapshots into
+		 * account.
+		 */
+		if (!IS_QUERY_DISPATCHER())
+		{
+			if (snapshot->haveDistribSnapshot)
+				oldestxid = DistributedLog_AdvanceOldestXmin(oldestxid,
+															 ds->xminAllDistributedSnapshots);
+			else if (!gp_maintenance_mode)
+				oldestxid = DistributedLog_GetOldestXmin(oldestxid);
+		}
+	
+		if (TransactionIdFollows(oldestxid, xmin))
+			elog(ERROR, "global xmin (%u) is higher than transaction xmin (%u)",
+				oldestxid, xmin);
 
-	if (TransactionIdFollows(globalxmin, xmin))
-		elog(ERROR, "global xmin (%u) is higher than transaction xmin (%u)",
-			globalxmin, xmin);
-
-	/* Update global variables too */
-	RecentGlobalXmin = globalxmin - vacuum_defer_cleanup_age;
-	if (!TransactionIdIsNormal(RecentGlobalXmin))
-		RecentGlobalXmin = FirstNormalTransactionId;
-=======
 		/*
 		 * Converting oldestXid is only safe when xid horizon cannot advance,
 		 * i.e. holding locks. While we don't hold the lock anymore, all the
 		 * necessary data has been gathered with lock held.
 		 */
 		oldestfxid = FullXidRelativeTo(latest_completed, oldestxid);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 		/* apply vacuum_defer_cleanup_age */
 		def_vis_xid_data =
@@ -3237,7 +3164,6 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	snapshot->regd_count = 0;
 	snapshot->copied = false;
 
-<<<<<<< HEAD
 	/*
 	 * Sort the entry {distribXid} to support the QEs doing culls on their
 	 * DisribToLocalXact sorted lists.
@@ -3261,29 +3187,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		updateSharedLocalSnapshot(&QEDtxContextInfo, distributedTransactionContext, snapshot, "GetSnapshotData");
 	}
 
-	if (old_snapshot_threshold < 0)
-	{
-		/*
-		 * If not using "snapshot too old" feature, fill related fields with
-		 * dummy values that don't require any locking.
-		 */
-		snapshot->lsn = InvalidXLogRecPtr;
-		snapshot->whenTaken = 0;
-	}
-	else
-	{
-		/*
-		 * Capture the current time and WAL stream location in case this
-		 * snapshot becomes old enough to need to fall back on the special
-		 * "old snapshot" logic.
-		 */
-		snapshot->lsn = GetXLogInsertRecPtr();
-		snapshot->whenTaken = GetSnapshotCurrentTimestamp();
-		MaintainOldSnapshotTimeMapping(snapshot->whenTaken, xmin);
-	}
-=======
 	GetSnapshotDataInitOldSnapshot(snapshot);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	ereport((Debug_print_snapshot_dtm ? LOG : DEBUG5),
 			(errmsg("GetSnapshotData(): WRITER currentcommandid %d curcid %d segmatesync %d",
@@ -4832,7 +4736,6 @@ DisplayXidCache(void)
 }
 #endif							/* XIDCACHE_DEBUG */
 
-<<<<<<< HEAD
 PGPROC *
 FindProcByGpSessionId(long gp_session_id)
 {
@@ -4864,7 +4767,7 @@ FindProcByGpSessionId(long gp_session_id)
 	LWLockRelease(ProcArrayLock);
 	return NULL;
 }
-=======
+
 /*
  * If rel != NULL, return test state appropriate for relation, otherwise
  * return state usable for all relations.  The latter may consider XIDs as
@@ -4949,13 +4852,13 @@ GlobalVisUpdateApply(ComputeXidHorizonsResult *horizons)
 {
 	GlobalVisSharedRels.maybe_needed =
 		FullXidRelativeTo(horizons->latest_completed,
-						  horizons->shared_oldest_nonremovable);
+						  GetDistOldestXmin(horizons->shared_oldest_nonremovable));
 	GlobalVisCatalogRels.maybe_needed =
 		FullXidRelativeTo(horizons->latest_completed,
-						  horizons->catalog_oldest_nonremovable);
+						  GetDistOldestXmin(horizons->catalog_oldest_nonremovable));
 	GlobalVisDataRels.maybe_needed =
 		FullXidRelativeTo(horizons->latest_completed,
-						  horizons->data_oldest_nonremovable);
+						  GetDistOldestXmin(horizons->data_oldest_nonremovable));
 
 	/*
 	 * In longer running transactions it's possible that transactions we
@@ -5140,7 +5043,6 @@ FullXidRelativeTo(FullTransactionId rel, TransactionId xid)
 									+ (int32) (xid - rel_xid));
 }
 
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 /* ----------------------------------------------
  *		KnownAssignedTransactionIds sub-module
@@ -6068,9 +5970,9 @@ LocalXidGetDistributedXid(TransactionId xid)
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		int		 pgprocno = arrayP->pgprocnos[index];
-		volatile PGXACT *pgxact = &allPgXact[pgprocno];
+		volatile PGPROC *pgproc = &allProcs[pgprocno];
 		volatile TMGXACT *tmGxact = &allTmGxact[pgprocno];
-		if (xid == pgxact->xid)
+		if (xid == pgproc->xid)
 		{
 			gxid = tmGxact->gxid;
 			break;

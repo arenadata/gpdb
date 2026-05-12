@@ -134,11 +134,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	Relation	toast_rel;
 	Relation	class_rel;
 	Oid			toast_relid;
-<<<<<<< HEAD
 	Oid			toast_idxid;
-	Oid			toast_typid = InvalidOid;
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	Oid			namespaceid;
 	char		toast_relname[NAMEDATALEN];
 	char		toast_idxname[NAMEDATALEN];
@@ -198,21 +194,13 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 		 * problem that it might take up an OID that will conflict with some
 		 * old-cluster table we haven't seen yet.
 		 */
-<<<<<<< HEAD
 		if (IsBinaryUpgrade)
 		{
 			Assert(toastOid == InvalidOid);
 			toastOid = GetPreassignedOidForRelation(namespaceid, toast_relname);
 			if (!OidIsValid(toastOid))
 				return false;
-			toast_typid = GetPreassignedOidForType(namespaceid, toast_relname);
-			if (!OidIsValid(toast_typid))
-				return false;
 		}
-=======
-		if (!OidIsValid(binary_upgrade_next_toast_pg_class_oid))
-			return false;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	}
 
 	/*
@@ -249,24 +237,6 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	TupleDescAttr(tupdesc, 0)->attstorage = TYPSTORAGE_PLAIN;
 	TupleDescAttr(tupdesc, 1)->attstorage = TYPSTORAGE_PLAIN;
 	TupleDescAttr(tupdesc, 2)->attstorage = TYPSTORAGE_PLAIN;
-
-	/*
-<<<<<<< HEAD
-	 * Use binary-upgrade override for pg_type.oid, if supplied.  We might be
-	 * in the post-schema-restore phase where we are doing ALTER TABLE to
-	 * create TOAST tables that didn't exist in the old cluster.
-	 *
-	 * GPDB: already got the OIDs above
-	 */
-=======
-	 * Toast tables for regular relations go in pg_toast; those for temp
-	 * relations go into the per-backend temp-toast-table namespace.
-	 */
-	if (isTempOrTempToastNamespace(rel->rd_rel->relnamespace))
-		namespaceid = GetTempToastNamespace();
-	else
-		namespaceid = PG_TOAST_NAMESPACE;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	/* Toast table is shared if and only if its parent is. */
 	shared_relation = rel->rd_rel->relisshared;

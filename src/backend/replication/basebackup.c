@@ -470,21 +470,12 @@ perform_base_backup(basebackup_options *opt)
 				{
 					sendFileWithContent(TABLESPACE_MAP, tblspc_map_file->data,
 										&manifest);
-<<<<<<< HEAD
-					sendDir(".", 1, false, tablespaces, false,
-							&manifest, NULL, opt->exclude);
-				}
-				else
-					sendDir(".", 1, false, tablespaces, true,
-							&manifest, NULL, opt->exclude);
-=======
 					sendtblspclinks = false;
 				}
 
 				/* Then the bulk of the files... */
 				sendDir(".", 1, false, tablespaces, sendtblspclinks,
-						&manifest, NULL);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+						&manifest, NULL, opt->exclude);
 
 				/* ... and pg_control after everything else. */
 				if (lstat(XLOG_CONTROL_FILE, &statbuf) != 0)

@@ -134,7 +134,7 @@ bool		enable_bitmapscan = true;
 bool		enable_tidscan = true;
 bool		enable_sort = true;
 /* GPDB_13_MERGE_FIXME: enable incremental sort */
-bool		enable_incrementalsort = false;
+bool		enable_incremental_sort = false;
 bool		enable_hashagg = true;
 bool		enable_groupagg = true;
 bool		enable_nestloop = false;
@@ -3810,14 +3810,6 @@ initial_cost_hashjoin(PlannerInfo *root, JoinCostWorkspace *workspace,
 	if (parallel_hash)
 		inner_path_rows_total *= get_parallel_divisor(inner_path);
 
-<<<<<<< HEAD
-	/* Get hash table size that executor would use for inner relation */
-	ExecChooseHashTableSize(inner_path_rows_total,
-							inner_path->pathtarget->width,
-							true,	/* useskew */
-							global_work_mem(root) / 1024L,
-							parallel_hash,	/* try_combined_work_mem */
-=======
 	/*
 	 * Get hash table size that executor would use for inner relation.
 	 *
@@ -3831,8 +3823,8 @@ initial_cost_hashjoin(PlannerInfo *root, JoinCostWorkspace *workspace,
 	ExecChooseHashTableSize(inner_path_rows_total,
 							inner_path->pathtarget->width,
 							true,	/* useskew */
+							global_work_mem(root) / 1024L,
 							parallel_hash,	/* try_combined_hash_mem */
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 							outer_path->parallel_workers,
 							&space_allowed,
 							&numbuckets,
@@ -3895,11 +3887,7 @@ final_cost_hashjoin(PlannerInfo *root, HashPath *path,
 	Cost		run_cost = workspace->run_cost;
 	int			numbuckets = workspace->numbuckets;
 	int			numbatches = workspace->numbatches;
-<<<<<<< HEAD
-=======
 	int			hash_mem;
-	Cost		cpu_per_tuple;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	QualCost	hash_qual_cost;
 	QualCost	qp_qual_cost;
 	double		hashjointuples;

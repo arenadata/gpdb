@@ -65,19 +65,11 @@ PostgreSQL documentation
 
   <para>
    <application>pg_basebackup</application> can make a base backup from
-<<<<<<< HEAD
-   not only the coordinator but also the standby. To take a backup from the standby,
-   set up the standby so that it can accept replication connections (that is, set
-   <varname>max_wal_senders</varname> and <xref linkend="guc-hot-standby"/>,
-   and configure <link linkend="auth-pg-hba-conf">host-based authentication</link>).
-   You will also need to enable <xref linkend="guc-full-page-writes"/> on the coordinator.
-=======
    not only a primary server but also a standby. To take a backup from a standby,
    set up the standby so that it can accept replication connections (that is, set
    <varname>max_wal_senders</varname> and <xref linkend="guc-hot-standby"/>,
    and configure its <filename>pg_hba.conf</filename> appropriately).
    You will also need to enable <xref linkend="guc-full-page-writes"/> on the primary.
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
   </para>
 
   <para>
@@ -97,21 +89,13 @@ PostgreSQL documentation
     </listitem>
     <listitem>
      <para>
-<<<<<<< HEAD
-      If the standby is promoted to the coordinator during online backup, the backup fails.
-=======
       If the standby is promoted to be primary during backup, the backup fails.
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
      </para>
     </listitem>
     <listitem>
      <para>
       All WAL records required for the backup must contain sufficient full-page writes,
-<<<<<<< HEAD
-      which requires you to enable <varname>full_page_writes</varname> on the coordinator and
-=======
       which requires you to enable <varname>full_page_writes</varname> on the primary and
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
       not to use a tool like <application>pg_compresslog</application> as
       <varname>archive_command</varname> to remove full-page writes from WAL files.
      </para>
@@ -331,15 +315,6 @@ PostgreSQL documentation
           <term><literal>stream</literal></term>
           <listitem>
            <para>
-<<<<<<< HEAD
-            Stream the write-ahead log while the backup is created. This will
-            open a second connection to the server and start streaming the
-            write-ahead log in parallel while running the backup. Therefore,
-            it will use up two connections configured by the
-            <xref linkend="guc-max-wal-senders"/> parameter. As long as the
-             client can keep up with write-ahead log received, using this mode
-             requires no extra write-ahead logs to be saved on the coordinator.
-=======
             Stream write-ahead log data while the backup is being taken.
             This method will open a second connection to the server and
             start streaming the write-ahead log in parallel while running
@@ -347,7 +322,6 @@ PostgreSQL documentation
             connections not just one.  As long as the client can keep up
             with the write-ahead log data, using this method requires no
             extra write-ahead logs to be saved on the source server.
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
            </para>
            <para>
             When tar format is used, the write-ahead log files will be

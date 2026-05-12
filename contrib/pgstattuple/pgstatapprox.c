@@ -282,15 +282,11 @@ pgstattuple_approx_internal(Oid relid, FunctionCallInfo fcinfo)
 	 * map.
 	 */
 	if (!(rel->rd_rel->relkind == RELKIND_RELATION ||
-<<<<<<< HEAD
 		  rel->rd_rel->relkind == RELKIND_AOSEGMENTS ||
 		  rel->rd_rel->relkind == RELKIND_AOBLOCKDIR ||
 		  rel->rd_rel->relkind == RELKIND_AOVISIMAP ||
-		  rel->rd_rel->relkind == RELKIND_MATVIEW))
-=======
 		  rel->rd_rel->relkind == RELKIND_MATVIEW ||
 		  rel->rd_rel->relkind == RELKIND_TOASTVALUE))
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("\"%s\" is not a table, materialized view, or TOAST table",

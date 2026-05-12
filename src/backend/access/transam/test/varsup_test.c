@@ -52,7 +52,7 @@ test_GetNewTransactionId_xid_stop_limit(void **state)
 	 * and it's larger than xidStopLimit to trigger the ereport(ERROR).
 	 */
 	ShmemVariableCache = &data;
-	ShmemVariableCache->nextFullXid.value = 30;
+	ShmemVariableCache->nextXid.value = 30;
 	ShmemVariableCache->xidVacLimit = 10;
 	ShmemVariableCache->xidStopLimit = 20;
 	IsUnderPostmaster = true;
@@ -88,16 +88,14 @@ test_GetNewTransactionId_xid_warn_limit(void **state)
 	const int xid = 25;
 	VariableCacheData data;
 	PGPROC proc;
-	PGXACT xact;
 
 	MyProc = &proc;
-	MyPgXact = &xact;
 	/*
 	 * make sure nextXid is between xidWarnLimit and xidStopLimit to trigger
 	 * the ereport(WARNING).
 	 */
 	ShmemVariableCache = &data;
-	ShmemVariableCache->nextFullXid.value = xid;
+	ShmemVariableCache->nextXid.value = xid;
 	ShmemVariableCache->xidVacLimit = 10;
 	ShmemVariableCache->xidWarnLimit = 20;
 	ShmemVariableCache->xidStopLimit = 30;
@@ -139,7 +137,7 @@ test_GetNewTransactionId_xid_warn_limit(void **state)
 	PG_TRY();
 	{
 		GetNewTransactionId(false);
-		assert_int_equal(xact.xid, xid);
+		assert_int_equal(proc.xid, xid);
 	}
 	PG_CATCH();
 	{

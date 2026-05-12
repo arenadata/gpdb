@@ -391,7 +391,7 @@ heap_prune_satisfies_vacuum(PruneState *prstate, HeapTuple tup, Buffer buffer)
 	HTSV_Result res;
 	TransactionId dead_after;
 
-	res = HeapTupleSatisfiesVacuumHorizon(tup, buffer, &dead_after);
+	res = HeapTupleSatisfiesVacuumHorizon(prstate->rel, tup, buffer, &dead_after);
 
 	if (res != HEAPTUPLE_RECENTLY_DEAD)
 		return res;
@@ -524,11 +524,7 @@ heap_prune_chain(Buffer buffer, OffsetNumber rootoffnum, PruneState *prstate)
 			 * either here or while following a chain below.  Whichever path
 			 * gets there first will mark the tuple unused.
 			 */
-<<<<<<< HEAD
-			if (HeapTupleSatisfiesVacuum(relation, &tup, OldestXmin, buffer)
-=======
 			if (heap_prune_satisfies_vacuum(prstate, &tup, buffer)
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 				== HEAPTUPLE_DEAD && !HeapTupleHeaderIsHotUpdated(htup))
 			{
 				heap_prune_record_unused(prstate, rootoffnum);
@@ -612,11 +608,7 @@ heap_prune_chain(Buffer buffer, OffsetNumber rootoffnum, PruneState *prstate)
 		 */
 		tupdead = recent_dead = false;
 
-<<<<<<< HEAD
-		switch (HeapTupleSatisfiesVacuum(relation, &tup, OldestXmin, buffer))
-=======
 		switch (heap_prune_satisfies_vacuum(prstate, &tup, buffer))
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		{
 			case HEAPTUPLE_DEAD:
 				tupdead = true;

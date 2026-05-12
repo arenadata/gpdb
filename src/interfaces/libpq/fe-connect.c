@@ -4155,27 +4155,8 @@ freePGconn(PGconn *conn)
 		free(conn->gsslib);
 	if (conn->connip)
 		free(conn->connip);
-<<<<<<< HEAD
-#ifdef ENABLE_GSS
-	if (conn->gcred != GSS_C_NO_CREDENTIAL)
-	{
-		OM_uint32	minor;
-
-		gss_release_cred(&minor, &conn->gcred);
-		conn->gcred = GSS_C_NO_CREDENTIAL;
-	}
-	if (conn->gctx)
-	{
-		OM_uint32	minor;
-
-		gss_delete_sec_context(&minor, &conn->gctx, GSS_C_NO_BUFFER);
-		conn->gctx = NULL;
-	}
-#endif
 	if (conn->gpqeid)			/* CDB */
 		free(conn->gpqeid);
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	/* Note that conn->Pfdebug is not ours to close or free */
 	if (conn->last_query)
 		free(conn->last_query);
