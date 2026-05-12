@@ -7339,7 +7339,9 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 		foreach(lc, input_rel->pathlist)
 		{
 			Path	   *path = (Path *) lfirst(lc);
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 			Path	   *path_original = path;
+#endif
 			bool		is_sorted;
 			int			presorted_keys;
 
@@ -7516,7 +7518,9 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			foreach(lc, partially_grouped_rel->pathlist)
 			{
 				Path	   *path = (Path *) lfirst(lc);
+#if  0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 				Path	   *path_original = path;
+#endif
 				bool		is_sorted;
 				int			presorted_keys;
 				double		dNumGroups;
@@ -8106,7 +8110,9 @@ create_partial_grouping_paths(PlannerInfo *root,
 		foreach(lc, input_rel->partial_pathlist)
 		{
 			Path	   *path = (Path *) lfirst(lc);
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 			Path	   *path_original = path;
+#endif
 			bool		is_sorted;
 			int			presorted_keys;
 
