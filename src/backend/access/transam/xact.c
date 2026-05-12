@@ -3305,9 +3305,7 @@ PrepareTransaction(void)
 	 * done *after* the prepared transaction has been marked valid, else
 	 * someone may think it is unlocked and recyclable.
 	 */
-	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 	ProcArrayClearTransaction(MyProc);
-	LWLockRelease(ProcArrayLock);
 
 	/*
 	 * In normal commit-processing, this is all non-critical post-transaction
