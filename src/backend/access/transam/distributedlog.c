@@ -1028,12 +1028,6 @@ DistributedLog_WriteTruncateXlogRec(int page)
 	XLogFlush(recptr);
 }
 
-static void
-xact_redo_distributed_forget(xl_xact_distributed_forget *xlrec, TransactionId xid pg_attribute_unused() )
-{
-	redoDistributedForgetCommitRecord(xlrec->gxid);
-}
-
 /*
  * DistributedLog resource manager's routines
  */
@@ -1092,7 +1086,7 @@ DistributedLog_redo(XLogReaderState *record)
 	{
 		xl_xact_distributed_forget *xlrec = (xl_xact_distributed_forget *) XLogRecGetData(record);
 
-		xact_redo_distributed_forget(xlrec, XLogRecGetXid(record));
+		redoDistributedForgetCommitRecord(xlrec->gxid);
 	}
 	else
 		elog(PANIC, "DistributedLog_redo: unknown op code %u", info);
