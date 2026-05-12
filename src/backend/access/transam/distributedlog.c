@@ -1035,7 +1035,7 @@ void
 DistributedLog_redo(XLogReaderState *record)
 {
 	uint8		info = XLogRecGetInfo(record) & ~XLR_INFO_MASK;
-	Assert(!IS_QUERY_DISPATCHER());
+	Assert(!IS_QUERY_DISPATCHER() || info == DISTRIBUTEDLOG_FORGET);
 
 	if (info == DISTRIBUTEDLOG_ZEROPAGE)
 	{
