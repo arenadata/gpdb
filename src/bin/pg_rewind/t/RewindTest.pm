@@ -206,7 +206,7 @@ sub promote_standby
 
 	if(defined($stop_primary_before_promote) && $stop_primary_before_promote)
 	{
-		$node_primaryr->stop;
+		$node_primary->stop;
 	}
 
 	# Now promote standby and insert some new data on primary, this will put
