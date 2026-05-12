@@ -31,6 +31,7 @@
 #include "access/distributedlog.h"
 #include "access/slru.h"
 #include "access/transam.h"
+#include "access/xact.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 #include "port/atomics.h"
@@ -1027,6 +1028,12 @@ DistributedLog_WriteTruncateXlogRec(int page)
 	XLogFlush(recptr);
 }
 
+static void
+xact_redo_distributed_forget(xl_xact_distributed_forget *xlrec, TransactionId xid pg_attribute_unused() )
+{
+	redoDistributedForgetCommitRecord(xlrec->gxid);
+}
+
 /*
  * DistributedLog resource manager's routines
  */
@@ -1080,6 +1087,12 @@ DistributedLog_redo(XLogReaderState *record)
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "DistributedLog_redo truncate to cutoff page = %d",
 			 page);
+	}
+	else if (info == DISTRIBUTEDLOG_FORGET)
+	{
+		xl_xact_distributed_forget *xlrec = (xl_xact_distributed_forget *) XLogRecGetData(record);
+
+		xact_redo_distributed_forget(xlrec, XLogRecGetXid(record));
 	}
 	else
 		elog(PANIC, "DistributedLog_redo: unknown op code %u", info);
