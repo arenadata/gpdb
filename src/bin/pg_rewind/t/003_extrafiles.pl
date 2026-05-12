@@ -56,8 +56,8 @@ sub run_test
 	  "in primary3";
 
 	# GPDB: gpbackup default directory should be ignored
-	mkdir "$test_master_datadir/backups";
-	append_to_file "$test_master_datadir/backups/master_backup_file",
+	mkdir "$test_primary_datadir/backups";
+	append_to_file "$test_primary_datadir/backups/master_backup_file",
 	  "backup data in master1";
 
 	RewindTest::promote_standby();
@@ -75,20 +75,8 @@ sub run_test
 	is_deeply(
 		\@paths,
 		[
-<<<<<<< HEAD
-			"$test_master_datadir/backups",
-			"$test_master_datadir/backups/master_backup_file",
-			"$test_master_datadir/tst_both_dir",
-			"$test_master_datadir/tst_both_dir/both_file1",
-			"$test_master_datadir/tst_both_dir/both_file2",
-			"$test_master_datadir/tst_both_dir/both_subdir",
-			"$test_master_datadir/tst_both_dir/both_subdir/both_file3",
-			"$test_master_datadir/tst_standby_dir",
-			"$test_master_datadir/tst_standby_dir/standby_file1",
-			"$test_master_datadir/tst_standby_dir/standby_file2",
-			"$test_master_datadir/tst_standby_dir/standby_subdir",
-			"$test_master_datadir/tst_standby_dir/standby_subdir/standby_file3"
-=======
+			"$test_primary_datadir/backups",
+			"$test_primary_datadir/backups/master_backup_file",
 			"$test_primary_datadir/tst_both_dir",
 			"$test_primary_datadir/tst_both_dir/both_file1",
 			"$test_primary_datadir/tst_both_dir/both_file2",
@@ -99,7 +87,6 @@ sub run_test
 			"$test_primary_datadir/tst_standby_dir/standby_file2",
 			"$test_primary_datadir/tst_standby_dir/standby_subdir",
 			"$test_primary_datadir/tst_standby_dir/standby_subdir/standby_file3"
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		],
 		"file lists match");
 
