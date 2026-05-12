@@ -88,6 +88,7 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "utils/timestamp.h"
 
 #include "cdb/cdbvars.h"  /* GpIdentity.segindex */
 #include "cdb/cdbtm.h"
@@ -3215,12 +3216,6 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				if (j < buf->len &&
 					buf->data[buf->len - 1] == ' ')
 					buf->len--;
-				break;
-			case 'P':
-				if( Gp_role == GP_ROLE_EXECUTE )
-				{
-					appendStringInfoChar(buf, 'P');
-				}
 				break;
 			case 'R':
 				if (!MyProcPort)
