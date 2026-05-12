@@ -391,12 +391,6 @@ xact_desc_distributed_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, 
 }
 
 static void
-xact_desc_distributed_forget(StringInfo buf, xl_xact_distributed_forget *xlrec)
-{
-	appendStringInfo(buf, "gxid = "UINT64_FORMAT, xlrec->gxid);
-}
-
-static void
 xact_desc_abort(StringInfo buf, uint8 info, xl_xact_abort *xlrec)
 {
 	xl_xact_parsed_abort parsed;
@@ -505,13 +499,6 @@ xact_desc(StringInfo buf, XLogReaderState *record)
 		xact_desc_distributed_commit(buf, XLogRecGetInfo(record), xlrec,
 						 XLogRecGetOrigin(record));
 	}
-	else if (info == XLOG_XACT_DISTRIBUTED_FORGET)
-	{
-		xl_xact_distributed_forget *xlrec = (xl_xact_distributed_forget *) rec;
-
-		appendStringInfo(buf, "distributed forget ");
-		xact_desc_distributed_forget(buf, xlrec);
-	}
 }
 
 const char *
@@ -544,9 +531,6 @@ xact_identify(uint8 info)
 			break;
 		case XLOG_XACT_DISTRIBUTED_COMMIT:
 			id = "DISTRIBUTED_COMMIT";
-			break;
-		case XLOG_XACT_DISTRIBUTED_FORGET:
-			id = "DISTRIBUTED_FORGET";
 			break;
 	}
 
