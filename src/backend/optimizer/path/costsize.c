@@ -133,18 +133,11 @@ bool		enable_indexonlyscan = true;
 bool		enable_bitmapscan = true;
 bool		enable_tidscan = true;
 bool		enable_sort = true;
-<<<<<<< HEAD
 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 bool		enable_incrementalsort = false;
 bool		enable_hashagg = true;
 bool		enable_groupagg = true;
-bool		hashagg_avoid_disk_plan = true;
 bool		enable_nestloop = false;
-=======
-bool		enable_incremental_sort = true;
-bool		enable_hashagg = true;
-bool		enable_nestloop = true;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 bool		enable_material = true;
 bool		enable_mergejoin = false;
 bool		enable_hashjoin = true;
