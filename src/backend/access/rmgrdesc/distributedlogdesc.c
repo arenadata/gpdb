@@ -18,12 +18,6 @@
 #include "access/xact.h"
 
 
-static void
-xact_desc_distributed_forget(StringInfo buf, xl_xact_distributed_forget *xlrec)
-{
-	appendStringInfo(buf, "gxid = "UINT64_FORMAT, xlrec->gxid);
-}
-
 void
 DistributedLog_desc(StringInfo buf, XLogReaderState *record)
 {
@@ -49,7 +43,7 @@ DistributedLog_desc(StringInfo buf, XLogReaderState *record)
 		xl_xact_distributed_forget *xlrec = (xl_xact_distributed_forget *) rec;
 
 		appendStringInfo(buf, "distributed forget ");
-		xact_desc_distributed_forget(buf, xlrec);
+		appendStringInfo(buf, "gxid = "UINT64_FORMAT, xlrec->gxid);
 	}
 	else
 		appendStringInfo(buf, "UNKNOWN");
