@@ -121,7 +121,6 @@
 		"enable_gathermerge",
 		"enable_groupagg",
 		"enable_hashagg",
-		"hashagg_avoid_disk_plan",
 		"enable_hashjoin",
 		"enable_indexonlyscan",
 		"enable_indexscan",

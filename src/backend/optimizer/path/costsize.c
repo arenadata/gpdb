@@ -137,7 +137,6 @@ bool		enable_sort = true;
 bool		enable_incremental_sort = false;
 bool		enable_hashagg = true;
 bool		enable_groupagg = true;
-bool		hashagg_avoid_disk_plan = true;
 bool		enable_nestloop = false;
 bool		enable_material = true;
 bool		enable_mergejoin = false;
