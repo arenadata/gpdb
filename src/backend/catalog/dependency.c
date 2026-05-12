@@ -2986,8 +2986,8 @@ checkDependencies(const ObjectAddresses *objects,
 							DEPFLAG_EXTENSION))
 			continue;
 
-		objDesc = getObjectDescription(obj);
-		otherDesc = getObjectDescription(&extra->dependee);
+		objDesc = getObjectDescription(obj, false);
+		otherDesc = getObjectDescription(&extra->dependee, false);
 
 		if (numReportedClient < MAX_REPORTED_DEPS)
 		{
