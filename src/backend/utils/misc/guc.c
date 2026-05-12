@@ -22,16 +22,12 @@
 #include <float.h>
 #include <math.h>
 #include <limits.h>
-<<<<<<< HEAD
 #ifdef HAVE_POLL_H
 #include <poll.h>
 #endif
-#include <unistd.h>
-=======
 #ifndef WIN32
 #include <sys/mman.h>
 #endif
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 #include <sys/stat.h>
 #ifdef HAVE_SYSLOG
 #include <syslog.h>
@@ -1039,14 +1035,9 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Enables the planner's use of incremental sort steps."),
 			NULL
 		},
-<<<<<<< HEAD
-		&enable_incrementalsort,
+		&enable_incremental_sort,
 		/* GPDB_13_MERGE_FIXME: enable incremental sort */
 		false,
-=======
-		&enable_incremental_sort,
-		true,
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		NULL, NULL, NULL
 	},
 	{
@@ -2697,13 +2688,9 @@ static struct config_int ConfigureNamesInt[] =
 			NULL,
 			GUC_UNIT_MB
 		},
-<<<<<<< HEAD
-		&wal_keep_segments,
-		5, 0, INT_MAX,
-=======
 		&wal_keep_size_mb,
-		0, 0, MAX_KILOBYTES,
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+		DEFAULT_MIN_WAL_SEGS * (DEFAULT_XLOG_SEG_SIZE / (1024 * 1024)),
+		0, MAX_KILOBYTES,
 		NULL, NULL, NULL
 	},
 
@@ -3460,7 +3447,6 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-<<<<<<< HEAD
 		{"client_connection_check_interval", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the time interval between checks for disconnection while running queries."),
 			NULL,
@@ -3469,7 +3455,9 @@ static struct config_int ConfigureNamesInt[] =
 		&client_connection_check_interval,
 		0, 0, INT_MAX,
 		check_client_connection_check_interval, NULL, NULL
-=======
+	},
+
+	{
 		{"huge_page_size", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("The size of huge page that should be requested."),
 			NULL,
@@ -3478,7 +3466,6 @@ static struct config_int ConfigureNamesInt[] =
 		&huge_page_size,
 		0, 0, INT_MAX,
 		check_huge_page_size, NULL, NULL
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	},
 
 	/* End-of-list marker */
@@ -12046,7 +12033,6 @@ check_maintenance_io_concurrency(int *newval, void **extra, GucSource source)
 }
 
 static bool
-<<<<<<< HEAD
 check_client_connection_check_interval(int *newval, void **extra, GucSource source)
 {
 #if !(defined(POLLRDHUP) || defined(__darwin__))
@@ -12054,7 +12040,13 @@ check_client_connection_check_interval(int *newval, void **extra, GucSource sour
 	if (*newval != 0)
 	{
 		GUC_check_errdetail("client_connection_check_interval must be set to 0 on platforms that lack POLLRDHUP and not OSX.";
-=======
+		return false;
+	}
+#endif
+	return true;
+}
+
+static bool
 check_huge_page_size(int *newval, void **extra, GucSource source)
 {
 #if !(defined(MAP_HUGE_MASK) && defined(MAP_HUGE_SHIFT))
@@ -12062,7 +12054,6 @@ check_huge_page_size(int *newval, void **extra, GucSource source)
 	if (*newval != 0)
 	{
 		GUC_check_errdetail("huge_page_size must be 0 on this platform.");
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 		return false;
 	}
 #endif

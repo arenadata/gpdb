@@ -548,7 +548,6 @@ CheckProcSignal(ProcSignalReason reason)
 }
 
 /*
-<<<<<<< HEAD
  * Query-finish signal from QD.  The executor will deliverately try
  * to finish execution as quickly as possible.
  */
@@ -565,29 +564,6 @@ QueryFinishHandler(void)
 }
 
 /*
- * CheckProcSignalBarrier - check for new barriers we need to absorb
- */
-static bool
-CheckProcSignalBarrier(void)
-{
-	volatile ProcSignalSlot *slot = MyProcSignalSlot;
-
-	if (slot != NULL)
-	{
-		uint64		mygen;
-		uint64		curgen;
-
-		mygen = pg_atomic_read_u64(&slot->pss_barrierGeneration);
-		curgen = pg_atomic_read_u64(&ProcSignal->psh_barrierGeneration);
-		return (mygen != curgen);
-	}
-
-	return false;
-}
-
-/*
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
  * procsignal_sigusr1_handler - handle SIGUSR1 signal.
  */
 void
@@ -628,21 +604,12 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN))
 		RecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN);
 
-<<<<<<< HEAD
 	if (CheckProcSignal(PROCSIG_QUERY_FINISH))
 		QueryFinishHandler();
 
 	if (CheckProcSignal(PROCSIG_RESOURCE_GROUP_MOVE_QUERY))
 		HandleMoveResourceGroup();
 
-	if (CheckProcSignalBarrier())
-	{
-		InterruptPending = true;
-		ProcSignalBarrierPending = true;
-	}
-
-=======
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	SetLatch(MyLatch);
 
 	latch_sigusr1_handler();

@@ -242,12 +242,8 @@ typedef struct TransactionStateData
 	bool		didLogXid;		/* has xid been included in WAL record? */
 	int			parallelModeLevel;	/* Enter/ExitParallelMode counter */
 	bool		chain;			/* start a new block after this one */
-<<<<<<< HEAD
 	bool		executorSaysXactDoesWrites;	/* GP executor says xact does writes */
-
-=======
 	bool		assigned;		/* assigned to top-level XID */
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	struct TransactionStateData *parent;	/* back link to parent */
 	struct TransactionStateData *fastLink;	/* back link to jump to parent for efficient search */
 } TransactionStateData;
@@ -1080,7 +1076,6 @@ bool IsCurrentTransactionIdForReader(TransactionId xid)
 	LWLockAcquire(SharedLocalSnapshotSlot->slotLock, LW_SHARED);
 
 	PGPROC* writer_proc = SharedLocalSnapshotSlot->writer_proc;
-	PGXACT* writer_xact = SharedLocalSnapshotSlot->writer_xact;
 
 	if (!writer_proc)
 	{
@@ -1093,8 +1088,8 @@ bool IsCurrentTransactionIdForReader(TransactionId xid)
 		elog(ERROR, "writer proc reference shared with reader is invalid");
 	}
 
-	TransactionId writer_xid = writer_xact->xid;
-	bool overflowed = writer_xact->overflowed;
+	TransactionId writer_xid = writer_proc->xid;
+	bool overflowed = writer_proc->subxidStatus.overflowed;
 	bool isCurrent = false;
 
 	if (TransactionIdIsValid(writer_xid))
@@ -1113,7 +1108,7 @@ bool IsCurrentTransactionIdForReader(TransactionId xid)
 			/*
 			 * Case 2: check cached subtransaction ids from latest to earliest
 			 */
-			int subx_index = writer_xact->nxids - 1;
+			int subx_index = writer_proc->subxidStatus.count - 1;
 			while (!isCurrent &&  subx_index >= 0)
 			{
 				isCurrent = TransactionIdEquals(writer_proc->subxids.xids[subx_index], xid);
@@ -2572,7 +2567,6 @@ StartTransaction(void)
 				SharedLocalSnapshotSlot->startTimestamp = stmtStartTimestamp;
 				SharedLocalSnapshotSlot->distributedXid = QEDtxContextInfo.distributedXid;
 				SharedLocalSnapshotSlot->writer_proc = MyProc;
-				SharedLocalSnapshotSlot->writer_xact = MyPgXact;
 
 				ereportif(Debug_print_full_dtm, LOG,
 						  (errmsg(
@@ -6348,7 +6342,6 @@ PushTransaction(void)
 	GetUserIdAndSecContext(&s->prevUser, &s->prevSecContext);
 	s->prevXactReadOnly = XactReadOnly;
 	s->parallelModeLevel = 0;
-<<<<<<< HEAD
 	s->executorSaysXactDoesWrites = false;
 
 	fastNodeCount++;
@@ -6358,9 +6351,7 @@ PushTransaction(void)
 		s->fastLink = previousFastLink;
 		previousFastLink = s;
 	}
-=======
 	s->assigned = false;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 
 	CurrentTransactionState = s;
 
@@ -7144,15 +7135,11 @@ xact_redo_commit(xl_xact_parsed_commit *parsed,
 
 	max_xid = TransactionIdLatest(xid, parsed->nsubxacts, parsed->subxacts);
 
-<<<<<<< HEAD
 	ereportif(OidIsValid(tablespace_oid_to_delete), DEBUG5,
 		(errmsg("in xact_redo_commit_internal with tablespace oid to delete: %u",
 			tablespace_oid_to_delete)));
 
-	/* Make sure nextFullXid is beyond any XID mentioned in the record. */
-=======
 	/* Make sure nextXid is beyond any XID mentioned in the record. */
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	AdvanceNextFullTransactionIdPastXid(max_xid);
 
 	/* also update distributed commit log */

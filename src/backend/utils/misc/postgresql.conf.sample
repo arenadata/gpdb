@@ -139,12 +139,8 @@ max_prepared_transactions = 250		# can be 0 or more
 					# (change requires restart)
 # Caution: it is not advisable to set max_prepared_transactions nonzero unless
 # you actively intend to use prepared transactions.
-<<<<<<< HEAD
 #work_mem = 32MB				# min 64kB
-=======
-#work_mem = 4MB				# min 64kB
 #hash_mem_multiplier = 1.0		# 1-1000.0 multiplier on hash table work_mem
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 #maintenance_work_mem = 64MB		# min 1MB
 #autovacuum_work_mem = -1		# min 1MB, or -1 to use maintenance_work_mem
 #logical_decoding_work_mem = 64MB	# min 64kB

@@ -69,22 +69,13 @@ extern bool ExecScanHashTableForUnmatched(HashJoinState *hjstate,
 extern void ExecHashTableReset(HashState *hashState, HashJoinTable hashtable);
 extern void ExecHashTableResetMatchFlags(HashJoinTable hashtable);
 extern void ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
-<<<<<<< HEAD
                                     uint64 operatorMemKB,
-                                    bool try_combined_work_mem,
+                                    bool try_combined_hash_mem,
                                     int parallel_workers,
                                     size_t *space_allowed,
                                     int *numbuckets,
                                     int *numbatches,
                                     int *num_skew_mcvs);
-=======
-									bool try_combined_hash_mem,
-									int parallel_workers,
-									size_t *space_allowed,
-									int *numbuckets,
-									int *numbatches,
-									int *num_skew_mcvs);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 extern int	ExecHashGetSkewBucket(HashJoinTable hashtable, uint32 hashvalue);
 extern void ExecHashEstimate(HashState *node, ParallelContext *pcxt);
 extern void ExecHashInitializeDSM(HashState *node, ParallelContext *pcxt);

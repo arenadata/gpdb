@@ -224,13 +224,13 @@ GetNewTransactionId(bool isSubXact)
 		 */
 		const uint64      page_extend_limit = 4 * 1024;
 
-		xx = U64FromFullTransactionId(ShmemVariableCache->nextFullXid);
+		xx = U64FromFullTransactionId(ShmemVariableCache->nextXid);
 
 		r = xx % page_extend_limit;
 		if (r > 1 && r < (page_extend_limit - 1))
 		{
 			xx += page_extend_limit - r - 1;
-			ShmemVariableCache->nextFullXid.value = xx;
+			ShmemVariableCache->nextXid.value = xx;
 		}
 	}
 
@@ -294,15 +294,11 @@ GetNewTransactionId(bool isSubXact)
 			MyProc->subxidStatus.count = substat->count = nxids + 1;
 		}
 		else
-<<<<<<< HEAD
 		{
-			MyPgXact->overflowed = true;
+			MyProc->subxidStatus.overflowed = substat->overflowed = true;
 			ereportif (gp_log_suboverflow_statement, LOG,
 						(errmsg("Statement caused suboverflow: %s", debug_query_string)));
 		}
-=======
-			MyProc->subxidStatus.overflowed = substat->overflowed = true;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	}
 
 	LWLockRelease(XidGenLock);
@@ -421,54 +417,37 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid, Oid oldest_datoid)
 
 	/*
 	 * We'll refuse to continue assigning XIDs in interactive mode once we get
-<<<<<<< HEAD
 	 * within xid_stop_limit transactions of data loss.  This leaves lots of
 	 * room for the DBA to fool around fixing things in a standalone backend,
 	 * while not being significant compared to total XID space. (Note that since
 	 * vacuuming requires one transaction per table cleaned, we had better be
-	 * sure there's lots of XIDs left...)
-	 */
-	xidStopLimit = xidWrapLimit - (TransactionId)xid_stop_limit;
-=======
-	 * within 3M transactions of data loss.  This leaves lots of room for the
-	 * DBA to fool around fixing things in a standalone backend, while not
-	 * being significant compared to total XID space. (VACUUM requires an XID
-	 * if it truncates at wal_level!=minimal.  "VACUUM (ANALYZE)", which a DBA
-	 * might do by reflex, assigns an XID.  Hence, we had better be sure
-	 * there's lots of XIDs left...)  Also, at default BLCKSZ, this leaves two
-	 * completely-idle segments.  In the event of edge-case bugs involving
+	 * sure there's lots of XIDs left...) Also, at default BLCKSZ, this leaves
+	 * two completely-idle segments.  In the event of edge-case bugs involving
 	 * page or segment arithmetic, idle segments render the bugs unreachable
 	 * outside of single-user mode.
+	 *
+	 * GGDB: In ggdb we use much higher limits, 10M by default.
+	 *
 	 */
-	xidStopLimit = xidWrapLimit - 3000000;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+	xidStopLimit = xidWrapLimit - (TransactionId)xid_stop_limit;
 	if (xidStopLimit < FirstNormalTransactionId)
 		xidStopLimit -= FirstNormalTransactionId;
 
 	/*
-<<<<<<< HEAD
-	 * We'll start complaining loudly when we get within xid_warn_limit of
-	 * the stop point.  This is kind of arbitrary, but if you let your gas
-	 * gauge get down to 1% of full, would you be looking for the next gas
-	 * station?  We need to be fairly liberal about this number because there
+	 * We'll start complaining loudly when we get within xid_warn_limit
+	 * transactions of data loss.  This is kind of arbitrary, but if you let
+	 * your gas gauge get down to 2% of full, would you be looking for the next
+	 * gas station? We need to be fairly liberal about this number because there
 	 * are lots of scenarios where most transactions are done by automatic
 	 * clients that won't pay attention to warnings. (No, we're not gonna make
 	 * this configurable.  If you know enough to configure it, you know enough
-	 * to not get in this kind of trouble in the first place.)
+	 * to not get in this kind of trouble in the first place, but in the ggdb
+	 * it's configurable)
+	 *
+	 * GGDB: In ggdb we use much higher limits, 500M by default.
+	 *
 	 */
 	xidWarnLimit = xidStopLimit  - (TransactionId)xid_warn_limit;
-=======
-	 * We'll start complaining loudly when we get within 40M transactions of
-	 * data loss.  This is kind of arbitrary, but if you let your gas gauge
-	 * get down to 2% of full, would you be looking for the next gas station?
-	 * We need to be fairly liberal about this number because there are lots
-	 * of scenarios where most transactions are done by automatic clients that
-	 * won't pay attention to warnings.  (No, we're not gonna make this
-	 * configurable.  If you know enough to configure it, you know enough to
-	 * not get in this kind of trouble in the first place.)
-	 */
-	xidWarnLimit = xidWrapLimit - 40000000;
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	if (xidWarnLimit < FirstNormalTransactionId)
 		xidWarnLimit -= FirstNormalTransactionId;
 
@@ -694,7 +673,6 @@ GetNewObjectId(void)
 	return result;
 }
 
-<<<<<<< HEAD
 /*
  * AdvanceObjectId -- advance object id counter for QD and QE nodes
  *
@@ -802,7 +780,6 @@ OidFollowsNextOid(Oid id)
 	diff = (int32) (id - ShmemVariableCache->nextOid);
 	return (diff > 0);
 }
-=======
 
 #ifdef USE_ASSERT_CHECKING
 
@@ -852,4 +829,3 @@ AssertTransactionIdInAllowableRange(TransactionId xid)
 		   TransactionIdPrecedesOrEquals(xid, next_xid));
 }
 #endif
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600

@@ -90,14 +90,9 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 						 checkpoint->ThisTimeLineID,
 						 checkpoint->PrevTimeLineID,
 						 checkpoint->fullPageWrites ? "true" : "false",
-<<<<<<< HEAD
-						 EpochFromFullTransactionId(checkpoint->nextFullXid),
-						 XidFromFullTransactionId(checkpoint->nextFullXid),
-						 checkpoint->nextGxid,
-=======
 						 EpochFromFullTransactionId(checkpoint->nextXid),
 						 XidFromFullTransactionId(checkpoint->nextXid),
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+						 checkpoint->nextGxid,
 						 checkpoint->nextOid,
 						 checkpoint->nextRelfilenode,
 						 checkpoint->nextMulti,
