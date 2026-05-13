@@ -2626,7 +2626,7 @@ GetSnapshotDataInitOldSnapshot(Snapshot snapshot)
  * least in the case we already hold a snapshot), but that's for another day.
  */
 static bool
-GetSnapshotDataReuse(Snapshot snapshot, DtxContext distributedTransactionContext)
+GetSnapshotDataReuse(Snapshot snapshot)
 {
 	uint64 curXactCompletionCount;
 
@@ -2825,7 +2825,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 				(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
 	}
 
-	if (GetSnapshotDataReuse(snapshot, distributedTransactionContext))
+	if (GetSnapshotDataReuse(snapshot))
 	{
 		LWLockRelease(ProcArrayLock);
 
