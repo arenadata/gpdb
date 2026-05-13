@@ -5109,28 +5109,16 @@ List of access methods
 (8 rows)
 
 \dAp * pg_catalog.uuid_ops
-<<<<<<< HEAD
-                     List of support functions of operator families
-   AM   | Operator family | Left arg type | Right arg type | Number |      Function      
---------+-----------------+---------------+----------------+--------+--------------------
- bitmap | uuid_ops        | uuid          | uuid           |      1 | uuid_cmp
- bitmap | uuid_ops        | uuid          | uuid           |      2 | uuid_sortsupport
- bitmap | uuid_ops        | uuid          | uuid           |      4 | btequalimage
- btree  | uuid_ops        | uuid          | uuid           |      1 | uuid_cmp
- btree  | uuid_ops        | uuid          | uuid           |      2 | uuid_sortsupport
- btree  | uuid_ops        | uuid          | uuid           |      4 | btequalimage
- hash   | uuid_ops        | uuid          | uuid           |      1 | uuid_hash
- hash   | uuid_ops        | uuid          | uuid           |      2 | uuid_hash_extended
-(8 rows)
-=======
                             List of support functions of operator families
-  AM   | Operator family | Registered left type | Registered right type | Number |      Function      
--------+-----------------+----------------------+-----------------------+--------+--------------------
- btree | uuid_ops        | uuid                 | uuid                  |      1 | uuid_cmp
- btree | uuid_ops        | uuid                 | uuid                  |      2 | uuid_sortsupport
- btree | uuid_ops        | uuid                 | uuid                  |      4 | btequalimage
- hash  | uuid_ops        | uuid                 | uuid                  |      1 | uuid_hash
- hash  | uuid_ops        | uuid                 | uuid                  |      2 | uuid_hash_extended
-(5 rows)
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+   AM   | Operator family | Registered left type | Registered right type | Number |      Function      
+--------+-----------------+----------------------+-----------------------+--------+--------------------
+ bitmap | uuid_ops        | uuid                 | uuid                  |      1 | uuid_cmp
+ bitmap | uuid_ops        | uuid                 | uuid                  |      2 | uuid_sortsupport
+ bitmap | uuid_ops        | uuid                 | uuid                  |      4 | btequalimage
+ btree  | uuid_ops        | uuid                 | uuid                  |      1 | uuid_cmp
+ btree  | uuid_ops        | uuid                 | uuid                  |      2 | uuid_sortsupport
+ btree  | uuid_ops        | uuid                 | uuid                  |      4 | btequalimage
+ hash   | uuid_ops        | uuid                 | uuid                  |      1 | uuid_hash
+ hash   | uuid_ops        | uuid                 | uuid                  |      2 | uuid_hash_extended
+(8 rows)
 
