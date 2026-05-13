@@ -2814,7 +2814,8 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
 	/* GP: QD takes a distributed snapshot */
-	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot)
+	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
+		!snapshot->haveDistribSnapshot && !Debug_disable_distributed_snapshot)
 	{
 		CreateDistributedSnapshot(ds);
 		snapshot->haveDistribSnapshot = true;
