@@ -2626,7 +2626,7 @@ GetSnapshotDataInitOldSnapshot(Snapshot snapshot)
  * least in the case we already hold a snapshot), but that's for another day.
  */
 static bool
-GetSnapshotDataReuse(Snapshot snapshot, DtxContext distributedTransactionContext)
+GetSnapshotDataReuse(Snapshot snapshot)
 {
 	uint64 curXactCompletionCount;
 
@@ -2669,19 +2669,6 @@ GetSnapshotDataReuse(Snapshot snapshot, DtxContext distributedTransactionContext
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
 	snapshot->copied = false;
-
-	/*
-	 * MPP Addition. If we are the chief then we'll save our local snapshot
-	 * into the shared snapshot. Note: we need to use the shared local
-	 * snapshot for the "Local Implicit using Distributed Snapshot" case, too.
-	 */
-	if (distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
-		distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
-		distributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT)
-	{
-		Assert(SharedLocalSnapshotSlot != NULL);
-		updateSharedLocalSnapshot(&QEDtxContextInfo, distributedTransactionContext, snapshot, "GetSnapshotDataReuse");
-	}
 
 	GetSnapshotDataInitOldSnapshot(snapshot);
 
@@ -2828,10 +2815,21 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
-	if (GetSnapshotDataReuse(snapshot, distributedTransactionContext))
+	/* GP: QD takes a distributed snapshot */
+	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot)
+	{
+		CreateDistributedSnapshot(ds);
+		snapshot->haveDistribSnapshot = true;
+
+		ereport(Debug_print_full_dtm ? LOG : DEBUG5,
+				(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
+	}
+
+	if (GetSnapshotDataReuse(snapshot))
 	{
 		LWLockRelease(ProcArrayLock);
-		return snapshot;
+
+		goto ret;
 	}
 
 	latest_completed = ShmemVariableCache->latestCompletedXid;
@@ -3055,16 +3053,6 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		MyProc->xmin = TransactionXmin = xmin;
 	}
 
-	/* GP: QD takes a distributed snapshot */
-	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot)
-	{
-		CreateDistributedSnapshot(ds);
-		snapshot->haveDistribSnapshot = true;
-
-		ereport(Debug_print_full_dtm ? LOG : DEBUG5,
-				(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
-	}
-
 	LWLockRelease(ProcArrayLock);
 
 	/* maintain state for GlobalVis* */
@@ -3177,6 +3165,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	snapshot->regd_count = 0;
 	snapshot->copied = false;
 
+ret:
 	/*
 	 * Sort the entry {distribXid} to support the QEs doing culls on their
 	 * DisribToLocalXact sorted lists.
