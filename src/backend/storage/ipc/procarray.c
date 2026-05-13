@@ -2813,19 +2813,19 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
-	/* GP: QD takes a distributed snapshot */
-	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
-		!snapshot->haveDistribSnapshot && !Debug_disable_distributed_snapshot)
-	{
-		CreateDistributedSnapshot(ds);
-		snapshot->haveDistribSnapshot = true;
-
-		ereport(Debug_print_full_dtm ? LOG : DEBUG5,
-				(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
-	}
-
 	if (GetSnapshotDataReuse(snapshot))
 	{
+		/* GP: QD takes a distributed snapshot */
+		if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
+			!snapshot->haveDistribSnapshot && !Debug_disable_distributed_snapshot)
+		{
+			CreateDistributedSnapshot(ds);
+			snapshot->haveDistribSnapshot = true;
+
+			ereport(Debug_print_full_dtm ? LOG : DEBUG5,
+					(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
+		}
+
 		LWLockRelease(ProcArrayLock);
 
 		goto ret;
@@ -3050,6 +3050,16 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		/* Not that these values are not set atomically. However,
 		 * each of these assignments is itself assumed to be atomic. */
 		MyProc->xmin = TransactionXmin = xmin;
+	}
+
+	/* GP: QD takes a distributed snapshot */
+	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot)
+	{
+		CreateDistributedSnapshot(ds);
+		snapshot->haveDistribSnapshot = true;
+
+		ereport(Debug_print_full_dtm ? LOG : DEBUG5,
+				(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
 	}
 
 	LWLockRelease(ProcArrayLock);
