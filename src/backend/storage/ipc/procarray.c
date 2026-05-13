@@ -4800,7 +4800,6 @@ GlobalVisTestFor(Relation rel)
 		Assert(rel->rd_rel->relkind == RELKIND_RELATION ||
 			   rel->rd_rel->relkind == RELKIND_MATVIEW ||
 			   rel->rd_rel->relkind == RELKIND_TOASTVALUE ||
-			   rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
 			   rel->rd_rel->relkind == RELKIND_AOSEGMENTS ||
 			   rel->rd_rel->relkind == RELKIND_AOBLOCKDIR ||
 			   rel->rd_rel->relkind == RELKIND_AOVISIMAP);
