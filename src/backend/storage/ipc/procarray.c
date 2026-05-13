@@ -2670,8 +2670,6 @@ GetSnapshotDataReuse(Snapshot snapshot)
 	snapshot->regd_count = 0;
 	snapshot->copied = false;
 
-	GetSnapshotDataInitOldSnapshot(snapshot);
-
 	return true;
 }
 
