@@ -2626,11 +2626,15 @@ GetSnapshotDataInitOldSnapshot(Snapshot snapshot)
  * least in the case we already hold a snapshot), but that's for another day.
  */
 static bool
-GetSnapshotDataReuse(Snapshot snapshot)
+GetSnapshotDataReuse(Snapshot snapshot, DtxContext distributedTransactionContext)
 {
 	uint64 curXactCompletionCount;
 
 	Assert(LWLockHeldByMe(ProcArrayLock));
+
+	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
+		!snapshot->haveDistribSnapshot)
+		return false;
 
 	if (unlikely(snapshot->snapXactCompletionCount == 0))
 		return false;
@@ -2813,21 +2817,9 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
-	if (GetSnapshotDataReuse(snapshot))
+	if (GetSnapshotDataReuse(snapshot, distributedTransactionContext))
 	{
-		/* GP: QD takes a distributed snapshot */
-		if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
-			!snapshot->haveDistribSnapshot && !Debug_disable_distributed_snapshot)
-		{
-			CreateDistributedSnapshot(ds);
-			snapshot->haveDistribSnapshot = true;
-
-			ereport(Debug_print_full_dtm ? LOG : DEBUG5,
-					(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
-		}
-
 		LWLockRelease(ProcArrayLock);
-
 		goto ret;
 	}
 
@@ -3174,7 +3166,6 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	snapshot->regd_count = 0;
 	snapshot->copied = false;
 
-ret:
 	/*
 	 * Sort the entry {distribXid} to support the QEs doing culls on their
 	 * DisribToLocalXact sorted lists.
@@ -3185,6 +3176,7 @@ ret:
 		qsort(ds->inProgressXidArray, ds->count,
 			  sizeof(DistributedTransactionId), DistributedSnapshotMappedEntry_Compare);
 
+ret:
 	/*
 	 * MPP Addition. If we are the chief then we'll save our local snapshot
 	 * into the shared snapshot. Note: we need to use the shared local
