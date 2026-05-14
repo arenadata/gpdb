@@ -2149,8 +2149,6 @@ SnapshotResetDslm(Snapshot snapshot)
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 	}
-
-	DistributedSnapshot_Reset(&dslm->ds);
 }
 
 static void
@@ -2467,6 +2465,7 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 	ProcArrayStruct *arrayP = procArray;
 
 	Assert(LWLockHeldByMe(ProcArrayLock));
+	DistributedSnapshot_Reset(ds);
 	if (*shmNumCommittedGxacts != 0)
 		elog(ERROR, "Create distributed snapshot before DTM recovery finish");
 
@@ -2626,7 +2625,7 @@ GetSnapshotDataInitOldSnapshot(Snapshot snapshot)
  * least in the case we already hold a snapshot), but that's for another day.
  */
 static bool
-GetSnapshotDataReuse(Snapshot snapshot, DtxContext distributedTransactionContext)
+GetSnapshotDataReuse(Snapshot snapshot)
 {
 	uint64 curXactCompletionCount;
 
@@ -2669,21 +2668,6 @@ GetSnapshotDataReuse(Snapshot snapshot, DtxContext distributedTransactionContext
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
 	snapshot->copied = false;
-
-	/*
-	 * MPP Addition. If we are the chief then we'll save our local snapshot
-	 * into the shared snapshot. Note: we need to use the shared local
-	 * snapshot for the "Local Implicit using Distributed Snapshot" case, too.
-	 */
-	if (distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
-		distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
-		distributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT)
-	{
-		Assert(SharedLocalSnapshotSlot != NULL);
-		updateSharedLocalSnapshot(&QEDtxContextInfo, distributedTransactionContext, snapshot, "GetSnapshotDataReuse");
-	}
-
-	GetSnapshotDataInitOldSnapshot(snapshot);
 
 	return true;
 }
@@ -2828,10 +2812,11 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
-	if (GetSnapshotDataReuse(snapshot, distributedTransactionContext))
+	if ((distributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		snapshot->haveDistribSnapshot) && GetSnapshotDataReuse(snapshot))
 	{
 		LWLockRelease(ProcArrayLock);
-		return snapshot;
+		goto ret;
 	}
 
 	latest_completed = ShmemVariableCache->latestCompletedXid;
@@ -3187,6 +3172,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		qsort(ds->inProgressXidArray, ds->count,
 			  sizeof(DistributedTransactionId), DistributedSnapshotMappedEntry_Compare);
 
+ret:
 	/*
 	 * MPP Addition. If we are the chief then we'll save our local snapshot
 	 * into the shared snapshot. Note: we need to use the shared local
