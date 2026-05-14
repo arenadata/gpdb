@@ -2626,15 +2626,11 @@ GetSnapshotDataInitOldSnapshot(Snapshot snapshot)
  * least in the case we already hold a snapshot), but that's for another day.
  */
 static bool
-GetSnapshotDataReuse(Snapshot snapshot, DtxContext distributedTransactionContext)
+GetSnapshotDataReuse(Snapshot snapshot)
 {
 	uint64 curXactCompletionCount;
 
 	Assert(LWLockHeldByMe(ProcArrayLock));
-
-	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
-		!snapshot->haveDistribSnapshot)
-		return false;
 
 	if (unlikely(snapshot->snapXactCompletionCount == 0))
 		return false;
@@ -2817,7 +2813,8 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
-	if (GetSnapshotDataReuse(snapshot, distributedTransactionContext))
+	if ((distributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		snapshot->haveDistribSnapshot) && GetSnapshotDataReuse(snapshot))
 	{
 		LWLockRelease(ProcArrayLock);
 		goto ret;
