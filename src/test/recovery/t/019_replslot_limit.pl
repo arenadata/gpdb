@@ -211,15 +211,9 @@ ok($failed, 'check that replication has been broken');
 $node_primary->stop('immediate');
 $node_standby->stop('immediate');
 
-<<<<<<< HEAD
-my $node_master2 = get_new_node('master2');
-$node_master2->init(allows_streaming => 1, extra => ['--wal-segsize=16']);
-$node_master2->append_conf(
-=======
 my $node_primary2 = get_new_node('primary2');
-$node_primary2->init(allows_streaming => 1);
+$node_primary2->init(allows_streaming => 1, extra => ['--wal-segsize=16']);
 $node_primary2->append_conf(
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
 	'postgresql.conf', qq(
 min_wal_size = 32MB
 max_wal_size = 32MB
@@ -239,13 +233,8 @@ max_slot_wal_keep_size = 0
 $node_primary2->start;
 
 $node_standby = get_new_node('standby_2');
-<<<<<<< HEAD
-$node_standby->init_from_backup($node_master2, $backup_name,
-	has_streaming => 1, extra => ['--wal-segsize=16']);
-=======
 $node_standby->init_from_backup($node_primary2, $backup_name,
-	has_streaming => 1);
->>>>>>> d259afa7365165760004c2fdbe2520a94ddf2600
+	has_streaming => 1, extra => ['--wal-segsize=16']);
 $node_standby->append_conf('postgresql.conf', "primary_slot_name = 'rep1'");
 $node_standby->start;
 my @result =
