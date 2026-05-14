@@ -3061,23 +3061,6 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		FullTransactionId oldestfxid;
 
 		/*
-		 * GP: In computing RecentGlobalXmin, also take distributed snapshots into
-		 * account.
-		 */
-		if (!IS_QUERY_DISPATCHER())
-		{
-			if (snapshot->haveDistribSnapshot)
-				oldestxid = DistributedLog_AdvanceOldestXmin(oldestxid,
-															 ds->xminAllDistributedSnapshots);
-			else if (!gp_maintenance_mode)
-				oldestxid = DistributedLog_GetOldestXmin(oldestxid);
-		}
-	
-		if (TransactionIdFollows(oldestxid, xmin))
-			elog(ERROR, "global xmin (%u) is higher than transaction xmin (%u)",
-				oldestxid, xmin);
-
-		/*
 		 * Converting oldestXid is only safe when xid horizon cannot advance,
 		 * i.e. holding locks. While we don't hold the lock anymore, all the
 		 * necessary data has been gathered with lock held.
@@ -3104,6 +3087,23 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		 */
 		def_vis_xid =
 			TransactionIdOlder(replication_slot_catalog_xmin, def_vis_xid);
+
+		/*
+		 * GP: In computing def_vis_xid, also take distributed snapshots into
+		 * account.
+		 */
+		if (!IS_QUERY_DISPATCHER())
+		{
+			if (snapshot->haveDistribSnapshot)
+				def_vis_xid = DistributedLog_AdvanceOldestXmin(def_vis_xid,
+																	ds->xminAllDistributedSnapshots);
+			else if (!gp_maintenance_mode)
+				def_vis_xid = DistributedLog_GetOldestXmin(def_vis_xid);
+		}
+
+		if (TransactionIdFollows(def_vis_xid, xmin))
+			elog(ERROR, "def_vis_xid (%u) is higher than transaction xmin (%u)",
+				 def_vis_xid, xmin);
 
 		def_vis_fxid = FullXidRelativeTo(latest_completed, def_vis_xid);
 		def_vis_fxid_data = FullXidRelativeTo(latest_completed, def_vis_xid_data);
