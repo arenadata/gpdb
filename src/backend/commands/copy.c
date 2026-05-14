@@ -4817,7 +4817,7 @@ BeginCopyFrom(ParseState *pstate,
 	initStringInfo(&cstate->attribute_buf);
 	cstate->raw_buf = (char *) palloc(RAW_BUF_SIZE + 1);
 	cstate->raw_buf_index = cstate->raw_buf_len = 0;
-	if (!cstate->binary)
+	if (!cstate->binary || cstate->dispatch_mode == COPY_EXECUTOR)
 	{
 		initStringInfo(&cstate->line_buf);
 		cstate->line_buf_converted = false;
@@ -7628,10 +7628,6 @@ static void CopyInitDataParser(CopyState cstate)
 	cstate->cur_lineno = 0;
 	cstate->cur_attname = NULL;
 	cstate->null_print_len = strlen(cstate->null_print);
-
-	/* Set up data buffer to hold a chunk of data */
-	MemSet(cstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
-	cstate->raw_buf[RAW_BUF_SIZE] = '\0';
 }
 
 /*
