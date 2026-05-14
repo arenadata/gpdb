@@ -2318,6 +2318,7 @@ cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
 								Path *subpath,
 								PathTarget *target,
 								List *group_pathkeys,
+								int presorted_keys,
 								double limit_tuples,
 								/* extra arguments */
 								List *groupClause,
@@ -2351,11 +2352,23 @@ cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
 	{
 		if (!is_sorted)
 		{
-			subpath = (Path *) create_sort_path(root,
-												rel,
-												subpath,
-												group_pathkeys,
-												-1.0);
+			if (presorted_keys == 0)
+			{
+				subpath = (Path *) create_sort_path(root,
+													rel,
+													subpath,
+													group_pathkeys,
+													-1.0);
+			} 
+			else
+			{
+				subpath = (Path *) create_incremental_sort_path(root,
+																rel,
+																subpath,
+																group_pathkeys,
+																presorted_keys,
+																-1.0);
+			}
 		}
 		return subpath;
 	}
@@ -2390,11 +2403,23 @@ cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
 			subpath = cdbpath_create_motion_path(root, subpath, NIL,
 												 false, locus);
 
-		subpath = (Path *) create_sort_path(root,
-											rel,
-											subpath,
-											group_pathkeys,
-											-1.0);
+		if (presorted_keys == 0)
+		{
+			subpath = (Path *) create_sort_path(root,
+												rel,
+												subpath,
+												group_pathkeys,
+												-1.0);
+		}
+		else
+		{
+			subpath = (Path *) create_incremental_sort_path(root,
+															rel,
+															subpath,
+															group_pathkeys,
+															presorted_keys,
+															-1.0);
+		}
 
 		if (!CdbPathLocus_IsPartitioned(locus))
 			subpath = cdbpath_create_motion_path(root, subpath,

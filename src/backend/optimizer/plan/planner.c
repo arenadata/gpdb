@@ -4933,6 +4933,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 										   path,
 										   path->pathtarget,
 										   root->group_pathkeys,
+										   NO_INCREMENTAL_SORT,
 										   -1.0,
 										   parse->groupClause,
 										   gd->rollups);
@@ -5269,6 +5270,7 @@ create_one_window_path(PlannerInfo *root,
 											   path,
 											   path->pathtarget,
 											   window_pathkeys,
+											   NO_INCREMENTAL_SORT,
 											   -1.0,
 											   wc->partitionClause,
 											   NIL);
@@ -5422,6 +5424,7 @@ create_distinct_paths(PlannerInfo *root,
 													   distinct_rel,
 													   path, path->pathtarget,
 													   needed_pathkeys,
+													   NO_INCREMENTAL_SORT,
 													   -1.0,
 													   parse->distinctClause,
 													   NIL);
@@ -5460,6 +5463,7 @@ create_distinct_paths(PlannerInfo *root,
 											   cheapest_input_path,
 											   cheapest_input_path->pathtarget,
 											   needed_pathkeys,
+											   NO_INCREMENTAL_SORT,
 											   -1.0,
 											   parse->distinctClause,
 											   NIL);
@@ -7375,6 +7379,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 													   path,
 													   path->pathtarget,
 													   root->group_pathkeys,
+													   NO_INCREMENTAL_SORT,
 													   -1.0,
 													   parse->groupClause,
 													   gd ? gd->rollups : NIL);
@@ -7455,12 +7460,25 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			 */
 			Assert(list_length(root->group_pathkeys) != 1);
 
+#if 0
 			path = (Path *) create_incremental_sort_path(root,
 														 grouped_rel,
 														 path,
 														 root->group_pathkeys,
 														 presorted_keys,
 														 -1.0);
+#endif
+
+			path = cdb_prepare_path_for_sorted_agg(root,
+												   is_sorted,
+												   grouped_rel,
+												   path,
+												   path->pathtarget,
+												   root->group_pathkeys,
+												   NO_INCREMENTAL_SORT,
+												   -1.0,
+												   parse->groupClause,
+												   gd ? gd->rollups : NIL);
 
 			/* Now decide what to stick atop it */
 			if (parse->groupingSets)
@@ -7546,6 +7564,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 													   path,
 													   path->pathtarget,
 													   root->group_pathkeys,
+													   NO_INCREMENTAL_SORT,
 													   -1.0,
 													   parse->groupClause,
 													   NIL);
@@ -7610,14 +7629,27 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				 */
 				Assert(list_length(root->group_pathkeys) != 1);
 
+#if 0				
 				path = (Path *) create_incremental_sort_path(root,
-															 grouped_rel,
-															 path,
-															 root->group_pathkeys,
-															 presorted_keys,
-															 -1.0);
+												grouped_rel,
+												path,
+												root->group_pathkeys,
+												presorted_keys,
+												-1.0);
+#endif
 
-				if (parse->hasAggs || parse->groupClause)
+				path = cdb_prepare_path_for_sorted_agg(root,
+													   is_sorted,
+													   grouped_rel,
+													   path,
+													   path->pathtarget,
+													   root->group_pathkeys,
+													   presorted_keys,
+													   -1.0,
+													   parse->groupClause,
+													   NIL);
+
+				if (parse->hasAggs)
 					add_path(grouped_rel, (Path *)
 							 create_agg_path(root,
 											 grouped_rel,
@@ -7640,7 +7672,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											   parse->groupClause,
 											   havingQual,
 											   dNumGroups));
-#endif											   
+#endif		
 			}
 		}
 	}
@@ -8105,7 +8137,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 															 presorted_keys,
 															 -1.0);
 
-				//if (parse->hasAggs)
+				if (parse->hasAggs)
 					add_path(partially_grouped_rel, (Path *)
 							 create_agg_path(root,
 											 partially_grouped_rel,
@@ -8213,7 +8245,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 														 presorted_keys,
 														 -1.0);
 
-			//if (parse->hasAggs)
+			if (parse->hasAggs)
 				add_partial_path(partially_grouped_rel, (Path *)
 								 create_agg_path(root,
 												 partially_grouped_rel,
