@@ -4802,7 +4802,10 @@ GlobalVisTestFor(Relation rel)
 		 */
 		Assert(rel->rd_rel->relkind == RELKIND_RELATION ||
 			   rel->rd_rel->relkind == RELKIND_MATVIEW ||
-			   rel->rd_rel->relkind == RELKIND_TOASTVALUE);
+			   rel->rd_rel->relkind == RELKIND_TOASTVALUE ||
+			   rel->rd_rel->relkind == RELKIND_AOSEGMENTS ||
+			   rel->rd_rel->relkind == RELKIND_AOBLOCKDIR ||
+			   rel->rd_rel->relkind == RELKIND_AOVISIMAP);
 
 		need_shared = rel->rd_rel->relisshared || RecoveryInProgress();
 		need_catalog = IsCatalogRelation(rel) || RelationIsAccessibleInLogicalDecoding(rel);
