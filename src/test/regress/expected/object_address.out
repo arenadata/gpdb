@@ -617,7 +617,7 @@ ORDER BY objects.classid, objects.objid, objects.objsubid;
 ("(""text search configuration"",,,)")|("(""text search configuration"",,)")|NULL
 ("(""text search template"",,,)")|("(""text search template"",,)")|NULL
 ("(subscription,,,)")|("(subscription,,)")|NULL
-("(publication,,,)")|("(publication,,)")|NULL
 ("(""publication relation"",,,)")|("(""publication relation"",,)")|NULL
+("(publication,,,)")|("(publication,,)")|NULL
 -- restore normal output mode
 \a\t
