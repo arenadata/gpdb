@@ -381,7 +381,7 @@ select name, generic_plans, custom_plans from pg_prepared_statements
   where  name = 'test_mode_pp';
      name     | generic_plans | custom_plans 
 --------------+---------------+--------------
- test_mode_pp |             2 |            5
+ test_mode_pp |             1 |            6
 (1 row)
 
 -- we should now get a really bad plan
@@ -411,7 +411,7 @@ select name, generic_plans, custom_plans from pg_prepared_statements
   where  name = 'test_mode_pp';
      name     | generic_plans | custom_plans 
 --------------+---------------+--------------
- test_mode_pp |             3 |            6
+ test_mode_pp |             1 |            8
 (1 row)
 
 drop table test_mode;
