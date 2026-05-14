@@ -3096,7 +3096,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		{
 			if (snapshot->haveDistribSnapshot)
 				def_vis_xid = DistributedLog_AdvanceOldestXmin(def_vis_xid,
-															 ds->xminAllDistributedSnapshots);
+															   ds->xminAllDistributedSnapshots);
 			else if (!gp_maintenance_mode)
 				def_vis_xid = DistributedLog_GetOldestXmin(def_vis_xid);
 		}
