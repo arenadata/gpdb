@@ -1033,6 +1033,8 @@ drop table atacc1;
 create table atacc1 (a int primary key);
 alter table atacc1 add constraint atacc1_fkey foreign key (a) references atacc1 (a) not valid;
 alter table atacc1 validate constraint atacc1_fkey, alter a type bigint;
+ERROR:  cannot alter column with primary key or unique constraint
+HINT:  DROP the constraint first, and recreate it after the ALTER
 drop table atacc1;
 -- we've also seen issues with check constraints being validated at the wrong
 -- time when there's a pending table rewrite.
