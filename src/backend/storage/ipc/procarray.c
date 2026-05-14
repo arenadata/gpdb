@@ -2149,8 +2149,6 @@ SnapshotResetDslm(Snapshot snapshot)
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 	}
-
-	DistributedSnapshot_Reset(&dslm->ds);
 }
 
 static void
@@ -2467,6 +2465,7 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 	ProcArrayStruct *arrayP = procArray;
 
 	Assert(LWLockHeldByMe(ProcArrayLock));
+	DistributedSnapshot_Reset(ds);
 	if (*shmNumCommittedGxacts != 0)
 		elog(ERROR, "Create distributed snapshot before DTM recovery finish");
 
