@@ -1644,8 +1644,8 @@ heap_create_with_catalog(const char *relname,
 	 * OID first on QD and use the name as key to retrieve the pre-assigned
 	 * OID from QE.
 	 */
-	if (!((relkind == RELKIND_RELATION && RelationIsAppendOptimized(new_rel_desc)) ||
-		  relkind == RELKIND_SEQUENCE ||
+	if ((relkind == RELKIND_RELATION && !RelationIsAppendOptimized(new_rel_desc)) ||
+		!(relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_TOASTVALUE ||
 		  relkind == RELKIND_INDEX ||
 		  relkind == RELKIND_PARTITIONED_INDEX ||
