@@ -328,6 +328,7 @@ external_rescan(FileScanDesc scan)
 	scan->fs_pstate->cur_lineno = 0;
 	scan->fs_pstate->cur_attname = NULL;
 	scan->fs_pstate->raw_buf_len = 0;
+	scan->fs_pstate->raw_buf_index = 0;
 }
 
 /* ----------------
@@ -1003,6 +1004,7 @@ externalgettup_custom(FileScanDesc scan)
 						 * to read more data into it.
 						 */
 						pstate->raw_buf_len = 0;
+						pstate->raw_buf_index = 0;
 						justifyDatabuf(&formatter->fmt_databuf);
 						continue;
 
