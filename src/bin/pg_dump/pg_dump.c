@@ -4459,12 +4459,21 @@ getSubscriptions(Archive *fout)
 
 	/* Get the subscriptions in current database. */
 	appendPQExpBuffer(query,
-					  "SELECT s.tableoid, s.oid, s.subname, "
-					  "s.subowner, "
-					  "s.subconninfo, s.subslotname, s.subsynccommit, "
-					  "s.subpublications "
-					  "FROM pg_subscription s "
-					  "WHERE s.subdbid = (SELECT oid FROM pg_database"
+					  "SELECT s.tableoid, s.oid, s.subname,\n"
+					  "s.subowner,\n"
+					  "s.subconninfo, s.subslotname, s.subsynccommit,\n"
+					  "s.subpublications,\n");
+
+	if (fout->remoteVersion >= 140000)
+		appendPQExpBuffer(query,
+						  " s.subbinary\n");
+	else
+		appendPQExpBuffer(query,
+						  " false AS subbinary\n");
+
+	appendPQExpBuffer(query,
+					  "FROM pg_subscription s\n"
+					  "WHERE s.subdbid = (SELECT oid FROM pg_database\n"
 					  "                   WHERE datname = current_database())");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
