@@ -10230,9 +10230,9 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 				segno = 1;
 			else
 				segno = currSegNo - keep_segs;
-		}
 
-		setvalue = true;
+			setvalue = true;
+		}
 	}
 
 	/* don't delete WAL segments newer than the calculated segment */

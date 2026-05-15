@@ -12,6 +12,7 @@ my $node_primary = get_new_node('primary');
 $node_primary->init(
 	allows_streaming => 1,
 	auth_extra       => [ '--create-role', 'repl_role' ]);
+$node_primary->append_conf('postgresql.conf', 'wal_keep_size = 0');
 $node_primary->start;
 my $backup_name = 'my_backup';
 
@@ -407,5 +408,8 @@ ok( ($phys_restart_lsn_pre cmp $phys_restart_lsn_post) == 0,
 # Check if the previous segment gets correctly recycled after the
 # server stopped cleanly, causing a shutdown checkpoint to be generated.
 my $primary_data = $node_primary->data_dir;
-ok(!-f "$primary_data/pg_wal/$segment_removed",
+# GPDB never uses restart_lsn as lowest cut-off point. Instead always
+# will use Checkpoint redo location prior to restart_lsn as cut-off
+# point.
+ok(-f "$primary_data/pg_wal/$segment_removed",
 	"WAL segment $segment_removed recycled after physical slot advancing");
