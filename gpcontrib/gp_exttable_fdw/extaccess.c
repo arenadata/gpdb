@@ -906,6 +906,7 @@ externalgettup_custom(FileScanDesc scan)
 			{
 				appendBinaryStringInfo(&formatter->fmt_databuf, pstate->raw_buf, bytesread);
 				pstate->raw_buf_len = bytesread;
+				pstate->raw_buf_index = 0;
 			}
 
 			/* HEADER not yet supported ... */
