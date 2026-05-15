@@ -48,9 +48,6 @@ $node->issues_sql_like(
 $node->command_fails(
 	[ 'vacuumdb', '--analyze-only', '--disable-page-skipping', 'postgres' ],
 	'--analyze-only and --disable-page-skipping specified together');
-# GPDB: VACUUM (PARALLEL ...) doesn't work on GPDB, skip.
-SKIP: {
-	skip "VACUUM (PARALLEL ...) not implemented on GPDB", 4;
 $node->issues_sql_like(
 	[ 'vacuumdb', '--no-index-cleanup', 'postgres' ],
 	qr/statement: VACUUM \(INDEX_CLEANUP FALSE\).*;/,
@@ -65,6 +62,9 @@ $node->issues_sql_like(
 $node->command_fails(
     [ 'vacuumdb', '--analyze-only', '--no-truncate', 'postgres' ],
     '--analyze-only and --no-truncate specified together');
+# GPDB: VACUUM (PARALLEL ...) doesn't work on GPDB, skip.
+SKIP: {
+	skip "VACUUM (PARALLEL ...) not implemented on GPDB", 4;
 $node->issues_sql_like(
 	[ 'vacuumdb', '-P', 2, 'postgres' ],
 	qr/statement: VACUUM \(PARALLEL 2\).*;/,
