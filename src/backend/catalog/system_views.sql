@@ -938,8 +938,7 @@ CREATE VIEW gp_stat_replication AS
      client_port integer, backend_start timestamptz, backend_xmin xid, state text,
      sent_lsn pg_lsn, write_lsn pg_lsn, flush_lsn pg_lsn, replay_lsn pg_lsn,
      write_lag interval, flush_lag interval, replay_lag interval,
-     sync_priority int4, sync_state text, reply_time timestamptz,
-     spill_txns int8, spill_count int8, spill_bytes int8)
+     sync_priority int4, sync_state text, reply_time timestamptz)
     UNION ALL
     (
         SELECT G.gp_segment_id
@@ -948,7 +947,6 @@ CREATE VIEW gp_stat_replication AS
             , R.sent_lsn, R.write_lsn, R.flush_lsn, R.replay_lsn
             , R.write_lag, R.flush_lag, R.replay_lag
             , R.sync_priority, R.sync_state, R.reply_time
-            , R.spill_txns, R.spill_count, R.spill_bytes
             , G.sync_error
         FROM (
             SELECT E.*
@@ -965,8 +963,7 @@ CREATE VIEW gp_stat_replication AS
          backend_xmin xid, state text,
          sent_lsn pg_lsn, write_lsn pg_lsn, flush_lsn pg_lsn, replay_lsn pg_lsn,
          write_lag interval, flush_lag interval, replay_lag interval,
-         sync_priority int4, sync_state text, reply_time timestamptz,
-         spill_txns int8, spill_count int8, spill_bytes int8)
+         sync_priority int4, sync_state text, reply_time timestamptz)
          ON G.gp_segment_id = R.gp_segment_id
     );
 
