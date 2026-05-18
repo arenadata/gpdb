@@ -273,7 +273,6 @@ static bool NextCopyFromX(CopyState cstate, ExprContext *econtext,
 static void HandleCopyError(CopyState cstate);
 static void HandleQDErrorFrame(CopyState cstate, char *p, int len);
 
-static void CopyInitDataParser(CopyState cstate);
 static void setEncodingConversionProc(CopyState cstate, int encoding, bool iswritable);
 
 static GpDistributionData *InitDistributionData(CopyState cstate, EState *estate);
@@ -4197,8 +4196,6 @@ CopyFrom(CopyState cstate)
 		}
 	}
 
-	CopyInitDataParser(cstate);
-
 	if (resultRelInfo->ri_RelationDesc->rd_tableam)
 		table_dml_init(resultRelInfo->ri_RelationDesc);
 
@@ -4622,15 +4619,6 @@ CopyFrom(CopyState cstate)
 		}
 	}
 
-	/*
-	 * After processed data from QD, which is empty and just for workflow, now
-	 * to process the data on segment, only one shot if cstate->on_segment &&
-	 * Gp_role == GP_ROLE_DISPATCH
-	 */
-	if (cstate->on_segment && Gp_role == GP_ROLE_EXECUTE)
-	{
-		CopyInitDataParser(cstate);
-	}
 	elog(DEBUG1, "Segment %u, Copied %lu rows.", GpIdentity.segindex, processed);
 	/* Flush any remaining buffered tuples */
 	if (insertMethod != CIM_SINGLE)
@@ -7616,18 +7604,6 @@ CreateCopyDestReceiver(void)
 	self->processed = 0;
 
 	return (DestReceiver *) self;
-}
-
-/*
- * Initialize data loader parsing state
- */
-static void CopyInitDataParser(CopyState cstate)
-{
-	cstate->reached_eof = false;
-	cstate->cur_relname = RelationGetRelationName(cstate->rel);
-	cstate->cur_lineno = 0;
-	cstate->cur_attname = NULL;
-	cstate->null_print_len = strlen(cstate->null_print);
 }
 
 /*
