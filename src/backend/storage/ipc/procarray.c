@@ -2816,6 +2816,21 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		snapshot->haveDistribSnapshot) && GetSnapshotDataReuse(snapshot))
 	{
 		LWLockRelease(ProcArrayLock);
+
+#ifdef FAULT_INJECTOR
+		if (!IS_QUERY_DISPATCHER() && snapshot->haveDistribSnapshot)
+		{
+			const char *dbname = NULL;
+
+			if (MyProcPort)
+				dbname = MyProcPort->database_name;
+
+			FaultInjector_InjectFaultIfSet("distributedlog_advance_oldest_xmin",
+										   DDLNotSpecified, dbname ? dbname: "",
+										   "");
+		}
+#endif
+
 		goto ret;
 	}
 
