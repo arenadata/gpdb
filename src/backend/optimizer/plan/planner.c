@@ -7475,7 +7475,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 												   path,
 												   path->pathtarget,
 												   root->group_pathkeys,
-												   NO_INCREMENTAL_SORT,
+												   presorted_keys,
 												   -1.0,
 												   parse->groupClause,
 												   gd ? gd->rollups : NIL);
@@ -7487,7 +7487,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											path, true, can_hash,
 											gd, agg_costs, dNumGroups);
 			}
-			else if (parse->hasAggs || parse->groupClause)
+			else if (parse->hasAggs)
 			{
 				/*
 				 * We have aggregation, possibly with plain GROUP BY. Make an
