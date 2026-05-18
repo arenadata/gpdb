@@ -8230,8 +8230,8 @@ StartupXLOG(void)
 	ShmemVariableCache->latestCompletedGxid = ShmemVariableCache->nextGxid;
 	FullTransactionIdRetreat(&ShmemVariableCache->latestCompletedXid);
 	if (IsNormalProcessingMode())
-		elog(LOG, "latest completed transaction id is %u and next transaction id is %u",
-			 ShmemVariableCache->latestCompletedXid,
+		elog(LOG, "latest completed transaction id is %lu and next transaction id is %u",
+			 ShmemVariableCache->latestCompletedXid.value,
 			 XidFromFullTransactionId(ShmemVariableCache->nextXid));
 	LWLockRelease(ProcArrayLock);
 
