@@ -1644,33 +1644,31 @@ heap_create_with_catalog(const char *relname,
 	 * OID first on QD and use the name as key to retrieve the pre-assigned
 	 * OID from QE.
 	 */
-	if (((relkind == RELKIND_RELATION && !RelationIsAppendOptimized(new_rel_desc)) ||
-		!(relkind == RELKIND_SEQUENCE ||
+	if (!(relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_TOASTVALUE ||
 		  relkind == RELKIND_INDEX ||
 		  relkind == RELKIND_PARTITIONED_INDEX ||
 		  relkind == RELKIND_AOSEGMENTS ||
 		  relkind == RELKIND_AOBLOCKDIR ||
-		  relkind == RELKIND_AOVISIMAP)) &&
-		relnamespace != PG_BITMAPINDEX_NAMESPACE)
+		  relkind == RELKIND_AOVISIMAP) &&
+		  relnamespace != PG_BITMAPINDEX_NAMESPACE)
 	{
 		Oid			new_array_oid;
 		ObjectAddress new_type_addr;
 		char	   *relarrayname = NULL;
 
-		/* OK, so pre-assign a type OID for the array type */
-		relarrayname = makeArrayTypeName(relname, relnamespace);
-
 		/*
 		 * We'll make an array over the composite type, too.  For largely
 		 * historical reasons, the array type's OID is assigned first.
 		 *
-		 * If we are expected to get a preassigned Oid but receive InvalidOid,
-		 * get a new Oid. This can happen during upgrades from GPDB4 to 5 where
-		 * array types over relation rowtypes were introduced so there are no
-		 * pre-existing array types to dump from the old cluster
+		 * GPDB: Avoid creating array type for AO relation types, it's not
+		 * useful for anything and only grows the catalog for no use.
 		 */
-		new_array_oid = AssignTypeArrayOid(relarrayname, relnamespace);
+		if (!RelationIsAppendOptimized(new_rel_desc))
+		{
+			relarrayname = makeArrayTypeName(relname, relnamespace);
+			new_array_oid = AssignTypeArrayOid(relarrayname, relnamespace);
+		}
 
 		/*
 		 * Make the pg_type entry for the composite type.  The OID of the
@@ -1692,40 +1690,44 @@ heap_create_with_catalog(const char *relname,
 		if (typaddress)
 			*typaddress = new_type_addr;
 
-		/* Now create the array type. */
-		TypeCreate(new_array_oid,	/* force the type's OID to this */
-				   relarrayname,	/* Array type name */
-				   relnamespace,	/* Same namespace as parent */
-				   InvalidOid,	/* Not composite, no relationOid */
-				   0,			/* relkind, also N/A here */
-				   ownerid,		/* owner's ID */
-				   -1,			/* Internal size (varlena) */
-				   TYPTYPE_BASE,	/* Not composite - typelem is */
-				   TYPCATEGORY_ARRAY,	/* type-category (array) */
-				   false,		/* array types are never preferred */
-				   DEFAULT_TYPDELIM,	/* default array delimiter */
-				   F_ARRAY_IN,	/* array input proc */
-				   F_ARRAY_OUT, /* array output proc */
-				   F_ARRAY_RECV,	/* array recv (bin) proc */
-				   F_ARRAY_SEND,	/* array send (bin) proc */
-				   InvalidOid,	/* typmodin procedure - none */
-				   InvalidOid,	/* typmodout procedure - none */
-				   F_ARRAY_TYPANALYZE,	/* array analyze procedure */
-				   new_type_oid,	/* array element type - the rowtype */
-				   true,		/* yes, this is an array type */
-				   InvalidOid,	/* this has no array type */
-				   InvalidOid,	/* domain base type - irrelevant */
-				   NULL,		/* default value - none */
-				   NULL,		/* default binary representation */
-				   false,		/* passed by reference */
-				   TYPALIGN_DOUBLE, /* alignment - must be the largest! */
-				   TYPSTORAGE_EXTENDED, /* fully TOASTable */
-				   -1,			/* typmod */
-				   0,			/* array dimensions for typBaseType */
-				   false,		/* Type NOT NULL */
-				   InvalidOid); /* rowtypes never have a collation */
+		/* GPDB: Avoid creating array type for AO relation types. */
+		if (!RelationIsAppendOptimized(new_rel_desc))
+		{
+			/* Now create the array type. */
+			TypeCreate(new_array_oid,	/* force the type's OID to this */
+					   relarrayname,	/* Array type name */
+					   relnamespace,	/* Same namespace as parent */
+					   InvalidOid,	/* Not composite, no relationOid */
+					   0,			/* relkind, also N/A here */
+					   ownerid,		/* owner's ID */
+					   -1,			/* Internal size (varlena) */
+					   TYPTYPE_BASE,	/* Not composite - typelem is */
+					   TYPCATEGORY_ARRAY,	/* type-category (array) */
+					   false,		/* array types are never preferred */
+					   DEFAULT_TYPDELIM,	/* default array delimiter */
+					   F_ARRAY_IN,	/* array input proc */
+					   F_ARRAY_OUT, /* array output proc */
+					   F_ARRAY_RECV,	/* array recv (bin) proc */
+					   F_ARRAY_SEND,	/* array send (bin) proc */
+					   InvalidOid,	/* typmodin procedure - none */
+					   InvalidOid,	/* typmodout procedure - none */
+					   F_ARRAY_TYPANALYZE,	/* array analyze procedure */
+					   new_type_oid,	/* array element type - the rowtype */
+					   true,		/* yes, this is an array type */
+					   InvalidOid,	/* this has no array type */
+					   InvalidOid,	/* domain base type - irrelevant */
+					   NULL,		/* default value - none */
+					   NULL,		/* default binary representation */
+					   false,		/* passed by reference */
+					   TYPALIGN_DOUBLE, /* alignment - must be the largest! */
+					   TYPSTORAGE_EXTENDED, /* fully TOASTable */
+					   -1,			/* typmod */
+					   0,			/* array dimensions for typBaseType */
+					   false,		/* Type NOT NULL */
+					   InvalidOid); /* rowtypes never have a collation */
 
-		pfree(relarrayname);
+			pfree(relarrayname);
+		}
 	}
 	else
 	{
