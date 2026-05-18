@@ -57,8 +57,8 @@ sub run_test
 
 	# GPDB: gpbackup default directory should be ignored
 	mkdir "$test_primary_datadir/backups";
-	append_to_file "$test_primary_datadir/backups/master_backup_file",
-	  "backup data in master1";
+	append_to_file "$test_primary_datadir/backups/primary_backup_file",
+	  "backup data in primary1";
 
 	RewindTest::promote_standby();
 	RewindTest::run_pg_rewind($test_mode);
@@ -76,7 +76,7 @@ sub run_test
 		\@paths,
 		[
 			"$test_primary_datadir/backups",
-			"$test_primary_datadir/backups/master_backup_file",
+			"$test_primary_datadir/backups/primary_backup_file",
 			"$test_primary_datadir/tst_both_dir",
 			"$test_primary_datadir/tst_both_dir/both_file1",
 			"$test_primary_datadir/tst_both_dir/both_file2",
