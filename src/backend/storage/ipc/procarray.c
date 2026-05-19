@@ -2812,6 +2812,18 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
+#ifdef FAULT_INJECTOR
+	if (!IS_QUERY_DISPATCHER() && snapshot->haveDistribSnapshot &&
+		FaultInjector_InjectFaultIfSet("distributed_snapshot_skip_data_reuse",
+										DDLNotSpecified,
+										MyProcPort ? MyProcPort->database_name: "",
+										"") == FaultInjectorTypeSkip)
+	{
+		/* Skip snapshot data reuse */
+	}
+	else
+#endif
+
 	if ((distributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
 		snapshot->haveDistribSnapshot) && GetSnapshotDataReuse(snapshot))
 	{
