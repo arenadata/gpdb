@@ -2555,7 +2555,7 @@ create index on prtx2 (b);
 create index on prtx2 (c);
 analyze prtx1;
 analyze prtx2;
-SET enable_hashjoin = off;
+-- Enable Nested Loop to get plans more similar to upstream's.
 SET enable_nestloop = on;
 explain (costs off)
 select * from prtx1
@@ -2635,7 +2635,6 @@ where not exists (select 1 from prtx2
  2 | 91 | 91
 (1 row)
 
-RESET enable_hashjoin;
 RESET enable_nestloop;
 --
 -- Test advanced partition-matching algorithm for partitioned join
