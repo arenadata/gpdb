@@ -1653,7 +1653,7 @@ heap_create_with_catalog(const char *relname,
 		  relkind == RELKIND_AOVISIMAP) &&
 		  relnamespace != PG_BITMAPINDEX_NAMESPACE)
 	{
-		Oid			new_array_oid;
+		Oid			new_array_oid = InvalidOid;
 		ObjectAddress new_type_addr;
 		char	   *relarrayname = NULL;
 
