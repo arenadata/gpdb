@@ -2812,25 +2812,22 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
+#ifdef FAULT_INJECTOR
+	if (!IS_QUERY_DISPATCHER() && snapshot->haveDistribSnapshot &&
+		FaultInjector_InjectFaultIfSet("distributedlog_advance_oldest_xmin_check",
+										DDLNotSpecified,
+										MyProcPort ? MyProcPort->database_name: "",
+										"") == FaultInjectorTypeSkip)
+	{
+		/* Skip snapshot data reuse */
+	}
+	else
+#endif
+
 	if ((distributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
 		snapshot->haveDistribSnapshot) && GetSnapshotDataReuse(snapshot))
 	{
 		LWLockRelease(ProcArrayLock);
-
-#ifdef FAULT_INJECTOR
-		if (!IS_QUERY_DISPATCHER() && snapshot->haveDistribSnapshot)
-		{
-			const char *dbname = NULL;
-
-			if (MyProcPort)
-				dbname = MyProcPort->database_name;
-
-			FaultInjector_InjectFaultIfSet("distributedlog_advance_oldest_xmin",
-										   DDLNotSpecified, dbname ? dbname: "",
-										   "");
-		}
-#endif
-
 		goto ret;
 	}
 
