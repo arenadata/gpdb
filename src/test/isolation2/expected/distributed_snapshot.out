@@ -32,7 +32,7 @@ INSERT 1
 
 -- Hold after walking over ProcArray in GetSnpashotData(), right at start of
 -- DistributedLog_AdvanceOldestXmin()
-1: SELECT gp_inject_fault('distributedlog_advance_oldest_xmin_check', 'skip', '', 'postgres', '', 1, -1, 5, dbid) from gp_segment_configuration where content = 0 and role = 'p';
+1: SELECT gp_inject_fault('distributed_snapshot_skip_data_reuse', 'skip', '', 'postgres', '', 1, -1, 5, dbid) from gp_segment_configuration where content = 0 and role = 'p';
  gp_inject_fault 
 -----------------
  Success:        
@@ -60,7 +60,7 @@ INSERT 1
 -----------------
  Success:        
 (1 row)
-1: SELECT gp_inject_fault('distributedlog_advance_oldest_xmin_check', 'reset', dbid) from gp_segment_configuration where content = 0 and role = 'p';
+1: SELECT gp_inject_fault('distributed_snapshot_skip_data_reuse', 'reset', dbid) from gp_segment_configuration where content = 0 and role = 'p';
  gp_inject_fault 
 -----------------
  Success:        

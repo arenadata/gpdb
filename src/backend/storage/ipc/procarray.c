@@ -2814,7 +2814,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 
 #ifdef FAULT_INJECTOR
 	if (!IS_QUERY_DISPATCHER() && snapshot->haveDistribSnapshot &&
-		FaultInjector_InjectFaultIfSet("distributedlog_advance_oldest_xmin_check",
+		FaultInjector_InjectFaultIfSet("distributed_snapshot_skip_data_reuse",
 										DDLNotSpecified,
 										MyProcPort ? MyProcPort->database_name: "",
 										"") == FaultInjectorTypeSkip)
