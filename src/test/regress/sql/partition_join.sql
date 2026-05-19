@@ -491,14 +491,15 @@ create temp table prtx2_2 partition of prtx2 for values from (11) to (21);
 create temp table prtx2_3 partition of prtx2 for values from (21) to (31);
 insert into prtx1 select 1 + i%30, i, i
   from generate_series(1,1000) i;
+-- GPDB: Add more rows to get plans more similar to upstream's.
 insert into prtx2 select 1 + i%30, i, i
-  from generate_series(1,500) i, generate_series(1,10) j;
+  from generate_series(1,500*4) i, generate_series(1,10*4) j;
 create index on prtx2 (b);
 create index on prtx2 (c);
 analyze prtx1;
 analyze prtx2;
 
--- Enable Nested Loop to get plans more similar to upstream's.
+-- GPDB: Enable Nested Loop to get plans more similar to upstream's.
 SET enable_nestloop = on;
 explain (costs off)
 select * from prtx1
