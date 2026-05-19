@@ -338,7 +338,7 @@ ok(!-f "$tempdir/tbackup/tblspc1/1/$tblspc1UnloggedBackupPath",
 # Temp relations should not be copied.
 foreach my $filename (@tempRelationFiles)
 {
-	# FIXME! File is copied, but should not be copied at previous execution pg_basebackup
+	# GPDB_14_MERGE_FIXME: File is copied, but should not be copied at previous execution pg_basebackup
 	# Add "!" before "-f" to get correct check
 	ok( -f "$tempdir/tbackup/tblspc1/1/$tblSpc1Id/$postgresOid/$filename",
 		"[tblspc1]/$tblSpc1Id/$postgresOid/$filename not copied");
