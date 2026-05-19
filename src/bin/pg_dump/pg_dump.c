@@ -4975,14 +4975,6 @@ binary_upgrade_set_toast_oids_by_rel(Archive *fout, PQExpBuffer upgrade_buffer, 
 						"'%u'::pg_catalog.oid, 'pg_toast_%u'::text);\n",
 						tblinfo->toast_oid, PG_TOAST_NAMESPACE, tblinfo->dobj.catId.oid);
 
-	/* pg_toast composite type */
-	simple_oid_list_append(&preassigned_oids, tblinfo->toast_type);
-	appendPQExpBufferStr(upgrade_buffer, "\n-- For binary upgrade, must preserve pg_type oid\n");
-	appendPQExpBuffer(upgrade_buffer,
-						"SELECT pg_catalog.binary_upgrade_set_next_toast_pg_type_oid('%u'::pg_catalog.oid, "
-						"'%u'::pg_catalog.oid, 'pg_toast_%u'::text);\n\n",
-					  tblinfo->toast_type, PG_TOAST_NAMESPACE, tblinfo->dobj.catId.oid);
-
 	/* every toast table has an index */
 	simple_oid_list_append(&preassigned_oids, tblinfo->toast_index);
 	appendPQExpBuffer(upgrade_buffer,
