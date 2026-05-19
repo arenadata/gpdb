@@ -2555,33 +2555,33 @@ create index on prtx2 (b);
 create index on prtx2 (c);
 analyze prtx1;
 analyze prtx2;
+SET enable_hashjoin = off;
+SET enable_nestloop = on;
 explain (costs off)
 select * from prtx1
 where not exists (select 1 from prtx2
                   where prtx2.a=prtx1.a and prtx2.b=prtx1.b and prtx2.c=123)
   and a<20 and c=120;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Hash Anti Join
-               Hash Cond: ((prtx1_1.a = prtx2_1.a) AND (prtx1_1.b = prtx2_1.b))
+         ->  Nested Loop Anti Join
+               Join Filter: ((prtx2_1.a = prtx1_1.a) AND (prtx2_1.b = prtx1_1.b))
                ->  Seq Scan on prtx1_1
                      Filter: ((a < 20) AND (c = 120))
-               ->  Hash
-                     ->  Bitmap Heap Scan on prtx2_1
-                           Recheck Cond: (c = 123)
-                           ->  Bitmap Index Scan on prtx2_1_c_idx
-                                 Index Cond: (c = 123)
-         ->  Hash Anti Join
-               Hash Cond: ((prtx1_2.a = prtx2_2.a) AND (prtx1_2.b = prtx2_2.b))
+               ->  Bitmap Heap Scan on prtx2_1
+                     Recheck Cond: (c = 123)
+                     ->  Bitmap Index Scan on prtx2_1_c_idx
+                           Index Cond: (c = 123)
+         ->  Nested Loop Anti Join
                ->  Seq Scan on prtx1_2
                      Filter: ((a < 20) AND (c = 120))
-               ->  Hash
-                     ->  Seq Scan on prtx2_2
-                           Filter: (c = 123)
+               ->  Index Scan using prtx2_2_b_idx on prtx2_2
+                     Index Cond: (b = prtx1_2.b)
+                     Filter: ((c = 123) AND (a = prtx1_2.a))
  Optimizer: Postgres query optimizer
-(19 rows)
+(17 rows)
 
 select * from prtx1
 where not exists (select 1 from prtx2
@@ -2597,26 +2597,34 @@ select * from prtx1
 where not exists (select 1 from prtx2
                   where prtx2.a=prtx1.a and (prtx2.b=prtx1.b+1 or prtx2.c=99))
   and a<20 and c=91;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Hash Anti Join
-               Hash Cond: (prtx1_1.a = prtx2_1.a)
-               Join Filter: ((prtx2_1.b = (prtx1_1.b + 1)) OR (prtx2_1.c = 99))
+         ->  Nested Loop Anti Join
                ->  Seq Scan on prtx1_1
                      Filter: ((a < 20) AND (c = 91))
-               ->  Hash
-                     ->  Seq Scan on prtx2_1
-         ->  Hash Anti Join
-               Hash Cond: (prtx1_2.a = prtx2_2.a)
-               Join Filter: ((prtx2_2.b = (prtx1_2.b + 1)) OR (prtx2_2.c = 99))
+               ->  Bitmap Heap Scan on prtx2_1
+                     Recheck Cond: ((b = (prtx1_1.b + 1)) OR (c = 99))
+                     Filter: (a = prtx1_1.a)
+                     ->  BitmapOr
+                           ->  Bitmap Index Scan on prtx2_1_b_idx
+                                 Index Cond: (b = (prtx1_1.b + 1))
+                           ->  Bitmap Index Scan on prtx2_1_c_idx
+                                 Index Cond: (c = 99)
+         ->  Nested Loop Anti Join
                ->  Seq Scan on prtx1_2
                      Filter: ((a < 20) AND (c = 91))
-               ->  Hash
-                     ->  Seq Scan on prtx2_2
+               ->  Bitmap Heap Scan on prtx2_2
+                     Recheck Cond: ((b = (prtx1_2.b + 1)) OR (c = 99))
+                     Filter: (a = prtx1_2.a)
+                     ->  BitmapOr
+                           ->  Bitmap Index Scan on prtx2_2_b_idx
+                                 Index Cond: (b = (prtx1_2.b + 1))
+                           ->  Bitmap Index Scan on prtx2_2_c_idx
+                                 Index Cond: (c = 99)
  Optimizer: Postgres query optimizer
-(17 rows)
+(25 rows)
 
 select * from prtx1
 where not exists (select 1 from prtx2
@@ -2627,6 +2635,8 @@ where not exists (select 1 from prtx2
  2 | 91 | 91
 (1 row)
 
+RESET enable_hashjoin;
+RESET enable_nestloop;
 --
 -- Test advanced partition-matching algorithm for partitioned join
 --
