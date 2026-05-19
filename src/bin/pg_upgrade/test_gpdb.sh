@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -eux
+
 # src/bin/pg_upgrade/test_gpdb.sh
 #
 # Test driver for upgrading a Greenplum cluster with pg_upgrade.
@@ -86,6 +88,8 @@ realpath()
 restore_cluster()
 {
 	local status=$?
+
+	cp -rf ~/gpdb_src/src/bin/pg_upgrade/tmp_check/upgrade/qd/pg_upgrade_dump_*.log ~/gpAdminLogs/
 
 	pushd $base_dir
 	# Reset the pg_control files from the old cluster which were renamed
