@@ -1381,7 +1381,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into t select mod(i,10),mod(i,10),i from generate_series(1,10000) s(i);
 create index on t (a);
 analyze t;
-set enable_incrementalsort = off;
+set enable_incremental_sort = off;
 explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1;
                    QUERY PLAN                   
 ------------------------------------------------
@@ -1397,7 +1397,7 @@ explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1
  Optimizer: Pivotal Optimizer (GPORCA)
 (10 rows)
 
-set enable_incrementalsort = on;
+set enable_incremental_sort = on;
 explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1;
                    QUERY PLAN                   
 ------------------------------------------------
@@ -1431,3 +1431,25 @@ explain (costs off) select * from t union select * from t order by 1,3;
 (10 rows)
 
 drop table t;
+-- Incremental sort shall not be an input for redistribute motion
+create table t1 (a int, b int) distributed randomly;
+create index ON t1 (a);
+-- 10 times
+insert into t1 select a, a from generate_series(1, 10000) cross join generate_series(1, 10) as gs(a);
+analyze t1;
+set enable_hashagg = off;
+explain select a, b, count(*) as res from t1 group by a, b;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..440.47 rows=57 width=16)
+   ->  Finalize HashAggregate  (cost=0.00..440.47 rows=19 width=16)
+         Group Key: a, b
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)  (cost=0.00..440.46 rows=19 width=16)
+               Hash Key: a, b
+               ->  Streaming Partial HashAggregate  (cost=0.00..440.46 rows=19 width=16)
+                     Group Key: a, b
+                     ->  Seq Scan on t1  (cost=0.00..431.70 rows=33334 width=8)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(9 rows)
+
+drop table t1;

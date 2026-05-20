@@ -210,10 +210,10 @@ insert into t select mod(i,10),mod(i,10),i from generate_series(1,10000) s(i);
 create index on t (a);
 analyze t;
 
-set enable_incrementalsort = off;
+set enable_incremental_sort = off;
 explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1;
 
-set enable_incrementalsort = on;
+set enable_incremental_sort = on;
 explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1;
 
 -- Incremental sort vs. set operations with varno 0
@@ -229,7 +229,6 @@ create index ON t1 (a);
 insert into t1 select a, a from generate_series(1, 10000) cross join generate_series(1, 10) as gs(a);
 analyze t1;
 set enable_hashagg = off;
-set optimizer = off;
 explain select a, b, count(*) as res from t1 group by a, b;
 
 drop table t1;
