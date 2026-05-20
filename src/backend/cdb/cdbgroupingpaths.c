@@ -2400,8 +2400,24 @@ cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
 		 * to merge the inputs.
 		 */
 		if (CdbPathLocus_IsPartitioned(locus))
-			subpath = cdbpath_create_motion_path(root, subpath, NIL,
-												 false, locus);
+		{
+			Path *motion_path = cdbpath_create_motion_path(root, subpath, subpath->pathkeys,
+												 presorted_keys != 0, locus);
+
+			
+			/*
+			 * We can not return NULL here, so make a possibly redundant path with 
+			 * no incremental sort
+			 */
+			if (motion_path == NULL) 
+			{
+				presorted_keys = 0;
+				motion_path = cdbpath_create_motion_path(root, subpath, NIL,
+													false, locus);
+			}
+			Assert(motion_path != NULL);
+			subpath = motion_path;
+		}
 
 		if (presorted_keys == 0)
 		{

@@ -221,3 +221,15 @@ set enable_hashagg to off;
 explain (costs off) select * from t union select * from t order by 1,3;
 
 drop table t;
+
+-- Incremental sort shall not be an input for redistribute motion
+create table t1 (a int, b int) distributed randomly;
+create index ON t1 (a);
+-- 10 times
+insert into t1 select a, a from generate_series(1, 10000) cross join generate_series(1, 10) as gs(a);
+analyze t1;
+set enable_hashagg = off;
+set optimizer = off;
+explain select a, b, count(*) as res from t1 group by a, b;
+
+drop table t1;
