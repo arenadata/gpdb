@@ -22,11 +22,7 @@ extern Relation table_open(Oid relationId, LOCKMODE lockmode);
 extern Relation table_openrv(const RangeVar *relation, LOCKMODE lockmode);
 extern Relation table_openrv_extended(const RangeVar *relation,
 									  LOCKMODE lockmode, bool missing_ok);
-<<<<<<< HEAD
 extern Relation try_table_open(Oid relationId, LOCKMODE lockmode, bool noWait);
-=======
-extern Relation try_table_open(Oid relationId, LOCKMODE lockmode);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 extern void table_close(Relation relation, LOCKMODE lockmode);
 
 /* CDB */
