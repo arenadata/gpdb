@@ -2023,7 +2023,7 @@ typedef enum AlterTableType
 	AT_AddIdentity,				/* ADD IDENTITY */
 	AT_SetIdentity,				/* SET identity column options */
 	AT_DropIdentity,			/* DROP IDENTITY */
-<<<<<<< HEAD
+	AT_AlterCollationRefreshVersion,	/* ALTER COLLATION ... REFRESH VERSION */
 
 	AT_SetDistributedBy,		/* SET DISTRIBUTED BY */
 	AT_ExpandTable,          /* EXPAND DISTRIBUTED */
@@ -2038,9 +2038,6 @@ typedef enum AlterTableType
 	AT_PartSetTemplate,			/* Set Subpartition Template */
 	AT_PartSplit,				/* Split */
 	AT_PartTruncate				/* Truncate */
-=======
-	AT_AlterCollationRefreshVersion	/* ALTER COLLATION ... REFRESH VERSION */
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 } AlterTableType;
 
 typedef struct ReplicaIdentityStmt
