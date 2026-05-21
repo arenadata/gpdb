@@ -8965,14 +8965,6 @@ ShutdownXLOG(int code pg_attribute_unused() , Datum arg pg_attribute_unused() )
 
 		CreateCheckPoint(CHECKPOINT_IS_SHUTDOWN | CHECKPOINT_IMMEDIATE);
 	}
-<<<<<<< HEAD
-	ShutdownCLOG();
-	ShutdownCommitTs();
-	ShutdownSUBTRANS();
-	ShutdownMultiXact();
-	DistributedLog_Shutdown();
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 }
 
 /*
