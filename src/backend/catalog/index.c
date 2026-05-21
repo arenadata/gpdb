@@ -3714,7 +3714,7 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 		return;
 
 	if ((options & REINDEXOPT_MISSING_OK) != 0)
-		heapRelation = try_table_open(heapId, ShareLock);
+		heapRelation = try_table_open(heapId, ShareLock, false);
 	else
 		heapRelation = table_open(heapId, ShareLock);
 
@@ -4015,7 +4015,7 @@ reindex_relation(Oid relid, int flags, int options)
 	 * should match ReindexTable().
 	 */
 	if ((options & REINDEXOPT_MISSING_OK) != 0)
-		rel = try_table_open(relid, ShareLock);
+		rel = try_table_open(relid, ShareLock, false);
 	else
 		rel = table_open(relid, ShareLock);
 
@@ -4031,11 +4031,8 @@ reindex_relation(Oid relid, int flags, int options)
 		elog(ERROR, "cannot reindex partitioned table \"%s.%s\"",
 			 get_namespace_name(RelationGetNamespace(rel)),
 			 RelationGetRelationName(rel));
-<<<<<<< HEAD
 
 	relIsAO = RelationIsAppendOptimized(rel);
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	toast_relid = rel->rd_rel->reltoastrelid;
 
