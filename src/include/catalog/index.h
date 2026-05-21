@@ -127,13 +127,11 @@ extern void FormIndexDatum(IndexInfo *indexInfo,
 						   Datum *values,
 						   bool *isnull);
 
-<<<<<<< HEAD
 extern Oid setNewRelfilenodeToOid(Relation relation, TransactionId freezeXid,
 					   Oid newrelfilenode);
-=======
+
 extern void index_check_collation_versions(Oid relid);
 extern void index_update_collation_versions(Oid relid, Oid coll);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 extern void index_build(Relation heapRelation,
 						Relation indexRelation,
