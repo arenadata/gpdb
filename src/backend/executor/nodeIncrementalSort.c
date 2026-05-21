@@ -1224,7 +1224,6 @@ ExecEagerFreeIncrementalSort(IncrementalSortState *node)
 void
 ExecSquelchIncrementalSort(IncrementalSortState *node)
 {
-	//KDBDBG: TODO
 	if (!node->delayEagerFree)
 	{
 		ExecEagerFreeIncrementalSort(node);

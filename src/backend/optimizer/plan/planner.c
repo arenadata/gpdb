@@ -7456,6 +7456,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			 */
 			Assert(list_length(root->group_pathkeys) != 1);
 
+/* Use cdb_prepare_path_for_sorted_agg instead */
 #if 0
 			path = (Path *) create_incremental_sort_path(root,
 														 grouped_rel,
@@ -7625,6 +7626,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				 */
 				Assert(list_length(root->group_pathkeys) != 1);
 
+/* Use cdb_prepare_path_for_sorted_agg instead */
 #if 0				
 				path = (Path *) create_incremental_sort_path(root,
 												grouped_rel,
