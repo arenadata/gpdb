@@ -1320,11 +1320,8 @@ ProcessUtilitySlow(ParseState *pstate,
 				{
 					List	   *stmts;
 					ListCell   *l;
-<<<<<<< HEAD
 					List	   *more_stmts = NIL;
-=======
 					RangeVar   *table_rv = NULL;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 					/* Run parse analysis ... */
 					/*
@@ -1350,7 +1347,6 @@ ProcessUtilitySlow(ParseState *pstate,
 						if (IsA(stmt, CreateStmt))
 						{
 							CreateStmt *cstmt = (CreateStmt *) stmt;
-<<<<<<< HEAD
 							char		relKind = RELKIND_RELATION;
 							Datum		toast_options;
 							static char *validnsps[] = HEAP_RELOPT_NAMESPACES;
@@ -1368,15 +1364,18 @@ ProcessUtilitySlow(ParseState *pstate,
 							else
 								cstmt->relKind = relKind;
 
+							/* Remember transformed RangeVar for LIKE */
+							table_rv = cstmt->relation;
+
 							/*
 							 * GPDB: Don't dispatch it yet, as we haven't
 							 * created the toast and other auxiliary tables
 							 * yet.
 							 */
 							/* Create the table itself */
-							address = DefineRelation((CreateStmt *) stmt,
+							address = DefineRelation(cstmt,
 													 relKind,
-													 ((CreateStmt *) stmt)->ownerid, NULL,
+													 cstmt->ownerid, NULL,
 													 queryString, false, true,
 													 cstmt->intoPolicy);
 
@@ -1404,19 +1403,6 @@ ProcessUtilitySlow(ParseState *pstate,
 								more_stmts = list_concat(more_stmts, parts);
 							}
 
-=======
-							Datum		toast_options;
-							static char *validnsps[] = HEAP_RELOPT_NAMESPACES;
-
-							/* Remember transformed RangeVar for LIKE */
-							table_rv = cstmt->relation;
-
-							/* Create the table itself */
-							address = DefineRelation(cstmt,
-													 RELKIND_RELATION,
-													 InvalidOid, NULL,
-													 queryString);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 							EventTriggerCollectSimpleCommand(address,
 															 secondaryObject,
 															 stmt);
@@ -1427,7 +1413,6 @@ ProcessUtilitySlow(ParseState *pstate,
 							 */
 							CommandCounterIncrement();
 
-<<<<<<< HEAD
 							if (relKind != RELKIND_COMPOSITE_TYPE)
 							{
 								/*
@@ -1435,7 +1420,7 @@ ProcessUtilitySlow(ParseState *pstate,
 								 * table
 								 */
 								toast_options = transformRelOptions((Datum) 0,
-																	((CreateStmt *) stmt)->options,
+																	cstmt->options,
 																	"toast",
 																	validnsps,
 																	true,
@@ -1443,21 +1428,6 @@ ProcessUtilitySlow(ParseState *pstate,
 								(void) heap_reloptions(RELKIND_TOASTVALUE,
 													   toast_options,
 													   true);
-=======
-							/*
-							 * parse and validate reloptions for the toast
-							 * table
-							 */
-							toast_options = transformRelOptions((Datum) 0,
-																cstmt->options,
-																"toast",
-																validnsps,
-																true,
-																false);
-							(void) heap_reloptions(RELKIND_TOASTVALUE,
-												   toast_options,
-												   true);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 								NewRelationCreateToastTable(address.objectId,
 															toast_options);
@@ -1502,19 +1472,13 @@ ProcessUtilitySlow(ParseState *pstate,
 							address = DefineRelation(&cstmt->base,
 													 RELKIND_FOREIGN_TABLE,
 													 InvalidOid, NULL,
-<<<<<<< HEAD
 													 queryString,
 													 true,
 													 true,
 													 NULL);
-							CreateForeignTable((CreateForeignTableStmt *) stmt,
+							CreateForeignTable(cstmt,
 											   address.objectId,
 											   false /* skip_permission_checks */);
-=======
-													 queryString);
-							CreateForeignTable(cstmt,
-											   address.objectId);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 							EventTriggerCollectSimpleCommand(address,
 															 secondaryObject,
 															 stmt);
