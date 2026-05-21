@@ -1476,7 +1476,7 @@ set parallel_setup_cost = 0;
 set parallel_tuple_cost = 0;
 set max_parallel_workers_per_gather = 2;
 create table t (a int, b int, c int);
-insert into t select mod(i,10),mod(i,10),i from generate_series(1,10000) s(i);
+insert into t select mod(i,30),mod(i,30),i from generate_series(1,30000) s(i);
 create index on t (a);
 analyze t;
 set enable_incremental_sort = off;
@@ -1497,19 +1497,23 @@ explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1
 
 set enable_incremental_sort = on;
 explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1;
-                   QUERY PLAN                   
-------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Limit
    ->  Gather Motion 3:1  (slice1; segments: 3)
          Merge Key: a, b, (sum(c))
          ->  Limit
-               ->  Sort
+               ->  Incremental Sort
                      Sort Key: a, b, (sum(c))
-                     ->  HashAggregate
+                     Presorted Key: a, b
+                     ->  GroupAggregate
                            Group Key: a, b
-                           ->  Seq Scan on t
+                           ->  Incremental Sort
+                                 Sort Key: a, b
+                                 Presorted Key: a
+                                 ->  Index Scan using t_a_idx on t
  Optimizer: Postgres query optimizer
-(10 rows)
+(14 rows)
 
 -- Incremental sort vs. set operations with varno 0
 set enable_hashagg to off;
