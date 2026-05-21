@@ -105,13 +105,12 @@ static const SyncOps syncsw[] = {
 		.sync_unlinkfiletag = mdunlinkfiletag,
 		.sync_filetagmatches = mdfiletagmatches
 	},
-<<<<<<< HEAD
 	/* append-optimized storage */
-	{
+	[SYNC_HANDLER_AO] = {
 		.sync_syncfiletag = aosyncfiletag,
 		.sync_unlinkfiletag = mdunlinkfiletag,
 		.sync_filetagmatches = mdfiletagmatches
-=======
+	},
 	/* pg_xact */
 	[SYNC_HANDLER_CLOG] = {
 		.sync_syncfiletag = clogsyncfiletag
@@ -127,7 +126,6 @@ static const SyncOps syncsw[] = {
 	/* pg_multixact/members */
 	[SYNC_HANDLER_MULTIXACT_MEMBER] = {
 		.sync_syncfiletag = multixactmemberssyncfiletag
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	}
 };
 
