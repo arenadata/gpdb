@@ -99,8 +99,6 @@ extern void pgfnames_cleanup(char **filenames);
 )
 #endif
 
-<<<<<<< HEAD
-=======
 /*
  * This macro provides a centralized list of all errnos that identify
  * hard failure of a previously-established network connection.
@@ -122,7 +120,6 @@ extern void pgfnames_cleanup(char **filenames);
 	case ENETDOWN: \
 	case ENETRESET: \
 	case ENETUNREACH
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 /* Portable locale initialization (in exec.c) */
 extern void set_pglocale_pgservice(const char *argv0, const char *app);
