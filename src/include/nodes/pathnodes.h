@@ -926,8 +926,6 @@ typedef struct RelOptInfo
 	Relids		all_partrels;	/* Relids set of all partition relids */
 	List	  **partexprs;		/* Non-nullable partition key expressions */
 	List	  **nullable_partexprs; /* Nullable partition key expressions */
-<<<<<<< HEAD
-	List	   *partitioned_child_rels; /* List of RT indexes */
 
 	/*
 	 * In a subquery, if this base relation contains quals that must
@@ -937,8 +935,6 @@ typedef struct RelOptInfo
 	 */
 	List	   *upperrestrictinfo;		/* RestrictInfo structures (if base
 										 * rel) */
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 } RelOptInfo;
 
 /*
