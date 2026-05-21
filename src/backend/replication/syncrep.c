@@ -160,12 +160,41 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	const char *old_status;
 	int			mode;
 
+<<<<<<< HEAD
+=======
+	/*
+	 * This should be called while holding interrupts during a transaction
+	 * commit to prevent the follow-up shared memory queue cleanups to be
+	 * influenced by external interruptions.
+	 */
+	Assert(InterruptHoldoffCount > 0);
+
+	/*
+	 * Fast exit if user has not requested sync replication, or there are no
+	 * sync replication standby names defined.
+	 *
+	 * Since this routine gets called every commit time, it's important to
+	 * exit quickly if sync replication is not requested. So we check
+	 * WalSndCtl->sync_standbys_defined flag without the lock and exit
+	 * immediately if it's false. If it's true, we need to check it again later
+	 * while holding the lock, to check the flag and operate the sync rep
+	 * queue atomically. This is necessary to avoid the race condition
+	 * described in SyncRepUpdateSyncStandbysDefined(). On the other
+	 * hand, if it's false, the lock is not necessary because we don't touch
+	 * the queue.
+	 */
+	if (!SyncRepRequested() ||
+		!((volatile WalSndCtlData *) WalSndCtl)->sync_standbys_defined)
+		return;
+
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/* Cap the level for anything other than commit to remote flush only. */
 	if (commit)
 		mode = SyncRepWaitMode;
 	else
 		mode = Min(SyncRepWaitMode, SYNC_REP_WAIT_FLUSH);
 
+<<<<<<< HEAD
 	Assert(!am_walsender);
 	elogif(debug_walrepl_syncrep, LOG,
 			"syncrep wait -- This backend's commit LSN for syncrep is %X/%X.",
@@ -177,6 +206,8 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	if (!SyncRepRequested())
 		return;
 
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	Assert(SHMQueueIsDetached(&(MyProc->syncRepLinks)));
 	Assert(WalSndCtl != NULL);
 

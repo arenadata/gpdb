@@ -18,6 +18,7 @@ OBJS = \
 
 all: isolationtester$(X) pg_isolation_regress$(X)
 
+<<<<<<< HEAD
 gpstringsubs.pl:
 	rm -f $@ && $(LN_S) $(top_builddir)/src/test/regress/gpstringsubs.pl
 
@@ -39,6 +40,18 @@ explain.pm:
 # directory.  Later builds would overwrite files while earlier builds are
 # reading them, causing occasional failures.
 install: | all
+=======
+install: all installdirs
+	$(INSTALL_PROGRAM) pg_isolation_regress$(X) '$(DESTDIR)$(pgxsdir)/$(subdir)/pg_isolation_regress$(X)'
+	$(INSTALL_PROGRAM) isolationtester$(X) '$(DESTDIR)$(pgxsdir)/$(subdir)/isolationtester$(X)'
+
+installdirs:
+	$(MKDIR_P) '$(DESTDIR)$(pgxsdir)/$(subdir)'
+
+uninstall:
+	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/pg_isolation_regress$(X)'
+	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/isolationtester$(X)'
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 submake-regress:
 	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress.o

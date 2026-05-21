@@ -94,6 +94,7 @@ DROP FUNCTION create_extension_with_temp_schema();
 RESET client_min_messages;
 \unset SHOW_CONTEXT
 
+<<<<<<< HEAD
 -- It's generally bad style to use CREATE OR REPLACE unnecessarily.
 -- Test what happens if an extension does it anyway.
 -- Replacing a shell type or operator is sort of like CREATE OR REPLACE;
@@ -203,3 +204,10 @@ CREATE EXTENSION test_ext_cine;
 ALTER EXTENSION test_ext_cine UPDATE TO '1.1';
 
 \dx+ test_ext_cine
+=======
+-- Test case of an event trigger run in an extension upgrade script.
+-- See: https://postgr.es/m/20200902193715.6e0269d4@firost
+CREATE EXTENSION test_ext_evttrig;
+ALTER EXTENSION test_ext_evttrig UPDATE TO '2.0';
+DROP EXTENSION test_ext_evttrig;
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d

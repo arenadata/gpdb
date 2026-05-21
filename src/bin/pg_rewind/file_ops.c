@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "common/file_perm.h"
+#include "common/file_utils.h"
 #include "file_ops.h"
 #include "filemap.h"
 #include "pg_rewind.h"
@@ -164,10 +165,14 @@ create_target(file_entry_t *entry)
 			break;
 
 		case FILE_TYPE_SYMLINK:
+<<<<<<< HEAD
 			if (entry->is_gp_tablespace)
 				create_target_tablespace_layout(entry->path, entry->source_link_target);
 			else
 				create_target_symlink(entry->path, entry->source_link_target);
+=======
+			create_target_symlink(entry->path, entry->source_link_target);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			break;
 
 		case FILE_TYPE_REGULAR:
@@ -175,11 +180,14 @@ create_target(file_entry_t *entry)
 			pg_fatal("invalid action (CREATE) for regular file");
 			break;
 
+<<<<<<< HEAD
 		case FILE_TYPE_FIFO:
 			/* Only pgsql_tmp files are FIFO and they are ignored from source target. */
 			pg_fatal("invalid action (CREATE) for fifo file");
 			break;
 
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		case FILE_TYPE_UNDEFINED:
 			pg_fatal("undefined file type for \"%s\"", entry->path);
 			break;
@@ -288,6 +296,7 @@ remove_target_symlink(const char *path)
 				 dstpath);
 }
 
+<<<<<<< HEAD
 /* Create symlink for tablespace, create tablespace target dir */
 static void
 create_target_tablespace_layout(const char *path, const char *link)
@@ -313,6 +322,26 @@ create_target_tablespace_layout(const char *path, const char *link)
 
 	pfree(newlink);
 }
+=======
+/*
+ * Sync target data directory to ensure that modifications are safely on disk.
+ *
+ * We do this once, for the whole data directory, for performance reasons.  At
+ * the end of pg_rewind's run, the kernel is likely to already have flushed
+ * most dirty buffers to disk.  Additionally fsync_pgdata uses a two-pass
+ * approach (only initiating writeback in the first pass), which often reduces
+ * the overall amount of IO noticeably.
+ */
+void
+sync_target_dir(void)
+{
+	if (!do_sync || dry_run)
+		return;
+
+	fsync_pgdata(datadir_target, PG_VERSION_NUM);
+}
+
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 /*
  * Read a file into memory. The file to be read is <datadir>/<path>.

@@ -19,7 +19,6 @@
 #include "catalog/pg_control.h"
 #include "common/controldata_utils.h"
 #include "common/file_perm.h"
-#include "common/file_utils.h"
 #include "common/restricted_token.h"
 #include "common/string.h"
 #include "fe_utils/recovery_gen.h"
@@ -38,7 +37,6 @@ static void createBackupLabel(XLogRecPtr startpoint, TimeLineID starttli,
 
 static void digestControlFile(ControlFileData *ControlFile, char *source,
 							  size_t size);
-static void syncTargetDirectory(void);
 static void getRestoreCommand(const char *argv0);
 static void sanityChecks(void);
 static void findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex);
@@ -135,7 +133,11 @@ main(int argc, char **argv)
 	TimeLineID	endtli;
 	ControlFileData ControlFile_new;
 	bool		writerecoveryconf = false;
+<<<<<<< HEAD
 	char		*replication_slot = NULL;
+=======
+	filemap_t  *filemap;
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_rewind"));
@@ -190,7 +192,7 @@ main(int argc, char **argv)
 
 			case 3:
 				debug = true;
-				pg_logging_set_level(PG_LOG_DEBUG);
+				pg_logging_increase_verbosity();
 				break;
 
 			case 'D':			/* -D or --target-pgdata */
@@ -396,13 +398,16 @@ main(int argc, char **argv)
 				(uint32) (chkptrec >> 32), (uint32) chkptrec,
 				chkpttli);
 
+	/* Initialize the hash table to track the status of each file */
+	filehash_init();
+
 	/*
 	 * Collect information about all files in the target and source systems.
 	 */
-	filemap_create();
 	if (showprogress)
 		pg_log_info("reading source file list");
 	fetchSourceFileList();
+
 	if (showprogress)
 		pg_log_info("reading target file list");
 	traverse_datadir(datadir_target, &process_target_file);
@@ -423,13 +428,17 @@ main(int argc, char **argv)
 	 * We have collected all information we need from both systems. Decide
 	 * what to do with each file.
 	 */
+<<<<<<< HEAD
 	decide_file_actions();
+=======
+	filemap = decide_file_actions();
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	if (showprogress)
-		calculate_totals();
+		calculate_totals(filemap);
 
 	/* this is too verbose even for verbose mode */
 	if (debug)
-		print_filemap();
+		print_filemap(filemap);
 
 	/*
 	 * Ok, we're ready to start copying things over.
@@ -449,7 +458,7 @@ main(int argc, char **argv)
 	 * modified the target directory and there is no turning back!
 	 */
 
-	executeFileMap();
+	execute_file_actions(filemap);
 
 	progress_report(true);
 
@@ -489,7 +498,7 @@ main(int argc, char **argv)
 
 	if (showprogress)
 		pg_log_info("syncing target data directory");
-	syncTargetDirectory();
+	sync_target_dir();
 
 	if (writerecoveryconf && !dry_run)
 		WriteRecoveryConfig(conn, datadir_target,
@@ -838,6 +847,7 @@ digestControlFile(ControlFileData *ControlFile, char *src, size_t size)
 }
 
 /*
+<<<<<<< HEAD
  * Sync target data directory to ensure that modifications are safely on disk.
  *
  * We do this once, for the whole data directory, for performance reasons.  At
@@ -973,6 +983,8 @@ get_target_dbid(const char *argv0)
 }
 
 /*
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
  * Get value of GUC parameter restore_command from the target cluster.
  *
  * This uses a logic based on "postgres -C" to get the value from the

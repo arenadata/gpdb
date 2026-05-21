@@ -100,8 +100,13 @@ static void RangeVarCallbackForReindexIndex(const RangeVar *relation,
 											Oid relId, Oid oldRelId, void *arg);
 static bool ReindexRelationConcurrently(Oid relationOid, int options);
 
+<<<<<<< HEAD
 static void ReindexPartitions(Oid relid, int options, bool concurrent, bool isTopLevel);
 static void ReindexMultipleInternal(List *relids, int options, bool concurrent);
+=======
+static void ReindexPartitions(Oid relid, int options, bool isTopLevel);
+static void ReindexMultipleInternal(List *relids, int options);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 static void reindex_error_callback(void *args);
 static void update_relispartition(Oid relationId, bool newval);
 static bool CompareOpclassOptions(Datum *opts1, Datum *opts2, int natts);
@@ -111,7 +116,7 @@ static bool CompareOpclassOptions(Datum *opts1, Datum *opts2, int natts);
  */
 struct ReindexIndexCallbackState
 {
-	bool		concurrent;		/* flag from statement */
+	int			options;		/* options from statement */
 	Oid			locked_table_oid;	/* tracks previously locked table */
 };
 
@@ -201,6 +206,16 @@ cdb_sync_indcheckxmin_with_segments(Oid indexRelationId)
 		table_close(pg_index, RowExclusiveLock);
 	}
 }
+
+/*
+ * callback arguments for reindex_error_callback()
+ */
+typedef struct ReindexErrorInfo
+{
+	char	   *relname;
+	char	   *relnamespace;
+	char		relkind;
+} ReindexErrorInfo;
 
 /*
  * callback arguments for reindex_error_callback()
@@ -1234,8 +1249,7 @@ DefineIndex(Oid relationId,
 									key->partattrs[i] - 1);
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("insufficient columns in %s constraint definition",
-								constraint_type),
+						 errmsg("unique constraint on partitioned table must include all partitioning columns"),
 						 errdetail("%s constraint on table \"%s\" lacks column \"%s\" which is part of the partition key.",
 								   constraint_type, RelationGetRelationName(rel),
 								   NameStr(att->attname))));
@@ -2759,7 +2773,11 @@ ChooseIndexColumnNames(List *indexElems)
  *		Recreate a specific index.
  */
 void
+<<<<<<< HEAD
 ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
+=======
+ReindexIndex(RangeVar *indexRelation, int options, bool isTopLevel)
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 {
 	RangeVar   *indexRelation = stmt->relation;
 	int			options = stmt->options;
@@ -2768,6 +2786,7 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 	Oid			indOid;
 	char		persistence;
 	char		relkind;
+<<<<<<< HEAD
 
 	/*
 	 * On QE, we already know the index relation oid since we set it before
@@ -2786,6 +2805,8 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 		reindex_index(stmt->relid, false, persistence, options);
 		return;
 	}
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/*
 	 * Find and lock index, and check permissions on table; use callback to
@@ -2797,10 +2818,11 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 	 * upgrade the lock, but that's OK, because other sessions can't hold
 	 * locks on our temporary table.
 	 */
-	state.concurrent = concurrent;
+	state.options = options;
 	state.locked_table_oid = InvalidOid;
 	indOid = RangeVarGetRelidExtended(indexRelation,
-									  concurrent ? ShareUpdateExclusiveLock : AccessExclusiveLock,
+									  (options & REINDEXOPT_CONCURRENTLY) != 0 ?
+									  ShareUpdateExclusiveLock : AccessExclusiveLock,
 									  0,
 									  RangeVarCallbackForReindexIndex,
 									  &state);
@@ -2812,10 +2834,16 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 	persistence = get_rel_persistence(indOid);
 	relkind = get_rel_relkind(indOid);
 
+<<<<<<< HEAD
 
 	if (relkind == RELKIND_PARTITIONED_INDEX)
 		ReindexPartitions(indOid, options, concurrent, isTopLevel);
 	else if (concurrent &&
+=======
+	if (relkind == RELKIND_PARTITIONED_INDEX)
+		ReindexPartitions(indOid, options, isTopLevel);
+	else if ((options & REINDEXOPT_CONCURRENTLY) != 0 &&
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			 persistence != RELPERSISTENCE_TEMP)
 		ReindexRelationConcurrently(indOid, options);
 	else
@@ -2863,7 +2891,8 @@ RangeVarCallbackForReindexIndex(const RangeVar *relation,
 	 * non-concurrent case and table locks used by index_concurrently_*() for
 	 * concurrent case.
 	 */
-	table_lockmode = state->concurrent ? ShareUpdateExclusiveLock : ShareLock;
+	table_lockmode = ((state->options & REINDEXOPT_CONCURRENTLY) != 0) ?
+		ShareUpdateExclusiveLock : ShareLock;
 
 	/*
 	 * If we previously locked some other index's heap, and the name we're
@@ -2920,7 +2949,11 @@ RangeVarCallbackForReindexIndex(const RangeVar *relation,
  *		Recreate all indexes of a table (and of its toast table, if any)
  */
 Oid
+<<<<<<< HEAD
 ReindexTable(ReindexStmt *stmt, bool isTopLevel)
+=======
+ReindexTable(RangeVar *relation, int options, bool isTopLevel)
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 {
 	RangeVar   *relation = stmt->relation;
 	int			options = stmt->options;
@@ -2951,13 +2984,19 @@ ReindexTable(ReindexStmt *stmt, bool isTopLevel)
 	 * locks on our temporary table.
 	 */
 	heapOid = RangeVarGetRelidExtended(relation,
-									   concurrent ? ShareUpdateExclusiveLock : ShareLock,
+									   (options & REINDEXOPT_CONCURRENTLY) != 0 ?
+									   ShareUpdateExclusiveLock : ShareLock,
 									   0,
 									   RangeVarCallbackOwnsTable, NULL);
 
 	if (get_rel_relkind(heapOid) == RELKIND_PARTITIONED_TABLE)
+<<<<<<< HEAD
 		ReindexPartitions(heapOid, options, concurrent, isTopLevel);
 	else if (concurrent &&
+=======
+		ReindexPartitions(heapOid, options, isTopLevel);
+	else if ((options & REINDEXOPT_CONCURRENTLY) != 0 &&
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			 get_rel_persistence(heapOid) != RELPERSISTENCE_TEMP)
 	{
 		result = ReindexRelationConcurrently(heapOid, options);
@@ -3014,7 +3053,7 @@ ReindexTable(ReindexStmt *stmt, bool isTopLevel)
  */
 void
 ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
-					  int options, bool concurrent)
+					  int options)
 {
 	Oid			objectOid;
 	Relation	relationRelation;
@@ -3033,7 +3072,8 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 		   objectKind == REINDEX_OBJECT_SYSTEM ||
 		   objectKind == REINDEX_OBJECT_DATABASE);
 
-	if (objectKind == REINDEX_OBJECT_SYSTEM && concurrent)
+	if (objectKind == REINDEX_OBJECT_SYSTEM &&
+		(options & REINDEXOPT_CONCURRENTLY) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot reindex system catalogs concurrently")));
@@ -3143,7 +3183,7 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 		 * Skip system tables, since index_create() would reject indexing them
 		 * concurrently (and it would likely fail if we tried).
 		 */
-		if (concurrent &&
+		if ((options & REINDEXOPT_CONCURRENTLY) != 0 &&
 			IsCatalogRelationOid(relid))
 		{
 			if (!concurrent_warning)
@@ -3178,7 +3218,11 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 	 * Process each relation listed in a separate transaction.  Note that this
 	 * commits and then starts a new transaction immediately.
 	 */
+<<<<<<< HEAD
 	ReindexMultipleInternal(relids, options, concurrent);
+=======
+	ReindexMultipleInternal(relids, options);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	MemoryContextDelete(private_context);
 }
@@ -3209,7 +3253,11 @@ reindex_error_callback(void *arg)
  * by the caller.
  */
 static void
+<<<<<<< HEAD
 ReindexPartitions(Oid relid, int options, bool concurrent, bool isTopLevel)
+=======
+ReindexPartitions(Oid relid, int options, bool isTopLevel)
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 {
 	List	   *partitions = NIL;
 	char		relkind = get_rel_relkind(relid);
@@ -3286,7 +3334,11 @@ ReindexPartitions(Oid relid, int options, bool concurrent, bool isTopLevel)
 	 * Process each partition listed in a separate transaction.  Note that
 	 * this commits and then starts a new transaction immediately.
 	 */
+<<<<<<< HEAD
 	ReindexMultipleInternal(partitions, options, concurrent);
+=======
+	ReindexMultipleInternal(partitions, options);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/*
 	 * Clean up working storage --- note we must do this after
@@ -3304,7 +3356,11 @@ ReindexPartitions(Oid relid, int options, bool concurrent, bool isTopLevel)
  * and starts a new transaction when finished.
  */
 static void
+<<<<<<< HEAD
 ReindexMultipleInternal(List *relids, int options, bool concurrent)
+=======
+ReindexMultipleInternal(List *relids, int options)
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 {
 	ListCell   *l;
 
@@ -3314,11 +3370,16 @@ ReindexMultipleInternal(List *relids, int options, bool concurrent)
 	foreach(l, relids)
 	{
 		Oid			relid = lfirst_oid(l);
+<<<<<<< HEAD
 		Oid		heapId = InvalidOid;
 		char		relkind;
 		char		relpersistence;
 		bool		result = false;
 		LOCKMODE	lockmode;
+=======
+		char		relkind;
+		char		relpersistence;
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		StartTransactionCommand();
 
@@ -3335,6 +3396,7 @@ ReindexMultipleInternal(List *relids, int options, bool concurrent)
 
 		relkind = get_rel_relkind(relid);
 		relpersistence = get_rel_persistence(relid);
+<<<<<<< HEAD
 		lockmode = concurrent ? ShareUpdateExclusiveLock :
 			   (relkind == RELKIND_INDEX ? AccessExclusiveLock : ShareLock);
 		/*
@@ -3362,6 +3424,8 @@ ReindexMultipleInternal(List *relids, int options, bool concurrent)
 			CommitTransactionCommand();
 			continue;
 		}
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		/*
 		 * Partitioned tables and indexes can never be processed directly, and
@@ -3370,26 +3434,45 @@ ReindexMultipleInternal(List *relids, int options, bool concurrent)
 		Assert(relkind != RELKIND_PARTITIONED_INDEX &&
 			   relkind != RELKIND_PARTITIONED_TABLE);
 
+<<<<<<< HEAD
 		if (concurrent &&
 			relpersistence != RELPERSISTENCE_TEMP)
 		{
 			result = ReindexRelationConcurrently(relid, options);
+=======
+		if ((options & REINDEXOPT_CONCURRENTLY) != 0 &&
+			relpersistence != RELPERSISTENCE_TEMP)
+		{
+			(void) ReindexRelationConcurrently(relid,
+											   options |
+											   REINDEXOPT_MISSING_OK);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			/* ReindexRelationConcurrently() does the verbose output */
 		}
 		else if (relkind == RELKIND_INDEX)
 		{
 			reindex_index(relid, false, relpersistence,
+<<<<<<< HEAD
 						  options);
 			PopActiveSnapshot();
 			/* reindex_index() does the verbose output */
 			result = true;
+=======
+						  options |
+						  REINDEXOPT_REPORT_PROGRESS |
+						  REINDEXOPT_MISSING_OK);
+			PopActiveSnapshot();
+			/* reindex_index() does the verbose output */
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		}
 		else
 		{
 			result = reindex_relation(relid,
 									  REINDEX_REL_PROCESS_TOAST |
 									  REINDEX_REL_CHECK_CONSTRAINTS,
-									  options | REINDEXOPT_REPORT_PROGRESS);
+									  options |
+									  REINDEXOPT_REPORT_PROGRESS |
+									  REINDEXOPT_MISSING_OK);
 
 			if (result && (options & REINDEXOPT_VERBOSE))
 				ereport(INFO,
@@ -3469,6 +3552,13 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 	char	   *relationName = NULL;
 	char	   *relationNamespace = NULL;
 	PGRUsage	ru0;
+	const int	progress_index[] = {
+		PROGRESS_CREATEIDX_COMMAND,
+		PROGRESS_CREATEIDX_PHASE,
+		PROGRESS_CREATEIDX_INDEX_OID,
+		PROGRESS_CREATEIDX_ACCESS_METHOD_OID
+	};
+	int64		progress_vals[4];
 
 	/*
 	 * Create a memory context that will survive forced transaction commits we
@@ -3525,7 +3615,17 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 							 errmsg("cannot reindex system catalogs concurrently")));
 
 				/* Open relation to get its indexes */
-				heapRelation = table_open(relationOid, ShareUpdateExclusiveLock);
+				if ((options & REINDEXOPT_MISSING_OK) != 0)
+				{
+					heapRelation = try_table_open(relationOid,
+												  ShareUpdateExclusiveLock);
+					/* leave if relation does not exist */
+					if (!heapRelation)
+						break;
+				}
+				else
+					heapRelation = table_open(relationOid,
+											  ShareUpdateExclusiveLock);
 
 				/* Add all the valid indexes of relation to list */
 				foreach(lc, RelationGetIndexList(heapRelation))
@@ -3610,7 +3710,13 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 			}
 		case RELKIND_INDEX:
 			{
-				Oid			heapId = IndexGetRelation(relationOid, false);
+				Oid			heapId = IndexGetRelation(relationOid,
+													  (options & REINDEXOPT_MISSING_OK) != 0);
+				Relation	heapRelation;
+
+				/* if relation is missing, leave */
+				if (!OidIsValid(heapId))
+					break;
 
 				if (IsCatalogRelationOid(heapId))
 					ereport(ERROR,
@@ -3626,6 +3732,25 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("cannot reindex invalid index on TOAST table concurrently")));
+
+				/*
+				 * Check if parent relation can be locked and if it exists,
+				 * this needs to be done at this stage as the list of indexes
+				 * to rebuild is not complete yet, and REINDEXOPT_MISSING_OK
+				 * should not be used once all the session locks are taken.
+				 */
+				if ((options & REINDEXOPT_MISSING_OK) != 0)
+				{
+					heapRelation = try_table_open(heapId,
+												  ShareUpdateExclusiveLock);
+					/* leave if relation does not exist */
+					if (!heapRelation)
+						break;
+				}
+				else
+					heapRelation = table_open(heapId,
+											  ShareUpdateExclusiveLock);
+				table_close(heapRelation, NoLock);
 
 				/* Save the list of relation OIDs in private context */
 				oldcontext = MemoryContextSwitchTo(private_context);
@@ -3653,7 +3778,13 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 			break;
 	}
 
-	/* Definitely no indexes, so leave */
+	/*
+	 * Definitely no indexes, so leave.  Any checks based on
+	 * REINDEXOPT_MISSING_OK should be done only while the list of indexes to
+	 * work on is built as the session locks taken before this transaction
+	 * commits will make sure that they cannot be dropped by a concurrent
+	 * session until this operation completes.
+	 */
 	if (indexIds == NIL)
 	{
 		PopActiveSnapshot();
@@ -3707,12 +3838,11 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 
 		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX,
 									  RelationGetRelid(heapRel));
-		pgstat_progress_update_param(PROGRESS_CREATEIDX_COMMAND,
-									 PROGRESS_CREATEIDX_COMMAND_REINDEX_CONCURRENTLY);
-		pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
-									 indexId);
-		pgstat_progress_update_param(PROGRESS_CREATEIDX_ACCESS_METHOD_OID,
-									 indexRel->rd_rel->relam);
+		progress_vals[0] = PROGRESS_CREATEIDX_COMMAND_REINDEX_CONCURRENTLY;
+		progress_vals[1] = 0;	/* initializing */
+		progress_vals[2] = indexId;
+		progress_vals[3] = indexRel->rd_rel->relam;
+		pgstat_progress_update_multi_param(4, progress_index, progress_vals);
 
 		/* Choose a temporary relation name for the new index */
 		concurrentName = ChooseRelationName(get_rel_name(indexId),
@@ -3816,12 +3946,12 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 	WaitForLockersMultiple(lockTags, ShareLock, true);
 	CommitTransactionCommand();
 
-	forboth(lc, indexIds, lc2, newIndexIds)
+	foreach(lc, newIndexIds)
 	{
-		Relation	indexRel;
-		Oid			oldIndexId = lfirst_oid(lc);
-		Oid			newIndexId = lfirst_oid(lc2);
+		Relation	newIndexRel;
+		Oid			newIndexId = lfirst_oid(lc);
 		Oid			heapId;
+		Oid			indexam;
 
 		/* Start new transaction for this index's concurrent build */
 		StartTransactionCommand();
@@ -3840,9 +3970,21 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 		 * Index relation has been closed by previous commit, so reopen it to
 		 * get its information.
 		 */
-		indexRel = index_open(oldIndexId, ShareUpdateExclusiveLock);
-		heapId = indexRel->rd_index->indrelid;
-		index_close(indexRel, NoLock);
+		newIndexRel = index_open(newIndexId, ShareUpdateExclusiveLock);
+		heapId = newIndexRel->rd_index->indrelid;
+		indexam = newIndexRel->rd_rel->relam;
+		index_close(newIndexRel, NoLock);
+
+		/*
+		 * Update progress for the index to build, with the correct parent
+		 * table involved.
+		 */
+		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX, heapId);
+		progress_vals[0] = PROGRESS_CREATEIDX_COMMAND_REINDEX_CONCURRENTLY;
+		progress_vals[1] = PROGRESS_CREATEIDX_PHASE_BUILD;
+		progress_vals[2] = newIndexId;
+		progress_vals[3] = indexam;
+		pgstat_progress_update_multi_param(4, progress_index, progress_vals);
 
 		/* Perform concurrent build of new index */
 		index_concurrently_build(heapId, newIndexId);
@@ -3871,6 +4013,8 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 		Oid			heapId;
 		TransactionId limitXmin;
 		Snapshot	snapshot;
+		Relation	newIndexRel;
+		Oid			indexam;
 
 		StartTransactionCommand();
 
@@ -3881,14 +4025,32 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 		 */
 		CHECK_FOR_INTERRUPTS();
 
-		heapId = IndexGetRelation(newIndexId, false);
-
 		/*
 		 * Take the "reference snapshot" that will be used by validate_index()
 		 * to filter candidate tuples.
 		 */
 		snapshot = RegisterSnapshot(GetTransactionSnapshot());
 		PushActiveSnapshot(snapshot);
+
+		/*
+		 * Index relation has been closed by previous commit, so reopen it to
+		 * get its information.
+		 */
+		newIndexRel = index_open(newIndexId, ShareUpdateExclusiveLock);
+		heapId = newIndexRel->rd_index->indrelid;
+		indexam = newIndexRel->rd_rel->relam;
+		index_close(newIndexRel, NoLock);
+
+		/*
+		 * Update progress for the index to build, with the correct parent
+		 * table involved.
+		 */
+		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX, heapId);
+		progress_vals[0] = PROGRESS_CREATEIDX_COMMAND_REINDEX_CONCURRENTLY;
+		progress_vals[1] = PROGRESS_CREATEIDX_PHASE_VALIDATE_IDXSCAN;
+		progress_vals[2] = newIndexId;
+		progress_vals[3] = indexam;
+		pgstat_progress_update_multi_param(4, progress_index, progress_vals);
 
 		validate_index(heapId, newIndexId, snapshot);
 
@@ -4024,7 +4186,7 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 	 */
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
-								 PROGRESS_CREATEIDX_PHASE_WAIT_4);
+								 PROGRESS_CREATEIDX_PHASE_WAIT_5);
 	WaitForLockersMultiple(lockTags, AccessExclusiveLock, true);
 
 	PushActiveSnapshot(GetTransactionSnapshot());

@@ -61,6 +61,7 @@ typedef enum _teSection
 	SECTION_POST_DATA			/* stuff to be processed after data */
 } teSection;
 
+<<<<<<< HEAD
 /* We need one enum entry per prepared query in pg_dump */
 enum _dumpPreparedQueries
 {
@@ -78,6 +79,8 @@ enum _dumpPreparedQueries
 	NUM_PREP_QUERIES			/* must be last */
 };
 
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 /* Parameters needed by ConnectDatabase; same for dump and restore */
 typedef struct _connParams
 {
@@ -142,12 +145,9 @@ typedef struct _restoreOptions
 	SimpleStringList tableNames;
 
 	int			useDB;
-	char	   *dbname;			/* subject to expand_dbname */
-	char	   *pgport;
-	char	   *pghost;
-	char	   *username;
+	ConnParams	cparams;		/* parameters to use if useDB */
+
 	int			noDataForFailedTables;
-	trivalue	promptPassword;
 	int			exit_on_error;
 	int			compression;
 	int			suppressDumpWarnings;	/* Suppress output of WARNING entries
@@ -163,10 +163,7 @@ typedef struct _restoreOptions
 
 typedef struct _dumpOptions
 {
-	const char *dbname;			/* subject to expand_dbname */
-	const char *pghost;
-	const char *pgport;
-	const char *username;
+	ConnParams	cparams;
 
 	int			binary_upgrade;
 
@@ -207,10 +204,14 @@ typedef struct _dumpOptions
 
 	int			sequence_data;	/* dump sequence data even in schema-only mode */
 	int			do_nothing;
+<<<<<<< HEAD
 
 	/* GPDB */
 	bool		dumpGpPolicy;
 	bool		isGPbackend;
+=======
+	int			coll_unknown;
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 } DumpOptions;
 
 /*
@@ -229,6 +230,8 @@ typedef struct Archive
 
 	int			minRemoteVersion;	/* allowable range */
 	int			maxRemoteVersion;
+
+	bool		hasGenericLockTable;	/* can LOCK TABLE do non-table rels */
 
 	int			numWorkers;		/* number of parallel processes */
 	char	   *sync_snapshot_id;	/* sync snapshot id for parallel operation */
@@ -291,6 +294,7 @@ typedef void (*SetupWorkerPtrType) (Archive *AH);
  * Main archiver interface.
  */
 
+<<<<<<< HEAD
 extern void ConnectDatabase(Archive *AH,
 							const char *dbname,
 							const char *pghost,
@@ -298,6 +302,11 @@ extern void ConnectDatabase(Archive *AH,
 							const char *username,
 							trivalue prompt_password,
 							bool binary_upgrade);
+=======
+extern void ConnectDatabase(Archive *AHX,
+							const ConnParams *cparams,
+							bool isReconnect);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 extern void DisconnectDatabase(Archive *AHX);
 extern PGconn *GetConnection(Archive *AHX);
 

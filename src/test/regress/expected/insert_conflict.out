@@ -50,9 +50,10 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: op_index_key, collation_index_key, both_index_key
-   Conflict Filter: (alternatives: SubPlan 1 or hashed SubPlan 2)
+   Conflict Filter: (SubPlan 1)
    ->  Result
    SubPlan 1
+<<<<<<< HEAD
      ->  Result
            Filter: (ii.key = excluded.key)
            ->  Materialize
@@ -63,6 +64,11 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
            ->  Seq Scan on insertconflicttest ii_1
  Optimizer: Postgres query optimizer
 (15 rows)
+=======
+     ->  Index Only Scan using both_index_expr_key on insertconflicttest ii
+           Index Cond: (key = excluded.key)
+(8 rows)
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 -- Neither collation nor operator class specifications are required --
 -- supplying them merely *limits* matches to indexes with matching opclasses

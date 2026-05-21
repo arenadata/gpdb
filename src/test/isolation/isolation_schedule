@@ -101,6 +101,7 @@ test: delete-abort-savept
 #test: lock-committed-update
 #test: lock-committed-keyupdate
 test: update-locked-tuple
+<<<<<<< HEAD
 #test: reindex-concurrently
 #test: propagate-lock-delete
 #test: tuplelock-conflict
@@ -116,6 +117,24 @@ test: update-locked-tuple
 #test: skip-locked-2
 #test: skip-locked-3
 #test: skip-locked-4
+=======
+test: reindex-concurrently
+test: reindex-schema
+test: propagate-lock-delete
+test: tuplelock-conflict
+test: tuplelock-update
+test: tuplelock-upgrade-no-deadlock
+test: freeze-the-dead
+test: nowait
+test: nowait-2
+test: nowait-3
+test: nowait-4
+test: nowait-5
+test: skip-locked
+test: skip-locked-2
+test: skip-locked-3
+test: skip-locked-4
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 test: drop-index-concurrently-1
 #test: multiple-cic
 test: alter-table-1
@@ -132,6 +151,7 @@ test: timeouts
 test: vacuum-concurrent-drop
 test: vacuum-conflict
 test: vacuum-skip-locked
+<<<<<<< HEAD
 #test: predicate-hash
 #test: predicate-gist
 #test: predicate-gin
@@ -142,6 +162,14 @@ test: partition-drop-index-locking
 # because it fails when test errors from ExecLockRows. The reason is that
 # GPDB disabled triggers for foreign keys.
 #test: partition-key-update-1
+=======
+test: horizons
+test: predicate-hash
+test: predicate-gist
+test: predicate-gin
+test: partition-concurrent-attach
+test: partition-key-update-1
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 test: partition-key-update-2
 test: partition-key-update-3
 test: partition-key-update-4

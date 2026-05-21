@@ -452,6 +452,7 @@ NULL);
 ERROR:  syntax error at or near "NUL"
 LINE 16: ...L, id2 TEXT NOT NULL PRIMARY KEY, id3 INTEGER NOT NUL, id4 I...
                                                               ^
+<<<<<<< HEAD
 -- Check that stack depth detection mechanism works and
 -- max_stack_depth is not set too high.  The full error report is not
 -- very stable, so show only SQLSTATE and primary error message.
@@ -477,3 +478,5 @@ select 1; -- test that this works
         1
 (1 row)
 
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d

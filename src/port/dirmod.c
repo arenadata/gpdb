@@ -353,6 +353,7 @@ pgwin32_is_junction(const char *path)
 	return ((attr & FILE_ATTRIBUTE_REPARSE_POINT) == FILE_ATTRIBUTE_REPARSE_POINT);
 }
 #endif							/* defined(WIN32) && !defined(__CYGWIN__) */
+<<<<<<< HEAD
 
 
 #if defined(WIN32) && !defined(__CYGWIN__)
@@ -415,3 +416,5 @@ pgwin32_safestat(const char *path, struct stat *buf)
 }
 
 #endif
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d

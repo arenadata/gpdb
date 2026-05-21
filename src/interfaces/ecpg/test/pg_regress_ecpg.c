@@ -21,6 +21,10 @@
 #include "pg_regress.h"
 #include "common/string.h"
 #include "lib/stringinfo.h"
+<<<<<<< HEAD
+=======
+
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 static void
 ecpg_filter(const char *sourcefile, const char *outfile)
@@ -160,6 +164,10 @@ ecpg_start_test(const char *testname,
 
 	unsetenv("PGAPPNAME");
 	free(appnameenv);
+<<<<<<< HEAD
+=======
+
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	free(testname_dash.data);
 
 	return pid;

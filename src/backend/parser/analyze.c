@@ -1585,9 +1585,8 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	for (i = 0; i < sublist_length; i++)
 	{
 		Oid			coltype;
-		int32		coltypmod = -1;
+		int32		coltypmod;
 		Oid			colcoll;
-		bool		first = true;
 
 		coltype = select_common_type(pstate, colexprs[i], "VALUES", NULL);
 
@@ -1597,19 +1596,9 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 
 			col = coerce_to_common_type(pstate, col, coltype, "VALUES");
 			lfirst(lc) = (void *) col;
-			if (first)
-			{
-				coltypmod = exprTypmod(col);
-				first = false;
-			}
-			else
-			{
-				/* As soon as we see a non-matching typmod, fall back to -1 */
-				if (coltypmod >= 0 && coltypmod != exprTypmod(col))
-					coltypmod = -1;
-			}
 		}
 
+		coltypmod = select_common_typmod(pstate, colexprs[i], coltype);
 		colcoll = select_common_collation(pstate, colexprs[i], true);
 
 		coltypes = lappend_oid(coltypes, coltype);
@@ -2455,14 +2444,19 @@ coerceSetOpTypes(ParseState *pstate, Node *sop,
 			Node	   *rcolnode = (Node *) rtle->expr;
 			Oid			lcoltype = exprType(lcolnode);
 			Oid			rcoltype = exprType(rcolnode);
+<<<<<<< HEAD
 			int32		lcoltypmod = exprTypmod(lcolnode);
 			int32		rcoltypmod = exprTypmod(rcolnode);
 			Node       *bestexpr = NULL;
+=======
+			Node	   *bestexpr;
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			int			bestlocation;
 			Oid			rescoltype = pct ? lfirst_oid(pct) : InvalidOid;
 			int32		rescoltypmod = pcm ? lfirst_int(pcm) : -1;
 			Oid			rescolcoll;
 
+<<<<<<< HEAD
 			/*
 			 * If the preprocessed coltype is InvalidOid, we fall back
 			 * to the old style type resolution for backward
@@ -2489,6 +2483,14 @@ coerceSetOpTypes(ParseState *pstate, Node *sop,
 				bestexpr = lcolnode;
 				bestlocation = exprLocation(lcolnode);
 			}
+=======
+			/* select common type, same as CASE et al */
+			rescoltype = select_common_type(pstate,
+											list_make2(lcolnode, rcolnode),
+											context,
+											&bestexpr);
+			bestlocation = exprLocation(bestexpr);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 			/*
 			 * Verify the coercions are actually possible.  If not, we'd fail
@@ -2538,6 +2540,10 @@ coerceSetOpTypes(ParseState *pstate, Node *sop,
 												 rescoltype, context);
 				rtle->expr = (Expr *) rcolnode;
 			}
+
+			rescoltypmod = select_common_typmod(pstate,
+												list_make2(lcolnode, rcolnode),
+												rescoltype);
 
 			/*
 			 * Select common collation.  A common collation is required for
@@ -2764,7 +2770,6 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 	RangeTblEntry *target_rte;
 	ListCell   *orig_tl;
 	ListCell   *tl;
-	TupleDesc	tupdesc = pstate->p_target_relation->rd_att;
 
 	tlist = transformTargetList(pstate, origTlist,
 								EXPR_KIND_UPDATE_SOURCE);
@@ -2823,39 +2828,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 	if (orig_tl != NULL)
 		elog(ERROR, "UPDATE target count mismatch --- internal error");
 
-	fill_extraUpdatedCols(target_rte, tupdesc);
-
 	return tlist;
-}
-
-/*
- * Record in extraUpdatedCols generated columns referencing updated base
- * columns.
- */
-void
-fill_extraUpdatedCols(RangeTblEntry *target_rte, TupleDesc tupdesc)
-{
-	if (tupdesc->constr &&
-		tupdesc->constr->has_generated_stored)
-	{
-		for (int i = 0; i < tupdesc->constr->num_defval; i++)
-		{
-			AttrDefault defval = tupdesc->constr->defval[i];
-			Node	   *expr;
-			Bitmapset  *attrs_used = NULL;
-
-			/* skip if not generated column */
-			if (!TupleDescAttr(tupdesc, defval.adnum - 1)->attgenerated)
-				continue;
-
-			expr = stringToNode(defval.adbin);
-			pull_varattnos(expr, 1, &attrs_used);
-
-			if (bms_overlap(target_rte->updatedCols, attrs_used))
-				target_rte->extraUpdatedCols = bms_add_member(target_rte->extraUpdatedCols,
-															  defval.adnum - FirstLowInvalidHeapAttributeNumber);
-		}
-	}
 }
 
 /*

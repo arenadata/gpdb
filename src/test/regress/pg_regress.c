@@ -845,6 +845,7 @@ convert_sourcefiles_in(const char *source_subdir, const char *dest_dir, const ch
 		FILE	   *infile,
 				   *outfile;
 		StringInfoData line;
+<<<<<<< HEAD
 		bool		has_tokens = false;
 		struct stat fst;
 
@@ -872,6 +873,8 @@ convert_sourcefiles_in(const char *source_subdir, const char *dest_dir, const ch
 
 			continue;
 		}
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		/* reject filenames not finishing in ".source" */
 		if (strlen(*name) < 8)
@@ -906,6 +909,7 @@ convert_sourcefiles_in(const char *source_subdir, const char *dest_dir, const ch
 
 		while (pg_get_line_buf(infile, &line))
 		{
+<<<<<<< HEAD
 			convert_line(&line, &repls);
 			fputs(line.data, outfile);
 
@@ -915,6 +919,14 @@ convert_sourcefiles_in(const char *source_subdir, const char *dest_dir, const ch
 			 */
 			if (!has_tokens && strstr(line.data, "@gp") != NULL)
 				has_tokens = true;
+=======
+			replace_string(&line, "@abs_srcdir@", inputdir);
+			replace_string(&line, "@abs_builddir@", outputdir);
+			replace_string(&line, "@testtablespace@", testtablespace);
+			replace_string(&line, "@libdir@", dlpath);
+			replace_string(&line, "@DLSUFFIX@", DLSUFFIX);
+			fputs(line.data, outfile);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		}
 
 		pfree(line.data);

@@ -30,8 +30,10 @@
 #include <io.h>
 #endif
 
+#include "common/string.h"
 #include "dumputils.h"
 #include "fe_utils/string_utils.h"
+#include "lib/stringinfo.h"
 #include "libpq/libpq-fs.h"
 #include "parallel.h"
 #include "pg_backup_archiver.h"
@@ -163,6 +165,7 @@ InitDumpOptions(DumpOptions *opts)
 	memset(opts, 0, sizeof(DumpOptions));
 	/* set any fields that shouldn't default to zeroes */
 	opts->include_everything = true;
+	opts->cparams.promptPassword = TRI_DEFAULT;
 	opts->dumpSections = DUMP_UNSECTIONED;
 }
 
@@ -176,6 +179,11 @@ dumpOptionsFromRestoreOptions(RestoreOptions *ropt)
 	DumpOptions *dopt = NewDumpOptions();
 
 	/* this is the inverse of what's at the end of pg_dump.c's main() */
+	dopt->cparams.dbname = ropt->cparams.dbname ? pg_strdup(ropt->cparams.dbname) : NULL;
+	dopt->cparams.pgport = ropt->cparams.pgport ? pg_strdup(ropt->cparams.pgport) : NULL;
+	dopt->cparams.pghost = ropt->cparams.pghost ? pg_strdup(ropt->cparams.pghost) : NULL;
+	dopt->cparams.username = ropt->cparams.username ? pg_strdup(ropt->cparams.username) : NULL;
+	dopt->cparams.promptPassword = ropt->cparams.promptPassword;
 	dopt->outputClean = ropt->dropSchema;
 	dopt->dataOnly = ropt->dataOnly;
 	dopt->schemaOnly = ropt->schemaOnly;
@@ -408,10 +416,14 @@ RestoreArchive(Archive *AHX)
 		AHX->minRemoteVersion = 0;
 		AHX->maxRemoteVersion = 9999999;
 
+<<<<<<< HEAD
 		ConnectDatabase(AHX, ropt->dbname,
 						ropt->pghost, ropt->pgport, ropt->username,
 						ropt->promptPassword,
 						false);
+=======
+		ConnectDatabase(AHX, &ropt->cparams, false);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		/*
 		 * If we're talking to the DB directly, don't send comments since they
@@ -843,16 +855,8 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 		if (strcmp(te->desc, "DATABASE") == 0 ||
 			strcmp(te->desc, "DATABASE PROPERTIES") == 0)
 		{
-			PQExpBufferData connstr;
-
-			initPQExpBuffer(&connstr);
-			appendPQExpBufferStr(&connstr, "dbname=");
-			appendConnStrVal(&connstr, te->tag);
-			/* Abandon struct, but keep its buffer until process exit. */
-
 			pg_log_info("connecting to new database \"%s\"", te->tag);
 			_reconnectToDB(AH, te->tag);
-			ropt->dbname = connstr.data;
 		}
 	}
 
@@ -984,7 +988,7 @@ NewRestoreOptions(void)
 
 	/* set any fields that shouldn't default to zeroes */
 	opts->format = archUnknown;
-	opts->promptPassword = TRI_DEFAULT;
+	opts->cparams.promptPassword = TRI_DEFAULT;
 	opts->dumpSections = DUMP_UNSECTIONED;
 
 	/* GPDB_92_MERGE_FIXEME: do we need the following two lines? */
@@ -1417,8 +1421,7 @@ SortTocFromFile(Archive *AHX)
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	RestoreOptions *ropt = AH->public.ropt;
 	FILE	   *fh;
-	char		buf[100];
-	bool		incomplete_line;
+	StringInfoData linebuf;
 
 	/* Allocate space for the 'wanted' array, and init it */
 	ropt->idWanted = (bool *) pg_malloc0(sizeof(bool) * AH->maxDumpId);
@@ -1428,45 +1431,33 @@ SortTocFromFile(Archive *AHX)
 	if (!fh)
 		fatal("could not open TOC file \"%s\": %m", ropt->tocFile);
 
-	incomplete_line = false;
-	while (fgets(buf, sizeof(buf), fh) != NULL)
+	initStringInfo(&linebuf);
+
+	while (pg_get_line_buf(fh, &linebuf))
 	{
-		bool		prev_incomplete_line = incomplete_line;
-		int			buflen;
 		char	   *cmnt;
 		char	   *endptr;
 		DumpId		id;
 		TocEntry   *te;
 
-		/*
-		 * Some lines in the file might be longer than sizeof(buf).  This is
-		 * no problem, since we only care about the leading numeric ID which
-		 * can be at most a few characters; but we have to skip continuation
-		 * bufferloads when processing a long line.
-		 */
-		buflen = strlen(buf);
-		if (buflen > 0 && buf[buflen - 1] == '\n')
-			incomplete_line = false;
-		else
-			incomplete_line = true;
-		if (prev_incomplete_line)
-			continue;
-
 		/* Truncate line at comment, if any */
-		cmnt = strchr(buf, ';');
+		cmnt = strchr(linebuf.data, ';');
 		if (cmnt != NULL)
+		{
 			cmnt[0] = '\0';
+			linebuf.len = cmnt - linebuf.data;
+		}
 
 		/* Ignore if all blank */
-		if (strspn(buf, " \t\r\n") == strlen(buf))
+		if (strspn(linebuf.data, " \t\r\n") == linebuf.len)
 			continue;
 
 		/* Get an ID, check it's valid and not already seen */
-		id = strtol(buf, &endptr, 10);
-		if (endptr == buf || id <= 0 || id > AH->maxDumpId ||
+		id = strtol(linebuf.data, &endptr, 10);
+		if (endptr == linebuf.data || id <= 0 || id > AH->maxDumpId ||
 			ropt->idWanted[id - 1])
 		{
-			pg_log_warning("line ignored: %s", buf);
+			pg_log_warning("line ignored: %s", linebuf.data);
 			continue;
 		}
 
@@ -1492,6 +1483,8 @@ SortTocFromFile(Archive *AHX)
 		 */
 		_moveBefore(AH->toc, te);
 	}
+
+	pg_free(linebuf.data);
 
 	if (fclose(fh) != 0)
 		fatal("could not close TOC file: %m");
@@ -1700,16 +1693,17 @@ dump_lo_buf(ArchiveHandle *AH)
 {
 	if (AH->connection)
 	{
-		size_t		res;
+		int			res;
 
 		res = lo_write(AH->connection, AH->loFd, AH->lo_buf, AH->lo_buf_used);
-		pg_log_debug(ngettext("wrote %lu byte of large object data (result = %lu)",
-							  "wrote %lu bytes of large object data (result = %lu)",
+		pg_log_debug(ngettext("wrote %zu byte of large object data (result = %d)",
+							  "wrote %zu bytes of large object data (result = %d)",
 							  AH->lo_buf_used),
-					 (unsigned long) AH->lo_buf_used, (unsigned long) res);
+					 AH->lo_buf_used, res);
+		/* We assume there are no short writes, only errors */
 		if (res != AH->lo_buf_used)
-			fatal("could not write to large object (result: %lu, expected: %lu)",
-				  (unsigned long) res, (unsigned long) AH->lo_buf_used);
+			warn_or_exit_horribly(AH, "could not write to large object: %s",
+								  PQerrorMessage(AH->connection));
 	}
 	else
 	{
@@ -2326,7 +2320,8 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 {
 	ArchiveHandle *AH;
 
-	pg_log_debug("allocating AH for %s, format %d", FileSpec, fmt);
+	pg_log_debug("allocating AH for %s, format %d",
+				 FileSpec ? FileSpec : "(stdio)", fmt);
 
 	AH = (ArchiveHandle *) pg_malloc0(sizeof(ArchiveHandle));
 
@@ -2402,8 +2397,6 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 		AH->format = _discoverArchiveFormat(AH);
 	else
 		AH->format = fmt;
-
-	AH->promptPassword = TRI_DEFAULT;
 
 	switch (AH->format)
 	{
@@ -3277,27 +3270,20 @@ _doSetSessionAuth(ArchiveHandle *AH, const char *user)
  * If we're currently restoring right into a database, this will
  * actually establish a connection. Otherwise it puts a \connect into
  * the script output.
- *
- * NULL dbname implies reconnecting to the current DB (pretty useless).
  */
 static void
 _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 {
 	if (RestoringToDB(AH))
-		ReconnectToServer(AH, dbname, NULL);
+		ReconnectToServer(AH, dbname);
 	else
 	{
-		if (dbname)
-		{
-			PQExpBufferData connectbuf;
+		PQExpBufferData connectbuf;
 
-			initPQExpBuffer(&connectbuf);
-			appendPsqlMetaConnect(&connectbuf, dbname);
-			ahprintf(AH, "%s\n", connectbuf.data);
-			termPQExpBuffer(&connectbuf);
-		}
-		else
-			ahprintf(AH, "%s\n", "\\connect -\n");
+		initPQExpBuffer(&connectbuf);
+		appendPsqlMetaConnect(&connectbuf, dbname);
+		ahprintf(AH, "%s\n", connectbuf.data);
+		termPQExpBuffer(&connectbuf);
 	}
 
 	/*
@@ -4255,10 +4241,14 @@ restore_toc_entries_postfork(ArchiveHandle *AH, TocEntry *pending_list)
 	/*
 	 * Now reconnect the single parent connection.
 	 */
+<<<<<<< HEAD
 	ConnectDatabase((Archive *) AH, ropt->dbname,
 					ropt->pghost, ropt->pgport, ropt->username,
 					ropt->promptPassword,
 					false);
+=======
+	ConnectDatabase((Archive *) AH, &ropt->cparams, true);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/* re-establish fixed state */
 	_doSetFixedOutputState(AH);
@@ -4920,12 +4910,14 @@ CloneArchive(ArchiveHandle *AH)
 	clone->public.n_errors = 0;
 
 	/*
-	 * Connect our new clone object to the database: In parallel restore the
-	 * parent is already disconnected, because we can connect the worker
-	 * processes independently to the database (no snapshot sync required). In
-	 * parallel backup we clone the parent's existing connection.
+	 * Connect our new clone object to the database, using the same connection
+	 * parameters used for the original connection.
 	 */
+	ConnectDatabase((Archive *) clone, &clone->public.ropt->cparams, true);
+
+	/* re-establish fixed state */
 	if (AH->mode == archModeRead)
+<<<<<<< HEAD
 	{
 		RestoreOptions *ropt = AH->public.ropt;
 
@@ -4968,6 +4960,10 @@ CloneArchive(ArchiveHandle *AH)
 		termPQExpBuffer(&connstr);
 		/* setupDumpWorker will fix up connection state */
 	}
+=======
+		_doSetFixedOutputState(clone);
+	/* in write case, setupDumpWorker will fix up connection state */
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/* Let the format-specific code have a chance too */
 	clone->ClonePtr(clone);

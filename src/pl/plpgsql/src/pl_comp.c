@@ -456,6 +456,7 @@ do_compile(FunctionCallInfo fcinfo,
 				}
 
 				/* Remember arguments in appropriate arrays */
+<<<<<<< HEAD
 				switch (argmode)
 				{
 					/* input modes */
@@ -483,6 +484,17 @@ do_compile(FunctionCallInfo fcinfo,
 										argmode)));
 						break;								 
 				}
+=======
+				if (argmode == PROARGMODE_IN ||
+					argmode == PROARGMODE_INOUT ||
+					(argmode == PROARGMODE_OUT && function->fn_prokind == PROKIND_PROCEDURE) ||
+					argmode == PROARGMODE_VARIADIC)
+					in_arg_varnos[num_in_args++] = argvariable->dno;
+				if (argmode == PROARGMODE_OUT ||
+					argmode == PROARGMODE_INOUT ||
+					argmode == PROARGMODE_TABLE)
+					out_arg_variables[num_out_args++] = argvariable;
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 				/* Add to namespace under the $n name */
 				add_parameter_name(argitemtype, argvariable->dno, buf);
@@ -569,7 +581,7 @@ do_compile(FunctionCallInfo fcinfo,
 				if (rettypeid == VOIDOID ||
 					rettypeid == RECORDOID)
 					 /* okay */ ;
-				else if (rettypeid == TRIGGEROID || rettypeid == EVTTRIGGEROID)
+				else if (rettypeid == TRIGGEROID || rettypeid == EVENT_TRIGGEROID)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("trigger functions can only be called as triggers")));

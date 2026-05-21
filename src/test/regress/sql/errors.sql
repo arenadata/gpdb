@@ -378,6 +378,7 @@ INT4
 UNIQUE
 NOT
 NULL);
+<<<<<<< HEAD
 
 -- Check that stack depth detection mechanism works and
 -- max_stack_depth is not set too high.  The full error report is not
@@ -397,3 +398,5 @@ select infinite_recurse();
 -- end_ignore
 \echo :LAST_ERROR_MESSAGE
 select 1; -- test that this works
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d

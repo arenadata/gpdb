@@ -30,6 +30,7 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
+#include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_statistic_ext.h"
@@ -220,6 +221,14 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 */
 			indexRelation = index_open(indexoid, lmode);
 			index = indexRelation->rd_index;
+
+			/* Warn if any dependent collations' versions have moved. */
+			if (!IsSystemRelation(relation) &&
+				!indexRelation->rd_version_checked)
+			{
+				index_check_collation_versions(indexoid);
+				indexRelation->rd_version_checked = true;
+			}
 
 			/*
 			 * Ignore invalid indexes, since they can't safely be used for
@@ -794,9 +803,11 @@ get_relation_foreign_keys(PlannerInfo *root, RelOptInfo *rel,
 			memcpy(info->conpfeqop, cachedfk->conpfeqop, sizeof(info->conpfeqop));
 			/* zero out fields to be filled by match_foreign_keys_to_quals */
 			info->nmatched_ec = 0;
+			info->nconst_ec = 0;
 			info->nmatched_rcols = 0;
 			info->nmatched_ri = 0;
 			memset(info->eclass, 0, sizeof(info->eclass));
+			memset(info->fk_eclass_member, 0, sizeof(info->fk_eclass_member));
 			memset(info->rinfos, 0, sizeof(info->rinfos));
 
 			root->fkey_list = lappend(root->fkey_list, info);
@@ -1204,11 +1215,6 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			/* it has storage, ok to call the smgr */
 			curpages = RelationGetNumberOfBlocks(rel);
 
-			/* coerce values in pg_class to more desirable types */
-			relpages = (BlockNumber) rel->rd_rel->relpages;
-			reltuples = (double) rel->rd_rel->reltuples;
-			relallvisible = (BlockNumber) rel->rd_rel->relallvisible;
-
 			/* report estimated # pages */
 			*pages = curpages;
 			/* quick exit if rel is clearly empty */
@@ -1218,6 +1224,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 				*allvisfrac = 0;
 				break;
 			}
+
 			/* coerce values in pg_class to more desirable types */
 			relpages = (BlockNumber) rel->rd_rel->relpages;
 			reltuples = (double) rel->rd_rel->reltuples;
@@ -1236,12 +1243,12 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			}
 
 			/* estimate number of tuples from previous tuple density */
-			if (relpages > 0)
+			if (reltuples >= 0 && relpages > 0)
 				density = reltuples / (double) relpages;
 			else
 			{
 				/*
-				 * When we have no data because the relation was truncated,
+				 * If we have no data because the relation was never vacuumed,
 				 * estimate tuple width from attribute datatypes.  We assume
 				 * here that the pages are completely full, which is OK for
 				 * tables (since they've presumably not been VACUUMed yet) but
@@ -1289,6 +1296,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			break;
 		case RELKIND_FOREIGN_TABLE:
 			/* Just use whatever's in pg_class */
+			/* Note that FDW must cope if reltuples is -1! */
 			*pages = rel->rd_rel->relpages;
 			*tuples = rel->rd_rel->reltuples;
 			*allvisfrac = 0;

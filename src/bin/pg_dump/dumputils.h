@@ -44,9 +44,12 @@ extern bool buildDefaultACLCommands(const char *type, const char *nspname,
 									const char *owner,
 									int remoteVersion,
 									PQExpBuffer sql);
+<<<<<<< HEAD
 
 extern void quoteAclUserName(PQExpBuffer output, const char *input);
 
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 extern void buildShSecLabelQuery(const char *catalog_name,
 								 Oid objectId, PQExpBuffer sql);
 extern void emitShSecLabels(PGconn *conn, PGresult *res,

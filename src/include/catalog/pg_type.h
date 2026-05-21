@@ -324,9 +324,18 @@ typedef FormData_pg_type *Form_pg_type;
 	 (typid) == ANYCOMPATIBLENONARRAYOID || \
 	 (typid) == ANYCOMPATIBLERANGEOID)
 
+<<<<<<< HEAD
 /* Is a type OID suitable for describe callback functions? */
 #define TypeSupportsDescribe(typid)  \
 	((typid) == RECORDOID)
+=======
+/*
+ * Backwards compatibility for ancient random spellings of pg_type OID macros.
+ * Don't use these names in new code.
+ */
+#define CASHOID	MONEYOID
+#define LSNOID	PG_LSNOID
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
@@ -376,6 +385,8 @@ extern void GenerateTypeDependencies(HeapTuple typeTuple,
 									 bool isImplicitArray,
 									 bool isDependentType,
 									 bool rebuild);
+
+extern List *GetTypeCollations(Oid typeObjectid);
 
 extern void RenameTypeInternal(Oid typeOid, const char *newTypeName,
 							   Oid typeNamespace);

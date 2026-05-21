@@ -1088,17 +1088,26 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			{
 				ReindexStmt *stmt = (ReindexStmt *) parsetree;
 
-				if (stmt->concurrent)
+				if ((stmt->options & REINDEXOPT_CONCURRENTLY) != 0)
 					PreventInTransactionBlock(isTopLevel,
 											  "REINDEX CONCURRENTLY");
 
 				switch (stmt->kind)
 				{
 					case REINDEX_OBJECT_INDEX:
+<<<<<<< HEAD
 						ReindexIndex(stmt, isTopLevel);
 						break;
 					case REINDEX_OBJECT_TABLE:
 						ReindexTable(stmt, isTopLevel);
+=======
+						ReindexIndex(stmt->relation, stmt->options,
+									 isTopLevel);
+						break;
+					case REINDEX_OBJECT_TABLE:
+						ReindexTable(stmt->relation, stmt->options,
+									 isTopLevel);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 						break;
 					case REINDEX_OBJECT_SCHEMA:
 					case REINDEX_OBJECT_SYSTEM:
@@ -1115,7 +1124,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 												  (stmt->kind == REINDEX_OBJECT_SCHEMA) ? "REINDEX SCHEMA" :
 												  (stmt->kind == REINDEX_OBJECT_SYSTEM) ? "REINDEX SYSTEM" :
 												  "REINDEX DATABASE");
-						ReindexMultipleTables(stmt->name, stmt->kind, stmt->options, stmt->concurrent);
+						ReindexMultipleTables(stmt->name, stmt->kind, stmt->options);
 						break;
 					default:
 						elog(ERROR, "unrecognized object type: %d",
@@ -1311,7 +1320,11 @@ ProcessUtilitySlow(ParseState *pstate,
 				{
 					List	   *stmts;
 					ListCell   *l;
+<<<<<<< HEAD
 					List	   *more_stmts = NIL;
+=======
+					RangeVar   *table_rv = NULL;
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 					/* Run parse analysis ... */
 					/*
@@ -1337,6 +1350,7 @@ ProcessUtilitySlow(ParseState *pstate,
 						if (IsA(stmt, CreateStmt))
 						{
 							CreateStmt *cstmt = (CreateStmt *) stmt;
+<<<<<<< HEAD
 							char		relKind = RELKIND_RELATION;
 							Datum		toast_options;
 							static char *validnsps[] = HEAP_RELOPT_NAMESPACES;
@@ -1390,6 +1404,19 @@ ProcessUtilitySlow(ParseState *pstate,
 								more_stmts = list_concat(more_stmts, parts);
 							}
 
+=======
+							Datum		toast_options;
+							static char *validnsps[] = HEAP_RELOPT_NAMESPACES;
+
+							/* Remember transformed RangeVar for LIKE */
+							table_rv = cstmt->relation;
+
+							/* Create the table itself */
+							address = DefineRelation(cstmt,
+													 RELKIND_RELATION,
+													 InvalidOid, NULL,
+													 queryString);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 							EventTriggerCollectSimpleCommand(address,
 															 secondaryObject,
 															 stmt);
@@ -1400,6 +1427,7 @@ ProcessUtilitySlow(ParseState *pstate,
 							 */
 							CommandCounterIncrement();
 
+<<<<<<< HEAD
 							if (relKind != RELKIND_COMPOSITE_TYPE)
 							{
 								/*
@@ -1415,6 +1443,21 @@ ProcessUtilitySlow(ParseState *pstate,
 								(void) heap_reloptions(RELKIND_TOASTVALUE,
 													   toast_options,
 													   true);
+=======
+							/*
+							 * parse and validate reloptions for the toast
+							 * table
+							 */
+							toast_options = transformRelOptions((Datum) 0,
+																cstmt->options,
+																"toast",
+																validnsps,
+																true,
+																false);
+							(void) heap_reloptions(RELKIND_TOASTVALUE,
+												   toast_options,
+												   true);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 								NewRelationCreateToastTable(address.objectId,
 															toast_options);
@@ -1450,10 +1493,16 @@ ProcessUtilitySlow(ParseState *pstate,
 						}
 						else if (IsA(stmt, CreateForeignTableStmt))
 						{
+							CreateForeignTableStmt *cstmt = (CreateForeignTableStmt *) stmt;
+
+							/* Remember transformed RangeVar for LIKE */
+							table_rv = cstmt->base.relation;
+
 							/* Create the table itself */
-							address = DefineRelation((CreateStmt *) stmt,
+							address = DefineRelation(&cstmt->base,
 													 RELKIND_FOREIGN_TABLE,
 													 InvalidOid, NULL,
+<<<<<<< HEAD
 													 queryString,
 													 true,
 													 true,
@@ -1461,9 +1510,37 @@ ProcessUtilitySlow(ParseState *pstate,
 							CreateForeignTable((CreateForeignTableStmt *) stmt,
 											   address.objectId,
 											   false /* skip_permission_checks */);
+=======
+													 queryString);
+							CreateForeignTable(cstmt,
+											   address.objectId);
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 							EventTriggerCollectSimpleCommand(address,
 															 secondaryObject,
 															 stmt);
+						}
+						else if (IsA(stmt, TableLikeClause))
+						{
+							/*
+							 * Do delayed processing of LIKE options.  This
+							 * will result in additional sub-statements for us
+							 * to process.  We can just tack those onto the
+							 * to-do list.
+							 */
+							TableLikeClause *like = (TableLikeClause *) stmt;
+							List	   *morestmts;
+
+							Assert(table_rv != NULL);
+
+							morestmts = expandTableLikeClause(table_rv, like);
+							stmts = list_concat(stmts, morestmts);
+
+							/*
+							 * We don't need a CCI now, besides which the "l"
+							 * list pointer is now possibly invalid, so just
+							 * skip the CCI test below.
+							 */
+							continue;
 						}
 						else
 						{
@@ -1747,6 +1824,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					IndexStmt  *stmt = (IndexStmt *) parsetree;
 					Oid			relid;
 					LOCKMODE	lockmode;
+					bool		is_alter_table;
 
 					if (stmt->concurrent)
 						PreventInTransactionBlock(isTopLevel,
@@ -1816,6 +1894,17 @@ ProcessUtilitySlow(ParseState *pstate,
 						list_free(inheritors);
 					}
 
+					/*
+					 * If the IndexStmt is already transformed, it must have
+					 * come from generateClonedIndexStmt, which in current
+					 * usage means it came from expandTableLikeClause rather
+					 * than from original parse analysis.  And that means we
+					 * must treat it like ALTER TABLE ADD INDEX, not CREATE.
+					 * (This is a bit grotty, but currently it doesn't seem
+					 * worth adding a separate bool field for the purpose.)
+					 */
+					is_alter_table = stmt->transformed;
+
 					/* Run parse analysis ... */
 					stmt = transformIndexStmt(relid, stmt, queryString);
 
@@ -1827,7 +1916,7 @@ ProcessUtilitySlow(ParseState *pstate,
 									InvalidOid, /* no predefined OID */
 									InvalidOid, /* no parent index */
 									InvalidOid, /* no parent constraint */
-									false,	/* is_alter_table */
+									is_alter_table,
 									true,	/* check_rights */
 									true,	/* check_not_in_use */
 									false,	/* skip_build */
@@ -2157,10 +2246,6 @@ ProcessUtilitySlow(ParseState *pstate,
 
 			case T_AlterStatsStmt:
 				address = AlterStatistics((AlterStatsStmt *) parsetree);
-				break;
-
-			case T_AlterCollationStmt:
-				address = AlterCollation((AlterCollationStmt *) parsetree);
 				break;
 
 			default:
@@ -3421,10 +3506,6 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_DROP_SUBSCRIPTION;
 			break;
 
-		case T_AlterCollationStmt:
-			tag = CMDTAG_ALTER_COLLATION;
-			break;
-
 		case T_PrepareStmt:
 			tag = CMDTAG_PREPARE;
 			break;
@@ -4047,10 +4128,6 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_AlterStatsStmt:
-			lev = LOGSTMT_DDL;
-			break;
-
-		case T_AlterCollationStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

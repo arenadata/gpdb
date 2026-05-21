@@ -57,6 +57,7 @@ parseCommandLine(int argc, char *argv[])
 		{"socketdir", required_argument, NULL, 's'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"clone", no_argument, NULL, 1},
+		{"index-collation-versions-unknown", no_argument, NULL, 2},
 
 		/* Greenplum specific parameters */
 		GREENPLUM_OPTIONS
@@ -210,6 +211,10 @@ parseCommandLine(int argc, char *argv[])
 				user_opts.transfer_mode = TRANSFER_MODE_CLONE;
 				break;
 
+			case 2:
+				user_opts.ind_coll_unknown = true;
+				break;
+
 			default:
 				if (!process_greenplum_option(option))
 				{
@@ -319,8 +324,13 @@ usage(void)
 	printf(_("  -v, --verbose                 enable verbose internal logging\n"));
 	printf(_("  -V, --version                 display version information, then exit\n"));
 	printf(_("  --clone                       clone instead of copying files to new cluster\n"));
+<<<<<<< HEAD
 	printf(_("  --continue-check-on-fatal     goes through all pg_upgrade checks; should be used with -c\n"));
 	printf(_("  --skip-target-check           skip all checks and comparisons of new cluster; should be used with -c\n"));
+=======
+	printf(_("  --index-collation-versions-unknown\n"));
+	printf(_("                                mark text indexes as needing to be rebuilt\n"));
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
 			 "Before running pg_upgrade you must:\n"

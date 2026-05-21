@@ -69,17 +69,23 @@ clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/isolation $@
+<<<<<<< HEAD
 	$(MAKE) -C test/thread $@
 	$(MAKE) -C $(MOCK_DIR) $@
 	$(MAKE) -C $(CMOCKERY_DIR) $@
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 distclean maintainer-clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/isolation $@
+<<<<<<< HEAD
 	$(MAKE) -C test/thread $@
 	$(MAKE) -C $(MOCK_DIR) $@
 	$(MAKE) -C $(CMOCKERY_DIR) $@
+=======
+>>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	rm -f Makefile.port Makefile.global
 
 .PHONY: install-local installdirs-local uninstall-local
