@@ -4693,6 +4693,10 @@ AlterTableGetLockLevel(List *cmds)
 				cmd_lockmode = AccessExclusiveLock;
 				break;
 
+			case AT_AlterCollationRefreshVersion:
+				cmd_lockmode = AccessExclusiveLock;
+				break;
+
 				/*
 				 * GPDB: For these commands lookup root partition to construct
 				 * the appropriate stmt. Hence, AccessShareLock should be
@@ -4709,10 +4713,6 @@ AlterTableGetLockLevel(List *cmds)
 			case AT_PartRename:
 			case AT_PartExchange:
 			case AT_PartSetTemplate:
-				cmd_lockmode = AccessExclusiveLock;
-				break;
-
-			case AT_AlterCollationRefreshVersion:
 				cmd_lockmode = AccessExclusiveLock;
 				break;
 
