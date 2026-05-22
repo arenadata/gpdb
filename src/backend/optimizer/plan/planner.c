@@ -4821,13 +4821,14 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 }
 
 
-static double estimage_num_groups(Path *path, double dNumGroupsTotal)
+static double
+estimage_num_groups(Path *path, double dNumGroupsTotal)
 {
 	/*
-		* dNumGroupsTotal is the total number of groups across all segments. If the
-		* Aggregate is distributed, then the number of groups in one segment
-		* is only a fraction of the total.
-		*/
+	 * dNumGroupsTotal is the total number of groups across all segments. If the
+	 * Aggregate is distributed, then the number of groups in one segment
+	 * is only a fraction of the total.
+	 */
 
 	if (CdbPathLocus_IsPartitioned(path->locus))
 		return clamp_row_est(dNumGroupsTotal /
@@ -7483,6 +7484,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				/*
 				 * We have aggregation, possibly with plain GROUP BY. Make an
 				 * AggPath.
+				 * Since group nodes are not used in GPDB, use just agg_path instead.
 				 */
 				add_path(grouped_rel, (Path *)
 						 create_agg_path(root,
