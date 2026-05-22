@@ -69,12 +69,9 @@ typedef struct
 	indexed_tlist *inner_itlist;
 	Index		acceptable_rel;
 	int			rtoffset;
-<<<<<<< HEAD
 	bool        use_outer_tlist_for_matching_nonvars;
 	bool        use_inner_tlist_for_matching_nonvars;
-=======
 	double		num_exec;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 } fix_join_expr_context;
 
 typedef struct
@@ -1137,7 +1134,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				 * in GPDB, we allow the ROWS/RANGE expressions to contain
 				 * references to the subplan, so we have to use fix_upper_expr.
 				 */
-<<<<<<< HEAD
 				if (wplan->startOffset || wplan->endOffset)
 				{
 					subplan_itlist =
@@ -1145,18 +1141,12 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 
 					wplan->startOffset =
 						fix_upper_expr(root, wplan->startOffset,
-									   subplan_itlist, OUTER_VAR, rtoffset);
+									   subplan_itlist, OUTER_VAR, rtoffset, 1);
 					wplan->endOffset =
 						fix_upper_expr(root, wplan->endOffset,
-									   subplan_itlist, OUTER_VAR, rtoffset);
+									   subplan_itlist, OUTER_VAR, rtoffset, 1);
 					pfree(subplan_itlist);
 				}
-=======
-				wplan->startOffset =
-					fix_scan_expr(root, wplan->startOffset, rtoffset, 1);
-				wplan->endOffset =
-					fix_scan_expr(root, wplan->endOffset, rtoffset, 1);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			}
 			break;
 		case T_Result:
@@ -1425,15 +1415,12 @@ set_indexonlyscan_references(PlannerInfo *root,
 					   INDEX_VAR,
 					   rtoffset,
 					   NUM_EXEC_QUAL((Plan *) plan));
-	/* indexqual is already transformed to reference index columns */
-<<<<<<< HEAD
-	plan->indexqual = fix_scan_list(root, plan->indexqual, rtoffset);
 	/* indexqualorig is already transformed to reference index columns */
-	plan->indexqualorig = fix_scan_list(root, plan->indexqualorig, rtoffset);
-=======
+	plan->indexqualorig = fix_scan_list(root, plan->indexqualorig,
+										rtoffset, 1);
+	/* indexqual is already transformed to reference index columns */
 	plan->indexqual = fix_scan_list(root, plan->indexqual,
 									rtoffset, 1);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/* indexorderby is already transformed to reference index columns */
 	plan->indexorderby = fix_scan_list(root, plan->indexorderby,
 									   rtoffset, 1);
@@ -3047,13 +3034,10 @@ fix_join_expr(PlannerInfo *root,
 	context.inner_itlist = inner_itlist;
 	context.acceptable_rel = acceptable_rel;
 	context.rtoffset = rtoffset;
-<<<<<<< HEAD
 	context.use_outer_tlist_for_matching_nonvars = true;
 	context.use_inner_tlist_for_matching_nonvars = true;
-
-=======
 	context.num_exec = num_exec;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+
 	return (List *) fix_join_expr_mutator((Node *) clauses, &context);
 }
 
