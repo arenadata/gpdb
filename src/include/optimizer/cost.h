@@ -57,8 +57,10 @@ static inline double
 clamp_row_est(double nrows)
 {
 	/*
-	 * Force estimate to be at least one row, to make explain output look
-	 * better and to avoid possible divide-by-zero when interpolating costs.
+	 * Avoid infinite and NaN row estimates.  Costs derived from such values
+	 * are going to be useless.  Also force the estimate to be at least one
+	 * row, to make explain output look better and to avoid possible
+	 * divide-by-zero when interpolating costs.
      * CDB: Don't round to integer.
 	 */
 	if (nrows > MAXIMUM_ROWCOUNT || isnan(nrows))
