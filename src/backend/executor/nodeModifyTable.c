@@ -384,7 +384,10 @@ ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
  *
  *		Returns RETURNING result if any, otherwise NULL.
  *
-<<<<<<< HEAD
+ *		This may change the currently active tuple conversion map in
+ *		mtstate->mt_transition_capture, so the callers must take care to
+ *		save the previous value to avoid losing track of it.
+ *
  * If the target table is partitioned, the input tuple in 'parentslot'
  * is in the shape required for the parent table. This function will
  * look up the ResultRelInfo of the target partition, and form a
@@ -396,11 +399,6 @@ ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
  * there is a preceding SplitUpdate node. 'splitUpdate' is true in
  * that case.
  *
-=======
- *		This may change the currently active tuple conversion map in
- *		mtstate->mt_transition_capture, so the callers must take care to
- *		save the previous value to avoid losing track of it.
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
@@ -793,7 +791,6 @@ ExecDelete(ModifyTableState *mtstate,
 	if (tupleDeleted)
 		*tupleDeleted = false;
 
-<<<<<<< HEAD
 	/*
 	 * Sanity check the distribution of the tuple to prevent
 	 * potential data corruption in case users manipulate data
@@ -808,14 +805,6 @@ ExecDelete(ModifyTableState *mtstate,
 			 tupleid->ip_posid,
 			 segid);
 
-	/*
-	 * get information on the (current) result relation
-	 */
-	resultRelInfo = estate->es_result_relation_info;
-	resultRelationDesc = resultRelInfo->ri_RelationDesc;
-
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/* BEFORE ROW DELETE Triggers */
 	/*
 	 * Disallow DELETE triggers on a split UPDATE. See comments in ExecInsert().
@@ -1226,11 +1215,12 @@ ExecCrossPartitionUpdate(ModifyTableState *mtstate,
 	 * Row movement, part 1.  Delete the tuple, but skip RETURNING processing.
 	 * We want to return rows from INSERT.
 	 */
-	ExecDelete(mtstate, resultRelInfo, tupleid, oldtuple, planSlot,
+	ExecDelete(mtstate, resultRelInfo, tupleid, segid, oldtuple, planSlot,
 			   epqstate, estate,
 			   false,			/* processReturning */
 			   false,			/* canSetTag */
 			   true,			/* changingPart */
+			   false,			/* splitUpdate */
 			   &tuple_deleted, &epqslot);
 
 	/*
@@ -1282,7 +1272,8 @@ ExecCrossPartitionUpdate(ModifyTableState *mtstate,
 
 	/* Tuple routing starts from the root table. */
 	*inserted_tuple = ExecInsert(mtstate, mtstate->rootResultRelInfo, slot,
-								 planSlot, estate, canSetTag);
+								 planSlot, estate, canSetTag,
+								 false /* splitUpdate */);
 
 	/*
 	 * Reset the transition state that may possibly have been written by
@@ -1474,114 +1465,17 @@ lreplace:;
 			 * The first part may have to be repeated if it is detected that
 			 * the tuple we're trying to move has been concurrently updated.
 			 */
-<<<<<<< HEAD
-			if (((ModifyTable *) mtstate->ps.plan)->onConflictAction == ONCONFLICT_UPDATE)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("invalid ON UPDATE specification"),
-						 errdetail("The result tuple would appear in a different partition than the original tuple.")));
-
-			/*
-			 * When an UPDATE is run on a leaf partition, we will not have
-			 * partition tuple routing set up. In that case, fail with
-			 * partition constraint violation error.
-			 */
-			if (proute == NULL)
-				ExecPartitionCheckEmitError(resultRelInfo, slot, estate);
-
-			/*
-			 * Row movement, part 1.  Delete the tuple, but skip RETURNING
-			 * processing. We want to return rows from INSERT.
-			 */
-			ExecDelete(mtstate, tupleid, segid, oldtuple, planSlot, epqstate,
-					   estate, false, false /* canSetTag */ ,
-					   true /* changingPart */ ,
-					   false /* splitUpdate */ ,
-					   &tuple_deleted, &epqslot);
-
-			/*
-			 * For some reason if DELETE didn't happen (e.g. trigger prevented
-			 * it, or it was already deleted by self, or it was concurrently
-			 * deleted by another transaction), then we should skip the insert
-			 * as well; otherwise, an UPDATE could cause an increase in the
-			 * total number of rows across all partitions, which is clearly
-			 * wrong.
-			 *
-			 * For a normal UPDATE, the case where the tuple has been the
-			 * subject of a concurrent UPDATE or DELETE would be handled by
-			 * the EvalPlanQual machinery, but for an UPDATE that we've
-			 * translated into a DELETE from this partition and an INSERT into
-			 * some other partition, that's not available, because CTID chains
-			 * can't span relation boundaries.  We mimic the semantics to a
-			 * limited extent by skipping the INSERT if the DELETE fails to
-			 * find a tuple. This ensures that two concurrent attempts to
-			 * UPDATE the same tuple at the same time can't turn one tuple
-			 * into two, and that an UPDATE of a just-deleted tuple can't
-			 * resurrect it.
-			 */
-			if (!tuple_deleted)
-=======
 			retry = !ExecCrossPartitionUpdate(mtstate, resultRelInfo, tupleid,
 											  oldtuple, slot, planSlot,
 											  epqstate, canSetTag,
 											  &retry_slot, &inserted_tuple);
 			if (retry)
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			{
 				slot = retry_slot;
 				goto lreplace;
 			}
 
-<<<<<<< HEAD
-			/*
-			 * Updates set the transition capture map only when a new subplan
-			 * is chosen.  But for inserts, it is set for each row. So after
-			 * INSERT, we need to revert back to the map created for UPDATE;
-			 * otherwise the next UPDATE will incorrectly use the one created
-			 * for INSERT.  So first save the one created for UPDATE.
-			 */
-			if (mtstate->mt_transition_capture)
-				saved_tcs_map = mtstate->mt_transition_capture->tcs_map;
-
-			/*
-			 * resultRelInfo is one of the per-subplan resultRelInfos.  So we
-			 * should convert the tuple into root's tuple descriptor, since
-			 * ExecInsert() starts the search from root.  The tuple conversion
-			 * map list is in the order of mtstate->resultRelInfo[], so to
-			 * retrieve the one for this resultRel, we need to know the
-			 * position of the resultRel in mtstate->resultRelInfo[].
-			 */
-			map_index = resultRelInfo - mtstate->resultRelInfo;
-			Assert(map_index >= 0 && map_index < mtstate->mt_nplans);
-			tupconv_map = tupconv_map_for_subplan(mtstate, map_index);
-			if (tupconv_map != NULL)
-				slot = execute_attr_map_slot(tupconv_map->attrMap,
-											 slot,
-											 mtstate->mt_root_tuple_slot);
-
-			/*
-			 * Prepare for tuple routing, making it look like we're inserting
-			 * into the root.
-			 */
-			Assert(mtstate->rootResultRelInfo != NULL);
-			slot = ExecPrepareTupleRouting(mtstate, estate, proute,
-										   mtstate->rootResultRelInfo, slot);
-
-			ret_slot = ExecInsert(mtstate, slot, planSlot,
-								  estate, canSetTag, false /* splitUpdate */);
-
-			/* Revert ExecPrepareTupleRouting's node change. */
-			estate->es_result_relation_info = resultRelInfo;
-			if (mtstate->mt_transition_capture)
-			{
-				mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
-				mtstate->mt_transition_capture->tcs_map = saved_tcs_map;
-			}
-
-			return ret_slot;
-=======
 			return inserted_tuple;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		}
 
 		/*
@@ -2384,13 +2278,9 @@ ExecModifyTable(PlanState *pstate)
 				estate->es_result_relation_info = estate->es_result_relations + node->mt_whichplan;
 				resultRelInfo = estate->es_result_relation_info;
 				subplanstate = node->mt_plans[node->mt_whichplan];
-<<<<<<< HEAD
 				junkfilter = estate->es_result_relation_info->ri_junkFilter;
 				action_attno = estate->es_result_relation_info->ri_action_attno;
 				segid_attno = estate->es_result_relation_info->ri_segid_attno;
-=======
-				junkfilter = resultRelInfo->ri_junkFilter;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 				EvalPlanQualSetPlan(&node->mt_epqstate, subplanstate->plan,
 									node->mt_arowmarks[node->mt_whichplan]);
 				continue;
@@ -2536,28 +2426,27 @@ ExecModifyTable(PlanState *pstate)
 		switch (operation)
 		{
 			case CMD_INSERT:
-<<<<<<< HEAD
-				/* Prepare for tuple routing if needed. */
-				if (proute)
-					slot = ExecPrepareTupleRouting(node, estate, proute,
-												   resultRelInfo, slot);
-				slot = ExecInsert(node, slot, planSlot,
+				slot = ExecInsert(node, resultRelInfo, slot, planSlot,
 								  estate, node->canSetTag, false /* splitUpdate */);
-				/* Revert ExecPrepareTupleRouting's state change. */
-				if (proute)
-					estate->es_result_relation_info = resultRelInfo;
 				break;
 			case CMD_UPDATE:
-				/* Prepare for tuple routing if needed. */
 				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
+				{
+					PartitionTupleRouting *proute = node->mt_partition_tuple_routing;
+					ResultRelInfo *partRelInfo;
+
 					slot = ExecPrepareTupleRouting(node, estate, proute,
-												   resultRelInfo, slot);
+												   resultRelInfo, slot,
+												   &partRelInfo);
+					resultRelInfo = partRelInfo;
+				}
 				if (!AttributeNumberIsValid(action_attno))
 				{
 					/* normal non-split UPDATE */
-					slot = ExecUpdate(node, tupleid, oldtuple, slot, planSlot,
-									  segid,
-									  &node->mt_epqstate, estate, node->canSetTag);
+					slot = ExecUpdate(node, resultRelInfo, tupleid, oldtuple,
+									  slot, planSlot, segid,
+									  &node->mt_epqstate, estate,
+									  node->canSetTag);
 				}
 				else if (DML_INSERT == action)
 				{
@@ -2566,61 +2455,39 @@ ExecModifyTable(PlanState *pstate)
 				}
 				else /* DML_DELETE */
 				{
-					slot = ExecDelete(node, tupleid, segid, oldtuple, planSlot,
+					slot = ExecDelete(node, resultRelInfo, tupleid, segid,
+									  oldtuple, planSlot,
 									  &node->mt_epqstate, estate,
-									  false,
-									  false /* canSetTag */,
-									  true /* changingPart */ ,
-									  true /* splitUpdate */ ,
+									  false, /* processReturning */
+									  false, /* canSetTag */
+									  true,  /* changingPart */
+									  true,  /* splitUpdate */
 									  NULL, NULL);
 				}
-				/* Revert ExecPrepareTupleRouting's state change. */
-				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
-					estate->es_result_relation_info = resultRelInfo;
 				break;
 			case CMD_DELETE:
 				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
+				{
+					PartitionTupleRouting *proute = node->mt_partition_tuple_routing;
+					ResultRelInfo *partRelInfo;
+
 					planSlot = ExecPrepareTupleRouting(node, estate, proute,
-												   resultRelInfo, slot);
-				slot = ExecDelete(node, tupleid, segid, oldtuple, planSlot,
-								  &node->mt_epqstate, estate,
-								  true, node->canSetTag,
-								  false /* changingPart */ ,
-								  false /* splitUpdate */ ,
-								  NULL, NULL);
-				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
-					estate->es_result_relation_info = resultRelInfo;
-=======
-				slot = ExecInsert(node, resultRelInfo, slot, planSlot,
-								  estate, node->canSetTag);
-				break;
-			case CMD_UPDATE:
-				slot = ExecUpdate(node, resultRelInfo, tupleid, oldtuple, slot,
-								  planSlot, &node->mt_epqstate, estate,
-								  node->canSetTag);
-				break;
-			case CMD_DELETE:
-				slot = ExecDelete(node, resultRelInfo, tupleid, oldtuple,
+													   resultRelInfo, slot,
+													   &partRelInfo);
+					resultRelInfo = partRelInfo;
+				}
+				slot = ExecDelete(node, resultRelInfo, tupleid, segid, oldtuple,
 								  planSlot, &node->mt_epqstate, estate,
 								  true, /* processReturning */
 								  node->canSetTag,
 								  false,	/* changingPart */
+								  false,	/* splitUpdate */
 								  NULL, NULL);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 				break;
 			default:
 				elog(ERROR, "unknown operation");
 				break;
 		}
-
-		/*
-		 * If the target is a partitioned table, ExecInsert / ExecUpdate /
-		 * ExecDelete might have changed es_result_relation_info to point to
-		 * a partition, instead of the top-level table. Reset it. (It would
-		 * be more tidy if those functions cleaned up after themselves, but
-		 * it's more robust to do it here just once.)
-		 */
-		estate->es_result_relation_info = resultRelInfo;
 
 		/*
 		 * If we got a RETURNING result, return it to caller.  We'll continue
