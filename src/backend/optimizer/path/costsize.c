@@ -112,14 +112,6 @@
  */
 #define APPEND_CPU_COST_MULTIPLIER 0.5
 
-/*
- * Maximum value for row estimates.  We cap row estimates to this to help
- * ensure that costs based on these estimates remain within the range of what
- * double can represent.  add_path() wouldn't act sanely given infinite or NaN
- * cost values.
- */
-#define MAXIMUM_ROWCOUNT 1e100
-
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
 double		random_page_cost = DEFAULT_RANDOM_PAGE_COST;
 double		cpu_tuple_cost = DEFAULT_CPU_TUPLE_COST;
