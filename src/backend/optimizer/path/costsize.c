@@ -234,26 +234,11 @@ static Selectivity adjust_selectivity_for_nulltest(Selectivity selec,
  */
 typedef struct
 {
-<<<<<<< HEAD
 	/* Values copied from RelOptInfo as is, for convenience */
 	Index		relid;
 	RTEKind		rtekind;		/* RELATION, SUBQUERY, or FUNCTION */
 	Oid			reltablespace;	/* containing tablespace */
 	double		allvisfrac;
-=======
-	/*
-	 * Avoid infinite and NaN row estimates.  Costs derived from such values
-	 * are going to be useless.  Also force the estimate to be at least one
-	 * row, to make explain output look better and to avoid possible
-	 * divide-by-zero when interpolating costs.  Make it an integer, too.
-	 */
-	if (nrows > MAXIMUM_ROWCOUNT || isnan(nrows))
-		nrows = MAXIMUM_ROWCOUNT;
-	else if (nrows <= 1.0)
-		nrows = 1.0;
-	else
-		nrows = rint(nrows);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/* Values adjusted from RelOptInfo, by dividing by numsegments */
 	double		rows;
@@ -3035,15 +3020,12 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		outer_path_rows = 1;
 	if (inner_path_rows <= 0)
 		inner_path_rows = 1;
-<<<<<<< HEAD
 
 	if (CdbPathLocus_IsPartitioned(path->path.locus))
 		numsegments = CdbPathLocus_NumSegments(path->path.locus);
 	else
 		numsegments = 1;
 
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/* Mark the path with the correct row estimate */
 	if (path->path.param_info)
 		path->path.rows = path->path.param_info->ppi_rows;

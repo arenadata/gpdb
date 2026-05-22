@@ -33,6 +33,14 @@
 
 #define DEFAULT_EFFECTIVE_CACHE_SIZE  524288	/* measured in pages */
 
+/*
+ * Maximum value for row estimates.  We cap row estimates to this to help
+ * ensure that costs based on these estimates remain within the range of what
+ * double can represent.  add_path() wouldn't act sanely given infinite or NaN
+ * cost values.
+ */
+#define MAXIMUM_ROWCOUNT 1e100
+
 typedef enum
 {
 	CONSTRAINT_EXCLUSION_OFF,	/* do not use c_e */
@@ -53,7 +61,12 @@ clamp_row_est(double nrows)
 	 * better and to avoid possible divide-by-zero when interpolating costs.
      * CDB: Don't round to integer.
 	 */
-    return (nrows < 1.0) ? 1.0 : nrows;
+	if (nrows > MAXIMUM_ROWCOUNT || isnan(nrows))
+		nrows = MAXIMUM_ROWCOUNT;
+	else if (nrows < 1.0)
+		nrows = 1.0;
+
+	return nrows;
 }
 
 
