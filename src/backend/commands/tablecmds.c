@@ -4686,14 +4686,14 @@ AlterTableGetLockLevel(List *cmds)
 				cmd_lockmode = AccessShareLock;
 				break;
 
+			case AT_AlterCollationRefreshVersion:
+				cmd_lockmode = AccessExclusiveLock;
+				break;
+
 				/* GPDB additions */
 			case AT_ExpandTable:
 			case AT_ExpandPartitionTablePrepare:
 			case AT_SetDistributedBy:
-				cmd_lockmode = AccessExclusiveLock;
-				break;
-
-			case AT_AlterCollationRefreshVersion:
 				cmd_lockmode = AccessExclusiveLock;
 				break;
 
