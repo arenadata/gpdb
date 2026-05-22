@@ -41,6 +41,10 @@
 
 #include "postgres.h"
 
+#ifdef USE_ZSTD
+#include <zstd.h>
+#endif
+
 #include "commands/tablespace.h"
 #include "executor/instrument.h"
 #include "miscadmin.h"
@@ -50,13 +54,27 @@
 #include "storage/buf_internals.h"
 #include "utils/resowner.h"
 
+#include "storage/gp_compress.h"
+#include "utils/faultinjector.h"
+#include "utils/workfile_mgr.h"
+
 /*
  * We break BufFiles into gigabyte-sized segments, regardless of RELSEG_SIZE.
  * The reason is that we'd like large BufFiles to be spread across multiple
  * tablespaces when available.
  */
-#define MAX_PHYSICAL_FILESIZE	0x40000000
+#define MAX_PHYSICAL_FILESIZE	0x40000000 
 #define BUFFILE_SEG_SIZE		(MAX_PHYSICAL_FILESIZE / BLCKSZ)
+
+/* To align upstream's structure, minimize the code differences */
+typedef union FakeAlignedBlock
+{
+	/*
+	 * Greenplum uses char * so it could suspend and resume, to give the hash
+	 * table as much space as possible.
+	 */
+	char *data;
+} FakeAlignedBlock;
 
 /*
  * This data structure represents a buffered file that consists of one or
@@ -73,8 +91,19 @@ struct BufFile
 	bool		dirty;			/* does buffer need to be written? */
 	bool		readOnly;		/* has the file been set to read only? */
 
+	char	   *operation_name; /* for naming temporary files. */
+
 	SharedFileSet *fileset;		/* space for segment files if shared */
 	const char *name;			/* name of this BufFile if shared */
+
+	/*
+	 * workfile_set for the files in current buffile. The workfile_set creator
+	 * should take care of the workfile_set's lifecycle. So, no need to call
+	 * workfile_mgr_close_set under the buffile logic.
+	 * If the workfile_set is created in BufFileCreateTemp. The workfile_set
+	 * should get freed once all the files in it are closed in BufFileClose.
+	 */
+	workfile_set *work_set;
 
 	/*
 	 * resowner is the ResourceOwner to use for underlying temp files.  (We
@@ -89,18 +118,53 @@ struct BufFile
 	 */
 	int			curFile;		/* file index (0..n) part of current pos */
 	off_t		curOffset;		/* offset part of current pos */
-	int			pos;			/* next read/write position in buffer */
-	int			nbytes;			/* total # of valid bytes in buffer */
-	PGAlignedBlock buffer;
+	off_t		pos;			/* next read/write position in buffer */
+	int64		nbytes;			/* total # of valid bytes in buffer */
+	FakeAlignedBlock buffer;	/* GPDB: PG upstream uses PGAlignedBlock */
+
+	/*
+	 * Current stage, if this is a sequential BufFile. A sequential BufFile
+	 * can be written to once, and read once after that. Without compression,
+	 * there is no real difference between sequential and random access
+	 * buffiles, but we enforce the limitations anyway, to uncover possible
+	 * bugs in sequential BufFile usage earlier.
+	 */
+	enum
+	{
+		BFS_RANDOM_ACCESS = 0,
+		BFS_SEQUENTIAL_WRITING,
+		BFS_SEQUENTIAL_READING,
+		BFS_COMPRESSED_WRITING,
+		BFS_COMPRESSED_READING
+	} state;
+
+	/* ZStandard compression support */
+#ifdef USE_ZSTD
+	zstd_context *zstd_context;	/* ZStandard library handles. */
+
+	/*
+	 * During compression, tracks of the original, uncompressed size.
+	 */
+	size_t		uncompressed_bytes;
+
+	/* This holds compressed input, during decompression. */
+	ZSTD_inBuffer compressed_buffer;
+	bool		decompression_finished;
+#endif
 };
 
 static BufFile *makeBufFileCommon(int nfiles);
-static BufFile *makeBufFile(File firstfile);
+static BufFile *makeBufFile(File firstfile, const char *operation_name);
 static void extendBufFile(BufFile *file);
 static void BufFileLoadBuffer(BufFile *file);
 static void BufFileDumpBuffer(BufFile *file);
 static int	BufFileFlush(BufFile *file);
 static File MakeNewSharedSegment(BufFile *file, int segment);
+
+static void BufFileStartCompression(BufFile *file);
+static void BufFileDumpCompressedBuffer(BufFile *file, const void *buffer, Size nbytes);
+static void BufFileEndCompression(BufFile *file);
+static int BufFileLoadCompressedBuffer(BufFile *file, void *buffer, size_t bufsize);
 
 /*
  * Create BufFile and perform the common initialization.
@@ -108,7 +172,7 @@ static File MakeNewSharedSegment(BufFile *file, int segment);
 static BufFile *
 makeBufFileCommon(int nfiles)
 {
-	BufFile    *file = (BufFile *) palloc(sizeof(BufFile));
+	BufFile    *file = (BufFile *) palloc0(sizeof(BufFile));
 
 	file->numFiles = nfiles;
 	file->isInterXact = false;
@@ -118,6 +182,7 @@ makeBufFileCommon(int nfiles)
 	file->curOffset = 0L;
 	file->pos = 0;
 	file->nbytes = 0;
+	file->buffer.data = palloc(BLCKSZ);
 
 	return file;
 }
@@ -127,7 +192,7 @@ makeBufFileCommon(int nfiles)
  * NOTE: caller must set isInterXact if appropriate.
  */
 static BufFile *
-makeBufFile(File firstfile)
+makeBufFile(File firstfile, const char *operation_name)
 {
 	BufFile    *file = makeBufFileCommon(1);
 
@@ -136,6 +201,8 @@ makeBufFile(File firstfile)
 	file->readOnly = false;
 	file->fileset = NULL;
 	file->name = NULL;
+
+	file->operation_name = pstrdup(operation_name);
 
 	return file;
 }
@@ -154,7 +221,7 @@ extendBufFile(BufFile *file)
 	CurrentResourceOwner = file->resowner;
 
 	if (file->fileset == NULL)
-		pfile = OpenTemporaryFile(file->isInterXact);
+		pfile = OpenTemporaryFile(file->isInterXact, file->operation_name);
 	else
 		pfile = MakeNewSharedSegment(file, file->numFiles);
 
@@ -166,6 +233,21 @@ extendBufFile(BufFile *file)
 									(file->numFiles + 1) * sizeof(File));
 	file->files[file->numFiles] = pfile;
 	file->numFiles++;
+
+	/*
+	 * Register the file as a "work file", so that the Greenplum workfile
+	 * limits apply to it.
+	 *
+	 * Note: The GUC gp_workfile_limit_files_per_query is used to control the
+	 * maximum number of spill files for a given query, to prevent runaway
+	 * queries from destroying the entire system. Counting each segment file is
+	 * reasonable for this scenario.
+	 */
+	if (file->work_set)
+	{
+		FileSetIsWorkfile(pfile);
+		RegisterFileWithSet(pfile, file->work_set);
+	}
 }
 
 /*
@@ -181,7 +263,7 @@ extendBufFile(BufFile *file)
  * transaction boundaries.
  */
 BufFile *
-BufFileCreateTemp(bool interXact)
+BufFileCreateTempInSet(char *operation_name, bool interXact, workfile_set *work_set)
 {
 	BufFile    *file;
 	File		pfile;
@@ -197,13 +279,36 @@ BufFileCreateTemp(bool interXact)
 	 */
 	PrepareTempTablespaces();
 
-	pfile = OpenTemporaryFile(interXact);
+	pfile = OpenTemporaryFile(interXact, operation_name);
 	Assert(pfile >= 0);
 
-	file = makeBufFile(pfile);
+	file = makeBufFile(pfile, operation_name);
 	file->isInterXact = interXact;
 
+	/*
+	 * Register the file as a "work file", so that the Greenplum workfile
+	 * limits apply to it.
+	 */
+	if (work_set)
+	{
+		file->work_set = work_set;
+		FileSetIsWorkfile(pfile);
+		RegisterFileWithSet(pfile, work_set);
+	}
+
+	SIMPLE_FAULT_INJECTOR("workfile_creation_failure");
+
 	return file;
+}
+
+BufFile *
+BufFileCreateTemp(char *operation_name, bool interXact)
+{
+	workfile_set *work_set;
+
+	work_set = workfile_mgr_create_set(operation_name, NULL, false /* hold pin */);
+
+	return BufFileCreateTempInSet(operation_name, interXact, work_set);
 }
 
 /*
@@ -255,7 +360,7 @@ MakeNewSharedSegment(BufFile *buffile, int segment)
  * unrelated SharedFileSet objects.
  */
 BufFile *
-BufFileCreateShared(SharedFileSet *fileset, const char *name)
+BufFileCreateShared(SharedFileSet *fileset, const char *name, workfile_set *work_set)
 {
 	BufFile    *file;
 
@@ -265,6 +370,14 @@ BufFileCreateShared(SharedFileSet *fileset, const char *name)
 	file->files = (File *) palloc(sizeof(File));
 	file->files[0] = MakeNewSharedSegment(file, 0);
 	file->readOnly = false;
+	/*
+	 * Register the file as a "work file", so that the Greenplum workfile
+	 * limits apply to it.
+	 */
+	file->work_set = work_set;
+
+	FileSetIsWorkfile(file->files[0]);
+	RegisterFileWithSet(file->files[0], work_set);
 
 	return file;
 }
@@ -397,8 +510,19 @@ BufFileClose(BufFile *file)
 	/* close and delete the underlying file(s) */
 	for (i = 0; i < file->numFiles; i++)
 		FileClose(file->files[i]);
+
 	/* release the buffer space */
 	pfree(file->files);
+
+	if (file->buffer.data)
+		pfree(file->buffer.data);
+
+	/* release zstd handles */
+#ifdef USE_ZSTD
+	if (file->zstd_context)
+		zstd_free_context(file->zstd_context);
+#endif
+
 	pfree(file);
 }
 
@@ -430,7 +554,7 @@ BufFileLoadBuffer(BufFile *file)
 	thisfile = file->files[file->curFile];
 	file->nbytes = FileRead(thisfile,
 							file->buffer.data,
-							sizeof(file->buffer),
+							BLCKSZ,
 							file->curOffset,
 							WAIT_EVENT_BUFFILE_READ);
 	if (file->nbytes < 0)
@@ -530,6 +654,21 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
 	size_t		nread = 0;
 	size_t		nthistime;
 
+	switch (file->state)
+	{
+		case BFS_RANDOM_ACCESS:
+		case BFS_SEQUENTIAL_READING:
+			break;
+
+		case BFS_SEQUENTIAL_WRITING:
+		case BFS_COMPRESSED_WRITING:
+			elog(ERROR, "cannot read from sequential BufFile before rewinding to start");
+			break;
+
+		case BFS_COMPRESSED_READING:
+			return BufFileLoadCompressedBuffer(file, ptr, size);
+	}
+
 	if (file->dirty)
 	{
 		if (BufFileFlush(file) != 0)
@@ -567,6 +706,47 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
 }
 
 /*
+ * BufFileReadFromBuffer
+ *
+ * This function provides a faster implementation of Read which applies
+ * when the data is already in the underlying buffer.
+ * In that case, it returns a pointer to the data in the buffer
+ * If the data is not in the buffer, returns NULL and the caller must
+ * call the regular BufFileRead with a destination buffer.
+ */
+void *
+BufFileReadFromBuffer(BufFile *file, size_t size)
+{
+	void	   *result = NULL;
+
+	switch (file->state)
+	{
+		case BFS_RANDOM_ACCESS:
+		case BFS_SEQUENTIAL_READING:
+			break;
+
+		case BFS_SEQUENTIAL_WRITING:
+		case BFS_COMPRESSED_WRITING:
+			elog(ERROR, "cannot read from sequential BufFile before rewinding to start");
+			return NULL;
+
+		case BFS_COMPRESSED_READING:
+			return NULL;
+	}
+
+	if (file->dirty)
+		BufFileFlush(file);
+
+	if (file->pos + size < file->nbytes)
+	{
+		result = file->buffer.data + file->pos;
+		file->pos += size;
+	}
+
+	return result;
+}
+
+/*
  * BufFileWrite
  *
  * Like fwrite() except we assume 1-byte element size.
@@ -578,6 +758,23 @@ BufFileWrite(BufFile *file, void *ptr, size_t size)
 	size_t		nthistime;
 
 	Assert(!file->readOnly);
+
+	SIMPLE_FAULT_INJECTOR("workfile_write_failure");
+
+	switch (file->state)
+	{
+		case BFS_RANDOM_ACCESS:
+		case BFS_SEQUENTIAL_WRITING:
+			break;
+
+		case BFS_COMPRESSED_WRITING:
+			BufFileDumpCompressedBuffer(file, ptr, size);
+			return size;
+
+		case BFS_SEQUENTIAL_READING:
+		case BFS_COMPRESSED_READING:
+			elog(ERROR, "cannot write to sequential BufFile after reading");
+	}
 
 	while (size > 0)
 	{
@@ -626,6 +823,22 @@ BufFileWrite(BufFile *file, void *ptr, size_t size)
 static int
 BufFileFlush(BufFile *file)
 {
+	switch (file->state)
+	{
+		case BFS_RANDOM_ACCESS:
+		case BFS_SEQUENTIAL_WRITING:
+			break;
+
+		case BFS_COMPRESSED_WRITING:
+			BufFileEndCompression(file);
+			break;
+
+		case BFS_SEQUENTIAL_READING:
+		case BFS_COMPRESSED_READING:
+			/* no-op. */
+			return 0;
+	}
+
 	if (file->dirty)
 	{
 		BufFileDumpBuffer(file);
@@ -652,6 +865,36 @@ BufFileSeek(BufFile *file, int fileno, off_t offset, int whence)
 	int			newFile;
 	off_t		newOffset;
 
+	switch (file->state)
+	{
+		case BFS_RANDOM_ACCESS:
+			break;
+
+		case BFS_SEQUENTIAL_WRITING:
+			/*
+			 * We have been writing. The uncompressed sequential mode is the
+			 * same as uncompressed, but we check that the caller doesn't try
+			 * to do random access after pledging sequential mode.
+			 */
+			if (fileno != 0 || offset != 0 || whence != SEEK_SET)
+				elog(ERROR, "invalid seek in sequential BufFile");
+			break;
+
+		case BFS_COMPRESSED_WRITING:
+			/* We have been writing. Flush the last data, and switch to reading mode */
+			if (fileno != 0 || offset != 0 || whence != SEEK_SET)
+				elog(ERROR, "invalid seek in sequential BufFile");
+			BufFileEndCompression(file);
+			file->curOffset = 0;
+			file->pos = 0;
+			file->nbytes = 0;
+			return 0;
+
+		case BFS_COMPRESSED_READING:
+		case BFS_SEQUENTIAL_READING:
+			elog(ERROR, "cannot seek in sequential BufFile");
+	}
+
 	switch (whence)
 	{
 		case SEEK_SET:
@@ -670,11 +913,22 @@ BufFileSeek(BufFile *file, int fileno, off_t offset, int whence)
 			newFile = file->curFile;
 			newOffset = (file->curOffset + file->pos) + offset;
 			break;
-#ifdef NOT_USED
 		case SEEK_END:
-			/* could be implemented, not needed currently */
-			break;
-#endif
+			/*
+			 * The file size of the last file gives us the end offset of that
+			 * file.
+			 */
+			if (file->curFile == file->numFiles - 1 && file->dirty)
+				BufFileFlush(file);
+			newFile = file->numFiles - 1;
+			newOffset = FileSize(file->files[file->numFiles - 1]);
+			if (newOffset < 0)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not determine size of temporary file \"%s\" from BufFile \"%s\": %m",
+							 FilePathName(file->files[file->numFiles - 1]),
+							 file->name)));
+			break;	
 		default:
 			elog(ERROR, "invalid whence: %d", whence);
 			return EOF;
@@ -776,7 +1030,7 @@ BufFileTellBlock(BufFile *file)
 #endif
 
 /*
- * Return the current shared BufFile size.
+ * Return the current fileset based BufFile size.
  *
  * Counts any holes left behind by BufFileAppend as part of the size.
  * ereport()s on failure.
@@ -786,7 +1040,9 @@ BufFileSize(BufFile *file)
 {
 	int64		lastFileSize;
 
-	Assert(file->fileset != NULL);
+	// In upstream, this is only used for shared BufFiles, but in GPDB
+	// also for getting the file size for extra EXPLAIN ANALYZE stats.
+	//Assert(file->fileset != NULL);
 
 	/* Get the size of the last physical file. */
 	lastFileSize = FileSize(file->files[file->numFiles - 1]);
@@ -799,6 +1055,45 @@ BufFileSize(BufFile *file)
 
 	return ((file->numFiles - 1) * (int64) MAX_PHYSICAL_FILESIZE) +
 		lastFileSize;
+}
+
+/*
+ * Returns the size of this file according to current accounting.
+ *
+ * Unlike BufFileSize(), which only returns the size of BufFile flushed to the
+ * disk, BufFileGetSize() returns the size of whole BufFile including buffer.
+ *
+ * For a compressed BufFile, this returns the uncompressed size!
+ */
+int64
+BufFileGetSize(BufFile *file)
+{
+	Assert(NULL != file);
+
+	switch (file->state)
+	{
+	case BFS_RANDOM_ACCESS:
+	case BFS_SEQUENTIAL_WRITING:
+	case BFS_SEQUENTIAL_READING:
+		break;
+	case BFS_COMPRESSED_WRITING:
+	case BFS_COMPRESSED_READING:
+#ifdef USE_ZSTD
+		return file->uncompressed_bytes;
+#else
+		Assert(false);
+		break;
+#endif
+	}
+
+	int64 fileSizeWithoutBuffer = BufFileSize(file);
+
+	/* Writing after seek back doesn't always change the size. */
+	if (fileSizeWithoutBuffer > (file->curOffset + file->pos))
+	{
+		return fileSizeWithoutBuffer;
+	}
+	return file->curOffset + file->pos;
 }
 
 /*
@@ -823,6 +1118,14 @@ BufFileSize(BufFile *file)
 long
 BufFileAppend(BufFile *target, BufFile *source)
 {
+	if (target->state == BFS_COMPRESSED_WRITING ||
+		target->state == BFS_COMPRESSED_READING ||
+		source->state == BFS_COMPRESSED_WRITING ||
+		source->state == BFS_COMPRESSED_READING)
+	{
+		elog(ERROR, "cannot append a compressed BufFile");
+	}
+
 	long		startBlock = target->numFiles * BUFFILE_SEG_SIZE;
 	int			newNumFiles = target->numFiles + source->numFiles;
 	int			i;
@@ -843,3 +1146,353 @@ BufFileAppend(BufFile *target, BufFile *source)
 
 	return startBlock;
 }
+
+/*
+ * Return filename of the underlying file.
+ *
+ * For debugging purposes only. Returns the filename of the
+ * first file, if it's segmented.
+ */
+const char *
+BufFileGetFilename(BufFile *buffile)
+{
+	return FileGetFilename(buffile->files[0]);
+}
+
+void
+BufFileSuspend(BufFile *buffile)
+{
+	switch (buffile->state)
+	{
+		case BFS_RANDOM_ACCESS:
+		case BFS_SEQUENTIAL_WRITING:
+			break;
+		case BFS_COMPRESSED_WRITING:
+			return BufFileEndCompression(buffile);
+
+		case BFS_SEQUENTIAL_READING:
+		case BFS_COMPRESSED_READING:
+			elog(ERROR, "cannot suspend a sequential BufFile after reading");
+	}
+
+	BufFileFlush(buffile);
+	pfree(buffile->buffer.data);
+	buffile->buffer.data = NULL;
+	buffile->nbytes = 0;
+}
+
+void
+BufFileResume(BufFile *buffile)
+{
+	switch (buffile->state)
+	{
+		case BFS_RANDOM_ACCESS:
+		case BFS_SEQUENTIAL_READING:
+			break;
+
+		case BFS_COMPRESSED_READING:
+			/* no buffer needed */
+			return;
+
+		case BFS_SEQUENTIAL_WRITING:
+		case BFS_COMPRESSED_WRITING:
+			elog(ERROR, "cannot resume a sequential BufFile that is still writing");
+			break;
+	}
+
+	Assert(buffile->buffer.data == NULL);
+	buffile->buffer.data = palloc(BLCKSZ);
+
+	if (BufFileSeek(buffile, 0, 0, SEEK_SET) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not seek to the first block of temporary file: %m")));
+}
+
+/*
+ * ZStandard Compression support
+ */
+
+bool gp_workfile_compression;		/* GUC */
+
+/*
+ * BufFilePledgeSequential
+ *
+ * Promise that the caller will only do sequential I/O on the given file.
+ * This allows the BufFile to be compressed, if 'gp_workfile_compression=on'.
+ *
+ * A sequential file is used in two stages:
+ *
+ * 0. Create file with BufFileCreateTemp().
+ * 1. Write all data, using BufFileWrite()
+ * 2. Rewind to beginning, with BufFileSeek(file, 0, 0, SEEK_SET).
+ * 3. Read as much as you want with BufFileRead()
+ * 4. BufFileClose()
+ *
+ * Trying to do arbitrary seeks
+ *
+ * A sequential file that is to be passed between processes, using
+ * BufFileCreateNamedTemp/BufFileOpenNamedTemp(), can also be used in
+ * sequential mode. If the file was pledged as sequential when creating
+ * it, the reading side must also pledge sequential access after calling
+ * BufFileOpenNamedTemp(). Otherwise, the reader might try to read a
+ * compressed file as uncompressed. (As of this writing, none of the callers
+ * that use buffiles across processes pledge sequential access, though.)
+ */
+void
+BufFilePledgeSequential(BufFile *buffile)
+{
+	if (BufFileSize(buffile) != 0)
+		elog(ERROR, "cannot pledge sequential access to a temporary file after writing it");
+
+	if (gp_workfile_compression)
+		BufFileStartCompression(buffile);
+}
+
+/*
+ * The rest of the code is only needed when compression support is compiled in.
+ */
+#ifdef USE_ZSTD
+
+#define BUFFILE_ZSTD_COMPRESSION_LEVEL 1
+
+/*
+ * Temporary buffer used during compression. It's used only within the
+ * functions, so we can allocate this once and reuse it for all files.
+ */
+static char *compression_buffer;
+
+/*
+ * Initialize the compressor.
+ */
+static void
+BufFileStartCompression(BufFile *file)
+{
+	ResourceOwner oldowner;
+	size_t ret;
+
+	/*
+	 * When working with compressed files, we rely on libzstd's buffer,
+	 * and the BufFile's own buffer is unused. It's a bit silly that we
+	 * allocate it in makeBufFile(), just to free it here again, but it
+	 * doesn't seem worth the trouble to avoid that either.
+	 */
+	if (file->buffer.data)
+	{
+		pfree(file->buffer.data);
+		file->buffer.data = NULL;
+	}
+
+	if (compression_buffer == NULL)
+		compression_buffer = MemoryContextAlloc(TopMemoryContext, BLCKSZ);
+
+	/*
+	 * Make sure the zstd handle is kept in the same resource owner as
+	 * the underlying file. In the typical use, when BufFileCompressOK is
+	 * called immediately after opening the file, this wouldn't be
+	 * necessary, but better safe than sorry.
+	 */
+	oldowner = CurrentResourceOwner;
+	CurrentResourceOwner = file->resowner;
+
+	file->zstd_context = zstd_alloc_context();
+	file->zstd_context->cctx = ZSTD_createCStream();
+	if (!file->zstd_context->cctx)
+		elog(ERROR, "out of memory");
+	ret = ZSTD_initCStream(file->zstd_context->cctx, BUFFILE_ZSTD_COMPRESSION_LEVEL);
+	if (ZSTD_isError(ret))
+		elog(ERROR, "failed to initialize zstd stream: %s", ZSTD_getErrorName(ret));
+
+	CurrentResourceOwner = oldowner;
+
+	file->state = BFS_COMPRESSED_WRITING;
+}
+
+static void
+BufFileDumpCompressedBuffer(BufFile *file, const void *buffer, Size nbytes)
+{
+	ZSTD_inBuffer input;
+	off_t pos = 0;
+
+	file->uncompressed_bytes += nbytes;
+
+	/*
+	 * Call ZSTD_compressStream() until all the input has been consumed.
+	 */
+	input.src = buffer;
+	input.size = nbytes;
+	input.pos = 0;
+	while (input.pos < input.size)
+	{
+		ZSTD_outBuffer output;
+		size_t		ret;
+
+		output.dst = compression_buffer;
+		output.size = BLCKSZ;
+		output.pos = 0;
+
+		ret = ZSTD_compressStream(file->zstd_context->cctx, &output, &input);
+		if (ZSTD_isError(ret))
+			elog(ERROR, "%s", ZSTD_getErrorName(ret));
+
+		if (output.pos > 0)
+		{
+			int			wrote;
+
+			wrote = FileWrite(file->files[0], output.dst, output.pos, file->curOffset + file->pos + pos, WAIT_EVENT_BUFFILE_WRITE);
+			if (wrote != output.pos)
+				elog(ERROR, "could not write %d bytes to compressed temporary file: %m", (int) output.pos);
+			pos += wrote;
+		}
+	}
+	file->curOffset += pos;
+}
+
+/*
+ * End compression stage. Rewind and prepare the BufFile for decompression.
+ */
+static void
+BufFileEndCompression(BufFile *file)
+{
+	ZSTD_outBuffer output;
+	size_t		ret;
+	int			wrote;
+	off_t		pos = 0;
+
+	Assert(file->state == BFS_COMPRESSED_WRITING);
+
+	do {
+		output.dst = compression_buffer;
+		output.size = BLCKSZ;
+		output.pos = 0;
+
+		ret = ZSTD_endStream(file->zstd_context->cctx, &output);
+		if (ZSTD_isError(ret))
+			elog(ERROR, "%s", ZSTD_getErrorName(ret));
+
+		wrote = FileWrite(file->files[0], output.dst, output.pos, file->curOffset + file->pos + pos, WAIT_EVENT_BUFFILE_WRITE);
+		if (wrote != output.pos)
+			elog(ERROR, "could not write %d bytes to compressed temporary file: %m", (int) output.pos);
+		pos += wrote;
+	} while (ret > 0);
+
+	ZSTD_freeCCtx(file->zstd_context->cctx);
+	file->zstd_context->cctx = NULL;
+
+	elog(DEBUG1, "BufFile compressed from %ld to %ld bytes",
+		 file->uncompressed_bytes, BufFileSize(file));
+
+	/* Done writing. Initialize for reading */
+	file->zstd_context->dctx = ZSTD_createDStream();
+	if (!file->zstd_context->dctx)
+		elog(ERROR, "out of memory");
+	ret = ZSTD_initDStream(file->zstd_context->dctx);
+	if (ZSTD_isError(ret))
+		elog(ERROR, "failed to initialize zstd dstream: %s", ZSTD_getErrorName(ret));
+
+	file->compressed_buffer.src = palloc(BLCKSZ);
+	file->compressed_buffer.size = 0;
+	file->compressed_buffer.pos = 0;
+	file->state = BFS_RANDOM_ACCESS;
+
+	if (BufFileSeek(file, 0, 0, SEEK_SET) != 0)
+		elog(ERROR, "could not seek in temporary file: %m");
+
+	file->state = BFS_COMPRESSED_READING;
+}
+
+static int
+BufFileLoadCompressedBuffer(BufFile *file, void *buffer, size_t bufsize)
+{
+	ZSTD_outBuffer output;
+	size_t		ret;
+	bool		eof = false;
+	off_t		pos = 0;
+
+	if (file->decompression_finished)
+		return 0;
+
+	/* Initialize Zstd output buffer. */
+	output.dst = buffer;
+	output.size = bufsize;
+	output.pos = 0;
+
+	do
+	{
+		/* No more compressed input? Load some. */
+		if (file->compressed_buffer.pos == file->compressed_buffer.size)
+		{
+			int			nb;
+
+			nb = FileRead(file->files[0], (char *) file->compressed_buffer.src, BLCKSZ, file->curOffset + file->pos + pos, WAIT_EVENT_BUFFILE_READ);
+			if (nb < 0)
+			{
+				elog(ERROR, "could not read from temporary file: %m");
+			}
+			pos += nb;
+			file->compressed_buffer.size = nb;
+			file->compressed_buffer.pos = 0;
+
+			if (nb == 0)
+				eof = true;
+		}
+
+		/* Decompress, and check result */
+		ret = ZSTD_decompressStream(file->zstd_context->dctx, &output, &file->compressed_buffer);
+		if (ZSTD_isError(ret))
+			elog(ERROR, "zstd decompression failed: %s", ZSTD_getErrorName(ret));
+
+		if (ret == 0)
+		{
+			/* End of compressed data. */
+			Assert (file->compressed_buffer.pos == file->compressed_buffer.size);
+			file->decompression_finished = true;
+			break;
+		}
+
+		if (ret > 0 && eof && output.pos < output.size)
+		{
+			/*
+			 * We ran out of compressed input, but Zstd expects more. File was
+			 * truncated on disk after we wrote it?
+			 */
+			elog(ERROR, "unexpected end of compressed temporary file");
+		}
+	}
+	while (output.pos < output.size);
+
+	file->curOffset += pos;
+
+	return output.pos;
+}
+#else		/* USE_ZSTD */
+
+/*
+ * Dummy versions of the compression functions, when the server is built
+ * without libzstd. gp_workfile_compression cannot be enabled without
+ * libzstd - there's a GUC assign hook to check that - so these should
+ * never be called. They exists just to avoid having so many #ifdefs in
+ * the code.
+ */
+static void
+BufFileStartCompression(BufFile *file)
+{
+	elog(ERROR, "zstandard compression not supported by this build");
+}
+static void
+BufFileDumpCompressedBuffer(BufFile *file, const void *buffer, Size nbytes)
+{
+	elog(ERROR, "zstandard compression not supported by this build");
+}
+static void
+BufFileEndCompression(BufFile *file)
+{
+	elog(ERROR, "zstandard compression not supported by this build");
+}
+static int
+BufFileLoadCompressedBuffer(BufFile *file, void *buffer, size_t bufsize)
+{
+	elog(ERROR, "zstandard compression not supported by this build");
+}
+
+#endif		/* USE_ZSTD */

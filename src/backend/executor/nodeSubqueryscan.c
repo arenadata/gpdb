@@ -7,6 +7,8 @@
  * we need two sets of code.  Ought to look at trying to unify the cases.
  *
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -29,6 +31,9 @@
 
 #include "executor/execdebug.h"
 #include "executor/nodeSubqueryscan.h"
+
+#include "cdb/cdbvars.h"
+#include "optimizer/optimizer.h"		/* CDB: contain_ctid_var_reference() */
 
 static TupleTableSlot *SubqueryNext(SubqueryScanState *node);
 
@@ -132,6 +137,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 						  ExecGetResultType(subquerystate->subplan),
 						  ExecGetResultSlotOps(subquerystate->subplan, NULL));
 
+
 	/*
 	 * The slot used as the scantuple isn't the slot above (outside of EPQ),
 	 * but the one from the node below.
@@ -210,4 +216,11 @@ ExecReScanSubqueryScan(SubqueryScanState *node)
 	 */
 	if (node->subplan->chgParam == NULL)
 		ExecReScan(node->subplan);
+}
+
+void
+ExecSquelchSubqueryScan(SubqueryScanState *node)
+{
+	/* Recurse to subquery */
+	ExecSquelchNode(node->subplan);
 }

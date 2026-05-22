@@ -747,7 +747,8 @@ CREATE TABLE citext_table (
 INSERT INTO citext_table (name)
   VALUES ('one'), ('two'), ('three'), (NULL), (NULL);
 CREATE MATERIALIZED VIEW citext_matview AS
-  SELECT * FROM citext_table;
+  SELECT * FROM citext_table
+DISTRIBUTED BY (id);
 CREATE UNIQUE INDEX citext_matview_id
   ON citext_matview (id);
 SELECT *
@@ -842,3 +843,6 @@ SELECT 'B'::citext ~<=~ 'a'::varchar AS t;  -- varchar wins.
 
 SELECT 'a'::citext ~>~  'B'::varchar AS t;  -- varchar wins.
 SELECT 'a'::citext ~>=~ 'B'::varchar AS t;  -- varchar wins.
+
+-- Test that has all opclasses
+select opcname,amname from pg_opclass opc,  pg_am am  where am.oid=opc.opcmethod and opcintype='citext'::regtype;

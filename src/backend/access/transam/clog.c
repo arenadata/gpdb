@@ -664,6 +664,116 @@ TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 }
 
 /*
+ * Find the next lowest transaction with a logged or recorded status.
+ * I.e. One that does not have a status of default (0) -- i.e: in-progress.
+ */
+bool
+CLOGScanForPrevStatus(
+	TransactionId 			*indexXid,
+	XidStatus				*status)
+{
+	TransactionId highXid;
+	int pageno;
+	TransactionId lowXid;
+	int slotno;
+	int byteno;
+	int bshift;
+	TransactionId xid;
+	char *byteptr;
+
+	*status = TRANSACTION_STATUS_IN_PROGRESS;	// Set it to something.
+
+	if ((*indexXid) == InvalidTransactionId)
+		return false;
+	highXid = (*indexXid) - 1;
+	if (highXid < FirstNormalTransactionId)
+		return false;
+
+	while (true)
+	{
+		pageno = TransactionIdToPage(highXid);
+
+		/*
+		 * Compute the xid floor for the page.
+		 */
+		lowXid = pageno * (TransactionId) CLOG_XACTS_PER_PAGE;
+		if (lowXid == InvalidTransactionId)
+			lowXid = FirstNormalTransactionId;
+
+		LWLockAcquire(CLogControlLock, LW_EXCLUSIVE);
+
+		/*
+		 * Peek to see if page exists.
+		 */
+		if (!SimpleLruDoesPhysicalPageExist(ClogCtl, pageno))
+		{
+			LWLockRelease(CLogControlLock);
+
+			*indexXid = InvalidTransactionId;
+			*status = TRANSACTION_STATUS_IN_PROGRESS;	// Set it to something.
+			return false;
+		}
+			
+		slotno = SimpleLruReadPage(ClogCtl, pageno, false, highXid);
+
+		for (xid = highXid; xid >= lowXid; xid--)
+		{
+			byteno = TransactionIdToByte(xid);
+			bshift = TransactionIdToBIndex(xid) * CLOG_BITS_PER_XACT;
+			byteptr = ClogCtl->shared->page_buffer[slotno] + byteno;
+			*status = (*byteptr >> bshift) & CLOG_XACT_BITMASK;
+
+			if (*status != TRANSACTION_STATUS_IN_PROGRESS)
+			{
+				LWLockRelease(CLogControlLock);
+
+				*indexXid = xid;
+				return true;
+			}
+		}
+
+		LWLockRelease(CLogControlLock);
+
+		if (lowXid == FirstNormalTransactionId)
+		{
+			*indexXid = InvalidTransactionId;
+			*status = TRANSACTION_STATUS_IN_PROGRESS;	// Set it to something.
+			return false;
+		}
+		
+		highXid = lowXid - 1;	// Go to last xid of previous page.
+	}
+
+	return false;	// We'll never reach this.
+}
+
+/*
+ * Determine the "age" of a transaction id.
+ */
+bool
+CLOGTransactionIsOld(TransactionId xid)
+{
+	TransactionId nextXid;
+	int pagesBack;
+
+	if (ShmemVariableCache == NULL)
+		return false;	// In case we are called very early in the life of the backend process, etc.
+
+	nextXid = XidFromFullTransactionId(ShmemVariableCache->nextFullXid);
+
+	if (nextXid < xid)
+		return false;	// Not sure what is going on.
+
+	pagesBack = (nextXid - xid) / CLOG_XACTS_PER_PAGE;
+
+	/*
+	 * Declare the transaction old if it is in the bottom older half of the hot CLOG cache window, or
+	 * before the window.
+	 */
+	return (pagesBack > CLOGShmemBuffers()/2);
+}
+
+/*
  * Number of shared CLOG buffers.
  *
  * On larger multi-processor systems, it is possible to have many CLOG page

@@ -11,7 +11,11 @@
 subdir = src
 top_builddir = ..
 include Makefile.global
+include Makefile.mock
 
+# In PostgreSQL, libpqwalreceiver is linked into a separate shared library.
+# In GPDB, it's linked as a normal object, check src/backend/replication/Makefile.
+# Remove backend/replication/libpqwalreceiver from SUBDIRS here.
 SUBDIRS = \
 	common \
 	port \
@@ -21,7 +25,6 @@ SUBDIRS = \
 	backend/snowball \
 	include \
 	interfaces \
-	backend/replication/libpqwalreceiver \
 	backend/replication/pgoutput \
 	fe_utils \
 	bin \
@@ -67,13 +70,16 @@ clean:
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/isolation $@
 	$(MAKE) -C test/thread $@
+	$(MAKE) -C $(MOCK_DIR) $@
+	$(MAKE) -C $(CMOCKERY_DIR) $@
 
 distclean maintainer-clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/isolation $@
 	$(MAKE) -C test/thread $@
+	$(MAKE) -C $(MOCK_DIR) $@
+	$(MAKE) -C $(CMOCKERY_DIR) $@
 	rm -f Makefile.port Makefile.global
-
 
 .PHONY: install-local installdirs-local uninstall-local

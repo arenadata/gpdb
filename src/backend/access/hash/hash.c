@@ -43,7 +43,7 @@ typedef struct
 } HashBuildState;
 
 static void hashbuildCallback(Relation index,
-							  HeapTuple htup,
+							  ItemPointer tupleId,
 							  Datum *values,
 							  bool *isnull,
 							  bool tupleIsAlive,
@@ -201,7 +201,7 @@ hashbuildempty(Relation index)
  */
 static void
 hashbuildCallback(Relation index,
-				  HeapTuple htup,
+				  ItemPointer tupleId,
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive,
@@ -220,14 +220,14 @@ hashbuildCallback(Relation index,
 
 	/* Either spool the tuple for sorting, or just put it into the index */
 	if (buildstate->spool)
-		_h_spool(buildstate->spool, &htup->t_self,
+		_h_spool(buildstate->spool, tupleId,
 				 index_values, index_isnull);
 	else
 	{
 		/* form an index tuple and point it at the heap tuple */
 		itup = index_form_tuple(RelationGetDescr(index),
 								index_values, index_isnull);
-		itup->t_tid = htup->t_self;
+		itup->t_tid = *tupleId;
 		_hash_doinsert(index, itup, buildstate->heapRel);
 		pfree(itup);
 	}
@@ -325,12 +325,30 @@ hashgettuple(IndexScanDesc scan, ScanDirection dir)
  *	hashgetbitmap() -- get all tuples at once
  */
 int64
-hashgetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
+hashgetbitmap(IndexScanDesc scan, Node **bmNodeP)
 {
+	TIDBitmap  *tbm;
 	HashScanOpaque so = (HashScanOpaque) scan->opaque;
 	bool		res;
 	int64		ntids = 0;
 	HashScanPosItem *currItem;
+
+	/*
+	 * GPDB specific code. Since GPDB also support StreamBitmap
+	 * in bitmap index. So normally we need to create specific bitmap
+	 * node in the amgetbitmap AM.
+	 */
+	Assert(bmNodeP);
+	if (*bmNodeP == NULL)
+	{
+		/* XXX should we use less than work_mem for this? */
+		tbm = tbm_create(work_mem * 1024L, NULL);
+		*bmNodeP = (Node *) tbm;
+	}
+	else if (!IsA(*bmNodeP, TIDBitmap))
+		elog(ERROR, "non hash bitmap");
+	else
+		tbm = (TIDBitmap *)*bmNodeP;
 
 	res = _hash_first(scan, ForwardScanDirection);
 

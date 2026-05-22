@@ -68,6 +68,13 @@
 #define HAS_BOOL 1
 #endif
 
+/*
+ * ActivePerl 5.18 and later are MinGW-built, and their headers use GCC's
+ * __inline__.  Translate to something MSVC recognizes.
+ */
+#ifdef _MSC_VER
+#define __inline__ inline
+#endif
 
 /*
  * Get the basic Perl API.  We use PERL_NO_GET_CONTEXT mode so that our code

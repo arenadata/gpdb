@@ -40,6 +40,7 @@
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "commands/trigger.h"
@@ -56,6 +57,15 @@
 #include "utils/datum.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+
+#include "access/transam.h"
+#include "catalog/aocatalog.h"
+#include "cdb/cdbaocsam.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbvars.h"
+#include "parser/parsetree.h"
+#include "utils/lsyscache.h"
+#include "utils/snapmgr.h"
 
 
 static bool ExecOnConflictUpdate(ModifyTableState *mtstate,
@@ -130,6 +140,10 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 			 * In any case the planner has most likely inserted an INT4 null.
 			 * What we insist on is just *some* NULL constant.
 			 */
+			/* GPDB_96_MERGE_FIXME: the subplan can be a Motion, so that the NULLs
+			 * are transferred through the Motion node.
+			 */
+#if 0
 			if (!IsA(tle->expr, Const) ||
 				!((Const *) tle->expr)->constisnull)
 				ereport(ERROR,
@@ -137,6 +151,7 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 						 errmsg("table row type and query-specified row type do not match"),
 						 errdetail("Query provides a value for a dropped column at ordinal position %d.",
 								   attno)));
+#endif
 		}
 	}
 	if (attno != resultDesc->natts)
@@ -337,6 +352,18 @@ ExecComputeStoredGenerated(EState *estate, TupleTableSlot *slot)
  *		and insert appropriate tuples into the index relations.
  *
  *		Returns RETURNING result if any, otherwise NULL.
+ *
+ * If the target table is partitioned, the input tuple in 'parentslot'
+ * is in the shape required for the parent table. This function will
+ * look up the ResultRelInfo of the target partition, and form a
+ * tuple suitable for the target partition. (It can be different, if
+ * there are dropped columns in the parent, but not the partition,
+ * for example.)
+ *
+ * In GPDB, the INSERT can be part of an update operation when
+ * there is a preceding SplitUpdate node. 'splitUpdate' is true in
+ * that case.
+ *
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
@@ -344,7 +371,8 @@ ExecInsert(ModifyTableState *mtstate,
 		   TupleTableSlot *slot,
 		   TupleTableSlot *planSlot,
 		   EState *estate,
-		   bool canSetTag)
+		   bool canSetTag,
+		   bool splitUpdate)
 {
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
@@ -370,9 +398,15 @@ ExecInsert(ModifyTableState *mtstate,
 	 * violations before firing these triggers, because they can change the
 	 * values to insert.  Also, they can run arbitrary user-defined code with
 	 * side-effects that we can't cancel by just not inserting the tuple.
+	 *
+	 * Considering that the original command is UPDATE for a SplitUpdate, fire
+	 * insert triggers may lead to the wrong action to be enforced. And the
+	 * triggers in GPDB may require cross segments data changes, disallow the
+	 * INSERT triggers on a SplitUpdate.
 	 */
 	if (resultRelInfo->ri_TrigDesc &&
-		resultRelInfo->ri_TrigDesc->trig_insert_before_row)
+		resultRelInfo->ri_TrigDesc->trig_insert_before_row &&
+		!splitUpdate)
 	{
 		if (!ExecBRInsertTriggers(estate, resultRelInfo, slot))
 			return NULL;		/* "do nothing" */
@@ -594,7 +628,6 @@ ExecInsert(ModifyTableState *mtstate,
 													   NIL);
 		}
 	}
-
 	if (canSetTag)
 	{
 		(estate->es_processed)++;
@@ -624,8 +657,15 @@ ExecInsert(ModifyTableState *mtstate,
 		ar_insert_trig_tcs = NULL;
 	}
 
+	slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
+
 	/* AFTER ROW INSERT Triggers */
-	ExecARInsertTriggers(estate, resultRelInfo, slot, recheckIndexes,
+	/*
+	 * GPDB: Disallow INSERT triggers on a split UPDATE. See comments in
+	 * BEFORE ROW INSERT Triggers.
+	 */
+	if (!splitUpdate)
+		ExecARInsertTriggers(estate, resultRelInfo, slot, recheckIndexes,
 						 ar_insert_trig_tcs);
 
 	list_free(recheckIndexes);
@@ -671,12 +711,16 @@ ExecInsert(ModifyTableState *mtstate,
  *		part of an UPDATE of partition-key, then the slot returned by
  *		EvalPlanQual() is passed back using output parameter epqslot.
  *
+ *		In GPDB, DELETE can be part of an update operation when
+ *		there is a preceding SplitUpdate node.
+ *
  *		Returns RETURNING result if any, otherwise NULL.
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
 ExecDelete(ModifyTableState *mtstate,
 		   ItemPointer tupleid,
+		   int32 segid,
 		   HeapTuple oldtuple,
 		   TupleTableSlot *planSlot,
 		   EPQState *epqstate,
@@ -684,6 +728,7 @@ ExecDelete(ModifyTableState *mtstate,
 		   bool processReturning,
 		   bool canSetTag,
 		   bool changingPart,
+		   bool splitUpdate,
 		   bool *tupleDeleted,
 		   TupleTableSlot **epqreturnslot)
 {
@@ -698,14 +743,32 @@ ExecDelete(ModifyTableState *mtstate,
 		*tupleDeleted = false;
 
 	/*
+	 * Sanity check the distribution of the tuple to prevent
+	 * potential data corruption in case users manipulate data
+	 * incorrectly (e.g. insert data on incorrect segment through
+	 * utility mode) or there is bug in code, etc.
+	 */
+	if (segid != GpIdentity.segindex)
+		elog(ERROR,
+			 "distribution key of the tuple (%u, %u) doesn't belong to "
+			 "current segment (actually from seg%d)",
+			 BlockIdGetBlockNumber(&(tupleid->ip_blkid)),
+			 tupleid->ip_posid,
+			 segid);
+
+	/*
 	 * get information on the (current) result relation
 	 */
 	resultRelInfo = estate->es_result_relation_info;
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
 	/* BEFORE ROW DELETE Triggers */
+	/*
+	 * Disallow DELETE triggers on a split UPDATE. See comments in ExecInsert().
+	 */
 	if (resultRelInfo->ri_TrigDesc &&
-		resultRelInfo->ri_TrigDesc->trig_delete_before_row)
+		resultRelInfo->ri_TrigDesc->trig_delete_before_row &&
+		!splitUpdate)
 	{
 		bool		dodelete;
 
@@ -723,6 +786,7 @@ ExecDelete(ModifyTableState *mtstate,
 		bool		dodelete;
 
 		Assert(oldtuple != NULL);
+
 		dodelete = ExecIRDeleteTriggers(estate, resultRelInfo, oldtuple);
 
 		if (!dodelete)			/* "do nothing" */
@@ -772,7 +836,7 @@ ldelete:;
 									estate->es_crosscheck_snapshot,
 									true /* wait for commit */ ,
 									&tmfd,
-									changingPart);
+									changingPart || splitUpdate);
 
 		switch (result)
 		{
@@ -809,6 +873,34 @@ ldelete:;
 							 errhint("Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.")));
 
 				/* Else, already deleted by self; nothing to do */
+
+				/*-------
+				 * In an scenario in which R(a,b) and S(a,b) have
+				 *        R               S
+				 *    ________         ________
+				 *     (1, 1)           (1, 2)
+				 *                      (1, 7)
+				 *
+				 *  An update query such as:
+				 *   UPDATE R SET a = S.b  FROM S WHERE R.b = S.a;
+				 *
+				 *  will have an non-deterministic output. The tuple in R
+				 * can be updated to (2,1) or (7,1).
+				 * Since the introduction of SplitUpdate, these queries will
+				 * send multiple requests to delete the same tuple. One of them
+				 * will pass, but others will not. But there will also be
+				 * multiple requests to insert a new version of the tuple, and
+				 * we cannot cancel out those if the Delete cannot be
+				 * performed. An error is reported in such scenario; otherwise
+				 * you end up with multiple copies of the same row.
+				 *-------
+				 */
+				if (splitUpdate)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION ),
+							 errmsg("multiple updates to a row by the same query is not allowed")));
+				}
 				return NULL;
 
 			case TM_Ok:
@@ -965,10 +1057,20 @@ ldelete:;
 	}
 
 	/* AFTER ROW DELETE Triggers */
-	ExecARDeleteTriggers(estate, resultRelInfo, tupleid, oldtuple,
-						 ar_delete_trig_tcs);
+	/*
+	 * Disallow DELETE triggers on a split UPDATE. See comments in ExecInsert().
+	 */
+	if (!RelationIsAppendOptimized(resultRelationDesc) && !splitUpdate)
+	{
+		ExecARDeleteTriggers(estate, resultRelInfo, tupleid, oldtuple,
+							 ar_delete_trig_tcs);
+	}
 
 	/* Process RETURNING if present and if requested */
+	/*
+	 * In a split update, the processed rows are returned by the INSERT
+	 * of the new row, not the DELETE of the old one.
+	 */
 	if (processReturning && resultRelInfo->ri_projectReturning)
 	{
 		/*
@@ -1041,6 +1143,7 @@ ExecUpdate(ModifyTableState *mtstate,
 		   HeapTuple oldtuple,
 		   TupleTableSlot *slot,
 		   TupleTableSlot *planSlot,
+		   int32 segid, /* gpdb specific parameter, check if tuple to update is from local */
 		   EPQState *epqstate,
 		   EState *estate,
 		   bool canSetTag)
@@ -1057,6 +1160,20 @@ ExecUpdate(ModifyTableState *mtstate,
 	 */
 	if (IsBootstrapProcessingMode())
 		elog(ERROR, "cannot UPDATE during bootstrap");
+
+	/*
+	 * Sanity check the distribution of the tuple to prevent
+	 * potential data corruption in case users manipulate data
+	 * incorrectly (e.g. insert data on incorrect segment through
+	 * utility mode) or there is bug in code, etc.
+	 */
+	if (segid != GpIdentity.segindex)
+		elog(ERROR,
+			 "distribution key of the tuple (%u, %u) doesn't belong to "
+			 "current segment (actually from seg%d)",
+			 BlockIdGetBlockNumber(&(tupleid->ip_blkid)),
+			 tupleid->ip_posid,
+			 segid);
 
 	ExecMaterializeSlot(slot);
 
@@ -1202,9 +1319,11 @@ lreplace:;
 			 * Row movement, part 1.  Delete the tuple, but skip RETURNING
 			 * processing. We want to return rows from INSERT.
 			 */
-			ExecDelete(mtstate, tupleid, oldtuple, planSlot, epqstate,
+			ExecDelete(mtstate, tupleid, segid, oldtuple, planSlot, epqstate,
 					   estate, false, false /* canSetTag */ ,
-					   true /* changingPart */ , &tuple_deleted, &epqslot);
+					   true /* changingPart */ ,
+					   false /* splitUpdate */ ,
+					   &tuple_deleted, &epqslot);
 
 			/*
 			 * For some reason if DELETE didn't happen (e.g. trigger prevented
@@ -1279,7 +1398,7 @@ lreplace:;
 										   mtstate->rootResultRelInfo, slot);
 
 			ret_slot = ExecInsert(mtstate, slot, planSlot,
-								  estate, canSetTag);
+								  estate, canSetTag, false /* splitUpdate */);
 
 			/* Revert ExecPrepareTupleRouting's node change. */
 			estate->es_result_relation_info = resultRelInfo;
@@ -1343,12 +1462,19 @@ lreplace:;
 				 * If a trigger actually intends this type of interaction, it
 				 * can re-execute the UPDATE (assuming it can figure out how)
 				 * and then return NULL to cancel the outer update.
+				 *
+				 * In GPDB, for AO tables TM_SelfModified is returned only
+				 * in case of same command tuple update based on visimap dirty
+				 * list checking. Also, tmfd is not initialized and can't be for
+				 * AO case, as visimap update within same command happens at end
+				 * of command.
 				 */
-				if (tmfd.cmax != estate->es_output_cid)
+				if (!RelationIsAppendOptimized(resultRelationDesc) &&
+					tmfd.cmax != estate->es_output_cid)
 					ereport(ERROR,
 							(errcode(ERRCODE_TRIGGERED_DATA_CHANGE_VIOLATION),
-							 errmsg("tuple to be updated was already modified by an operation triggered by the current command"),
-							 errhint("Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.")));
+									errmsg("tuple to be updated was already modified by an operation triggered by the current command"),
+									errhint("Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.")));
 
 				/* Else, already updated by self; nothing to do */
 				return NULL;
@@ -1450,12 +1576,13 @@ lreplace:;
 		if (resultRelInfo->ri_NumIndices > 0 && update_indexes)
 			recheckIndexes = ExecInsertIndexTuples(slot, estate, false, NULL, NIL);
 	}
-
 	if (canSetTag)
 		(estate->es_processed)++;
 
 	/* AFTER ROW UPDATE Triggers */
-	ExecARUpdateTriggers(estate, resultRelInfo, tupleid, oldtuple, slot,
+	/* GPDB: AO and AOCO tables don't support triggers */
+	if (!RelationIsAppendOptimized(resultRelationDesc))
+		ExecARUpdateTriggers(estate, resultRelInfo, tupleid, oldtuple, slot,
 						 recheckIndexes,
 						 mtstate->operation == CMD_INSERT ?
 						 mtstate->mt_oc_transition_capture :
@@ -1480,6 +1607,124 @@ lreplace:;
 		return ExecProcessReturning(resultRelInfo, slot, planSlot);
 
 	return NULL;
+}
+
+/*
+ * Insert the new tuple version of a Split Update
+ *
+ * We have to check if this UPDATE also moves the row to
+ * a different partition, much like ExecUpdate() does.
+ */
+static TupleTableSlot *
+ExecSplitUpdate_Insert(ModifyTableState *mtstate,
+					   TupleTableSlot *slot,
+					   TupleTableSlot *planSlot,
+					   EState *estate,
+					   bool canSetTag)
+{
+	ResultRelInfo *resultRelInfo;
+	Relation	resultRelationDesc;
+	bool		partition_constraint_failed;
+	TupleConversionMap *saved_tcs_map = NULL;
+	PartitionTupleRouting *proute = mtstate->mt_partition_tuple_routing;
+	int			map_index;
+	TupleConversionMap *tupconv_map;
+
+	/*
+	 * get information on the (current) result relation
+	 */
+	resultRelInfo = estate->es_result_relation_info;
+	resultRelationDesc = resultRelInfo->ri_RelationDesc;
+
+	/* ensure slot is independent, consider e.g. EPQ */
+	ExecMaterializeSlot(slot);
+
+	/*
+	 * If partition constraint fails, this row might get moved to another
+	 * partition, in which case we should check the RLS CHECK policy just
+	 * before inserting into the new partition, rather than doing it here.
+	 * This is because a trigger on that partition might again change the
+	 * row.  So skip the WCO checks if the partition constraint fails.
+	 */
+	partition_constraint_failed =
+		resultRelInfo->ri_PartitionCheck &&
+		!ExecPartitionCheck(resultRelInfo, slot, estate, false);
+
+	if (!partition_constraint_failed &&
+		resultRelInfo->ri_WithCheckOptions != NIL)
+	{
+		/*
+		 * ExecWithCheckOptions() will skip any WCOs which are not of the
+		 * kind we are looking for at this point.
+		 */
+		ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK,
+							 resultRelInfo, slot, estate);
+	}
+
+	/*
+	 * Updates set the transition capture map only when a new subplan
+	 * is chosen.  But for inserts, it is set for each row. So after
+	 * INSERT, we need to revert back to the map created for UPDATE;
+	 * otherwise the next UPDATE will incorrectly use the one created
+	 * for INSERT.  So first save the one created for UPDATE.
+	 */
+	if (mtstate->mt_transition_capture)
+		saved_tcs_map = mtstate->mt_transition_capture->tcs_map;
+
+	if (partition_constraint_failed)
+	{
+		/*
+		 * When an UPDATE is run on a leaf partition, we will not have
+		 * partition tuple routing set up. In that case, fail with
+		 * partition constraint violation error.
+		 */
+		if (proute == NULL)
+			ExecPartitionCheckEmitError(resultRelInfo, slot, estate);
+
+		/*
+		 * resultRelInfo is one of the per-subplan resultRelInfos.  So we
+		 * should convert the tuple into root's tuple descriptor, since
+		 * ExecInsert() starts the search from root.  The tuple conversion
+		 * map list is in the order of mtstate->resultRelInfo[], so to
+		 * retrieve the one for this resultRel, we need to know the
+		 * position of the resultRel in mtstate->resultRelInfo[].
+		 */
+		map_index = resultRelInfo - mtstate->resultRelInfo;
+		Assert(map_index >= 0 && map_index < mtstate->mt_nplans);
+		tupconv_map = tupconv_map_for_subplan(mtstate, map_index);
+		if (tupconv_map != NULL)
+			slot = execute_attr_map_slot(tupconv_map->attrMap,
+										 slot,
+										 mtstate->mt_root_tuple_slot);
+
+		/*
+		 * Prepare for tuple routing, making it look like we're inserting
+		 * into the root.
+		 */
+		Assert(mtstate->rootResultRelInfo != NULL);
+		slot = ExecPrepareTupleRouting(mtstate, estate, proute,
+									   mtstate->rootResultRelInfo, slot);
+
+		slot = ExecInsert(mtstate, slot, planSlot,
+						  estate, mtstate->canSetTag,
+						  true /* splitUpdate */);
+
+		/* Revert ExecPrepareTupleRouting's node change. */
+		estate->es_result_relation_info = resultRelInfo;
+		if (mtstate->mt_transition_capture)
+		{
+			mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
+			mtstate->mt_transition_capture->tcs_map = saved_tcs_map;
+		}
+	}
+	else
+	{
+		slot = ExecInsert(mtstate, slot, planSlot,
+						  estate, mtstate->canSetTag,
+						  true /* splitUpdate */);
+	}
+
+	return slot;
 }
 
 /*
@@ -1690,6 +1935,7 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	*returning = ExecUpdate(mtstate, conflictTid, NULL,
 							resultRelInfo->ri_onConflict->oc_ProjSlot,
 							planSlot,
+							GpIdentity.segindex,
 							&mtstate->mt_epqstate, mtstate->ps.state,
 							canSetTag);
 
@@ -1996,6 +2242,8 @@ ExecModifyTable(PlanState *pstate)
 	ResultRelInfo *resultRelInfo;
 	PlanState  *subplanstate;
 	JunkFilter *junkfilter;
+	AttrNumber  action_attno;
+	AttrNumber  segid_attno;
 	TupleTableSlot *slot;
 	TupleTableSlot *planSlot;
 	ItemPointer tupleid;
@@ -2026,6 +2274,23 @@ ExecModifyTable(PlanState *pstate)
 	if (node->mt_done)
 		return NULL;
 
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+	{
+		/*
+		 * Current Greenplum MPP architecture only support one writer gang, and
+		 * only writer gang can execute DML nodes. There is no code path to reach
+		 * here. For writable CTE case as below:
+		 *
+		 *   create table t(a int);
+		 *   with wcte as (delete from t returning a)
+		 *     insert into t select * from wcte;
+		 *
+		 * The above query will error out during parse-analyze so not reach here.
+		 * If reaching here, some bugs must happen.
+		 */
+		elog(ERROR, "Reader Gang execute ModifyTable node, some bugs must happen");
+	}
+
 	/*
 	 * On first call, fire BEFORE STATEMENT triggers before proceeding.
 	 */
@@ -2039,6 +2304,8 @@ ExecModifyTable(PlanState *pstate)
 	resultRelInfo = node->resultRelInfo + node->mt_whichplan;
 	subplanstate = node->mt_plans[node->mt_whichplan];
 	junkfilter = resultRelInfo->ri_junkFilter;
+	action_attno = resultRelInfo->ri_action_attno;
+	segid_attno = resultRelInfo->ri_segid_attno;
 
 	/*
 	 * es_result_relation_info must point to the currently active result
@@ -2081,10 +2348,12 @@ ExecModifyTable(PlanState *pstate)
 			node->mt_whichplan++;
 			if (node->mt_whichplan < node->mt_nplans)
 			{
-				resultRelInfo++;
+				estate->es_result_relation_info = estate->es_result_relations + node->mt_whichplan;
+				resultRelInfo = estate->es_result_relation_info;
 				subplanstate = node->mt_plans[node->mt_whichplan];
-				junkfilter = resultRelInfo->ri_junkFilter;
-				estate->es_result_relation_info = resultRelInfo;
+				junkfilter = estate->es_result_relation_info->ri_junkFilter;
+				action_attno = estate->es_result_relation_info->ri_action_attno;
+				segid_attno = estate->es_result_relation_info->ri_segid_attno;
 				EvalPlanQualSetPlan(&node->mt_epqstate, subplanstate->plan,
 									node->mt_arowmarks[node->mt_whichplan]);
 				/* Prepare to convert transition tuples from this child. */
@@ -2136,6 +2405,9 @@ ExecModifyTable(PlanState *pstate)
 		EvalPlanQualSetSlot(&node->mt_epqstate, planSlot);
 		slot = planSlot;
 
+		int32 segid = GpIdentity.segindex;
+		int action = -1;
+
 		tupleid = NULL;
 		oldtuple = NULL;
 		if (junkfilter != NULL)
@@ -2150,7 +2422,9 @@ ExecModifyTable(PlanState *pstate)
 				bool		isNull;
 
 				relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
-				if (relkind == RELKIND_RELATION || relkind == RELKIND_MATVIEW)
+				if (relkind == RELKIND_RELATION || relkind == RELKIND_MATVIEW ||
+					relkind == RELKIND_PARTITIONED_TABLE ||
+					IsAppendonlyMetadataRelkind(relkind))
 				{
 					datum = ExecGetJunkAttribute(slot,
 												 junkfilter->jf_junkAttNo,
@@ -2195,11 +2469,36 @@ ExecModifyTable(PlanState *pstate)
 					oldtupdata.t_tableOid =
 						(relkind == RELKIND_VIEW) ? InvalidOid :
 						RelationGetRelid(resultRelInfo->ri_RelationDesc);
-
 					oldtuple = &oldtupdata;
 				}
 				else
 					Assert(relkind == RELKIND_FOREIGN_TABLE);
+
+				/*
+				 * Extract GPDB-specific junk attributes.
+				 */
+				if (AttributeNumberIsValid(segid_attno))
+				{
+					datum = ExecGetJunkAttribute(slot,
+												 segid_attno,
+												 &isNull);
+					/* shouldn't ever get a null result... */
+					if (isNull)
+						elog(ERROR, "gp_segment_id is NULL");
+
+					segid = DatumGetInt32(datum);
+				}
+				if (AttributeNumberIsValid(action_attno))
+				{
+					datum = ExecGetJunkAttribute(slot,
+												 action_attno,
+												 &isNull);
+					/* shouldn't ever get a null result... */
+					if (isNull)
+						elog(ERROR, "action is NULL");
+
+					action = DatumGetInt32(datum);
+				}
 			}
 
 			/*
@@ -2217,25 +2516,68 @@ ExecModifyTable(PlanState *pstate)
 					slot = ExecPrepareTupleRouting(node, estate, proute,
 												   resultRelInfo, slot);
 				slot = ExecInsert(node, slot, planSlot,
-								  estate, node->canSetTag);
+								  estate, node->canSetTag, false /* splitUpdate */);
 				/* Revert ExecPrepareTupleRouting's state change. */
 				if (proute)
 					estate->es_result_relation_info = resultRelInfo;
 				break;
 			case CMD_UPDATE:
-				slot = ExecUpdate(node, tupleid, oldtuple, slot, planSlot,
-								  &node->mt_epqstate, estate, node->canSetTag);
+				/* Prepare for tuple routing if needed. */
+				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
+					slot = ExecPrepareTupleRouting(node, estate, proute,
+												   resultRelInfo, slot);
+				if (!AttributeNumberIsValid(action_attno))
+				{
+					/* normal non-split UPDATE */
+					slot = ExecUpdate(node, tupleid, oldtuple, slot, planSlot,
+									  segid,
+									  &node->mt_epqstate, estate, node->canSetTag);
+				}
+				else if (DML_INSERT == action)
+				{
+					slot = ExecSplitUpdate_Insert(node, slot, planSlot,
+												  estate, node->canSetTag);
+				}
+				else /* DML_DELETE */
+				{
+					slot = ExecDelete(node, tupleid, segid, oldtuple, planSlot,
+									  &node->mt_epqstate, estate,
+									  false,
+									  false /* canSetTag */,
+									  true /* changingPart */ ,
+									  true /* splitUpdate */ ,
+									  NULL, NULL);
+				}
+				/* Revert ExecPrepareTupleRouting's state change. */
+				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
+					estate->es_result_relation_info = resultRelInfo;
 				break;
 			case CMD_DELETE:
-				slot = ExecDelete(node, tupleid, oldtuple, planSlot,
+				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
+					planSlot = ExecPrepareTupleRouting(node, estate, proute,
+												   resultRelInfo, slot);
+				slot = ExecDelete(node, tupleid, segid, oldtuple, planSlot,
 								  &node->mt_epqstate, estate,
 								  true, node->canSetTag,
-								  false /* changingPart */ , NULL, NULL);
+								  false /* changingPart */ ,
+								  false /* splitUpdate */ ,
+								  NULL, NULL);
+				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
+					estate->es_result_relation_info = resultRelInfo;
 				break;
 			default:
 				elog(ERROR, "unknown operation");
 				break;
 		}
+
+		/*
+		 * If the target is a partitioned table, ExecInsert / ExecUpdate /
+		 * ExecDelete might have changed es_result_relation_info to point to
+		 * a partition, instead of the top-level table. Reset it. (It would
+		 * be more tidy if those functions cleaned up after themselves, but
+		 * it's more robust to do it here just once.)
+		 */
+		estate->es_result_relation_info = resultRelInfo;
 
 		/*
 		 * If we got a RETURNING result, return it to caller.  We'll continue
@@ -2254,7 +2596,9 @@ ExecModifyTable(PlanState *pstate)
 	/*
 	 * We're done, but fire AFTER STATEMENT triggers before exiting.
 	 */
-	fireASTriggers(node);
+	/* In GPDB, don't fire statement triggers in reader processes */
+	if (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer)
+		fireASTriggers(node);
 
 	node->mt_done = true;
 
@@ -2308,7 +2652,24 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInit(&mtstate->mt_epqstate, estate, NULL, NIL, node->epqParam);
-	mtstate->fireBSTriggers = true;
+
+	if (CMD_UPDATE == operation)
+	{
+		mtstate->mt_isSplitUpdates = (bool *) palloc0(nplans * sizeof(bool));
+		if (node->isSplitUpdates)
+		{
+			if (list_length(node->isSplitUpdates) != nplans)
+				elog(ERROR, "ModifyTable node is missing is-split-update information");
+
+			i = 0;
+			foreach(l, node->isSplitUpdates)
+				mtstate->mt_isSplitUpdates[i++] = (bool) lfirst_int(l);
+		}
+	}
+
+	/* GPDB: Don't fire statement-triggers in QE reader processes */
+	if (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer)
+		mtstate->fireBSTriggers = true;
 
 	/*
 	 * call ExecInitNode on each of the plans to be executed and save the
@@ -2336,6 +2697,25 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * Verify result relation is a valid target for the current operation
 		 */
 		CheckValidResultRel(resultRelInfo, operation);
+
+		/*
+		 * GPDB: We don't support SERIALIZABLE transaction isolation for
+		 * UPDATES/DELETES on AO/CO tables.
+		 */
+		if (IsolationUsesXactSnapshot() &&
+			RelationIsAppendOptimized(resultRelInfo->ri_RelationDesc))
+		{
+			if (operation == CMD_UPDATE)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("updates on append-only tables are not "
+								   "supported in serializable transactions")));
+			else if (operation == CMD_DELETE)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("deletes on append-only tables are not "
+								   "supported in serializable transactions")));
+		}
 
 		/*
 		 * If there are indices on the result relation, open them and save
@@ -2369,6 +2749,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 			ExecInitExtraTupleSlot(mtstate->ps.state, ExecGetResultType(mtstate->mt_plans[i]),
 								   table_slot_callbacks(resultRelInfo->ri_RelationDesc));
 
+		if (resultRelInfo->ri_RelationDesc->rd_tableam)
+			table_dml_init(resultRelInfo->ri_RelationDesc);
+
 		/* Also let FDWs init themselves for foreign-table result rels */
 		if (!resultRelInfo->ri_usesFdwDirectModify &&
 			resultRelInfo->ri_FdwRoutine != NULL &&
@@ -2391,6 +2774,25 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	/* Get the target relation */
 	rel = (getTargetResultRelInfo(mtstate))->ri_RelationDesc;
+
+	/*
+	 * GPDB dynamic scan nodes optimize memory usage by avoiding the need to
+	 * maintain a data structure for every partition node. In the plan tree
+	 * this is represented as a single dynamic scan node as opposed to an
+	 * append over many leaf partitions. The different plan representations
+	 * require different execution paths in modify table.
+	 *
+	 * In the case of append, a basic scan on a leaf partition requires no
+	 * tuple routing unless an update to the partition key causes the tuple to
+	 * be routed to another relation.
+	 *
+	 * In the case of dynamic scan, the node hierarchy always requires tuple
+	 * routing to find the corresponding relation. If update to a partition key
+	 * causes the tuple to be routed, then we must perform tuple routing a
+	 * second time.
+	 */
+	if (node->forceTupleRouting)
+		update_tuple_routing_needed = true;
 
 	/*
 	 * If it's not a partitioned table after all, UPDATE tuple routing should
@@ -2586,6 +2988,29 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		if (rc->isParent)
 			continue;
 
+		/*
+		 * Like in preprocess_targetlist, ignore distributed tables.
+		 */
+		{
+			RangeTblEntry *rte = rt_fetch(rc->rti, estate->es_plannedstmt->rtable);
+
+			if (rte->rtekind == RTE_RELATION)
+			{
+				GpPolicy *policy = GpPolicyFetch(rte->relid);
+				if (GpPolicyIsPartitioned(policy))
+					continue;
+			}
+		}
+		if (Gp_role == GP_ROLE_EXECUTE)
+		{
+			/*
+			 * In the executor, we don't have information on which tables are
+			 * distributed. Assume that everything is; we wouldn't be running this
+			 * slice on an entry table otherwise.
+			 */
+			continue;
+		}
+
 		/* find ExecRowMark (same for all subplans) */
 		erm = ExecFindRowMark(estate, rc->rti, false);
 
@@ -2675,11 +3100,24 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 					relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
 					if (relkind == RELKIND_RELATION ||
 						relkind == RELKIND_MATVIEW ||
-						relkind == RELKIND_PARTITIONED_TABLE)
+						relkind == RELKIND_PARTITIONED_TABLE ||
+						IsAppendonlyMetadataRelkind(relkind))
 					{
 						j->jf_junkAttNo = ExecFindJunkAttribute(j, "ctid");
 						if (!AttributeNumberIsValid(j->jf_junkAttNo))
 							elog(ERROR, "could not find junk ctid column");
+
+						/* Extra GPDB junk columns */
+						resultRelInfo->ri_segid_attno = ExecFindJunkAttribute(j, "gp_segment_id");
+						if (!AttributeNumberIsValid(resultRelInfo->ri_segid_attno))
+							elog(ERROR, "could not find junk gp_segment_id column");
+
+						if (operation == CMD_UPDATE && mtstate->mt_isSplitUpdates[i])
+						{
+							resultRelInfo->ri_action_attno = ExecFindJunkAttribute(j, "DMLAction");
+							if (!AttributeNumberIsValid(resultRelInfo->ri_action_attno))
+								elog(ERROR, "could not find junk action column");
+						}
 					}
 					else if (relkind == RELKIND_FOREIGN_TABLE)
 					{
@@ -2718,9 +3156,17 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 * before earlier ones.  This ensures that we don't throw away RETURNING
 	 * rows that need to be seen by a later CTE subplan.
 	 */
-	if (!mtstate->canSetTag)
-		estate->es_auxmodifytables = lcons(mtstate,
-										   estate->es_auxmodifytables);
+	if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_UTILITY)
+	{
+		/*
+		 * We do not need this unless in executor or with utility role. Note
+		 * This was added for the data modifying CTE feature but there are other
+		 * cases could run into this also.
+		 */
+		if (!mtstate->canSetTag)
+			estate->es_auxmodifytables = lcons(mtstate,
+											   estate->es_auxmodifytables);
+	}
 
 	return mtstate;
 }
@@ -2750,6 +3196,8 @@ ExecEndModifyTable(ModifyTableState *node)
 			resultRelInfo->ri_FdwRoutine->EndForeignModify != NULL)
 			resultRelInfo->ri_FdwRoutine->EndForeignModify(node->ps.state,
 														   resultRelInfo);
+		if (resultRelInfo->ri_RelationDesc->rd_tableam)
+			table_dml_finish(resultRelInfo->ri_RelationDesc);
 	}
 
 	/*
@@ -2795,4 +3243,23 @@ ExecReScanModifyTable(ModifyTableState *node)
 	 * semantics of that would be a bit debatable anyway.
 	 */
 	elog(ERROR, "ExecReScanModifyTable is not implemented");
+}
+
+void
+ExecSquelchModifyTable(ModifyTableState *node)
+{
+	/*
+	 * ModifyTable nodes must run to completion when asked to Squelch so
+	 * that we don't risk losing modifications which should be performed
+	 * regardless of any LIMIT's or other forms for projections which could
+	 * end up causing a squelch to happen.
+	 */
+	for (;;)
+	{
+		TupleTableSlot *result;
+
+		result = ExecModifyTable(&node->ps);
+		if (!result)
+			break;
+	}
 }

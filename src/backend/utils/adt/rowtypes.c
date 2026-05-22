@@ -151,10 +151,13 @@ record_in(PG_FUNCTION_ARGS)
 	while (*ptr && isspace((unsigned char) *ptr))
 		ptr++;
 	if (*ptr++ != '(')
+	{
+		ReleaseTupleDesc(tupdesc);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("malformed record literal: \"%s\"", string),
 				 errdetail("Missing left parenthesis.")));
+	}
 
 	initStringInfo(&buf);
 
@@ -179,11 +182,14 @@ record_in(PG_FUNCTION_ARGS)
 			if (*ptr == ',')
 				ptr++;
 			else
+			{
+				ReleaseTupleDesc(tupdesc);
 				/* *ptr must be ')' */
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						 errmsg("malformed record literal: \"%s\"", string),
 						 errdetail("Too few columns.")));
+			}
 		}
 
 		/* Check for null: completely empty input means null */
@@ -203,19 +209,25 @@ record_in(PG_FUNCTION_ARGS)
 				char		ch = *ptr++;
 
 				if (ch == '\0')
+				{
+					ReleaseTupleDesc(tupdesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							 errmsg("malformed record literal: \"%s\"",
 									string),
 							 errdetail("Unexpected end of input.")));
+				}
 				if (ch == '\\')
 				{
 					if (*ptr == '\0')
+					{
+						ReleaseTupleDesc(tupdesc);
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 								 errmsg("malformed record literal: \"%s\"",
 										string),
 								 errdetail("Unexpected end of input.")));
+					}
 					appendStringInfoChar(&buf, *ptr++);
 				}
 				else if (ch == '"')
@@ -263,18 +275,24 @@ record_in(PG_FUNCTION_ARGS)
 	}
 
 	if (*ptr++ != ')')
+	{
+		ReleaseTupleDesc(tupdesc);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("malformed record literal: \"%s\"", string),
 				 errdetail("Too many columns.")));
+	}
 	/* Allow trailing whitespace */
 	while (*ptr && isspace((unsigned char) *ptr))
 		ptr++;
 	if (*ptr)
+	{
+		ReleaseTupleDesc(tupdesc);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("malformed record literal: \"%s\"", string),
 				 errdetail("Junk after right parenthesis.")));
+	}
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 

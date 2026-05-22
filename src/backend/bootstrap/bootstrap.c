@@ -27,6 +27,8 @@
 #include "catalog/index.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
+#include "catalog/storage_tablespace.h"
+#include "commands/tablespace.h"
 #include "common/link-canary.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
@@ -350,6 +352,12 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	{
 		if (!SelectConfigFiles(userDoption, progname))
 			proc_exit(1);
+	}
+	if (userDoption)
+	{
+		/* userDoption isn't used any more */
+		free(userDoption);
+		userDoption = NULL;
 	}
 
 	/*

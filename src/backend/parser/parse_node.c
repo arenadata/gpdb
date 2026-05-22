@@ -83,7 +83,7 @@ free_parsestate(ParseState *pstate)
 	 */
 	if (pstate->p_next_resno - 1 > MaxTupleAttributeNumber)
 		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				(errcode(ERRCODE_TOO_MANY_COLUMNS),
 				 errmsg("target lists can have at most %d entries",
 						MaxTupleAttributeNumber)));
 
@@ -107,21 +107,21 @@ free_parsestate(ParseState *pstate)
  * normal non-error case: computing character indexes would be much more
  * expensive than storing token offsets.)
  */
-int
+void
 parser_errposition(ParseState *pstate, int location)
 {
 	int			pos;
 
 	/* No-op if location was not provided */
 	if (location < 0)
-		return 0;
+		return;
 	/* Can't do anything if source text is not available */
 	if (pstate == NULL || pstate->p_sourcetext == NULL)
-		return 0;
+		return;
 	/* Convert offset to character number */
 	pos = pg_mbstrlen_with_len(pstate->p_sourcetext, location) + 1;
 	/* And pass it to the ereport mechanism */
-	return errposition(pos);
+	errposition(pos);
 }
 
 

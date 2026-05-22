@@ -3,6 +3,8 @@
  * rewriteHandler.c
  *		Primary module of query rewriter.
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -40,6 +42,8 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+
+#include "catalog/aocatalog.h"
 
 
 /* We use a list of these to detect recursion in RewriteQuery */
@@ -133,8 +137,8 @@ AcquireRewriteLocks(Query *parsetree,
 					bool forExecute,
 					bool forUpdatePushedDown)
 {
-	ListCell   *l;
-	int			rt_index;
+	ListCell      *l;
+	int			   rt_index;
 	acquireLocksOnSubLinks_context context;
 
 	context.for_execute = forExecute;
@@ -148,6 +152,7 @@ AcquireRewriteLocks(Query *parsetree,
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 		Relation	rel;
 		LOCKMODE	lockmode;
+		bool        needLockUpgrade;
 		List	   *newaliasvars;
 		Index		curinputvarno;
 		RangeTblEntry *curinputrte;
@@ -166,11 +171,47 @@ AcquireRewriteLocks(Query *parsetree,
 				 *
 				 * If forExecute is false, ignore rellockmode and just use
 				 * AccessShareLock.
+				 *
+				 * CDB: The proper lock mode depends on whether the relation is
+				 * local or distributed, which is discovered by heap_open().
+				 * To handle this we make use of CdbOpenRelation().
+				 * 
+				 * For update should hold ExclusiveLock, see the discussion on
+				 * https://groups.google.com/a/greenplum.org/d/msg/gpdb-dev/p-6_dNjnRMQ/OzTnb586AwAJ
+				 *
+				 * Update|DELETE may have to upgrade the locks to avoid global
+				 * deadlock and CdbOpenRelation will do more check for AO table
+				 * and GDD's status.
 				 */
+				needLockUpgrade = false;
 				if (!forExecute)
 					lockmode = AccessShareLock;
-				else if (forUpdatePushedDown)
+				else if (rt_index == parsetree->resultRelation)
 				{
+					lockmode = RowExclusiveLock;
+					needLockUpgrade = (parsetree->commandType == CMD_UPDATE ||
+						parsetree->commandType == CMD_DELETE);
+				}
+				else if (forUpdatePushedDown ||
+						 get_parse_rowmark(parsetree, rt_index) != NULL)
+				{
+					/*
+					 * Greenplum specific behavior:
+					 * The implementation of select statement with locking clause
+					 * (for update | no key update | share | key share) in postgres
+					 * is to hold RowShareLock on tables during parsing stage, and
+					 * generate a LockRows plan node for executor to lock the tuples.
+					 * It is not easy to lock tuples in Greenplum database, since
+					 * tuples may be fetched through motion nodes.
+					 *
+					 * But when Global Deadlock Detector is enabled, and the select
+					 * statement with locking clause contains only one table, we are
+					 * sure that there are no motions. For such simple cases, we could
+					 * make the behavior just the same as Postgres.
+					 */
+					if (!parsetree->canOptSelectLockingClause)
+						rte->rellockmode = ExclusiveLock;
+
 					/* Upgrade RTE's lock mode to reflect pushed-down lock */
 					if (rte->rellockmode == AccessShareLock)
 						rte->rellockmode = RowShareLock;
@@ -179,7 +220,16 @@ AcquireRewriteLocks(Query *parsetree,
 				else
 					lockmode = rte->rellockmode;
 
-				rel = table_open(rte->relid, lockmode);
+
+				/* Take a lock either using CDB lock promotion or not */
+				if (needLockUpgrade)
+				{
+					rel = CdbOpenTable(rte->relid, lockmode, NULL);
+				}
+				else
+				{
+					rel = table_open(rte->relid, lockmode);
+				}
 
 				/*
 				 * While we have the relation open, update the RTE's relkind,
@@ -187,6 +237,7 @@ AcquireRewriteLocks(Query *parsetree,
 				 */
 				rte->relkind = rel->rd_rel->relkind;
 
+				/* Close the relcache entry without releasing the lock. */
 				table_close(rel, NoLock);
 				break;
 
@@ -253,6 +304,7 @@ AcquireRewriteLocks(Query *parsetree,
 				break;
 
 			case RTE_SUBQUERY:
+			case RTE_TABLEFUNCTION:
 
 				/*
 				 * The subquery RTE itself is all right, but we have to
@@ -431,6 +483,10 @@ rewriteRuleAction(Query *parsetree,
 				case RTE_RELATION:
 					sub_action->hasSubLinks =
 						checkExprHasSubLink((Node *) rte->tablesample);
+					break;
+				case RTE_TABLEFUNCTION:
+					sub_action->hasSubLinks =
+						checkExprHasSubLink((Node *) rte->functions);
 					break;
 				case RTE_FUNCTION:
 					sub_action->hasSubLinks =
@@ -1446,10 +1502,12 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	Var		   *var = NULL;
 	const char *attrname;
 	TargetEntry *tle;
+	Var 		*varSegid = NULL;
 
 	if (target_relation->rd_rel->relkind == RELKIND_RELATION ||
 		target_relation->rd_rel->relkind == RELKIND_MATVIEW ||
-		target_relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		target_relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
+		IsAppendonlyMetadataRelkind(target_relation->rd_rel->relkind))
 	{
 		/*
 		 * Emit CTID so that executor can find the row to update or delete.
@@ -1462,6 +1520,26 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 					  0);
 
 		attrname = "ctid";
+
+		/*
+		 * GPDB also needs gp_segment_id. ctid is only unique in the same
+		 * segment.
+		 */
+		{
+			Oid			reloid;
+			Oid			vartypeid;
+			int32		type_mod;
+			Oid			type_coll;
+
+			reloid = RelationGetRelid(target_relation);
+			get_atttypetypmodcoll(reloid, GpSegmentIdAttributeNumber, &vartypeid, &type_mod, &type_coll);
+			varSegid = makeVar(parsetree->resultRelation,
+							   GpSegmentIdAttributeNumber,
+							   vartypeid,
+							   type_mod,
+							   type_coll,
+							   0);
+		}
 	}
 	else if (target_relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 	{
@@ -1495,6 +1573,26 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 								  false);
 
 			attrname = "wholerow";
+
+			/*
+			 * GPDB also needs gp_segment_id. ctid is only unique in the same
+			 * segment.
+			 */
+			{
+				Oid			reloid;
+				Oid			vartypeid;
+				int32		type_mod;
+				Oid			type_coll;
+
+				reloid = RelationGetRelid(target_relation);
+				get_atttypetypmodcoll(reloid, GpSegmentIdAttributeNumber, &vartypeid, &type_mod, &type_coll);
+				varSegid = makeVar(parsetree->resultRelation,
+								   GpSegmentIdAttributeNumber,
+								   vartypeid,
+								   type_mod,
+								   type_coll,
+								   0);
+			}
 		}
 	}
 
@@ -1504,6 +1602,16 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 							  list_length(parsetree->targetList) + 1,
 							  pstrdup(attrname),
 							  true);
+
+		parsetree->targetList = lappend(parsetree->targetList, tle);
+	}
+
+	if (varSegid)
+	{
+		tle = makeTargetEntry((Expr *) varSegid,
+							  list_length(parsetree->targetList) + 1,	/* resno */
+							  pstrdup("gp_segment_id"),	/* resname */
+							  true);					/* resjunk */
 
 		parsetree->targetList = lappend(parsetree->targetList, tle);
 	}
@@ -1884,7 +1992,7 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 		 * do to this level of the query, but we must recurse into the
 		 * subquery to expand any rule references in it.
 		 */
-		if (rte->rtekind == RTE_SUBQUERY)
+		if (rte->rtekind == RTE_SUBQUERY || rte->rtekind == RTE_TABLEFUNCTION)
 		{
 			rte->subquery = fireRIRrules(rte->subquery, activeRIRs);
 			continue;
@@ -1905,8 +2013,12 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 		 * expanded as if they were regular views, if they are not scannable.
 		 * In that case this test would need to be postponed till after we've
 		 * opened the rel, so that we could check its state.
+		 *
+		 * In the minirepro utility in GPDB, we use the expandMatViews flag
+		 * to treat materialized views as regular views when dumping the
+		 * DDL in order to dump dependent objects
 		 */
-		if (rte->relkind == RELKIND_MATVIEW)
+		if (rte->relkind == RELKIND_MATVIEW && !parsetree->expandMatViews)
 			continue;
 
 		/*
@@ -2646,7 +2758,7 @@ relation_is_updatable(Oid reloid,
 
 #define ALL_EVENTS ((1 << CMD_INSERT) | (1 << CMD_UPDATE) | (1 << CMD_DELETE))
 
-	rel = try_relation_open(reloid, AccessShareLock);
+	rel = try_relation_open(reloid, AccessShareLock, false);
 
 	/*
 	 * If the relation doesn't exist, return zero rather than throwing an
@@ -2658,6 +2770,7 @@ relation_is_updatable(Oid reloid,
 		return 0;
 
 	/* If the relation is a table, it is always updatable */
+	/* GPDB: except if it's an external table, which we checked above */
 	if (rel->rd_rel->relkind == RELKIND_RELATION ||
 		rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 	{

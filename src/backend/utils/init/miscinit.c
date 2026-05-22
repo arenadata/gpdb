@@ -38,7 +38,10 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
+#include "postmaster/fts.h"
 #include "postmaster/postmaster.h"
+#include "postmaster/startup.h"
+#include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
@@ -47,12 +50,19 @@
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
+#include "utils/gdd.h"
 #include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/pidfile.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+
+#include "cdb/cdbvars.h"
+#include "utils/resgroup.h"
+#include "utils/resource_manager.h"
+#include "utils/resscheduler.h"
 
 
 #define DIRECTORY_LOCK_FILE		"postmaster.pid"
@@ -417,8 +427,8 @@ GetSessionUserId(void)
 	return SessionUserId;
 }
 
-
-static void
+/* extern so DispatchAgent can use this (postgres.c) */
+extern void
 SetSessionUserId(Oid userid, bool is_superuser)
 {
 	AssertState(SecurityRestrictionContext == 0);
@@ -430,6 +440,13 @@ SetSessionUserId(Oid userid, bool is_superuser)
 	/* We force the effective user IDs to match, too */
 	OuterUserId = userid;
 	CurrentUserId = userid;
+}
+
+bool
+IsAuthenticatedUserSuperUser()
+{
+	AssertState(OidIsValid(AuthenticatedUserId));
+	return AuthenticatedUserIsSuperuser;
 }
 
 /*
@@ -654,14 +671,28 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 		 * ideally one should succeed and one fail.  Getting that to work
 		 * exactly seems more trouble than it is worth, however; instead we
 		 * just document that the connection limit is approximate.
+		 *
+		 * We do not want to do this for QEs since a single QD might initialise
+		 * many connections to each segment to execute a non-trivial plan and
+		 * the user connection limit does not map, semantically, to that idea.
 		 */
-		if (rform->rolconnlimit >= 0 &&
+		if (Gp_role == GP_ROLE_DISPATCH && rform->rolconnlimit >= 0 &&
 			!AuthenticatedUserIsSuperuser &&
 			CountUserBackends(roleid) > rform->rolconnlimit)
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("too many connections for role \"%s\"",
 							rname)));
+	}
+
+	/*
+	 * If resource scheduling is enabled, then set cached value for the
+	 * queue. Do this even in standalone backend mode, just in case someone
+	 * gives the superuser a resource queue.
+	 */
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResQueueEnabled())
+	{
+		SetResQueueId();
 	}
 
 	/* Record username and superuser status as GUC settings too */
@@ -685,7 +716,10 @@ InitializeSessionUserIdStandalone(void)
 	 * This function should only be called in single-user mode, in autovacuum
 	 * workers, and in background workers.
 	 */
-	AssertState(!IsUnderPostmaster || IsAutoVacuumWorkerProcess() || IsBackgroundWorker);
+	AssertState(!IsUnderPostmaster || IsAutoVacuumWorkerProcess() || IsBackgroundWorker
+				|| am_startup
+				|| (am_faulthandler && am_mirror)
+				|| (am_ftshandler && am_mirror));
 
 	/* call only once */
 	AssertState(!OidIsValid(AuthenticatedUserId));
@@ -723,6 +757,12 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 				 errmsg("permission denied to set session authorization")));
 
 	SetSessionUserId(userid, is_superuser);
+
+	/* If resource scheduling enabled, set the cached queue for the new role.*/
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResQueueEnabled())
+	{
+		SetResQueueId();
+	}
 
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
@@ -780,6 +820,12 @@ SetCurrentRoleId(Oid roleid, bool is_superuser)
 		SetRoleIsActive = true;
 
 	SetOuterUserId(roleid);
+
+	/* If resource scheduling enabled, set the cached queue for the new role.*/
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResQueueEnabled())
+	{
+		SetResQueueId();
+	}
 
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
@@ -1017,21 +1063,65 @@ CreateLockFile(const char *filename, bool amPostmaster,
 				(errno != ESRCH && errno != EPERM))
 			{
 				/* lockfile belongs to a live process */
-				ereport(FATAL,
-						(errcode(ERRCODE_LOCK_FILE_EXISTS),
-						 errmsg("lock file \"%s\" already exists",
-								filename),
-						 isDDLock ?
-						 (encoded_pid < 0 ?
-						  errhint("Is another postgres (PID %d) running in data directory \"%s\"?",
-								  (int) other_pid, refName) :
-						  errhint("Is another postmaster (PID %d) running in data directory \"%s\"?",
-								  (int) other_pid, refName)) :
-						 (encoded_pid < 0 ?
-						  errhint("Is another postgres (PID %d) using socket file \"%s\"?",
-								  (int) other_pid, refName) :
-						  errhint("Is another postmaster (PID %d) using socket file \"%s\"?",
-								  (int) other_pid, refName))));
+				/* Check /proc/<pid>/cmdline to see if it is a postmaster process 
+				 * We check if it is a postmaster process by checking for 
+				 * the string "bin/postgres -D <data_directory>". If it is present
+				 * in the /proc file, then it is probably a postmaster. Otherwise
+				 * we just ignore this and proceed to next step.
+				 * */
+#if defined(__linux__)
+				char pid_proc_file[255];
+				char proc_buffer[MAXPGPATH + 100];
+				char target_cmdline[MAXPGPATH + 100];
+				bool can_read_proc_file = false;
+
+				memset(pid_proc_file, 0, sizeof(pid_proc_file));
+				memset(proc_buffer, 0, sizeof(proc_buffer));
+				memset(target_cmdline, 0, sizeof(target_cmdline));
+
+				snprintf(pid_proc_file, sizeof(pid_proc_file), "/proc/%d/cmdline", (int)other_pid); 
+				snprintf(target_cmdline, sizeof(target_cmdline), "bin/postgres -D %s", refName);
+
+				int fp = open(pid_proc_file, O_RDONLY, 0600);
+
+				if (fp > 0)
+				{
+					if ((len = read(fp, proc_buffer, sizeof(proc_buffer) - 1)) < 0)
+					{
+						ereport(WARNING,
+						(errcode_for_file_access(),
+						errmsg("could not read proc file \"%s\": %m",
+						pid_proc_file)));
+					}
+					else
+					{
+						proc_buffer[len] = '\0';
+						can_read_proc_file = true;
+					}
+					close(fp);
+				}
+
+				if ( !can_read_proc_file || (strstr(proc_buffer, target_cmdline) != NULL))
+				{
+#endif
+					ereport(FATAL,
+							(errcode(ERRCODE_LOCK_FILE_EXISTS),
+						 	errmsg("lock file \"%s\" already exists",
+									filename),
+						 	isDDLock ?
+						 	(encoded_pid < 0 ?
+						  	errhint("Is another postgres (PID %d) running in data directory \"%s\"?",
+								  	(int) other_pid, refName) :
+						  	errhint("Is another postmaster (PID %d) running in data directory \"%s\"?",
+								  	(int) other_pid, refName)) :
+						 	(encoded_pid < 0 ?
+						  	errhint("Is another postgres (PID %d) using socket file \"%s\"?",
+								  	(int) other_pid, refName) :
+						  	errhint("Is another postmaster (PID %d) using socket file \"%s\"?",
+								  	(int) other_pid, refName))));
+#if defined(__linux__)
+				}
+#endif
 			}
 		}
 
@@ -1492,7 +1582,7 @@ ValidatePgVersion(const char *path)
 						path),
 				 errdetail("File \"%s\" does not contain valid data.",
 						   full_path),
-				 errhint("You might need to initdb.")));
+				 errhint("You might need to run gprecoversegment.sh")));
 
 	FreeFile(file);
 
@@ -1583,9 +1673,11 @@ void
 process_shared_preload_libraries(void)
 {
 	process_shared_preload_libraries_in_progress = true;
+
 	load_libraries(shared_preload_libraries_string,
 				   "shared_preload_libraries",
 				   false);
+
 	process_shared_preload_libraries_in_progress = false;
 }
 

@@ -313,7 +313,7 @@ dataLocateItem(GinBtree btree, GinBtreeStack *stack)
  * Find link to blkno on non-leaf page, returns offset of PostingItem
  */
 static OffsetNumber
-dataFindChildPtr(GinBtree btree, Page page, BlockNumber blkno, OffsetNumber storedOff)
+dataFindChildPtr(GinBtree btree pg_attribute_unused(), Page page, BlockNumber blkno, OffsetNumber storedOff)
 {
 	OffsetNumber i,
 				maxoff = GinPageGetOpaque(page)->maxoff;
@@ -358,7 +358,7 @@ dataFindChildPtr(GinBtree btree, Page page, BlockNumber blkno, OffsetNumber stor
  * Return blkno of leftmost child
  */
 static BlockNumber
-dataGetLeftMostPage(GinBtree btree, Page page)
+dataGetLeftMostPage(GinBtree btree pg_attribute_unused(), Page page)
 {
 	PostingItem *pitem;
 

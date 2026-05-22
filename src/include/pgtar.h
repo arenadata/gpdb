@@ -11,7 +11,6 @@
  *
  *-------------------------------------------------------------------------
  */
-
 enum tarError
 {
 	TAR_OK = 0,
@@ -24,3 +23,4 @@ extern enum tarError tarCreateHeader(char *h, const char *filename, const char *
 extern uint64 read_tar_number(const char *s, int len);
 extern void print_tar_number(char *s, int len, uint64 val);
 extern int	tarChecksum(char *header);
+extern uint64 read_tar_number(const char *s, int len);

@@ -3,6 +3,8 @@
  * nodeBitmapIndexscan.c
  *	  Routines to support bitmapped index scans of relations
  *
+ * Portions Copyright (c) 2007-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -27,6 +29,10 @@
 #include "executor/nodeIndexscan.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
+#include "utils/lsyscache.h"
+#include "nodes/tidbitmap.h"
+
+#include "cdb/cdbvars.h"
 
 
 /* ----------------------------------------------------------------
@@ -44,15 +50,31 @@ ExecBitmapIndexScan(PlanState *pstate)
 
 /* ----------------------------------------------------------------
  *		MultiExecBitmapIndexScan(node)
+ *
+ *		If IndexScanState's iss_NumArrayKeys = 0, then BitmapIndexScan
+ *		node returns a StreamBitmap that stores all the interesting rows.
+ *		The returning StreamBitmap will point to an IndexStream that contains
+ *		pointers to functions for handling the output.
+ *
+ *		If IndexScanState's iss_NumArrayKeys > 0 (e.g., WHERE clause contains
+ *		`d in (0,1)` condition and a bitmap index has been created on column d),
+ *		then iss_NumArrayKeys StreamBitmaps will be created, where every bitmap
+ *		points to an individual IndexStream. BitmapIndexScan node
+ *		returns a StreamBitmap that ORs all the above StreamBitmaps. Also, the
+ *		returning StreamBitmap will point to an OpStream of type BMS_OR whose input
+ *		streams are the IndexStreams created for every array key.
  * ----------------------------------------------------------------
  */
 Node *
 MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 {
-	TIDBitmap  *tbm;
+	Node	   *bitmap = NULL;
 	IndexScanDesc scandesc;
 	double		nTuples = 0;
 	bool		doscan;
+
+	/* Make sure we are not leaking a previous bitmap */
+	Assert(NULL == node->biss_result);
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
@@ -74,37 +96,33 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	{
 		ExecReScan((PlanState *) node);
 		doscan = node->biss_RuntimeKeysReady;
+
+        /* Return an empty bitmap if biss_RuntimeKeysReady still false.*/
+        if (!doscan)
+            index_initbitmap(scandesc, &bitmap);
 	}
 	else
 		doscan = true;
 
-	/*
-	 * Prepare the result bitmap.  Normally we just create a new one to pass
-	 * back; however, our parent node is allowed to store a pre-made one into
-	 * node->biss_result, in which case we just OR our tuple IDs into the
-	 * existing bitmap.  (This saves needing explicit UNION steps.)
-	 */
-	if (node->biss_result)
-	{
-		tbm = node->biss_result;
-		node->biss_result = NULL;	/* reset for next time */
-	}
-	else
-	{
-		/* XXX should we use less than work_mem for this? */
-		tbm = tbm_create(work_mem * 1024L,
-						 ((BitmapIndexScan *) node->ss.ps.plan)->isshared ?
-						 node->ss.ps.state->es_query_dsa : NULL);
-	}
-
-	/*
-	 * Get TIDs from index and insert into bitmap
-	 */
+	/* Get bitmap from index */
 	while (doscan)
 	{
-		nTuples += (double) index_getbitmap(scandesc, tbm);
+		nTuples += (double) index_getbitmap(scandesc, &bitmap);
+
+		if ((NULL != bitmap) &&
+			!(IsA(bitmap, TIDBitmap) || IsA(bitmap, StreamBitmap)))
+		{
+			elog(ERROR, "unrecognized result from bitmap index scan");
+		}
 
 		CHECK_FOR_INTERRUPTS();
+
+		if (QueryFinishPending)
+			break;
+
+		/* CDB: If EXPLAIN ANALYZE, let bitmap share our Instrumentation. */
+		if (node->ss.ps.instrument && (node->ss.ps.instrument)->need_cdb)
+			tbm_generic_set_instrument(bitmap, node->ss.ps.instrument);
 
 		doscan = ExecIndexAdvanceArrayKeys(node->biss_ArrayKeys,
 										   node->biss_NumArrayKeys);
@@ -118,7 +136,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	if (node->ss.ps.instrument)
 		InstrStopNode(node->ss.ps.instrument, nTuples);
 
-	return (Node *) tbm;
+	return (Node *) bitmap;
 }
 
 /* ----------------------------------------------------------------
@@ -185,9 +203,12 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 	indexScanDesc = node->biss_ScanDesc;
 
 	/*
-	 * Free the exprcontext ... now dead code, see ExecFreeExprContext
+	 * Free the exprcontext(s) ... now dead code, see ExecFreeExprContext
+	 *
+	 * GPDB: This is not dead code in GPDB, because we don't want to leak
+	 * exprcontexts in a dynamic bitmap index scan.
 	 */
-#ifdef NOT_USED
+#if 1
 	if (node->biss_RuntimeContext)
 		FreeExprContext(node->biss_RuntimeContext, true);
 #endif

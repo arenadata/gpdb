@@ -25,6 +25,7 @@ OBJS = pl_gram.o pl_handler.o pl_comp.o pl_exec.o \
 DATA = plpgsql.control plpgsql--1.0.sql plpgsql--unpackaged--1.0.sql
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB)
+REGRESS_OPTS += --init-file=init_file
 
 REGRESS = plpgsql_call plpgsql_control plpgsql_domain plpgsql_record \
 	plpgsql_cache plpgsql_transaction plpgsql_trap \

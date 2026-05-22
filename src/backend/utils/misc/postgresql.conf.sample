@@ -56,12 +56,22 @@
 
 # - Connection Settings -
 
-#listen_addresses = 'localhost'		# what IP address(es) to listen on;
+#listen_addresses = '*'			# what IP address(es) to listen on;
 					# comma-separated list of addresses;
-					# defaults to 'localhost'; use '*' for all
+					# defaults to '*', '*' = all
 					# (change requires restart)
-#port = 5432				# (change requires restart)
-#max_connections = 100			# (change requires restart)
+
+#port = 5432				# sets the database listener port for 
+      					# a Greenplum instance. The master and 
+					# each segment has its own port number. 
+# note: Port numbers for the Greenplum system must also be changed in the
+# gp_configuration catalog. See the Greenplum Database Administrator Guide 
+# for instructions!
+#
+# WARNING: YOU MUST SHUT DOWN YOUR GREENPLUM SYSTEM BEFORE CHANGING 
+# THE PORT NUMBER IN THIS FILE.
+
+#max_connections = 200			# (change requires restart)
 #superuser_reserved_connections = 3	# (change requires restart)
 #unix_socket_directories = '/tmp'	# comma-separated list of directories
 					# (change requires restart)
@@ -118,16 +128,16 @@
 
 # - Memory -
 
-#shared_buffers = 32MB			# min 128kB
+#shared_buffers = 128MB			# min 128kB
 					# (change requires restart)
 #huge_pages = try			# on, off, or try
 					# (change requires restart)
 #temp_buffers = 8MB			# min 800kB
-#max_prepared_transactions = 0		# zero disables the feature
+max_prepared_transactions = 250		# can be 0 or more
 					# (change requires restart)
 # Caution: it is not advisable to set max_prepared_transactions nonzero unless
 # you actively intend to use prepared transactions.
-#work_mem = 4MB				# min 64kB
+#work_mem = 32MB				# min 64kB
 #maintenance_work_mem = 64MB		# min 1MB
 #autovacuum_work_mem = -1		# min 1MB, or -1 to use maintenance_work_mem
 #max_stack_depth = 2MB			# min 100kB
@@ -162,13 +172,6 @@
 #vacuum_cost_page_miss = 10		# 0-10000 credits
 #vacuum_cost_page_dirty = 20		# 0-10000 credits
 #vacuum_cost_limit = 200		# 1-10000 credits
-
-# - Background Writer -
-
-#bgwriter_delay = 200ms			# 10-10000ms between rounds
-#bgwriter_lru_maxpages = 100		# max buffers written/round, 0 disables
-#bgwriter_lru_multiplier = 2.0		# 0-10.0 multiplier on buffers scanned/round
-#bgwriter_flush_after = 0		# measured in pages, 0 disables
 
 # - Asynchronous Behavior -
 
@@ -312,7 +315,7 @@
 #primary_slot_name = ''			# replication slot on sending server
 					# (change requires restart)
 #promote_trigger_file = ''		# file name whose presence ends recovery
-#hot_standby = on			# "off" disallows queries during recovery
+#hot_standby = off			# "on" allows queries during recovery
 					# (change requires restart)
 #max_standby_archive_delay = 30s	# max delay before canceling queries
 					# when reading WAL from archive;
@@ -347,8 +350,6 @@
 # - Planner Method Configuration -
 
 #enable_bitmapscan = on
-#enable_hashagg = on
-#enable_hashjoin = on
 #enable_indexscan = on
 #enable_indexonlyscan = on
 #enable_material = on
@@ -363,13 +364,26 @@
 #enable_parallel_hash = on
 #enable_partition_pruning = on
 
+#gp_enable_multiphase_agg = on
+#gp_enable_preunique = on
+#gp_enable_agg_distinct = on
+#gp_enable_agg_distinct_pruning = on
+#enable_groupagg = on
+#enable_hashagg = on
+#gp_selectivity_damping_for_scans = on
+#gp_selectivity_damping_for_joins = off
+
+#gp_enable_sort_limit = on
+
 # - Planner Cost Constants -
 
 #seq_page_cost = 1.0			# measured on an arbitrary scale
-#random_page_cost = 4.0			# same scale as above
+#random_page_cost = 4			# same scale as above
+
 #cpu_tuple_cost = 0.01			# same scale as above
 #cpu_index_tuple_cost = 0.005		# same scale as above
 #cpu_operator_cost = 0.0025		# same scale as above
+# GPDB_96_MERGE_FIXME: figure out the appropriate values for the parallel gucs
 #parallel_tuple_cost = 0.1		# same scale as above
 #parallel_setup_cost = 1000.0	# same scale as above
 
@@ -384,54 +398,37 @@
 
 #min_parallel_table_scan_size = 8MB
 #min_parallel_index_scan_size = 512kB
-#effective_cache_size = 4GB
+#effective_cache_size = 16GB
 
-# - Genetic Query Optimizer -
-
-#geqo = on
-#geqo_threshold = 12
-#geqo_effort = 5			# range 1-10
-#geqo_pool_size = 0			# selects default based on effort
-#geqo_generations = 0			# selects default based on effort
-#geqo_selection_bias = 2.0		# range 1.5-2.0
-#geqo_seed = 0.0			# range 0.0-1.0
+#gp_motion_cost_per_row = 0.0  # (same) (if 0, 2*cpu_tuple_cost is used)
 
 # - Other Planner Options -
 
-#default_statistics_target = 100	# range 1-10000
-#constraint_exclusion = partition	# on, off, or partition
 #cursor_tuple_fraction = 0.1		# range 0.0-1.0
-#from_collapse_limit = 8
-#join_collapse_limit = 8		# 1 disables collapsing of explicit
+#from_collapse_limit = 20
+#join_collapse_limit = 20		# 1 disables collapsing of explicit
 					# JOIN clauses
 #force_parallel_mode = off
 #jit = on				# allow JIT compilation
 #plan_cache_mode = auto			# auto, force_generic_plan or
 					# force_custom_plan
 
+#gp_segments_for_planner = 0     # if 0, actual number of segments is used
+
+#gp_enable_direct_dispatch = on
+
+optimizer_analyze_root_partition = on # stats collection on root partitions
 
 #------------------------------------------------------------------------------
 # REPORTING AND LOGGING
 #------------------------------------------------------------------------------
 
+# - Set gp_reraise_signal to on to generate core files on SIGSEGV
+
+#gp_reraise_signal = off
+
 # - Where to Log -
 
-#log_destination = 'stderr'		# Valid values are combinations of
-					# stderr, csvlog, syslog, and eventlog,
-					# depending on platform.  csvlog
-					# requires logging_collector to be on.
-
-# This is used when logging to stderr:
-#logging_collector = off		# Enable capturing of stderr and csvlog
-					# into log files. Required to be on for
-					# csvlogs.
-					# (change requires restart)
-
-# These are only used if logging_collector is on:
-#log_directory = 'log'			# directory where log files are written,
-					# can be absolute or relative to PGDATA
-#log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'	# log file name pattern,
-					# can include strftime() escapes
 #log_file_mode = 0600			# creation mode for log files,
 					# begin with 0 to use octal notation
 #log_truncate_on_rotation = off		# If on, an existing log file with the
@@ -447,16 +444,6 @@
 #log_rotation_size = 10MB		# Automatic rotation of logfiles will
 					# happen after that much log output.
 					# 0 disables.
-
-# These are relevant when logging to syslog:
-#syslog_facility = 'LOCAL0'
-#syslog_ident = 'postgres'
-#syslog_sequence_numbers = on
-#syslog_split_messages = on
-
-# This is only relevant when logging to eventlog (win32):
-# (change requires restart)
-#event_source = 'PostgreSQL'
 
 # - When to Log -
 
@@ -505,6 +492,8 @@
 
 #debug_print_parse = off
 #debug_print_rewritten = off
+#debug_print_prelim_plan = off
+#debug_print_slice_table = off
 #debug_print_plan = off
 #debug_pretty_print = on
 #log_checkpoints = off
@@ -540,7 +529,8 @@
 #log_temp_files = -1			# log temporary files equal or larger
 					# than the specified size in kilobytes;
 					# -1 disables, 0 logs all temp files
-#log_timezone = 'GMT'
+#log_timezone = 'GMT'			# actually, defaults to TZ environment
+					# setting
 
 #------------------------------------------------------------------------------
 # PROCESS TITLE
@@ -552,17 +542,32 @@
 
 
 #------------------------------------------------------------------------------
+# PL/JAVA
+#------------------------------------------------------------------------------
+#pljava_classpath = ''                      # ':' separated list of installed jar files
+#pljava_vmoptions = ''                      # Options sent to the JVM on startup
+#pljava_statement_cache_size = 0            # Size of the prepared statement MRU cache
+#pljava_release_lingering_savepoints = off  # on/off to release/abort lingering savepoints
+
+#------------------------------------------------------------------------------
 # STATISTICS
 #------------------------------------------------------------------------------
+
+# - ANALYZE Statistics on Database Contents -
+
+#default_statistics_target = 100	# range 1 - 10000 (target # of
+					# histogram bins)
 
 # - Query and Index Statistics Collector -
 
 #track_activities = on
-#track_counts = on
+#track_counts = off
 #track_io_timing = off
 #track_functions = none			# none, pl, all
 #track_activity_query_size = 1024	# (change requires restart)
 #stats_temp_directory = 'pg_stat_tmp'
+
+#stats_queue_level = off
 
 
 # - Monitoring -
@@ -571,7 +576,6 @@
 #log_planner_stats = off
 #log_executor_stats = off
 #log_statement_stats = off
-
 
 #------------------------------------------------------------------------------
 # AUTOVACUUM
@@ -604,7 +608,6 @@
 					# autovacuum, -1 means use
 					# vacuum_cost_limit
 
-
 #------------------------------------------------------------------------------
 # CLIENT CONNECTION DEFAULTS
 #------------------------------------------------------------------------------
@@ -624,13 +627,12 @@
 #search_path = '"$user", public'	# schema names
 #row_security = on
 #default_tablespace = ''		# a tablespace name, '' uses the default
-#temp_tablespaces = ''			# a list of tablespace names, '' uses
-					# only default tablespace
 #check_function_bodies = on
 #default_transaction_isolation = 'read committed'
 #default_transaction_read_only = off
 #default_transaction_deferrable = off
 #session_replication_role = 'origin'
+#gp_vmem_idle_resource_timeout = 18s 	# in milliseconds, 0 is disabled
 #statement_timeout = 0			# in milliseconds, 0 is disabled
 #lock_timeout = 0			# in milliseconds, 0 is disabled
 #idle_in_transaction_session_timeout = 0	# in milliseconds, 0 is disabled
@@ -691,7 +693,7 @@
 #------------------------------------------------------------------------------
 
 #deadlock_timeout = 1s
-#max_locks_per_transaction = 64		# min 10
+#max_locks_per_transaction = 128		# min 10
 					# (change requires restart)
 #max_pred_locks_per_transaction = 64	# min 10
 					# (change requires restart)
@@ -700,7 +702,27 @@
 					#  / -max_pred_locks_per_relation) - 1
 #max_pred_locks_per_page = 2            # min 0
 
+#---------------------------------------------------------------------------
+# RESOURCE SCHEDULING
+#---------------------------------------------------------------------------
 
+#max_resource_queues = 9		# no. of resource queues to create.
+#max_resource_portals_per_transaction = 64	# no. of portals per backend.
+#resource_select_only = on		# resource lock SELECT queries only.
+#resource_cleanup_gangs_on_wait = on	# Cleanup idle reader gangs before
+										# resource lockwait.
+gp_resqueue_memory_policy = 'eager_free'	# memory request based queueing. 
+									# eager_free, auto or none
+
+#---------------------------------------------------------------------------
+# EXTERNAL TABLES
+#---------------------------------------------------------------------------
+#gp_external_enable_exec = on   # enable external tables with EXECUTE.
+
+#---------------------------------------------------------------------------
+# APPEND ONLY TABLES
+#---------------------------------------------------------------------------
+#gp_safefswritesize = 0   # minimum size for safe AO writes in a non-mature fs
 #------------------------------------------------------------------------------
 # VERSION AND PLATFORM COMPATIBILITY
 #------------------------------------------------------------------------------
@@ -720,6 +742,27 @@
 
 #transform_null_equals = off
 
+
+#---------------------------------------------------------------------------
+# GREENPLUM ARRAY CONFIGURATION
+#---------------------------------------------------------------------------
+
+#---------------------------------------------------------------------------
+# GREENPLUM ARRAY TUNING
+#---------------------------------------------------------------------------
+
+# - Interconnect -
+
+#gp_max_packet_size = 8192
+gp_interconnect_type=udpifc
+
+# - Worker Process Creation -
+
+#gp_segment_connect_timeout = 180s
+
+# - Resource limits -
+gp_vmem_protect_limit = 8192  #Virtual memory limit (in MB).
+#gp_vmem_idle_resource_timeout = 18000 # idle-time before gang-release, in milliseconds (zero disables release).
 
 #------------------------------------------------------------------------------
 # ERROR HANDLING
@@ -742,7 +785,8 @@
 #include_dir = ''			# include files ending in '.conf' from
 					# a directory, e.g., 'conf.d'
 #include_if_exists = ''			# include file only if it exists
-#include = ''				# include file
+#include = 'special.conf'				# include file
+include = 'internal.auto.conf'		# GP_INTERNAL_AUTO_CONF_FILE_NAME which sets the gp_dbid
 
 
 #------------------------------------------------------------------------------

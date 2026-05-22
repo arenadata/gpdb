@@ -1,0 +1,4 @@
+CREATE WRITABLE EXTERNAL TABLE s3regress_create_invalid_wet (date text, time text, open float, high float,
+        low float, volume int) FORMAT 'csv';
+
+DROP EXTERNAL TABLE s3regress_create_invalid_wet;

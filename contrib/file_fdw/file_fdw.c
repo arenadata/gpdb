@@ -29,6 +29,7 @@
 #include "foreign/foreign.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/planmain.h"
@@ -412,6 +413,22 @@ fileGetOptions(Oid foreigntableid,
 	if (*filename == NULL)
 		elog(ERROR, "either filename or program is required for file_fdw foreign tables");
 
+
+	if (table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	{
+		/*
+		 * pass the on_segment option to COPY, which will replace the required
+		 * placeholder "<SEGID>" in filename
+		 */
+		options = list_append_unique(options, makeDefElem("on_segment", (Node *)makeInteger(true), -1));
+	}
+	else if (table->exec_location == FTEXECLOCATION_ANY)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("file_fdw does not support mpp_execute option 'any'")));
+	}
+
 	*other_options = options;
 }
 
@@ -679,6 +696,7 @@ fileBeginForeignScan(ForeignScanState *node, int eflags)
 						   filename,
 						   is_program,
 						   NULL,
+						   NULL,
 						   NIL,
 						   options);
 
@@ -753,6 +771,7 @@ fileReScanForeignScan(ForeignScanState *node)
 									node->ss.ss_currentRelation,
 									festate->filename,
 									festate->is_program,
+									NULL,
 									NULL,
 									NIL,
 									festate->options);
@@ -1035,7 +1054,8 @@ estimate_size(PlannerInfo *root, RelOptInfo *baserel,
 							   baserel->baserestrictinfo,
 							   0,
 							   JOIN_INNER,
-							   NULL);
+							   NULL,
+							   false);
 
 	nrows = clamp_row_est(nrows);
 
@@ -1124,7 +1144,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 	/*
 	 * Create CopyState from FDW options.
 	 */
-	cstate = BeginCopyFrom(NULL, onerel, filename, is_program, NULL, NIL,
+	cstate = BeginCopyFrom(NULL, onerel, filename, is_program, NULL, NULL, NIL,
 						   options);
 
 	/*

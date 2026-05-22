@@ -3,6 +3,8 @@
  * tid.c
  *	  Functions for the built-in type tuple id
  *
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,24 +22,22 @@
 #include <math.h>
 #include <limits.h>
 
+#include "access/hash.h"
 #include "access/heapam.h"
 #include "access/sysattr.h"
 #include "access/tableam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "parser/parsetree.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/hashutils.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/varlena.h"
 
-
-#define DatumGetItemPointer(X)	 ((ItemPointer) DatumGetPointer(X))
-#define ItemPointerGetDatum(X)	 PointerGetDatum(X)
 #define PG_GETARG_ITEMPOINTER(n) DatumGetItemPointer(PG_GETARG_DATUM(n))
 #define PG_RETURN_ITEMPOINTER(x) return ItemPointerGetDatum(x)
 
@@ -349,6 +349,15 @@ currtid_for_view(Relation viewrel, ItemPointer tid)
 	return (Datum) 0;
 }
 
+
+/*
+ * This function originates from PostgreSQL,
+ * is currently not supported by GPDB - MPP-7886.
+ * The problem is that calling function
+ * heapam.c::heap_get_latest_tid below fails to return
+ * the current number of blocks for the examined relation
+ */
+
 Datum
 currtid_byreloid(PG_FUNCTION_ARGS)
 {
@@ -359,6 +368,13 @@ currtid_byreloid(PG_FUNCTION_ARGS)
 	AclResult	aclresult;
 	Snapshot	snapshot;
 	TableScanDesc scan;
+
+	/*
+	 * Immediately inform client that the function is not supported
+	 */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("function currtid is not supported by GPDB")));
 
 	result = (ItemPointer) palloc(sizeof(ItemPointerData));
 	if (!reloid)
@@ -391,6 +407,15 @@ currtid_byreloid(PG_FUNCTION_ARGS)
 	PG_RETURN_ITEMPOINTER(result);
 }
 
+
+/*
+ * This function originates from PostgreSQL,
+ * is currently not supported by GPDB - MPP-7886.
+ * The problem is that calling function
+ * heapam.c::heap_get_latest_tid below fails to return
+ * the current number of blocks for the examined relation
+ */
+
 Datum
 currtid_byrelname(PG_FUNCTION_ARGS)
 {
@@ -402,6 +427,13 @@ currtid_byrelname(PG_FUNCTION_ARGS)
 	AclResult	aclresult;
 	Snapshot	snapshot;
 	TableScanDesc scan;
+
+	/*
+	 * Immediately inform client that the function is not supported
+	 */
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("function currtid2 is not supported by GPDB")));
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = table_openrv(relrv, AccessShareLock);

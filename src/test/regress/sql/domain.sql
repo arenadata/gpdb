@@ -124,7 +124,10 @@ drop domain dia;
 
 create type comptype as (r float8, i float8);
 create domain dcomptype as comptype;
-create table dcomptable (d1 dcomptype unique);
+-- GPDB: just marking the column as 'unique' fails, because a unique column
+-- needs to be part of the distribution key, and composite types can't be used
+-- as distribution keys because they have no hash opclasses.
+create table dcomptable (d1 dcomptype unique) distributed replicated;
 
 insert into dcomptable values (row(1,2)::dcomptype);
 insert into dcomptable values (row(3,4)::comptype);
@@ -184,11 +187,16 @@ drop type comptype cascade;
 create type comptype as (r float8, i float8);
 create domain dcomptypea as comptype[];
 create table dcomptable (d1 dcomptypea unique);
+-- GPDB: marking the column as 'unique' fails, because a unique column needs
+-- to be part of the distribution key, and composite types can't be used as
+-- distribution keys because they have no hash opclasses.
+create table dcomptable (d1 dcomptypea /*unique*/);
+create index on dcomptable (d1);
 
 insert into dcomptable values (array[row(1,2)]::dcomptypea);
 insert into dcomptable values (array[row(3,4), row(5,6)]::comptype[]);
 insert into dcomptable values (array[row(7,8)::comptype, row(9,10)::comptype]);
-insert into dcomptable values (array[row(1,2)]::dcomptypea);  -- fail on uniqueness
+--insert into dcomptable values (array[row(1,2)]::dcomptypea);  -- fail on uniqueness
 insert into dcomptable (d1[1]) values(row(9,10));
 insert into dcomptable (d1[1].r) values(11);
 
@@ -325,7 +333,7 @@ create domain ddef1 int4 DEFAULT 3;
 create domain ddef2 oid DEFAULT '12';
 -- Type mixing, function returns int8
 create domain ddef3 text DEFAULT 5;
-create sequence ddef4_seq;
+create sequence ddef4_seq cache 1;
 create domain ddef4 int4 DEFAULT nextval('ddef4_seq');
 create domain ddef5 numeric(8,2) NOT NULL DEFAULT '12.12';
 
@@ -363,7 +371,8 @@ create domain dnotnulltest integer;
 create table domnotnull
 ( col1 dnotnulltest
 , col2 dnotnulltest
-);
+, id int4 -- distribute on this column, so that we can UPDATE the others
+) distributed by (id);
 
 insert into domnotnull default values;
 alter domain dnotnulltest set not null; -- fails
@@ -423,7 +432,7 @@ alter domain con drop constraint if exists nonexistent;
 
 -- Test ALTER DOMAIN .. CONSTRAINT .. NOT VALID
 create domain things AS INT;
-CREATE TABLE thethings (stuff things);
+CREATE TABLE thethings (id int, stuff things);
 INSERT INTO thethings (stuff) VALUES (55);
 ALTER DOMAIN things ADD CONSTRAINT meow CHECK (VALUE < 11);
 ALTER DOMAIN things ADD CONSTRAINT meow CHECK (VALUE < 11) NOT VALID;
@@ -554,7 +563,7 @@ alter domain posint add constraint c1 check(value >= 0);
 drop table ddtest2;
 
 -- Likewise for domains within arrays of composite
-create table ddtest2(f1 ddtest1[]);
+create table ddtest2(f1 ddtest1[], distkey int) distributed by (distkey);
 insert into ddtest2 values('{(-1)}');
 alter domain posint add constraint c1 check(value >= 0);
 drop table ddtest2;
@@ -761,3 +770,76 @@ create domain testdomain1 as int constraint unsigned check (value > 0);
 alter domain testdomain1 rename constraint unsigned to unsigned_foo;
 alter domain testdomain1 drop constraint unsigned_foo;
 drop domain testdomain1;
+
+--
+-- Create Domain will dispatch collation
+-- See github issue: https://github.com/greenplum-db/gpdb/issues/12015
+--
+
+create domain testdomain_issue_12015 as text collate "C";
+
+select count(distinct (typname, collname))
+from
+(
+  select  typname,
+          (select collname from pg_collation where oid = typcollation)
+  from pg_type where typname = 'testdomain_issue_12015'
+  union all
+  select typname,
+         (select collname from pg_collation where oid = typcollation)
+  from gp_dist_random('pg_type') where typname = 'testdomain_issue_12015'
+)x;
+
+--
+-- ORCA shouldn't fail for data corruption while translating query to DXL
+-- for a constant domain value of the following text related types:
+-- char, bpchar, name.
+-- github issue: https://github.com/greenplum-db/gpdb/issues/14155
+--
+
+create table test_table_14155(txtime timestamptz default now(), user_role text);
+
+create domain domainname as name;
+create function test_func_name(
+    i_msg text,
+    i_caller domainname = current_user
+) returns void language plpgsql as $$
+begin
+    insert into test_table_14155 (
+        txtime, user_role
+    )
+    select now(), i_caller;
+end
+$$;
+
+select * from test_func_name('test');
+
+create domain domainchar as char;
+create function test_func_char(
+    i_msg text,
+    i_caller domainchar = 'a'
+) returns void language plpgsql as $$
+begin
+    insert into test_table_14155 (
+        txtime, user_role
+    )
+    select now(), i_caller;
+end
+$$;
+
+select * from test_func_char('test');
+
+create domain domainbpchar as bpchar;
+create function test_func_bpchar(
+    i_msg text,
+    i_caller domainbpchar = 'test'
+) returns void language plpgsql as $$
+begin
+    insert into test_table_14155 (
+        txtime, user_role
+    )
+    select now(), i_caller;
+end
+$$;
+
+select * from test_func_bpchar('test');

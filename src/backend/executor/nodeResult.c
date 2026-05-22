@@ -34,6 +34,8 @@
  *		plan normally and pass back the results.
  *
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -50,6 +52,13 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 
+#include "cdb/cdbhash.h"
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
+#include "cdb/memquota.h"
+#include "executor/spi.h"
+
+static bool TupleMatchesHashFilter(ResultState *node, TupleTableSlot *resultSlot);
 
 /* ----------------------------------------------------------------
  *		ExecResult(node)
@@ -122,6 +131,16 @@ ExecResult(PlanState *pstate)
 			 * access the input tuples as varno OUTER.
 			 */
 			econtext->ecxt_outertuple = outerTupleSlot;
+
+			/*
+			 * GPDB: if there's a non-constant qual, check that too.
+			 *
+			 * PostgreSQL also initializes node->ps.qual in ExecInitResult,
+			 * but it's not used for anything. But GPDB can create Results
+			 * with quals, see create_projection_path_with_quals().
+			 */
+			if (node->ps.qual && !ExecQualAndReset(node->ps.qual, econtext))
+				continue;
 		}
 		else
 		{
@@ -133,10 +152,58 @@ ExecResult(PlanState *pstate)
 		}
 
 		/* form the result tuple using ExecProject(), and return it */
-		return ExecProject(node->ps.ps_ProjInfo);
+		TupleTableSlot *candidateOutputSlot;
+
+		candidateOutputSlot = ExecProject(node->ps.ps_ProjInfo);
+
+		/*
+		 * If there was a GPDB hash filter, check that too. Note that
+		 * the hash filter is expressed in terms of *result* slot, so
+		 * we must do this after projecting.
+		 */
+		if (!TupleMatchesHashFilter(node, candidateOutputSlot))
+			continue;
+
+		return candidateOutputSlot;
 	}
 
 	return NULL;
+}
+
+/**
+ * Returns true if tuple matches hash filter.
+ */
+static bool
+TupleMatchesHashFilter(ResultState *node, TupleTableSlot *resultSlot)
+{
+	Result	   *resultNode = (Result *)node->ps.plan;
+	bool		res = true;
+
+	Assert(resultNode);
+	Assert(!TupIsNull(resultSlot));
+
+	if (node->hashFilter)
+	{
+		int			i;
+
+		cdbhashinit(node->hashFilter);
+		for (i = 0; i < resultNode->numHashFilterCols; i++)
+		{
+			int			attnum = resultNode->hashFilterColIdx[i];
+			Datum		hAttr;
+			bool		isnull;
+
+			hAttr = slot_getattr(resultSlot, attnum, &isnull);
+
+			cdbhash(node->hashFilter, i + 1, hAttr, isnull);
+		}
+
+		int targetSeg = cdbhashreduce(node->hashFilter);
+
+		res = (targetSeg == GpIdentity.segindex);
+	}
+
+	return res;
 }
 
 /* ----------------------------------------------------------------
@@ -227,6 +294,25 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 		ExecInitQual(node->plan.qual, (PlanState *) resstate);
 	resstate->resconstantqual =
 		ExecInitQual((List *) node->resconstantqual, (PlanState *) resstate);
+
+	/*
+	 * initialize hash filter
+	 */
+	if (node->numHashFilterCols > 0)
+	{
+		int			currentSliceId = estate->currentSliceId;
+		ExecSlice *currentSlice = &estate->es_sliceTable->slices[currentSliceId];
+
+		resstate->hashFilter = makeCdbHash(currentSlice->planNumSegments,
+										   node->numHashFilterCols,
+										   node->hashFilterFuncs);
+	}
+
+	if (!IsResManagerMemoryPolicyNone()
+			&& IsResultMemoryIntensive(node))
+	{
+		SPI_ReserveMemory(((Plan *)node)->operatorMemKB * 1024L);
+	}
 
 	return resstate;
 }

@@ -4,6 +4,8 @@
  *	  per-process shared memory data structures
  *
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -19,8 +21,13 @@
 #include "lib/ilist.h"
 #include "storage/latch.h"
 #include "storage/lock.h"
+#include "storage/spin.h"
 #include "storage/pg_sema.h"
 #include "storage/proclist_types.h"
+
+#include "cdb/cdblocaldistribxact.h"  /* LocalDistribXactData */
+#include "cdb/cdbtm.h"  /* TMGXACT */
+#include "dsm.h"
 
 /*
  * Each backend advertises up to PGPROC_MAX_CACHED_SUBXIDS TransactionIds
@@ -60,7 +67,7 @@ struct XidCache
 
 /* flags reset at EOXact */
 #define		PROC_VACUUM_STATE_MASK \
-	(PROC_IN_VACUUM | PROC_IN_ANALYZE | PROC_VACUUM_FOR_WRAPAROUND)
+	(/* PROC_IN_VACUUM | */ PROC_IN_ANALYZE | PROC_VACUUM_FOR_WRAPAROUND)
 
 /*
  * We allow a small number of "weak" relation locks (AccessShareLock,
@@ -106,6 +113,17 @@ struct PGPROC
 	LocalTransactionId lxid;	/* local id of top-level transaction currently
 								 * being executed by this proc, if running;
 								 * else InvalidLocalTransactionId */
+
+	/*
+	 * Distributed transaction information. This is only maintained on QE's
+	 * and accessed by the backend itself, so this doesn't need to be
+	 * protected by any lock. On QD MyTmGxact provides this info, hence
+	 * redundant info is not maintained here for QD. In fact, it could be just
+	 * a global variable in backend-private memory, but it seems useful to
+	 * have this information available for debugging purposes.
+	 */
+	LocalDistribXactData localDistribXactData;
+
 	int			pid;			/* Backend's process ID; 0 if prepared xact */
 	int			pgprocno;
 
@@ -113,6 +131,9 @@ struct PGPROC
 	BackendId	backendId;		/* This backend's backend ID (if assigned) */
 	Oid			databaseId;		/* OID of database this backend is using */
 	Oid			roleId;			/* OID of role using this backend */
+    int         mppSessionId;   /* serial num of the qDisp process */
+    int         mppLocalProcessSerial;  /* this backend's PGPROC serial num */
+    bool		mppIsWriter;	/* The writer gang member, holder of locks */
 
 	Oid			tempNamespaceId;	/* OID of temp schema this backend is
 									 * using */
@@ -161,6 +182,38 @@ struct PGPROC
 
 	struct XidCache subxids;	/* cache for subtransaction XIDs */
 
+	/*
+	 * Info for Resource Scheduling, what portal (i.e statement) we might
+	 * be waiting on.
+	 */
+	uint32		waitPortalId;	/* portal id we are waiting on */
+
+	/*
+	 * Handle for our shared comboCids array (populated in writer/dispatcher
+	 * backends only)
+	 */
+	dsm_handle  comboCidsHandle;
+
+	/*
+	 * Current command_id for the running query
+	 * This counter is not dead code although there is no consumer in the gpdb
+	 * code tree, it is required by external monitoring infrastructure.
+	 * As a monitoring approach, each query execution is assigned with a unique
+	 * ID. The queryCommandId is part of the ID. Monitoring extension with
+	 * shared memory access can use queryCommandId to map query execution with
+	 * a backend entity to access related metrics information.
+	 */
+	int			queryCommandId;
+
+	/*
+	 * Information for resource group
+	 */
+	void		*resSlot;	/* the resource group slot granted.
+							 * NULL indicates the resource group is
+							 * locked for drop. */
+	void		*movetoResSlot; /* the resource group slot move to, valid only on QD */
+	Oid			movetoGroupId;  /* the resource group id move to */
+
 	/* Support for group XID clearing. */
 	/* true, if member of ProcArray group waiting for XID clear */
 	bool		procArrayGroupMember;
@@ -191,6 +244,7 @@ struct PGPROC
 
 	/* Lock manager data, recording fast-path locks taken by this backend. */
 	uint64		fpLockBits;		/* lock modes held for each fast-path slot */
+	uint64		fpHoldTillEndXactBits;	/* HoldTillEndXactBits for each slot */
 	Oid			fpRelId[FP_LOCK_SLOTS_PER_BACKEND]; /* slots for rel oids */
 	bool		fpVXIDLock;		/* are we holding a fast-path VXID lock? */
 	LocalTransactionId fpLocalTransactionId;	/* lxid for fast-path VXID
@@ -210,6 +264,11 @@ struct PGPROC
 
 extern PGDLLIMPORT PGPROC *MyProc;
 extern PGDLLIMPORT struct PGXACT *MyPgXact;
+extern PGDLLIMPORT struct TMGXACT *MyTmGxact;
+extern PGDLLIMPORT struct TMGXACTLOCAL *MyTmGxactLocal;
+
+/* Special for MPP reader gangs */
+extern PGDLLIMPORT PGPROC *lockHolderProcPtr;
 
 /*
  * Prior to PostgreSQL 9.2, the fields below were stored as part of the
@@ -247,6 +306,8 @@ typedef struct PROC_HDR
 	PGPROC	   *allProcs;
 	/* Array of PGXACT structures (not including dummies for prepared txns) */
 	PGXACT	   *allPgXact;
+	/* Array of TMGXACT structures (not including dummies for prepared txns) */
+	TMGXACT	   *allTmGxact;
 	/* Length of allProcs array */
 	uint32		allProcCount;
 	/* Head of list of free PGPROC structures */
@@ -272,6 +333,9 @@ typedef struct PROC_HDR
 	int			startupProcPid;
 	/* Buffer id of the buffer that Startup process waits for pin on, or -1 */
 	int			startupBufferPinWaitBufId;
+
+    /* Counter for assigning serial numbers to processes */
+    int         mppLocalProcessCounter;
 } PROC_HDR;
 
 extern PGDLLIMPORT PROC_HDR *ProcGlobal;
@@ -296,6 +360,7 @@ extern PGDLLIMPORT int DeadlockTimeout;
 extern int	StatementTimeout;
 extern int	LockTimeout;
 extern int	IdleInTransactionSessionTimeout;
+extern int	IdleSessionGangTimeout;
 extern bool log_lock_waits;
 
 
@@ -331,5 +396,11 @@ extern PGPROC *AuxiliaryPidGetProc(int pid);
 
 extern void BecomeLockGroupLeader(void);
 extern bool BecomeLockGroupMember(PGPROC *leader, int pid);
+
+extern int ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet);
+
+extern void ResLockWaitCancel(void);
+extern bool ProcCanSetMppSessionId(void);
+extern void ProcNewMppSessionId(int *newSessionId);
 
 #endif							/* PROC_H */

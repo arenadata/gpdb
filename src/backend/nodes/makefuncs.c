@@ -14,6 +14,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "funcapi.h"
 
 #include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
@@ -155,7 +156,7 @@ makeWholeRowVar(RangeTblEntry *rte,
 							 InvalidOid,
 							 varlevelsup);
 			break;
-
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 
 			/*
@@ -240,7 +241,7 @@ makeTargetEntry(Expr *expr,
 				bool resjunk)
 {
 	TargetEntry *tle = makeNode(TargetEntry);
-
+	
 	tle->expr = expr;
 	tle->resno = resno;
 	tle->resname = resname;
@@ -502,6 +503,7 @@ makeColumnDef(const char *colname, Oid typeOid, int32 typmod, Oid collOid)
 	n->collClause = NULL;
 	n->collOid = collOid;
 	n->constraints = NIL;
+	n->encoding = NIL;
 	n->fdwoptions = NIL;
 	n->location = -1;
 
@@ -788,7 +790,7 @@ makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid, List *expressions,
 GroupingSet *
 makeGroupingSet(GroupingSetKind kind, List *content, int location)
 {
-	GroupingSet *n = makeNode(GroupingSet);
+	GroupingSet	   *n = makeNode(GroupingSet);
 
 	n->kind = kind;
 	n->content = content;

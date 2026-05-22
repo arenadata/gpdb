@@ -3,6 +3,8 @@
  * rewriteDefine.c
  *	  routines for defining a rewrite rule
  *
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -43,6 +45,9 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+#include "catalog/oid_dispatch.h"
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbvars.h"
 
 static void checkRuleResultList(List *targetList, TupleDesc resultDesc,
 								bool isSelect, bool requireColumnNameMatch);
@@ -133,9 +138,11 @@ InsertRule(const char *rulname,
 	}
 	else
 	{
-		rewriteObjectId = GetNewOidWithIndex(pg_rewrite_desc,
-											 RewriteOidIndexId,
-											 Anum_pg_rewrite_oid);
+		rewriteObjectId = GetNewOidForRewrite(pg_rewrite_desc,
+											  RewriteOidIndexId,
+											  Anum_pg_rewrite_oid,
+											  eventrel_oid,
+											  unconstify(char *, rulname));
 		values[Anum_pg_rewrite_oid - 1] = ObjectIdGetDatum(rewriteObjectId);
 
 		tup = heap_form_tuple(pg_rewrite_desc->rd_att, values, nulls);
@@ -201,9 +208,18 @@ DefineRule(RuleStmt *stmt, const char *queryString)
 	List	   *actions;
 	Node	   *whereClause;
 	Oid			relId;
+	ObjectAddress result;
+	RuleStmt   *copyStmt;
 
 	/* Parse analysis. */
-	transformRuleStmt(stmt, queryString, &actions, &whereClause);
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		/* ... unless we are in a segment where the analysis is already done */
+		actions = stmt->actions;
+		whereClause = stmt->whereClause;
+	}
+	else
+		transformRuleStmt(stmt, queryString, &actions, &whereClause);
 
 	/*
 	 * Find and lock the relation.  Lock level should match
@@ -212,13 +228,29 @@ DefineRule(RuleStmt *stmt, const char *queryString)
 	relId = RangeVarGetRelid(stmt->relation, AccessExclusiveLock, false);
 
 	/* ... and execute */
-	return DefineQueryRewrite(stmt->rulename,
+	result = DefineQueryRewrite(stmt->rulename,
 							  relId,
 							  whereClause,
 							  stmt->event,
 							  stmt->instead,
 							  stmt->replace,
 							  actions);
+
+	/* ... and dispatch if necessary */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		copyStmt = copyObject(stmt);
+		copyStmt->actions = actions;
+		copyStmt->whereClause = whereClause;
+		CdbDispatchUtilityStatement((Node *) copyStmt,
+									DF_CANCEL_ON_ERROR |
+									DF_WITH_SNAPSHOT |
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
+	return result;
 }
 
 
@@ -440,6 +472,19 @@ DefineQueryRewrite(const char *rulename,
 						 errmsg("cannot convert partition \"%s\" to a view",
 								RelationGetRelationName(event_relation))));
 
+			/*
+			 * In GPDB, also forbid turning AO tables into views. It might
+			 * work, or at least it wouldn't be hard to make it work, but
+			 * turning a table into a view is a very old legacy PostgreSQL
+			 * feature that no one should be using anymore anyway, so let's
+			 * just error out.
+			 */
+			if (!RelationIsHeap(event_relation))
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("cannot convert non-heap table \"%s\" to a view",
+								RelationGetRelationName(event_relation))));
+
 			snapshot = RegisterSnapshot(GetLatestSnapshot());
 			scanDesc = table_beginscan(event_relation, snapshot, 0, NULL);
 			slot = table_slot_create(event_relation, NULL);
@@ -574,6 +619,8 @@ DefineQueryRewrite(const char *rulename,
 		/* drop storage while table still looks like a table  */
 		RelationDropStorage(event_relation);
 		DeleteSystemAttributeTuples(event_relid);
+		/* delete distribution policy record */
+		GpPolicyRemove(event_relid);
 
 		/*
 		 * Drop the toast table if any.  (This won't take care of updating the
@@ -610,8 +657,8 @@ DefineQueryRewrite(const char *rulename,
 
 		/*
 		 * Fix pg_class entry to look like a normal view's, including setting
-		 * the correct relkind and removal of reltoastrelid of the toast table
-		 * we potentially removed above.
+		 * the correct relkind/relstorage and removal of reltoastrelid of the
+		 * toast table we potentially removed above.
 		 */
 		classTup = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(event_relid));
 		if (!HeapTupleIsValid(classTup))

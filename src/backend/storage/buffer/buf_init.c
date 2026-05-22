@@ -14,6 +14,13 @@
  */
 #include "postgres.h"
 
+#include <sys/mman.h>
+
+#ifdef MPROTECT_BUFFERS
+#include <sys/mman.h>
+#include "miscadmin.h"
+#endif
+
 #include "storage/bufmgr.h"
 #include "storage/buf_internals.h"
 
@@ -24,6 +31,28 @@ LWLockMinimallyPadded *BufferIOLWLockArray = NULL;
 WritebackContext BackendWritebackContext;
 CkptSortItem *CkptBufferIds;
 
+#ifdef MPROTECT_BUFFERS
+/*
+ * Protect the entire shared buffers region such that neither read nor write
+ * is allowed.  Protection will change for specific buffers when accessed
+ * through buffer manager's interface.  The intent is to catch violation of
+ * buffer access rules.
+ */
+static void
+ProtectMemoryPoolBuffers()
+{
+	Size bufferBlocksTotalSize = mul_size((Size)NBuffers, (Size) BLCKSZ);
+	if (IsUnderPostmaster && IsNormalProcessingMode() &&
+		mprotect(BufferBlocks, bufferBlocksTotalSize, PROT_NONE))
+	{
+		ereport(ERROR,
+				(errmsg("unable to set memory level to %d, error %d, "
+						"allocation size %ud, ptr %ld", PROT_NONE,
+						errno, (unsigned int) bufferBlocksTotalSize,
+						(long int) BufferBlocks)));
+	}
+}
+#endif
 
 /*
  * Data Structures:
@@ -142,6 +171,10 @@ InitBufferPool(void)
 		/* Correct last entry of linked list */
 		GetBufferDescriptor(NBuffers - 1)->freeNext = FREENEXT_END_OF_LIST;
 	}
+
+#ifdef MPROTECT_BUFFERS
+    ProtectMemoryPoolBuffers();
+#endif
 
 	/* Init other shared buffer-management stuff */
 	StrategyInitialize(!foundDescs);

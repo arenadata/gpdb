@@ -283,9 +283,9 @@ SELECT array_to_json(ARRAY [jsonb '{"a":1}', jsonb '{"b":[2,3]}']);
 select to_jsonb(histogram_bounds) histogram_bounds
 from pg_stats
 where attname = 'tmplname' and tablename = 'pg_pltemplate';
-                                       histogram_bounds                                       
-----------------------------------------------------------------------------------------------
- ["plperl", "plperlu", "plpgsql", "plpython2u", "plpython3u", "plpythonu", "pltcl", "pltclu"]
+                                                     histogram_bounds                                                     
+--------------------------------------------------------------------------------------------------------------------------
+ ["pljava", "pljavau", "plperl", "plperlu", "plpgsql", "plpython2u", "plpython3u", "plpythonu", "plr", "pltcl", "pltclu"]
 (1 row)
 
 -- to_jsonb, timestamps
@@ -2433,7 +2433,8 @@ SELECT rec FROM jsonb_populate_record(
 
 -- anonymous record type
 SELECT jsonb_populate_record(null::record, '{"x": 0, "y": 1}');
-ERROR:  record type has not been registered
+ERROR:  could not determine row type for result of jsonb_populate_record
+HINT:  Provide a non-null record argument, or call the function in the FROM clause using a column definition list.
 SELECT jsonb_populate_record(row(1,2), '{"f1": 0, "f2": 1}');
  jsonb_populate_record 
 -----------------------
@@ -2516,7 +2517,8 @@ SELECT * FROM jsonb_populate_recordset(row('def',99,NULL)::jbpop,'[{"a":[100,200
 
 -- anonymous record type
 SELECT jsonb_populate_recordset(null::record, '[{"x": 0, "y": 1}]');
-ERROR:  record type has not been registered
+ERROR:  could not determine row type for result of jsonb_populate_recordset
+HINT:  Provide a non-null record argument, or call the function in the FROM clause using a column definition list.
 SELECT jsonb_populate_recordset(row(1,2), '[{"f1": 0, "f2": 1}]');
  jsonb_populate_recordset 
 --------------------------
@@ -2535,7 +2537,8 @@ FROM (VALUES (1),(2)) v(i);
 
 -- empty array is a corner case
 SELECT jsonb_populate_recordset(null::record, '[]');
-ERROR:  record type has not been registered
+ERROR:  could not determine row type for result of jsonb_populate_recordset
+HINT:  Provide a non-null record argument, or call the function in the FROM clause using a column definition list.
 SELECT jsonb_populate_recordset(row(1,2), '[]');
  jsonb_populate_recordset 
 --------------------------
@@ -2877,6 +2880,7 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
 CREATE INDEX jidx ON testjsonb USING gin (j);
 SET enable_seqscan = off;
+SET optimizer_enable_tablescan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count 
 -------
@@ -2952,14 +2956,16 @@ SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
-                           QUERY PLAN                            
------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on testjsonb
-         Recheck Cond: (j @@ '($."wait" == null)'::jsonpath)
-         ->  Bitmap Index Scan on jidx
-               Index Cond: (j @@ '($."wait" == null)'::jsonpath)
-(5 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Bitmap Heap Scan on testjsonb
+               Recheck Cond: (j @@ '($."wait" == null)'::jsonpath)
+               ->  Bitmap Index Scan on jidx
+                     Index Cond: (j @@ '($."wait" == null)'::jsonpath)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
  count 
@@ -3065,14 +3071,16 @@ SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on testjsonb
-         Recheck Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
-         ->  Bitmap Index Scan on jidx
-               Index Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
-(5 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Bitmap Heap Scan on testjsonb
+               Recheck Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
+               ->  Bitmap Index Scan on jidx
+                     Index Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
  count 
@@ -3253,6 +3261,7 @@ SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "
 DROP INDEX jidx;
 CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
 SET enable_seqscan = off;
+SET optimizer_enable_tablescan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count 
 -------
@@ -3370,14 +3379,16 @@ SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on testjsonb
-         Recheck Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
-         ->  Bitmap Index Scan on jidx
-               Index Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
-(5 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Bitmap Heap Scan on testjsonb
+               Recheck Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
+               ->  Bitmap Index Scan on jidx
+                     Index Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
  count 

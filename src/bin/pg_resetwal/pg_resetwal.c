@@ -36,6 +36,7 @@
 #define FRONTEND 1
 
 #include "postgres.h"
+#include "pgtime.h"
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -64,16 +65,21 @@ static XLogSegNo newXlogSegNo;	/* new XLOG segment # */
 static bool guessed = false;	/* T if we had to guess at any values */
 static const char *progname;
 static uint32 set_xid_epoch = (uint32) -1;
+static TransactionId set_oldest_xid = 0;
 static TransactionId set_xid = 0;
+static DistributedTransactionId set_gxid = 0;
 static TransactionId set_oldest_commit_ts_xid = 0;
 static TransactionId set_newest_commit_ts_xid = 0;
 static Oid	set_oid = 0;
+static Oid	set_relfilenode = 0;
 static MultiXactId set_mxid = 0;
 static MultiXactOffset set_mxoff = (MultiXactOffset) -1;
+static int32 set_data_checksum_version = -1;
 static uint32 minXlogTli = 0;
 static XLogSegNo minXlogSegNo = 0;
 static int	WalSegSz;
 static int	set_wal_segsize;
+static uint64 system_identifier = 0;
 
 static void CheckDataVersion(void);
 static bool ReadControlFile(void);
@@ -86,7 +92,15 @@ static void KillExistingXLOG(void);
 static void KillExistingArchiveStatus(void);
 static void WriteEmptyXLOG(void);
 static void usage(void);
+static bool AcceptWarning(void);
 
+#ifdef WIN32
+static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, const char *progname);
+#endif
+
+#ifndef BUFFER_LEN
+#define BUFFER_LEN (2 * (MAXPGPATH))
+#endif
 
 int
 main(int argc, char *argv[])
@@ -101,13 +115,23 @@ main(int argc, char *argv[])
 		{"dry-run", no_argument, NULL, 'n'},
 		{"next-oid", required_argument, NULL, 'o'},
 		{"multixact-offset", required_argument, NULL, 'O'},
+		{"oldest-transaction-id", required_argument, NULL, 'u'},
 		{"next-transaction-id", required_argument, NULL, 'x'},
 		{"wal-segsize", required_argument, NULL, 1},
+
+		/*
+		 * GPDB: The option numbers below start at 1000 to avoid conflicts with
+		 * upstream.
+		 */
+		{"binary-upgrade", no_argument, NULL, 1000},
+		{"system-identifier", required_argument, NULL, 1001},
+		{"next-gxid", required_argument, NULL, 1002},
 		{NULL, 0, NULL, 0}
 	};
 
 	int			c;
 	bool		force = false;
+	bool		binary_upgrade = false;
 	bool		noupdate = false;
 	MultiXactId set_oldestmxid = 0;
 	char	   *endptr;
@@ -132,10 +156,15 @@ main(int argc, char *argv[])
 			puts("pg_resetwal (PostgreSQL) " PG_VERSION);
 			exit(0);
 		}
+		if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			puts("pg_resetwal (Greenplum Database) " GP_VERSION);
+			exit(0);
+		}
 	}
 
 
-	while ((c = getopt_long(argc, argv, "c:D:e:fl:m:no:O:x:", long_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "c:D:e:fl:m:no:r:O:u:x:k:", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -168,6 +197,21 @@ main(int argc, char *argv[])
 				}
 				break;
 
+			case 'u':
+				set_oldest_xid = strtoul(optarg, &endptr, 0);
+				if (endptr == optarg || *endptr != '\0')
+				{
+					pg_log_error("invalid argument for option %s", "-u");
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+					exit(1);
+				}
+				if (!TransactionIdIsNormal(set_oldest_xid))
+				{
+					pg_log_error("oldest transaction ID (-u) must be greater or equal to %u", FirstNormalTransactionId);
+					exit(1);
+				}
+				break;
+
 			case 'x':
 				set_xid = strtoul(optarg, &endptr, 0);
 				if (endptr == optarg || *endptr != '\0')
@@ -176,9 +220,9 @@ main(int argc, char *argv[])
 					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 					exit(1);
 				}
-				if (set_xid == 0)
+				if (!TransactionIdIsNormal(set_xid))
 				{
-					pg_log_error("transaction ID (-x) must not be 0");
+					pg_log_error("transaction ID (-x) must be greater or equal to %u", FirstNormalTransactionId);
 					exit(1);
 				}
 				break;
@@ -225,6 +269,21 @@ main(int argc, char *argv[])
 				if (set_oid == 0)
 				{
 					pg_log_error("OID (-o) must not be 0");
+					exit(1);
+				}
+				break;
+
+			case 'r':
+				set_relfilenode = strtoul(optarg, &endptr, 0);
+				if (endptr == optarg || *endptr != '\0')
+				{
+					fprintf(stderr, _("%s: invalid argument for option -r\n"), progname);
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+					exit(1);
+				}
+				if (set_relfilenode == 0)
+				{
+					fprintf(stderr, _("%s: relfilenode (-r) must not be 0\n"), progname);
 					exit(1);
 				}
 				break;
@@ -306,6 +365,63 @@ main(int argc, char *argv[])
 				}
 				break;
 
+			case 'k':
+				set_data_checksum_version = strtol(optarg, &endptr, 0);
+				if (endptr == optarg || *endptr != '\0')
+				{
+					fprintf(stderr, _("%s: invalid argument for option -k\n"), progname);
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+					exit(1);
+				}
+				if (set_data_checksum_version < 0 || set_data_checksum_version > PG_DATA_CHECKSUM_VERSION)
+				{
+					fprintf(stderr, _("%s: data_checksum_version (-k) must be within 0..%d\n"),
+					        progname, PG_DATA_CHECKSUM_VERSION);
+					exit(1);
+				}
+				break;
+
+			/* GPDB-specific long options */
+			case 1000: /* --binary-upgrade */
+				binary_upgrade = true;
+				break;
+
+			case 1001: /* --system-identifier */
+#if SIZEOF_LONG >= 8
+				system_identifier = strtoul(optarg, &endptr, 0);
+#elif defined(HAVE_STRTOULL)
+				system_identifier = strtoull(optarg, &endptr, 0);
+#else
+#	error "The --system-identifier option requires 64-bit support."
+#endif
+				if (endptr == optarg || *endptr != '\0')
+				{
+					fprintf(stderr, _("%s: invalid argument for --system-identifier\n"), progname);
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+					exit(1);
+				}
+				if (system_identifier == 0)
+				{
+					fprintf(stderr, _("%s: argument of --system-identifier must not be 0\n"), progname);
+					exit(1);
+				}
+				break;
+
+			case 1002: /* --next-gxid */
+				set_gxid = strtoul(optarg, &endptr, 0);
+				if (endptr == optarg || *endptr != '\0')
+				{
+					pg_log_error("invalid argument for option %s", "--next-gxid");
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+					exit(1);
+				}
+				if (set_gxid == 0)
+				{
+					pg_log_error("distributed transaction ID (--next-gxid) must not be 0");
+					exit(1);
+				}
+				break;
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -329,6 +445,14 @@ main(int argc, char *argv[])
 	{
 		pg_log_error("no data directory specified");
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		exit(1);
+	}
+
+	/* GPDB: only allow setting --system-identifier during upgrade. */
+	if (!binary_upgrade && system_identifier)
+	{
+		fprintf(stderr, _("%s: setting --system-identifier is allowed only during binary upgrade\n"),
+				progname);
 		exit(1);
 	}
 
@@ -428,24 +552,19 @@ main(int argc, char *argv[])
 			FullTransactionIdFromEpochAndXid(set_xid_epoch,
 											 XidFromFullTransactionId(ControlFile.checkPointCopy.nextFullXid));
 
-	if (set_xid != 0)
+	if (set_oldest_xid != 0)
 	{
+		ControlFile.checkPointCopy.oldestXid = set_oldest_xid;
+		ControlFile.checkPointCopy.oldestXidDB = InvalidOid;
+	}
+
+	if (set_xid != 0)
 		ControlFile.checkPointCopy.nextFullXid =
 			FullTransactionIdFromEpochAndXid(EpochFromFullTransactionId(ControlFile.checkPointCopy.nextFullXid),
 											 set_xid);
 
-		/*
-		 * For the moment, just set oldestXid to a value that will force
-		 * immediate autovacuum-for-wraparound.  It's not clear whether adding
-		 * user control of this is useful, so let's just do something that's
-		 * reasonably safe.  The magic constant here corresponds to the
-		 * maximum allowed value of autovacuum_freeze_max_age.
-		 */
-		ControlFile.checkPointCopy.oldestXid = set_xid - 2000000000;
-		if (ControlFile.checkPointCopy.oldestXid < FirstNormalTransactionId)
-			ControlFile.checkPointCopy.oldestXid += FirstNormalTransactionId;
-		ControlFile.checkPointCopy.oldestXidDB = InvalidOid;
-	}
+	if (set_gxid != 0)
+		ControlFile.checkPointCopy.nextGxid = set_gxid;
 
 	if (set_oldest_commit_ts_xid != 0)
 		ControlFile.checkPointCopy.oldestCommitTsXid = set_oldest_commit_ts_xid;
@@ -454,6 +573,9 @@ main(int argc, char *argv[])
 
 	if (set_oid != 0)
 		ControlFile.checkPointCopy.nextOid = set_oid;
+
+	if (set_relfilenode != 0)
+		ControlFile.checkPointCopy.nextRelfilenode = set_relfilenode;
 
 	if (set_mxid != 0)
 	{
@@ -479,6 +601,12 @@ main(int argc, char *argv[])
 
 	if (minXlogSegNo > newXlogSegNo)
 		newXlogSegNo = minXlogSegNo;
+
+	if (system_identifier != 0)
+		ControlFile.system_identifier = system_identifier;
+
+	if (set_data_checksum_version != -1)
+		ControlFile.data_checksum_version = (uint32) set_data_checksum_version;
 
 	/*
 	 * If we had to guess anything, and -f was not given, just print the
@@ -508,6 +636,15 @@ main(int argc, char *argv[])
 	}
 
 	/*
+	 * Warn user of using pg_resetwal with GPDB
+	 */
+	if(!binary_upgrade && !AcceptWarning())
+	{
+		printf(_("Abort %s!\n"), progname);
+		exit(1);
+	}
+
+	/*
 	 * Else, do the dirty deed.
 	 */
 	RewriteControlFile();
@@ -519,6 +656,43 @@ main(int argc, char *argv[])
 	return 0;
 }
 
+/*
+ * Before making actual changes to xlog, warn user doing so might corrupt
+ * GPDB cluster.
+ *
+ * Return true if user accept the risk described in the warning.
+ */
+static bool
+AcceptWarning(void)
+{
+	int		ret;
+	char	response[5];
+
+	/* initialize response to empty string. */
+	response[0] = 0;
+
+	printf(_("WARNING: Do not use this on Greenplum. %s might cause data loss\n"
+			"and render system irrecoverable. Do you wish to proceed? [yes/no] "), progname);
+
+	/* Reading up to 4 letters instead of just 3 to ensure something like
+	 * "yesterday" won't be counted as "yes". Then discard anything after
+	 * the 4th character.
+	 */
+	ret = scanf("%4[^\n]%*[^\n]", response);
+
+	/* Protection against failed scanf result in uninitialized response.*/
+	if (ret == EOF || ret != 1)
+	{
+		return false;
+	}
+
+	if (strcmp(response, "yes") == 0 || strcmp(response, "Y") == 0)
+	{
+		return true;
+	}
+
+	return false;
+}
 
 /*
  * Look at the version string stored in PG_VERSION and decide if this utility
@@ -691,7 +865,9 @@ GuessControlValues(void)
 	ControlFile.checkPointCopy.fullPageWrites = false;
 	ControlFile.checkPointCopy.nextFullXid =
 		FullTransactionIdFromEpochAndXid(0, FirstNormalTransactionId);
+	ControlFile.checkPointCopy.nextGxid = FirstDistributedTransactionId;
 	ControlFile.checkPointCopy.nextOid = FirstBootstrapObjectId;
+	ControlFile.checkPointCopy.nextRelfilenode = FirstBootstrapObjectId;
 	ControlFile.checkPointCopy.nextMulti = FirstMultiXactId;
 	ControlFile.checkPointCopy.nextMultiOffset = 0;
 	ControlFile.checkPointCopy.oldestXid = FirstNormalTransactionId;
@@ -729,6 +905,7 @@ GuessControlValues(void)
 	ControlFile.loblksize = LOBLKSIZE;
 	ControlFile.float4ByVal = FLOAT4PASSBYVAL;
 	ControlFile.float8ByVal = FLOAT8PASSBYVAL;
+	ControlFile.data_checksum_version = PG_DATA_CHECKSUM_VERSION;
 
 	/*
 	 * XXX eventually, should try to grovel through old XLOG to develop more
@@ -764,8 +941,12 @@ PrintControlValues(bool guessed)
 	printf(_("Latest checkpoint's NextXID:          %u:%u\n"),
 		   EpochFromFullTransactionId(ControlFile.checkPointCopy.nextFullXid),
 		   XidFromFullTransactionId(ControlFile.checkPointCopy.nextFullXid));
+	printf(_("Latest checkpoint's NextGxid:         "UINT64_FORMAT"\n"),
+		   ControlFile.checkPointCopy.nextGxid);
 	printf(_("Latest checkpoint's NextOID:          %u\n"),
 		   ControlFile.checkPointCopy.nextOid);
+	printf(_("Latest checkpoint's NextRelfilenode:  %u\n"),
+		   ControlFile.checkPointCopy.nextRelfilenode);
 	printf(_("Latest checkpoint's NextMultiXactId:  %u\n"),
 		   ControlFile.checkPointCopy.nextMulti);
 	printf(_("Latest checkpoint's NextMultiOffset:  %u\n"),
@@ -852,6 +1033,12 @@ PrintNewControlValues(void)
 			   ControlFile.checkPointCopy.nextOid);
 	}
 
+	if (set_relfilenode != 0)
+	{
+		printf(_("NextRelfilenode:                      %u\n"),
+			   ControlFile.checkPointCopy.nextRelfilenode);
+	}
+
 	if (set_xid != 0)
 	{
 		printf(_("NextXID:                              %u\n"),
@@ -866,6 +1053,31 @@ PrintNewControlValues(void)
 	{
 		printf(_("NextXID epoch:                        %u\n"),
 			   EpochFromFullTransactionId(ControlFile.checkPointCopy.nextFullXid));
+	}
+
+	if (set_gxid != 0)
+		printf(_("NextGxid:                             "UINT64_FORMAT"\n"),
+			   ControlFile.checkPointCopy.nextGxid);
+
+	if (set_data_checksum_version != -1)
+	{
+		printf(_("Data page checksum version:           %u\n"),
+			   ControlFile.data_checksum_version);
+	}
+
+	if (system_identifier != 0)
+	{
+		char		sysident_str[32];
+
+		/*
+		 * Format system_identifier separately to keep platform-dependent
+		 * format code out of the translatable message string.
+		 */
+		snprintf(sysident_str, sizeof(sysident_str), UINT64_FORMAT,
+				 ControlFile.system_identifier);
+
+		printf(_("Database system identifier:           %s\n"),
+			   sysident_str);
 	}
 
 	if (set_oldest_commit_ts_xid != 0)
@@ -1209,6 +1421,114 @@ WriteEmptyXLOG(void)
 	close(fd);
 }
 
+#ifdef WIN32
+typedef BOOL(WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
+
+/* Windows API define missing from some versions of MingW headers */
+#ifndef  DISABLE_MAX_PRIVILEGE
+#define DISABLE_MAX_PRIVILEGE	0x1
+#endif
+
+/*
+* Create a restricted token and execute the specified process with it.
+*
+* Returns 0 on failure, non-zero on success, same as CreateProcess().
+*
+* On NT4, or any other system not containing the required functions, will
+* NOT execute anything.
+*/
+static int
+CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, const char *progname)
+{
+	BOOL		b;
+	STARTUPINFO si;
+	HANDLE		origToken;
+	HANDLE		restrictedToken;
+	SID_IDENTIFIER_AUTHORITY NtAuthority = { SECURITY_NT_AUTHORITY };
+	SID_AND_ATTRIBUTES dropSids[2];
+	__CreateRestrictedToken _CreateRestrictedToken = NULL;
+	HANDLE		Advapi32Handle;
+
+	ZeroMemory(&si, sizeof(si));
+	si.cb = sizeof(si);
+
+	Advapi32Handle = LoadLibrary("ADVAPI32.DLL");
+	if (Advapi32Handle != NULL)
+	{
+		_CreateRestrictedToken = (__CreateRestrictedToken)GetProcAddress(Advapi32Handle, "CreateRestrictedToken");
+	}
+
+	if (_CreateRestrictedToken == NULL)
+	{
+		fprintf(stderr, _("%s: WARNING: cannot create restricted tokens on this platform\n"), progname);
+		if (Advapi32Handle != NULL)
+			FreeLibrary(Advapi32Handle);
+		return 0;
+	}
+
+	/* Open the current token to use as a base for the restricted one */
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &origToken))
+	{
+		fprintf(stderr, _("%s: could not open process token: error code %lu\n"), progname, GetLastError());
+		return 0;
+	}
+
+	/* Allocate list of SIDs to remove */
+	ZeroMemory(&dropSids, sizeof(dropSids));
+	if (!AllocateAndInitializeSid(&NtAuthority, 2,
+		SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0,
+		0, &dropSids[0].Sid) ||
+		!AllocateAndInitializeSid(&NtAuthority, 2,
+		SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_POWER_USERS, 0, 0, 0, 0, 0,
+		0, &dropSids[1].Sid))
+	{
+		fprintf(stderr, _("%s: could not allocate SIDs: error code %lu\n"), progname, GetLastError());
+		return 0;
+	}
+
+	b = _CreateRestrictedToken(origToken,
+						DISABLE_MAX_PRIVILEGE,
+						sizeof(dropSids) / sizeof(dropSids[0]),
+						dropSids,
+						0, NULL,
+						0, NULL,
+						&restrictedToken);
+
+	FreeSid(dropSids[1].Sid);
+	FreeSid(dropSids[0].Sid);
+	CloseHandle(origToken);
+	FreeLibrary(Advapi32Handle);
+
+	if (!b)
+	{
+		fprintf(stderr, _("%s: could not create restricted token: error code %lu\n"), progname, GetLastError());
+		return 0;
+	}
+
+#ifndef __CYGWIN__
+	AddUserToTokenDacl(restrictedToken);
+#endif
+
+	if (!CreateProcessAsUser(restrictedToken,
+							NULL,
+							cmd,
+							NULL,
+							NULL,
+							TRUE,
+							CREATE_SUSPENDED,
+							NULL,
+							NULL,
+							&si,
+							processInfo))
+
+	{
+		fprintf(stderr, _("%s: could not start process for command \"%s\": error code %lu\n"), progname, cmd, GetLastError());
+		return 0;
+	}
+
+	return ResumeThread(processInfo->hThread);
+}
+#endif
 
 static void
 usage(void)
@@ -1222,14 +1542,19 @@ usage(void)
 	printf(_(" [-D, --pgdata=]DATADIR          data directory\n"));
 	printf(_("  -e, --epoch=XIDEPOCH           set next transaction ID epoch\n"));
 	printf(_("  -f, --force                    force update to be done\n"));
+	printf(_("  -k data_checksum_version       set data_checksum_version\n"));
 	printf(_("  -l, --next-wal-file=WALFILE    set minimum starting location for new WAL\n"));
 	printf(_("  -m, --multixact-ids=MXID,MXID  set next and oldest multitransaction ID\n"));
 	printf(_("  -n, --dry-run                  no update, just show what would be done\n"));
 	printf(_("  -o, --next-oid=OID             set next OID\n"));
 	printf(_("  -O, --multixact-offset=OFFSET  set next multitransaction offset\n"));
+	printf(_("  -u, --oldest-transaction-id=XID  set oldest transaction ID\n"));
+	printf(_("  -r RELFILENODE                 set next RELFILENODE\n"));
+	printf(_("      --system-identifier=ID     set database system identifier\n"));
 	printf(_("  -V, --version                  output version information, then exit\n"));
 	printf(_("  -x, --next-transaction-id=XID  set next transaction ID\n"));
+	printf(_("      --next-gxid=GXID           set next distributed transaction ID\n"));
 	printf(_("      --wal-segsize=SIZE         size of WAL segments, in megabytes\n"));
 	printf(_("  -?, --help                     show this help, then exit\n"));
-	printf(_("\nReport bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("\nReport bugs to <bugs@greenplum.org>.\n"));
 }

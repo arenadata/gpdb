@@ -44,7 +44,6 @@ library_name_compare(const void *p1, const void *p2)
 			((const LibraryInfo *) p2)->dbnum;
 }
 
-
 /*
  * get_loadable_libraries()
  *
@@ -266,11 +265,12 @@ check_loadable_libraries(void)
 	{
 		fclose(script);
 		pg_log(PG_REPORT, "fatal\n");
-		pg_fatal("Your installation references loadable libraries that are missing from the\n"
-				 "new installation.  You can add these libraries to the new installation,\n"
-				 "or remove the functions using them from the old installation.  A list of\n"
-				 "problem libraries is in the file:\n"
-				 "    %s\n\n", output_path);
+		gp_fatal_log(
+				"| Your installation references loadable libraries that are missing from the\n"
+				"| new installation.  You can add these libraries to the new installation,\n"
+				"| or remove the functions using them from the old installation.  A list of\n"
+				"| problem libraries is in the file:\n"
+				"|     %s\n\n", output_path);
 	}
 	else
 		check_ok();

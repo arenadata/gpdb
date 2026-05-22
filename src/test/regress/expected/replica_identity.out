@@ -1,11 +1,18 @@
 CREATE TABLE test_replica_identity (
-       id serial primary key,
-       keya text not null,
+       id serial,
+       keya text not null primary key,
        keyb text not null,
        nonkey text,
        CONSTRAINT test_replica_identity_unique_defer UNIQUE (keya, keyb) DEFERRABLE,
        CONSTRAINT test_replica_identity_unique_nondefer UNIQUE (keya, keyb)
-) ;
+) distributed by (keya);
+-- GPDB has a habit of naming the indexes that back constraints differently,
+-- at CREATE TABLE. Rename the constraints, and then rename them back. That
+-- renames the indexes to the same names they have in the upstream.
+ALTER TABLE test_replica_identity RENAME CONSTRAINT test_replica_identity_unique_defer TO x;
+ALTER TABLE test_replica_identity RENAME CONSTRAINT x TO test_replica_identity_unique_defer;
+ALTER TABLE test_replica_identity RENAME CONSTRAINT test_replica_identity_unique_nondefer TO x;
+ALTER TABLE test_replica_identity RENAME CONSTRAINT x TO test_replica_identity_unique_nondefer;
 CREATE TABLE test_replica_identity_othertable (id serial primary key);
 CREATE INDEX test_replica_identity_keyab ON test_replica_identity (keya, keyb);
 CREATE UNIQUE INDEX test_replica_identity_keyab_key ON test_replica_identity (keya, keyb);
@@ -83,7 +90,7 @@ SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
  keyb   | text    |           | not null | 
  nonkey | text    |           |          | 
 Indexes:
-    "test_replica_identity_pkey" PRIMARY KEY, btree (id) REPLICA IDENTITY
+    "test_replica_identity_pkey" PRIMARY KEY, btree (keya) REPLICA IDENTITY
     "test_replica_identity_expr" UNIQUE, btree (keya, keyb, (3))
     "test_replica_identity_hash" hash (nonkey)
     "test_replica_identity_keyab" btree (keya, keyb)
@@ -92,6 +99,9 @@ Indexes:
     "test_replica_identity_partial" UNIQUE, btree (keya, keyb) WHERE keyb <> '3'::text
     "test_replica_identity_unique_defer" UNIQUE CONSTRAINT, btree (keya, keyb) DEFERRABLE
     "test_replica_identity_unique_nondefer" UNIQUE CONSTRAINT, btree (keya, keyb)
+    "test_replica_identity_hash" hash (nonkey)
+    "test_replica_identity_keyab" btree (keya, keyb)
+Distributed by: (keya)
 
 -- succeed, nondeferrable unique constraint over nonnullable cols
 ALTER TABLE test_replica_identity REPLICA IDENTITY USING INDEX test_replica_identity_unique_nondefer;
@@ -113,7 +123,7 @@ SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
  keyb   | text    |           | not null | 
  nonkey | text    |           |          | 
 Indexes:
-    "test_replica_identity_pkey" PRIMARY KEY, btree (id)
+    "test_replica_identity_pkey" PRIMARY KEY, btree (keya)
     "test_replica_identity_expr" UNIQUE, btree (keya, keyb, (3))
     "test_replica_identity_hash" hash (nonkey)
     "test_replica_identity_keyab" btree (keya, keyb)
@@ -122,6 +132,9 @@ Indexes:
     "test_replica_identity_partial" UNIQUE, btree (keya, keyb) WHERE keyb <> '3'::text
     "test_replica_identity_unique_defer" UNIQUE CONSTRAINT, btree (keya, keyb) DEFERRABLE
     "test_replica_identity_unique_nondefer" UNIQUE CONSTRAINT, btree (keya, keyb)
+    "test_replica_identity_hash" hash (nonkey)
+    "test_replica_identity_keyab" btree (keya, keyb)
+Distributed by: (keya)
 
 SELECT count(*) FROM pg_index WHERE indrelid = 'test_replica_identity'::regclass AND indisreplident;
  count 
@@ -161,7 +174,7 @@ SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
  keyb   | text    |           | not null |                                                   | extended |              | 
  nonkey | text    |           |          |                                                   | extended |              | 
 Indexes:
-    "test_replica_identity_pkey" PRIMARY KEY, btree (id)
+    "test_replica_identity_pkey" PRIMARY KEY, btree (keya)
     "test_replica_identity_expr" UNIQUE, btree (keya, keyb, (3))
     "test_replica_identity_hash" hash (nonkey)
     "test_replica_identity_keyab" btree (keya, keyb)
@@ -171,6 +184,7 @@ Indexes:
     "test_replica_identity_unique_defer" UNIQUE CONSTRAINT, btree (keya, keyb) DEFERRABLE
     "test_replica_identity_unique_nondefer" UNIQUE CONSTRAINT, btree (keya, keyb)
 Replica Identity: FULL
+Distributed by: (keya)
 
 ALTER TABLE test_replica_identity REPLICA IDENTITY NOTHING;
 SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;

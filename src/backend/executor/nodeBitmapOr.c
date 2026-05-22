@@ -28,6 +28,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeBitmapOr.h"
 #include "miscadmin.h"
@@ -105,6 +106,14 @@ ExecInitBitmapOr(BitmapOr *node, EState *estate, int eflags)
 
 /* ----------------------------------------------------------------
  *	   MultiExecBitmapOr
+ *
+ *	   BitmapOr node gets the bitmaps generated from BitmapIndexScan
+ *	   nodes and outputs a bitmap that ORs all input bitmaps.
+ *
+ *	   The first input bitmap is utilized to store the result of the
+ *	   OR and returned to the caller. In addition, the output points
+ *	   to a newly created OpStream node of type BMS_OR, where all
+ *	   StreamNodes of input bitmaps are added as input streams.
  * ----------------------------------------------------------------
  */
 Node *
@@ -113,6 +122,12 @@ MultiExecBitmapOr(BitmapOrState *node)
 	PlanState **bitmapplans;
 	int			nplans;
 	int			i;
+	/*
+	 * Greenplum uses result for TIDBitmap result, and node->bitmap for
+	 * StreamBitmap result if there is any StreamBitmap.
+	 *
+	 * At last it will union them and return.
+	 */
 	TIDBitmap  *result = NULL;
 
 	/* must provide our own instrumentation support */
@@ -131,57 +146,64 @@ MultiExecBitmapOr(BitmapOrState *node)
 	for (i = 0; i < nplans; i++)
 	{
 		PlanState  *subnode = bitmapplans[i];
-		TIDBitmap  *subresult;
+		Node	   *subresult = NULL;
 
 		/*
-		 * We can special-case BitmapIndexScan children to avoid an explicit
-		 * tbm_union step for each child: just pass down the current result
-		 * bitmap and let the child OR directly into it.
+		 * Note for further merge iteration:
+		 *     Greenplum's BitmapIndexScan returns a StreamBitmap
 		 */
-		if (IsA(subnode, BitmapIndexScanState))
+		subresult = MultiExecProcNode(subnode);
+
+		if (subresult == NULL)
+			continue;
+
+		if (!(IsA(subresult, TIDBitmap) ||
+			  IsA(subresult, StreamBitmap)))
+			elog(ERROR, "unrecognized result from subplan");
+
+		if (IsA(subresult, TIDBitmap))
 		{
-			if (result == NULL) /* first subplan */
+			/* if it's a TIDBitmap, union into result */
+			if (result == NULL)
+				result = (TIDBitmap *)subresult;
+			else
 			{
-				/* XXX should we use less than work_mem for this? */
-				result = tbm_create(work_mem * 1024L,
-									((BitmapOr *) node->ps.plan)->isshared ?
-									node->ps.state->es_query_dsa : NULL);
+				tbm_union(result, (TIDBitmap *)subresult);
+				tbm_generic_free(subresult);
 			}
-
-			((BitmapIndexScanState *) subnode)->biss_result = result;
-
-			subresult = (TIDBitmap *) MultiExecProcNode(subnode);
-
-			if (subresult != result)
-				elog(ERROR, "unrecognized result from subplan");
 		}
 		else
 		{
-			/* standard implementation */
-			subresult = (TIDBitmap *) MultiExecProcNode(subnode);
-
-			if (!subresult || !IsA(subresult, TIDBitmap))
-				elog(ERROR, "unrecognized result from subplan");
-
-			if (result == NULL)
-				result = subresult; /* first subplan */
-			else
+			/* if it's a StreamBitmap, union into node->bitmap */
+			if (node->bitmap)
 			{
-				tbm_union(result, subresult);
-				tbm_free(subresult);
+				if (node->bitmap != subresult)
+				{
+					StreamBitmap *s = (StreamBitmap *)subresult;
+					stream_move_node((StreamBitmap *)node->bitmap, s, BMS_OR);
+					tbm_generic_free(subresult);
+				}
 			}
+			else
+				node->bitmap = subresult;
 		}
 	}
 
-	/* We could return an empty result set here? */
-	if (result == NULL)
-		elog(ERROR, "BitmapOr doesn't support zero inputs");
+	/* union the TIDBitmap and StreamBitmap into node->bitmap */
+	if (result != NULL)
+	{
+		if (node->bitmap && IsA(node->bitmap, StreamBitmap))
+			stream_add_node((StreamBitmap *)node->bitmap, 
+						tbm_create_stream_node(result), BMS_OR);
+		else
+			node->bitmap = (Node *)result;
+	}
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
-		InstrStopNode(node->ps.instrument, 0 /* XXX */ );
+		InstrStopNode(node->ps.instrument, node->bitmap ? 1 : 0);
 
-	return (Node *) result;
+	return node->bitmap;
 }
 
 /* ----------------------------------------------------------------
@@ -218,6 +240,13 @@ ExecEndBitmapOr(BitmapOrState *node)
 void
 ExecReScanBitmapOr(BitmapOrState *node)
 {
+	/*
+	 * For optimizer a rescan call on BitmapIndexScan could free up the bitmap. So,
+	 * we voluntarily set our bitmap to NULL to ensure that we don't have an out
+	 * of scope pointer
+	 */
+	node->bitmap = NULL;
+
 	int			i;
 
 	for (i = 0; i < node->nplans; i++)

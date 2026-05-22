@@ -18,6 +18,7 @@
 #include "access/parallel.h"
 
 extern BitmapHeapScanState *ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags);
+extern BitmapHeapScanState *ExecInitBitmapHeapScanForPartition(BitmapHeapScan *node, EState *estate, int eflags, Relation currentRelation);
 extern void ExecEndBitmapHeapScan(BitmapHeapScanState *node);
 extern void ExecReScanBitmapHeapScan(BitmapHeapScanState *node);
 extern void ExecBitmapHeapEstimate(BitmapHeapScanState *node,
@@ -28,5 +29,7 @@ extern void ExecBitmapHeapReInitializeDSM(BitmapHeapScanState *node,
 										  ParallelContext *pcxt);
 extern void ExecBitmapHeapInitializeWorker(BitmapHeapScanState *node,
 										   ParallelWorkerContext *pwcxt);
+
+extern void ExecSquelchBitmapHeapScan(BitmapHeapScanState *node);
 
 #endif							/* NODEBITMAPHEAPSCAN_H */

@@ -928,6 +928,7 @@ SELECT '1'::seg <@ '-1 .. 1'::seg AS bool;
 -- Load some example data and build the index
 --
 CREATE TABLE test_seg (s seg);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
 \copy test_seg from 'data/test_seg.data'
 CREATE INDEX test_seg_ix ON test_seg USING gist (s);
 EXPLAIN (COSTS OFF)
@@ -1263,4 +1264,13 @@ FROM test_seg WHERE s @> '11.2..11.3' OR s IS NULL ORDER BY s;
       10.7 |       11.5 |      12.3
            |            |          
 (144 rows)
+
+-- Test that has all opclasses
+select opcname,amname from pg_opclass opc,  pg_am am  where am.oid=opc.opcmethod and opcintype='seg'::regtype;
+   opcname    | amname
+--------------+--------
+ seg_ops      | btree
+ gist_seg_ops | gist
+ seg_ops      | bitmap
+(3 rows)
 

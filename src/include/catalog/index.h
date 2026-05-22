@@ -14,9 +14,12 @@
 #ifndef INDEX_H
 #define INDEX_H
 
+#include "access/relscan.h"     /* Relation, Snapshot */
 #include "catalog/objectaddress.h"
+#include "executor/tuptable.h"  /* TupTableSlot */
 #include "nodes/execnodes.h"
 
+struct EState;                  /* #include "nodes/execnodes.h" */
 
 #define DEFAULT_INDEX_TYPE	"btree"
 
@@ -39,6 +42,9 @@ typedef struct ValidateIndexState
 				tups_inserted;
 } ValidateIndexState;
 
+
+extern bool relationHasPrimaryKey(Relation rel);
+extern bool relationHasUniqueIndex(Relation rel);
 extern void index_check_primary_key(Relation heapRel,
 									IndexInfo *indexInfo,
 									bool is_alter_table,
@@ -52,25 +58,25 @@ extern void index_check_primary_key(Relation heapRel,
 #define	INDEX_CREATE_PARTITIONED			(1 << 5)
 #define INDEX_CREATE_INVALID				(1 << 6)
 
-extern Oid	index_create(Relation heapRelation,
-						 const char *indexRelationName,
-						 Oid indexRelationId,
-						 Oid parentIndexRelid,
-						 Oid parentConstraintId,
-						 Oid relFileNode,
-						 IndexInfo *indexInfo,
-						 List *indexColNames,
-						 Oid accessMethodObjectId,
-						 Oid tableSpaceId,
-						 Oid *collationObjectId,
-						 Oid *classObjectId,
-						 int16 *coloptions,
-						 Datum reloptions,
-						 bits16 flags,
-						 bits16 constr_flags,
-						 bool allow_system_table_mods,
-						 bool is_internal,
-						 Oid *constraintId);
+extern Oid index_create(Relation heapRelation,
+						const char *indexRelationName,
+						Oid indexRelationId,
+						Oid parentIndexRelid,
+						Oid parentConstraintId,
+						Oid relFileNode,
+						IndexInfo *indexInfo,
+						List *indexColNames,
+						Oid accessMethodObjectId,
+						Oid tableSpaceId,
+						Oid *collationObjectId,
+						Oid *classObjectId,
+						int16 *coloptions,
+						Datum reloptions,
+						bits16 flags,
+						bits16 constr_flags,
+						bool allow_system_table_mods,
+						bool is_internal,
+						Oid *constraintId);
 
 #define	INDEX_CONSTR_CREATE_MARK_AS_PRIMARY	(1 << 0)
 #define	INDEX_CONSTR_CREATE_DEFERRABLE		(1 << 1)
@@ -110,14 +116,15 @@ extern bool CompareIndexInfo(IndexInfo *info1, IndexInfo *info2,
 							 Oid *collations1, Oid *collations2,
 							 Oid *opfamilies1, Oid *opfamilies2,
 							 AttrNumber *attmap, int maplen);
-
 extern void BuildSpeculativeIndexInfo(Relation index, IndexInfo *ii);
-
 extern void FormIndexDatum(IndexInfo *indexInfo,
 						   TupleTableSlot *slot,
 						   EState *estate,
 						   Datum *values,
 						   bool *isnull);
+
+extern Oid setNewRelfilenodeToOid(Relation relation, TransactionId freezeXid,
+					   Oid newrelfilenode);
 
 extern void index_build(Relation heapRelation,
 						Relation indexRelation,
@@ -138,6 +145,9 @@ extern void reindex_index(Oid indexId, bool skip_constraint_checks,
 #define REINDEX_REL_CHECK_CONSTRAINTS		0x04
 #define REINDEX_REL_FORCE_INDEXES_UNLOGGED	0x08
 #define REINDEX_REL_FORCE_INDEXES_PERMANENT 0x10
+
+/* GPDB: set when recursing on a partitioned table */
+#define REINDEX_REL_RECURSING_PARTITIONED_TABLE 0x80
 
 extern bool reindex_relation(Oid relid, int flags, int options);
 

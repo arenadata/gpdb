@@ -43,6 +43,11 @@ CATALOG(pg_opfamily,2753,OperatorFamilyRelationId)
 	Oid			opfowner BKI_DEFAULT(PGUID);
 } FormData_pg_opfamily;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(opfmethod REFERENCES pg_am(oid));
+FOREIGN_KEY(opfnamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(opfowner REFERENCES pg_authid(oid));
+
 /* ----------------
  *		Form_pg_opfamily corresponds to a pointer to a tuple with
  *		the format of pg_opfamily relation.

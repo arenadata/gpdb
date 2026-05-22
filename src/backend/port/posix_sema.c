@@ -321,6 +321,28 @@ PGSemaphoreLock(PGSemaphore sema)
 }
 
 /*
+ * PGSemaphoreLockInterruptable
+ *
+ * Lock a semaphore (decrement count), blocking if count would be < 0.
+ * Return true if the lock obtained or false if an interrupt occurred.
+ */
+bool
+PGSemaphoreLockInterruptable(PGSemaphore sema)
+{
+	int			errStatus;
+
+	errStatus = sem_wait(PG_SEM_REF(sema));
+	if (errStatus < 0)
+	{
+		if (errno == EINTR)
+			return false;
+		elog(FATAL, "sem_wait failed: %m");
+	}
+
+	return true;
+}
+
+/*
  * PGSemaphoreUnlock
  *
  * Unlock a semaphore (increment count)

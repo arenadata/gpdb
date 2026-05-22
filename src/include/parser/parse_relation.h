@@ -16,6 +16,9 @@
 
 #include "parser/parse_node.h"
 
+#define ERRMSG_GP_WITH_COLUMNS_MISMATCH \
+	"specified number of columns in WITH query \"%s\" must not " \
+	"exceed the number of available columns"
 
 /*
  * Support for fuzzily matching column.
@@ -32,7 +35,6 @@ typedef struct
 	RangeTblEntry *rsecond;		/* RTE of second */
 	AttrNumber	second;			/* Second closest attribute so far */
 } FuzzyAttrMatchState;
-
 
 extern RangeTblEntry *refnameRangeTblEntry(ParseState *pstate,
 										   const char *schemaname,
@@ -61,7 +63,7 @@ extern Node *colNameToVar(ParseState *pstate, const char *colname, bool localonl
 extern void markVarForSelectPriv(ParseState *pstate, Var *var,
 								 RangeTblEntry *rte);
 extern Relation parserOpenTable(ParseState *pstate, const RangeVar *relation,
-								int lockmode);
+								int lockmode, bool *lockUpgraded);
 extern RangeTblEntry *addRangeTableEntry(ParseState *pstate,
 										 RangeVar *relation,
 										 Alias *alias,
@@ -112,6 +114,7 @@ extern RangeTblEntry *addRangeTableEntryForCTE(ParseState *pstate,
 extern RangeTblEntry *addRangeTableEntryForENR(ParseState *pstate,
 											   RangeVar *rv,
 											   bool inFromCl);
+extern LockingClause *getLockedRefname(ParseState *pstate, const char *refname);
 extern bool isLockedRefname(ParseState *pstate, const char *refname);
 extern void addRTEtoQuery(ParseState *pstate, RangeTblEntry *rte,
 						  bool addToJoinList,
@@ -129,5 +132,7 @@ extern const NameData *attnumAttName(Relation rd, int attid);
 extern Oid	attnumTypeId(Relation rd, int attid);
 extern Oid	attnumCollationId(Relation rd, int attid);
 extern bool isQueryUsingTempRelation(Query *query);
+
+extern bool isSimplyUpdatableRelation(Oid relid, bool noerror);
 
 #endif							/* PARSE_RELATION_H */

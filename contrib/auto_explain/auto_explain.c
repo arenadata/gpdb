@@ -16,6 +16,9 @@
 
 #include "access/parallel.h"
 #include "commands/explain.h"
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbexplain.h"
+#include "cdb/cdbvars.h"
 #include "executor/instrument.h"
 #include "jit/jit.h"
 #include "utils/guc.h"
@@ -63,9 +66,15 @@ static int	nesting_level = 0;
 /* Is the current top-level query to be sampled? */
 static bool current_query_sampled = false;
 
+/*
+ * If auto_explain is enabled as shared_preload_library
+ * and some work (as executor) is doing at master we need to disable auto_explain.
+ * At this case auto_explain will be disabled by check Gp_role.
+ */
 #define auto_explain_enabled() \
 	(auto_explain_log_min_duration >= 0 && \
 	 (nesting_level == 0 || auto_explain_log_nested_statements) && \
+	 Gp_role == GP_ROLE_DISPATCH && \
 	 current_query_sampled)
 
 /* Saved hook values in case of unload */
@@ -91,6 +100,10 @@ static void explain_ExecutorEnd(QueryDesc *queryDesc);
 void
 _PG_init(void)
 {
+	/* Only run auto_explain on the Query Dispatcher node */
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
 	/* Define custom GUC variables. */
 	DefineCustomIntVariable("auto_explain.log_min_duration",
 							"Sets the minimum execution time above which plans will be logged.",
@@ -250,6 +263,8 @@ _PG_fini(void)
 static void
 explain_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	instr_time		starttime;
+
 	/*
 	 * At the beginning of each top-level statement, decide whether we'll
 	 * sample this statement.  If nested-statement explaining is enabled,
@@ -280,6 +295,12 @@ explain_ExecutorStart(QueryDesc *queryDesc, int eflags)
 				queryDesc->instrument_options |= INSTRUMENT_ROWS;
 			if (auto_explain_log_buffers)
 				queryDesc->instrument_options |= INSTRUMENT_BUFFERS;
+
+			queryDesc->instrument_options |= INSTRUMENT_CDB;
+
+			INSTR_TIME_SET_CURRENT(starttime);
+			queryDesc->showstatctx = cdbexplain_showExecStatsBegin(queryDesc,
+																   starttime);
 		}
 	}
 
@@ -363,6 +384,10 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 	{
 		double		msec;
 
+		/* Wait for completion of all qExec processes. */
+		if (queryDesc->estate->dispatcherState && queryDesc->estate->dispatcherState->primaryResults)
+			cdbdisp_checkDispatchResult(queryDesc->estate->dispatcherState, DISPATCH_WAIT_NONE);
+
 		/*
 		 * Make sure stats accumulation is done.  (Note: it's okay if several
 		 * levels of hook all do this.)
@@ -390,6 +415,8 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 				ExplainPrintTriggers(es, queryDesc);
 			if (es->costs)
 				ExplainPrintJITSummary(es, queryDesc);
+			if (es->analyze)
+				ExplainPrintExecStatsEnd(es, queryDesc);
 			ExplainEndOutput(es);
 
 			/* Remove last line break */

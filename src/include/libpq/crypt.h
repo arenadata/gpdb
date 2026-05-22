@@ -12,7 +12,6 @@
  */
 #ifndef PG_CRYPT_H
 #define PG_CRYPT_H
-
 #include "datatype/timestamp.h"
 
 /*

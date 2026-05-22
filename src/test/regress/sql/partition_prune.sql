@@ -1,6 +1,42 @@
 --
 -- Test partitioning planner code
 --
+
+-- GPDB:
+-- One of the queries EXPLAINed in this file executes on one or two segments,
+-- depending on random choice by the planner. Accept either plan.
+-- start_matchsubs
+-- m/ Gather Motion [12]:1  \(slice1; segments: [12]\)/
+-- s/ Gather Motion [12]:1  \(slice1; segments: [12]\)/ Gather Motion XXX/
+-- m/Memory Usage: \d+\w?B/
+-- s/Memory Usage: \d+\w?B/Memory Usage: ###B/
+-- m/Buckets: \d+/
+-- s/Buckets: \d+/Buckets: ###/
+-- m/Batches: \d+/
+-- s/Batches: \d+/Batches: ###/
+-- m/Extra Text: \(seg\d+\)/
+-- s/Extra Text: \(seg\d+\)/Extra Text: ###/
+-- m/Hash chain length \d+\.\d+ avg, \d+ max/
+-- s/Hash chain length \d+\.\d+ avg, \d+ max/Hash chain length ###/
+-- m/using \d+ of \d+ buckets/
+-- s/using \d+ of \d+ buckets/using ## of ### buckets/
+-- m/((0[1-9]|1[0-2])-(0[1-9]|1[0-9]|2[0-9])|(0[13-9]|1[0-2])-30|(0[13578]|1[02])-31)-(?!0000)[0-9]{4}/
+-- s/((0[1-9]|1[0-2])-(0[1-9]|1[0-9]|2[0-9])|(0[13-9]|1[0-2])-30|(0[13578]|1[02])-31)-(?!0000)[0-9]{4}/xx-xx-xxxx/
+-- m/((Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](.[0-9]+)? (?!0000)[0-9]{4}.*)+(['"])/
+-- s/((Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](.[0-9]+)? (?!0000)[0-9]{4}.*)+(['"])/xxx xx xx xx:xx:xx xxxx"/
+-- m/Memory: \d+kB/
+-- s/Memory: \d+kB/Memory: ###kB/
+-- m/Segments: \d+/
+-- s/Segments: \d+/Segments: ###/
+-- m/Max: \d+kB/
+-- s/Max: \d+kB/Max: ###kB/
+-- m/segment \d+/
+-- s/segment \d+/segment ###/
+-- end_matchsubs
+
+-- Force generic plans to be used for all prepared statements in this file.
+set plan_cache_mode = force_generic_plan;
+
 create table lp (a char) partition by list (a);
 create table lp_default partition of lp default;
 create table lp_ef partition of lp for values in ('e', 'f');
@@ -40,6 +76,8 @@ create table rlp1 partition of rlp for values from (minvalue) to (1);
 create table rlp2 partition of rlp for values from (1) to (10);
 
 create table rlp3 (b varchar, a int) partition by list (b varchar_ops);
+-- GPDB: distribution policy must match the parent table.
+alter table rlp3 set distributed by (a);
 create table rlp3_default partition of rlp3 default;
 create table rlp3abcd partition of rlp3 for values in ('ab', 'cd');
 create table rlp3efgh partition of rlp3 for values in ('ef', 'gh');
@@ -295,7 +333,7 @@ insert into hp values (1, 'xxx');
 insert into hp values (null, 'xxx');
 insert into hp values (2, 'xxx');
 insert into hp values (1, 'abcde');
-select tableoid::regclass, * from hp order by 1;
+select tableoid::regclass, * from hp;
 
 -- partial keys won't prune, nor would non-equality conditions
 explain (costs off) select * from hp where a = 1;
@@ -343,14 +381,6 @@ set enable_indexonlyscan = off;
 prepare ab_q1 (int, int, int) as
 select * from ab where a between $1 and $2 and b <= $3;
 
--- Execute query 5 times to allow choose_custom_plan
--- to start considering a generic plan.
-execute ab_q1 (1, 8, 3);
-execute ab_q1 (1, 8, 3);
-execute ab_q1 (1, 8, 3);
-execute ab_q1 (1, 8, 3);
-execute ab_q1 (1, 8, 3);
-
 explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 2, 3);
 explain (analyze, costs off, summary off, timing off) execute ab_q1 (1, 2, 3);
 
@@ -360,14 +390,6 @@ deallocate ab_q1;
 prepare ab_q1 (int, int) as
 select a from ab where a between $1 and $2 and b < 3;
 
--- Execute query 5 times to allow choose_custom_plan
--- to start considering a generic plan.
-execute ab_q1 (1, 8);
-execute ab_q1 (1, 8);
-execute ab_q1 (1, 8);
-execute ab_q1 (1, 8);
-execute ab_q1 (1, 8);
-
 explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 2);
 explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 4);
 
@@ -376,23 +398,11 @@ explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 4);
 prepare ab_q2 (int, int) as
 select a from ab where a between $1 and $2 and b < (select 3);
 
-execute ab_q2 (1, 8);
-execute ab_q2 (1, 8);
-execute ab_q2 (1, 8);
-execute ab_q2 (1, 8);
-execute ab_q2 (1, 8);
-
 explain (analyze, costs off, summary off, timing off) execute ab_q2 (2, 2);
 
 -- As above, but swap the PARAM_EXEC Param to the first partition level
 prepare ab_q3 (int, int) as
 select a from ab where b between $1 and $2 and a < (select 3);
-
-execute ab_q3 (1, 8);
-execute ab_q3 (1, 8);
-execute ab_q3 (1, 8);
-execute ab_q3 (1, 8);
-execute ab_q3 (1, 8);
 
 explain (analyze, costs off, summary off, timing off) execute ab_q3 (2, 2);
 
@@ -469,26 +479,11 @@ set parallel_tuple_cost = 0;
 set min_parallel_table_scan_size = 0;
 set max_parallel_workers_per_gather = 2;
 
--- Execute query 5 times to allow choose_custom_plan
--- to start considering a generic plan.
-execute ab_q4 (1, 8);
-execute ab_q4 (1, 8);
-execute ab_q4 (1, 8);
-execute ab_q4 (1, 8);
-execute ab_q4 (1, 8);
 select explain_parallel_append('execute ab_q4 (2, 2)');
 
 -- Test run-time pruning with IN lists.
 prepare ab_q5 (int, int, int) as
 select avg(a) from ab where a in($1,$2,$3) and b < 4;
-
--- Execute query 5 times to allow choose_custom_plan
--- to start considering a generic plan.
-execute ab_q5 (1, 2, 3);
-execute ab_q5 (1, 2, 3);
-execute ab_q5 (1, 2, 3);
-execute ab_q5 (1, 2, 3);
-execute ab_q5 (1, 2, 3);
 
 select explain_parallel_append('execute ab_q5 (1, 1, 1)');
 select explain_parallel_append('execute ab_q5 (2, 3, 3)');
@@ -563,7 +558,6 @@ insert into xy_1 values(100,-10);
 
 set enable_bitmapscan = 0;
 set enable_indexscan = 0;
-set plan_cache_mode = 'force_generic_plan';
 
 prepare ab_q6 as
 select * from (
@@ -582,7 +576,6 @@ execute ab_q6(100);
 
 reset enable_bitmapscan;
 reset enable_indexscan;
-reset plan_cache_mode;
 
 deallocate ab_q1;
 deallocate ab_q2;
@@ -609,6 +602,7 @@ drop table ab, lprt_a;
 -- Join
 create table tbl1(col1 int);
 insert into tbl1 values (501), (505);
+analyze tbl1;
 
 -- Basic table
 create table tprt (col1 int) partition by range (col1);
@@ -630,6 +624,7 @@ insert into tprt values (10), (20), (501), (502), (505), (1001), (4500);
 
 set enable_hashjoin = off;
 set enable_mergejoin = off;
+set enable_seqscan=off;
 
 explain (analyze, costs off, summary off, timing off)
 select * from tbl1 join tprt on tbl1.col1 > tprt.col1;
@@ -671,6 +666,8 @@ select tbl1.col1, tprt.col1 from tbl1
 inner join tprt on tbl1.col1 < tprt.col1
 order by tbl1.col1, tprt.col1;
 
+reset enable_seqscan;
+
 -- No matching partition
 delete from tbl1;
 insert into tbl1 values (10000);
@@ -689,20 +686,17 @@ create table part_bac (b int not null, a int not null, c int not null) partition
 create table part_cab (c int not null, a int not null, b int not null) partition by list (c);
 create table part_abc_p1 (a int not null, b int not null, c int not null);
 
+-- GPDB: the distribution keys must be the same in all parts of partition
+-- hierarchy.
+alter table part_bac set distributed by (a);
+alter table part_cab set distributed by (a);
+
 alter table part_abc attach partition part_bac for values in(1);
 alter table part_bac attach partition part_cab for values in(2);
 alter table part_cab attach partition part_abc_p1 for values in(3);
 
 prepare part_abc_q1 (int, int, int) as
 select * from part_abc where a = $1 and b = $2 and c = $3;
-
--- Execute query 5 times to allow choose_custom_plan
--- to start considering a generic plan.
-execute part_abc_q1 (1, 2, 3);
-execute part_abc_q1 (1, 2, 3);
-execute part_abc_q1 (1, 2, 3);
-execute part_abc_q1 (1, 2, 3);
-execute part_abc_q1 (1, 2, 3);
 
 -- Single partition should be scanned.
 explain (analyze, costs off, summary off, timing off) execute part_abc_q1 (1, 2, 3);
@@ -725,12 +719,6 @@ select * from listp where b = 1;
 -- which match the given parameter.
 prepare q1 (int,int) as select * from listp where b in ($1,$2);
 
-execute q1 (1,2);
-execute q1 (1,2);
-execute q1 (1,2);
-execute q1 (1,2);
-execute q1 (1,2);
-
 explain (analyze, costs off, summary off, timing off)  execute q1 (1,1);
 
 explain (analyze, costs off, summary off, timing off)  execute q1 (2,2);
@@ -743,12 +731,6 @@ deallocate q1;
 
 -- Test more complex cases where a not-equal condition further eliminates partitions.
 prepare q1 (int,int,int,int) as select * from listp where b in($1,$2) and $3 <> b and $4 <> b;
-
-execute q1 (1,2,3,4);
-execute q1 (1,2,3,4);
-execute q1 (1,2,3,4);
-execute q1 (1,2,3,4);
-execute q1 (1,2,3,4);
 
 -- Both partitions allowed by IN clause, but one disallowed by <> clause
 explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,0);
@@ -765,8 +747,10 @@ drop table listp;
 
 --
 -- check that stable query clauses are only used in run-time pruning
+-- because a is the distributed key by default in stable_qual_pruning,
+-- to get consistent results, we make the table distributed randomly.
 --
-create table stable_qual_pruning (a timestamp) partition by range (a);
+create table stable_qual_pruning (a timestamp) distributed randomly partition by range (a);
 create table stable_qual_pruning1 partition of stable_qual_pruning
   for values from ('2000-01-01') to ('2000-02-01');
 create table stable_qual_pruning2 partition of stable_qual_pruning
@@ -823,7 +807,6 @@ select * from mc3p where a < 3 and abs(b) = 1;
 -- a combination of runtime parameters is specified, not all of whose values
 -- are available at the same time
 --
-set plan_cache_mode = force_generic_plan;
 prepare ps1 as
   select * from mc3p where a = $1 and abs(b) < (select 3);
 explain (analyze, costs off, summary off, timing off)
@@ -834,7 +817,6 @@ prepare ps2 as
 explain (analyze, costs off, summary off, timing off)
 execute ps2(1);
 deallocate ps2;
-reset plan_cache_mode;
 
 drop table mc3p;
 
@@ -868,14 +850,6 @@ create index on ma_test (b);
 
 analyze ma_test;
 prepare mt_q1 (int) as select a from ma_test where a >= $1 and a % 10 = 5 order by b;
-
--- Execute query 5 times to allow choose_custom_plan
--- to start considering a generic plan.
-execute mt_q1(0);
-execute mt_q1(0);
-execute mt_q1(0);
-execute mt_q1(0);
-execute mt_q1(0);
 
 explain (analyze, costs off, summary off, timing off) execute mt_q1(15);
 execute mt_q1(15);
@@ -1024,6 +998,11 @@ create temp table q22 partition of q2 for values in (2);
 
 insert into q22 values (2, 2, 3);
 
+-- GPDB: This is the query that needs the "matchsubs" rule at the top of the file
+-- The constant third branch of the UNION is executed at random segment. If the
+-- randomly chosen segment is the same as the one that needed for the other branches,
+-- the whole query runs on that one segment. Otherwise, it runs on two segments.
+-- The choice is made randomly, so accept both plans.
 explain (costs off)
 select *
 from (
@@ -1056,12 +1035,9 @@ from (
      ) s(a, b, c)
 where s.a = $1 and s.b = $2 and s.c = (select 1);
 
-set plan_cache_mode to force_generic_plan;
-
 explain (costs off) execute q (1, 1);
 execute q (1, 1);
 
-reset plan_cache_mode;
 drop table p, q;
 
 -- Ensure run-time pruning works correctly when we match a partitioned table

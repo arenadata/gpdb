@@ -103,6 +103,7 @@ create table ec1 (ff int8 primary key, f1 int8alias1, f2 int8alias2);
 create table ec2 (xf int8 primary key, x1 int8alias1, x2 int8alias2);
 
 -- for the moment we only want to look at nestloop plans
+set enable_nestloop = on;
 set enable_hashjoin = off;
 set enable_mergejoin = off;
 
@@ -132,10 +133,10 @@ explain (costs off)
 explain (costs off)
   select * from ec1, ec2 where ff = x1 and x1 = '42'::int8alias2;
 
-create unique index ec1_expr1 on ec1((ff + 1));
-create unique index ec1_expr2 on ec1((ff + 2 + 1));
-create unique index ec1_expr3 on ec1((ff + 3 + 1));
-create unique index ec1_expr4 on ec1((ff + 4));
+create index ec1_expr1 on ec1((ff + 1));
+create index ec1_expr2 on ec1((ff + 2 + 1));
+create index ec1_expr3 on ec1((ff + 3 + 1));
+create index ec1_expr4 on ec1((ff + 4));
 
 explain (costs off)
   select * from ec1,
@@ -176,7 +177,6 @@ explain (costs off)
 -- let's try that as a mergejoin
 set enable_mergejoin = on;
 set enable_nestloop = off;
-
 explain (costs off)
   select * from ec1,
     (select ff + 1 as x from

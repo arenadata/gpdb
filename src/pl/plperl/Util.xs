@@ -17,6 +17,9 @@
 #include "utils/builtins.h"
 #include "utils/bytea.h"       /* for byteain & byteaout */
 
+/* Defined by Perl */
+#undef _
+
 /* perl stuff */
 #define PG_NEED_PERL_XSUB_H
 #include "plperl.h"

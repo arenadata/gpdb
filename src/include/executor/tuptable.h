@@ -15,6 +15,7 @@
 #define TUPTABLE_H
 
 #include "access/htup.h"
+#include "access/memtup.h"
 #include "access/sysattr.h"
 #include "access/tupdesc.h"
 #include "access/htup_details.h"
@@ -35,7 +36,6 @@
  * 3. "minimal" physical tuple constructed in palloc'ed memory
  *    (TTSOpsMinimalTuple)
  * 4. "virtual" tuple consisting of Datum/isnull arrays (TTSOpsVirtual)
- *
  *
  * The first two cases are similar in that they both deal with "materialized"
  * tuples, but resource management is different.  For a tuple in a disk page
@@ -230,7 +230,6 @@ extern PGDLLIMPORT const TupleTableSlotOps TTSOpsBufferHeapTuple;
 #define TTS_IS_MINIMALTUPLE(slot) ((slot)->tts_ops == &TTSOpsMinimalTuple)
 #define TTS_IS_BUFFERTUPLE(slot) ((slot)->tts_ops == &TTSOpsBufferHeapTuple)
 
-
 /*
  * Tuple table slot implementations.
  */
@@ -331,8 +330,11 @@ extern void slot_getmissingattrs(TupleTableSlot *slot, int startAttNum,
 								 int lastAttNum);
 extern void slot_getsomeattrs_int(TupleTableSlot *slot, int attnum);
 
+extern MemTuple appendonly_form_memtuple(TupleTableSlot *slot, MemTupleBinding *mt_bind);
+extern void appendonly_free_memtuple(MemTuple tuple);
 
 #ifndef FRONTEND
+
 
 /*
  * This function forces the entries of the slot's Datum/isnull arrays to be

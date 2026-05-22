@@ -33,7 +33,7 @@ static void create_target_dir(const char *path);
 static void remove_target_dir(const char *path);
 static void create_target_symlink(const char *path, const char *link);
 static void remove_target_symlink(const char *path);
-
+static void create_target_tablespace_layout(const char *path, const char *link);
 /*
  * Open a target file for writing. If 'trunc' is true and the file already
  * exists, it will be truncated.
@@ -125,8 +125,9 @@ void
 remove_target(file_entry_t *entry)
 {
 	Assert(entry->action == FILE_ACTION_REMOVE);
+	Assert(entry->target_exists);
 
-	switch (entry->type)
+	switch (entry->target_type)
 	{
 		case FILE_TYPE_DIRECTORY:
 			remove_target_dir(entry->path);
@@ -136,8 +137,16 @@ remove_target(file_entry_t *entry)
 			remove_target_file(entry->path, false);
 			break;
 
+		case FILE_TYPE_FIFO:
+			remove_target_file(entry->path, false);
+			break;
+
 		case FILE_TYPE_SYMLINK:
 			remove_target_symlink(entry->path);
+			break;
+
+		case FILE_TYPE_UNDEFINED:
+			pg_fatal("undefined file type for \"%s\"", entry->path);
 			break;
 	}
 }
@@ -146,20 +155,33 @@ void
 create_target(file_entry_t *entry)
 {
 	Assert(entry->action == FILE_ACTION_CREATE);
+	Assert(!entry->target_exists);
 
-	switch (entry->type)
+	switch (entry->source_type)
 	{
 		case FILE_TYPE_DIRECTORY:
 			create_target_dir(entry->path);
 			break;
 
 		case FILE_TYPE_SYMLINK:
-			create_target_symlink(entry->path, entry->link_target);
+			if (entry->is_gp_tablespace)
+				create_target_tablespace_layout(entry->path, entry->source_link_target);
+			else
+				create_target_symlink(entry->path, entry->source_link_target);
 			break;
 
 		case FILE_TYPE_REGULAR:
 			/* can't happen. Regular files are created with open_target_file. */
 			pg_fatal("invalid action (CREATE) for regular file");
+			break;
+
+		case FILE_TYPE_FIFO:
+			/* Only pgsql_tmp files are FIFO and they are ignored from source target. */
+			pg_fatal("invalid action (CREATE) for fifo file");
+			break;
+
+		case FILE_TYPE_UNDEFINED:
+			pg_fatal("undefined file type for \"%s\"", entry->path);
 			break;
 	}
 }
@@ -266,6 +288,31 @@ remove_target_symlink(const char *path)
 				 dstpath);
 }
 
+/* Create symlink for tablespace, create tablespace target dir */
+static void
+create_target_tablespace_layout(const char *path, const char *link)
+{
+	char		dstpath[MAXPGPATH];
+	char		*newlink;
+
+	if (dry_run)
+		return;
+
+	/* Append the target dbid to the symlink target. */
+	newlink = psprintf("%s/%d", link, dbid_target);
+
+	snprintf(dstpath, sizeof(dstpath), "%s/%s", datadir_target, path);
+	if (symlink(newlink, dstpath) != 0)
+		pg_fatal("could not create symbolic link at \"%s\": %m",
+				 dstpath);
+
+	/* We need to create the directory at the symlink target. */
+	if (mkdir(newlink, S_IRWXU) != 0)
+		pg_fatal("could not create directory \"%s\": %m",
+				 newlink);
+
+	pfree(newlink);
+}
 
 /*
  * Read a file into memory. The file to be read is <datadir>/<path>.

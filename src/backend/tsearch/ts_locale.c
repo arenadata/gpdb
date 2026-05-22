@@ -32,6 +32,17 @@ static void tsearch_readline_callback(void *arg);
  */
 #define WC_BUF_LEN  3
 
+/*
+ * The reason these functions use a 3-wchar_t output buffer, not 2 as you
+ * might expect, is that on Windows "wchar_t" is 16 bits and what we'll be
+ * getting from char2wchar() is UTF16 not UTF32.  A single input character
+ * may therefore produce a surrogate pair rather than just one wchar_t;
+ * we also need room for a trailing null.  When we do get a surrogate pair,
+ * we pass just the first code to iswdigit() etc, so that these functions will
+ * always return false for characters outside the Basic Multilingual Plane.
+ */
+#define WC_BUF_LEN  3
+
 int
 t_isdigit(const char *ptr)
 {

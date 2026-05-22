@@ -16,8 +16,9 @@
 /*
  * This is the default value for wal_segment_size to be used when initdb is run
  * without the --wal-segsize option.  It must be a valid segment size.
+ * gpdb: Greenplum uses 64M wal segment file size by default.
  */
-#define DEFAULT_XLOG_SEG_SIZE	(16*1024*1024)
+#define DEFAULT_XLOG_SEG_SIZE	(64*1024*1024)
 
 /*
  * Maximum length for identifiers (e.g. table names, column names,
@@ -107,7 +108,7 @@
  * is aligned on a larger-than-MAXALIGN boundary.  Ideally this should be
  * a platform-dependent value, but for now we just hard-wire it.
  */
-#define ALIGNOF_BUFFER	32
+#define ALIGNOF_BUFFER	64
 
 /*
  * Disable UNIX sockets for certain operating systems.
@@ -263,6 +264,7 @@
  */
 #ifdef USE_ASSERT_CHECKING
 #define CLOBBER_FREED_MEMORY
+#define RELCACHE_FORCE_RELEASE
 #endif
 
 /*
@@ -314,6 +316,12 @@
 /* #define WAL_DEBUG */
 
 /*
+ * Enable debugging print statements for B-tree related operations; see
+ * also log_btree_build_stats GUC var.
+ */
+/* #define BTREE_BUILD_STATS */
+
+/*
  * Enable tracing of resource consumption during sort operations;
  * see also the trace_sort GUC var.  For 8.1 this is enabled by default.
  */
@@ -323,6 +331,11 @@
  * Enable tracing of syncscan operations (see also the trace_syncscan GUC var).
  */
 /* #define TRACE_SYNCSCAN */
+
+/*
+ * Disable tuplesort_set_bound feature; see also optimize_bounded_sort GUC var.
+ */
+/* #define DEBUG_BOUNDED_SORT */
 
 /*
  * Other debug #defines (documentation, anyone?)

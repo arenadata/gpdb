@@ -47,8 +47,9 @@ my @contrib_excludes = (
 	'jsonb_plperl',     'jsonb_plpython',
 	'ltree_plpython',   'pgcrypto',
 	'sepgsql',          'brin',
-	'test_extensions',  'test_pg_dump',
-	'snapshot_too_old', 'unsafe_tests');
+	'test_extensions',  'test_misc',
+	'test_pg_dump',     'snapshot_too_old',
+	'unsafe_tests');
 
 # Set of variables for frontend modules
 my $frontend_defines = { 'initdb' => 'FRONTEND' };
@@ -82,7 +83,10 @@ my @frontend_excludes = (
 
 sub mkvcbuild
 {
+	my $mf;
+	my $D;
 	our $config = shift;
+	our $buildclient = shift;
 
 	chdir('../../..') if (-d '../msvc' && -d '../../../src');
 	die 'Must run from root or msvc directory'
@@ -119,10 +123,10 @@ sub mkvcbuild
 	}
 
 	our @pgcommonallfiles = qw(
-	  base64.c config_info.c controldata_utils.c d2s.c exec.c f2s.c file_perm.c ip.c
-	  keywords.c kwlookup.c link-canary.c md5.c
+	  base64.c config_info.c controldata_utils.c d2s.c exec.c f2s.c file_perm.c
+	  hashfn.c ip.c keywords.c kwlookup.c link-canary.c md5.c
 	  pg_lzcompress.c pgfnames.c psprintf.c relpath.c rmtree.c
-	  saslprep.c scram-common.c string.c unicode_norm.c username.c
+	  saslprep.c scram-common.c string.c stringinfo.c unicode_norm.c username.c
 	  wait_error.c);
 
 	if ($solution->{options}->{openssl})
@@ -141,7 +145,8 @@ sub mkvcbuild
 	our @pgcommonbkndfiles = @pgcommonallfiles;
 
 	our @pgfeutilsfiles = qw(
-	  conditional.c mbprint.c print.c psqlscan.l psqlscan.c simple_list.c string_utils.c);
+	  conditional.c mbprint.c print.c psqlscan.l psqlscan.c
+	  simple_list.c string_utils.c recovery_gen.c);
 
 	$libpgport = $solution->AddProject('libpgport', 'lib', 'misc');
 	$libpgport->AddDefine('FRONTEND');
@@ -156,6 +161,8 @@ sub mkvcbuild
 	$libpgfeutils->AddIncludeDir('src/interfaces/libpq');
 	$libpgfeutils->AddFiles('src/fe_utils', @pgfeutilsfiles);
 
+	if (!$buildclient)
+	{
 	$postgres = $solution->AddProject('postgres', 'exe', '', 'src/backend');
 	$postgres->AddIncludeDir('src/backend');
 	$postgres->AddDir('src/backend/port/win32');
@@ -238,6 +245,7 @@ sub mkvcbuild
 		die "Unable to find $solution->{options}->{tcl}/lib/tcl<version>.lib"
 		  unless $found;
 	}
+	} # buildclient
 
 	$libpq = $solution->AddProject('libpq', 'dll', 'interfaces',
 		'src/interfaces/libpq');
@@ -265,6 +273,8 @@ sub mkvcbuild
 		$libpq->RemoveFile('src/interfaces/libpq/fe-secure-gssapi.c');
 	}
 
+	if (!$buildclient)
+	{
 	my $libpqwalreceiver =
 	  $solution->AddProject('libpqwalreceiver', 'dll', '',
 		'src/backend/replication/libpqwalreceiver');
@@ -318,6 +328,7 @@ sub mkvcbuild
 	$pgregress_ecpg->AddIncludeDir('src/port');
 	$pgregress_ecpg->AddIncludeDir('src/test/regress');
 	$pgregress_ecpg->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+	$pgregress_ecpg->AddDefine('FRONTEND');
 	$pgregress_ecpg->AddLibrary('ws2_32.lib');
 	$pgregress_ecpg->AddDirResourceFile('src/interfaces/ecpg/test');
 	$pgregress_ecpg->AddReference($libpgcommon, $libpgport);
@@ -344,12 +355,12 @@ sub mkvcbuild
 	$pgregress_isolation->AddIncludeDir('src/port');
 	$pgregress_isolation->AddIncludeDir('src/test/regress');
 	$pgregress_isolation->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+	$pgregress_isolation->AddDefine('FRONTEND');
 	$pgregress_isolation->AddLibrary('ws2_32.lib');
 	$pgregress_isolation->AddDirResourceFile('src/test/isolation');
 	$pgregress_isolation->AddReference($libpgcommon, $libpgport);
 
 	# src/bin
-	my $D;
 	opendir($D, 'src/bin') || croak "Could not opendir on src/bin!\n";
 	while (my $d = readdir($D))
 	{
@@ -386,6 +397,13 @@ sub mkvcbuild
 	$pgevent->RemoveFile('src/bin/pgevent/win32ver.rc');
 	$pgevent->UseDef('src/bin/pgevent/pgevent.def');
 	$pgevent->DisableLinkerWarnings('4104');
+	} #buildclient
+
+	my $psql = AddSimpleFrontend('psql', 1);
+	$psql->AddIncludeDir('src/bin/pg_dump');
+	$psql->AddIncludeDir('src/backend');
+	$psql->AddFile('src/bin/psql/psqlscan.l');
+	$psql->AddLibrary('ws2_32.lib');
 
 	my $pgdump = AddSimpleFrontend('pg_dump', 1);
 	$pgdump->AddIncludeDir('src/backend');
@@ -415,6 +433,8 @@ sub mkvcbuild
 	$pgrestore->AddFile('src/bin/pg_dump/pg_restore.c');
 	$pgrestore->AddLibrary('ws2_32.lib');
 
+	if (!$buildclient)
+	{
 	my $zic = $solution->AddProject('zic', 'exe', 'utils');
 	$zic->AddFiles('src/timezone', 'zic.c');
 	$zic->AddDirResourceFile('src/timezone');
@@ -534,9 +554,9 @@ sub mkvcbuild
 
 	if ($solution->{options}->{perl})
 	{
-		my $plperlsrc = "src/pl/plperl/";
+		my $plperlsrc = "src\\pl\\plperl\\";
 		my $plperl =
-		  $solution->AddProject('plperl', 'dll', 'PLs', 'src/pl/plperl');
+		  $solution->AddProject('plperl', 'dll', 'PLs', 'src\pl\plperl');
 		$plperl->AddIncludeDir($solution->{options}->{perl} . '/lib/CORE');
 		$plperl->AddReference($postgres);
 
@@ -716,15 +736,15 @@ sub mkvcbuild
 			}
 		}
 		if (Solution::IsNewer(
-				'src/pl/plperl/perlchunks.h',
-				'src/pl/plperl/plc_perlboot.pl')
+				'src\pl\plperl\perlchunks.h',
+				'src\pl\plperl\plc_perlboot.pl')
 			|| Solution::IsNewer(
-				'src/pl/plperl/perlchunks.h',
-				'src/pl/plperl/plc_trusted.pl'))
+				'src\pl\plperl\perlchunks.h',
+				'src\pl\plperl\plc_trusted.pl'))
 		{
-			print 'Building src/pl/plperl/perlchunks.h ...' . "\n";
+			print 'Building src\pl\plperl\perlchunks.h ...' . "\n";
 			my $basedir = getcwd;
-			chdir 'src/pl/plperl';
+			chdir 'src\pl\plperl';
 			system( $solution->{options}->{perl}
 				  . '/bin/perl '
 				  . 'text2macro.pl '
@@ -732,29 +752,29 @@ sub mkvcbuild
 				  . 'plc_perlboot.pl plc_trusted.pl '
 				  . '>perlchunks.h');
 			chdir $basedir;
-			if ((!(-f 'src/pl/plperl/perlchunks.h'))
-				|| -z 'src/pl/plperl/perlchunks.h')
+			if ((!(-f 'src\pl\plperl\perlchunks.h'))
+				|| -z 'src\pl\plperl\perlchunks.h')
 			{
-				unlink('src/pl/plperl/perlchunks.h');    # if zero size
+				unlink('src\pl\plperl\perlchunks.h');    # if zero size
 				die 'Failed to create perlchunks.h' . "\n";
 			}
 		}
 		if (Solution::IsNewer(
-				'src/pl/plperl/plperl_opmask.h',
-				'src/pl/plperl/plperl_opmask.pl'))
+				'src\pl\plperl\plperl_opmask.h',
+				'src\pl\plperl\plperl_opmask.pl'))
 		{
-			print 'Building src/pl/plperl/plperl_opmask.h ...' . "\n";
+			print 'Building src\pl\plperl\plperl_opmask.h ...' . "\n";
 			my $basedir = getcwd;
-			chdir 'src/pl/plperl';
+			chdir 'src\pl\plperl';
 			system( $solution->{options}->{perl}
 				  . '/bin/perl '
 				  . 'plperl_opmask.pl '
 				  . 'plperl_opmask.h');
 			chdir $basedir;
-			if ((!(-f 'src/pl/plperl/plperl_opmask.h'))
-				|| -z 'src/pl/plperl/plperl_opmask.h')
+			if ((!(-f 'src\pl\plperl\plperl_opmask.h'))
+				|| -z 'src\pl\plperl\plperl_opmask.h')
 			{
-				unlink('src/pl/plperl/plperl_opmask.h');    # if zero size
+				unlink('src\pl\plperl\plperl_opmask.h');    # if zero size
 				die 'Failed to create plperl_opmask.h' . "\n";
 			}
 		}
@@ -787,6 +807,7 @@ sub mkvcbuild
 		$p->AddFile("$dir/$sub.c");    # implicit source file
 		$p->AddReference($postgres);
 	}
+	} # buildclient
 
 	$mf = Project::read_file('src/bin/scripts/Makefile');
 	$mf =~ s{\\\r?\n}{}g;
@@ -812,6 +833,8 @@ sub mkvcbuild
 		$proj->AddLibrary('ws2_32.lib');
 	}
 
+	if (!$buildclient)
+	{
 	# Regression DLL and EXE
 	my $regress = $solution->AddProject('regress', 'dll', 'misc');
 	$regress->AddFile('src/test/regress/regress.c');
@@ -823,6 +846,7 @@ sub mkvcbuild
 	$pgregress->AddFile('src/test/regress/pg_regress_main.c');
 	$pgregress->AddIncludeDir('src/port');
 	$pgregress->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
+	$pgregress->AddDefine('FRONTEND');
 	$pgregress->AddLibrary('ws2_32.lib');
 	$pgregress->AddDirResourceFile('src/test/regress');
 	$pgregress->AddReference($libpgcommon, $libpgport);
@@ -837,7 +861,8 @@ sub mkvcbuild
 	}
 	$pg_waldump->AddFile('src/backend/access/transam/xlogreader.c');
 
-	$solution->Save();
+	} #	buildclient
+	$solution->Save($buildclient);
 	return $solution->{vcver};
 }
 
@@ -1099,6 +1124,11 @@ sub AdjustModule
 		}
 	}
 	return;
+}
+
+END
+{
+	unlink @unlink_on_exit;
 }
 
 END

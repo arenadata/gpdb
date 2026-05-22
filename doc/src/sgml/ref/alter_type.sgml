@@ -30,6 +30,7 @@ ALTER TYPE <replaceable class="parameter">name</replaceable> RENAME TO <replacea
 ALTER TYPE <replaceable class="parameter">name</replaceable> SET SCHEMA <replaceable class="parameter">new_schema</replaceable>
 ALTER TYPE <replaceable class="parameter">name</replaceable> ADD VALUE [ IF NOT EXISTS ] <replaceable class="parameter">new_enum_value</replaceable> [ { BEFORE | AFTER } <replaceable class="parameter">neighbor_enum_value</replaceable> ]
 ALTER TYPE <replaceable class="parameter">name</replaceable> RENAME VALUE <replaceable class="parameter">existing_enum_value</replaceable> TO <replaceable class="parameter">new_enum_value</replaceable>
+ALTER TYPE <replaceable class="parameter">name</replaceable> SET DEFAULT ENCODING ( storage_directive )
 
 <phrase>where <replaceable class="parameter">action</replaceable> is one of:</phrase>
 

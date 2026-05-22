@@ -21,6 +21,7 @@
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
+#include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
@@ -60,8 +61,10 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_type_encoding.h"
 #include "catalog/pg_user_mapping.h"
 #include "commands/comment.h"
+#include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
@@ -73,14 +76,23 @@
 #include "commands/sequence.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
+#include "foreign/foreign.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteRemove.h"
 #include "storage/lmgr.h"
+#include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+
+#include "catalog/pg_compression.h"
+#include "catalog/pg_extprotocol.h"
+#include "commands/tablespace.h"
+#include "cdb/cdbvars.h"
+#include "commands/extprotocolcmds.h"
+#include "commands/tablecmds.h"
 
 
 /*
@@ -181,7 +193,10 @@ static const Oid object_classes[] = {
 	PublicationRelationId,		/* OCLASS_PUBLICATION */
 	PublicationRelRelationId,	/* OCLASS_PUBLICATION_REL */
 	SubscriptionRelationId,		/* OCLASS_SUBSCRIPTION */
-	TransformRelationId			/* OCLASS_TRANSFORM */
+	TransformRelationId,		/* OCLASS_TRANSFORM */
+
+	/* GPDB additions */
+	ExtprotocolRelationId		/* OCLASS_EXTPROTOCOL */
 };
 
 
@@ -532,6 +547,16 @@ findDependentObjects(const ObjectAddress *object,
 	 * owning object has to be visited first so it will be deleted after.) The
 	 * way to find out about this is to scan the pg_depend entries that show
 	 * what this object depends on.
+	 */
+
+	/*
+	 * Step 1: find and remove pg_depend records that link from this object to
+	 * others.	We have to do this anyway, and doing it first ensures that we
+	 * avoid infinite recursion in the case of cycles. Also, some dependency
+	 * types require extra processing here.
+	 *
+	 * When dropping a whole object (subId = 0), remove all pg_depend records
+	 * for its sub-objects too.
 	 */
 	ScanKeyInit(&key[0],
 				Anum_pg_depend_classid,
@@ -1134,43 +1159,61 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 		{
 			char	   *otherDesc = getObjectDescription(&extra->dependee);
 
-			if (numReportedClient < MAX_REPORTED_DEPS)
+			if (msglevel == NOTICE && Gp_role == GP_ROLE_EXECUTE)
 			{
-				/* separate entries with a newline */
-				if (clientdetail.len != 0)
-					appendStringInfoChar(&clientdetail, '\n');
-				appendStringInfo(&clientdetail, _("%s depends on %s"),
-								 objDesc, otherDesc);
-				numReportedClient++;
+				ereport(DEBUG1,
+						(errmsg("%s depends on %s",
+								objDesc, otherDesc)));
 			}
 			else
-				numNotReportedClient++;
-			/* separate entries with a newline */
-			if (logdetail.len != 0)
-				appendStringInfoChar(&logdetail, '\n');
-			appendStringInfo(&logdetail, _("%s depends on %s"),
-							 objDesc, otherDesc);
-			pfree(otherDesc);
+			{
+				if (numReportedClient < MAX_REPORTED_DEPS)
+				{
+					/* separate entries with a newline */
+					if (clientdetail.len != 0)
+						appendStringInfoChar(&clientdetail, '\n');
+					appendStringInfo(&clientdetail, _("%s depends on %s"),
+									 objDesc, otherDesc);
+					numReportedClient++;
+				}
+				else
+					numNotReportedClient++;
+				/* separate entries with a newline */
+				if (logdetail.len != 0)
+					appendStringInfoChar(&logdetail, '\n');
+				appendStringInfo(&logdetail, _("%s depends on %s"),
+								 objDesc, otherDesc);
+				pfree(otherDesc);
+			}
 			ok = false;
 		}
 		else
 		{
-			if (numReportedClient < MAX_REPORTED_DEPS)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			{
-				/* separate entries with a newline */
-				if (clientdetail.len != 0)
-					appendStringInfoChar(&clientdetail, '\n');
-				appendStringInfo(&clientdetail, _("drop cascades to %s"),
-								 objDesc);
-				numReportedClient++;
+				ereport(DEBUG1,
+						(errmsg("drop cascades to %s",
+								objDesc)));
 			}
 			else
-				numNotReportedClient++;
-			/* separate entries with a newline */
-			if (logdetail.len != 0)
-				appendStringInfoChar(&logdetail, '\n');
-			appendStringInfo(&logdetail, _("drop cascades to %s"),
-							 objDesc);
+			{
+				if (numReportedClient < MAX_REPORTED_DEPS)
+				{
+					/* separate entries with a newline */
+					if (clientdetail.len != 0)
+						appendStringInfoChar(&clientdetail, '\n');
+					appendStringInfo(&clientdetail, _("drop cascades to %s"),
+									 objDesc);
+					numReportedClient++;
+				}
+				else
+					numNotReportedClient++;
+				/* separate entries with a newline */
+				if (logdetail.len != 0)
+					appendStringInfoChar(&logdetail, '\n');
+				appendStringInfo(&logdetail, _("drop cascades to %s"),
+								 objDesc);
+			}
 		}
 
 		pfree(objDesc);
@@ -1488,6 +1531,10 @@ doDeletion(const ObjectAddress *object, int flags)
 
 		case OCLASS_EVENT_TRIGGER:
 			RemoveEventTriggerById(object->objectId);
+			break;
+
+		case OCLASS_EXTPROTOCOL:
+			RemoveExtProtocolById(object->objectId);
 			break;
 
 		case OCLASS_POLICY:
@@ -2217,7 +2264,6 @@ find_expr_references_walker(Node *node,
 		/* query_tree_walker ignores ORDER BY etc, but we need those opers */
 		find_expr_references_walker((Node *) query->sortClause, context);
 		find_expr_references_walker((Node *) query->groupClause, context);
-		find_expr_references_walker((Node *) query->windowClause, context);
 		find_expr_references_walker((Node *) query->distinctClause, context);
 
 		/* Examine substructure of query */
@@ -2802,6 +2848,10 @@ getObjectClass(const ObjectAddress *object)
 		case EventTriggerRelationId:
 			return OCLASS_EVENT_TRIGGER;
 
+		case ExtprotocolRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_EXTPROTOCOL;
+
 		case PolicyRelationId:
 			return OCLASS_POLICY;
 
@@ -2821,6 +2871,100 @@ getObjectClass(const ObjectAddress *object)
 	/* shouldn't get here */
 	elog(ERROR, "unrecognized object class: %u", object->classId);
 	return OCLASS_CLASS;		/* keep compiler quiet */
+}
+
+/* check if there are dependencies on the objects provides, error out if exists*/
+void
+checkDependencies(const ObjectAddresses *objects,
+				  const char *msg,
+				  const char *hint)
+{
+	Relation	depRel;
+	ObjectAddresses *targetObjects;
+	StringInfoData 	clientdetail;
+	bool	ok = true;
+	int		i;
+	int		numReportedClient = 0;
+
+	/*
+	 * We save some cycles by opening pg_depend just once and passing the
+	 * Relation pointer down to all the recursive deletion steps.
+	 */
+	depRel = heap_open(DependRelationId, RowExclusiveLock);
+
+	targetObjects = new_object_addresses();
+
+	for (i = 0; i < objects->numrefs; i++)
+	{
+		const ObjectAddress *thisobj = objects->refs + i;
+
+		/*
+		 * Acquire deletion lock on each target object.  (Ideally the caller
+		 * has done this already, but many places are sloppy about it.)
+		 */
+		AcquireDeletionLock(thisobj, 0);
+
+		findDependentObjects(thisobj,
+							 DEPFLAG_ORIGINAL,
+							 0,
+							 NULL,		/* empty stack */
+							 targetObjects,
+							 objects,
+							 &depRel);
+	}
+
+	/*
+	 * We limit the number of dependencies reported to the client to
+	 * MAX_REPORTED_DEPS, since client software may not deal well with
+	 * enormous error strings.  The server log always gets a full report.
+	 */
+#define MAX_REPORTED_DEPS 100
+
+	initStringInfo(&clientdetail);
+
+	for (i = targetObjects->numrefs - 1; i >= 0; i--)
+	{
+		const ObjectAddress *obj = &targetObjects->refs[i];
+		const ObjectAddressExtra *extra = &targetObjects->extras[i];
+		char	*otherDesc;
+		char	*objDesc;
+
+		if (extra->flags & (DEPFLAG_ORIGINAL |
+							DEPFLAG_AUTO |
+							DEPFLAG_INTERNAL |
+							DEPFLAG_EXTENSION))
+			continue;
+
+		objDesc = getObjectDescription(obj);
+		otherDesc = getObjectDescription(&extra->dependee);
+
+		if (numReportedClient < MAX_REPORTED_DEPS)
+		{
+			/* separate entries with a newline */
+			if (clientdetail.len != 0)
+				appendStringInfoChar(&clientdetail, '\n');
+			appendStringInfo(&clientdetail, _("%s depends on %s"),
+							 objDesc, otherDesc);
+			numReportedClient++;
+		}
+		pfree(objDesc);
+		pfree(otherDesc);
+		ok = false;
+	}
+
+	if (!ok)
+			ereport(ERROR,
+					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+					 errmsg("%s", msg),
+					 errdetail("%s", clientdetail.data),
+					 errhint("%s", hint)));
+
+	pfree(clientdetail.data);
+
+	/* And clean up */
+	free_object_addresses(targetObjects);
+
+	heap_close(depRel, RowExclusiveLock);
 }
 
 /*

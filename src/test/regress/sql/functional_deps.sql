@@ -3,8 +3,10 @@
 CREATE TEMP TABLE articles (
     id int CONSTRAINT articles_pkey PRIMARY KEY,
     keywords text,
-    title text UNIQUE NOT NULL,
-    body text UNIQUE,
+    -- GPDB doesn't support having a PRIMARY KEY and UNIQUE constraints on the
+    -- same table. Hence leave out the UNIQUE constraints.
+    title text /* UNIQUE */ NOT NULL,
+    body text /* UNIQUE */,
     created date
 );
 
@@ -122,8 +124,8 @@ CREATE TEMP TABLE users (
     name varchar(60) NOT NULL default '',
     pass varchar(32) NOT NULL default '',
     -- snip
-    PRIMARY KEY (uid),
-    UNIQUE (name)
+    PRIMARY KEY (uid)
+    /* , UNIQUE (name) */
 );
 
 -- OK

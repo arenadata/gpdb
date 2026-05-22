@@ -175,6 +175,9 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
     (p1.prorettype < p2.prorettype)
+    -- int2/int4/int8/float8_matrix_accum functions violate this
+    AND p1.proname NOT LIKE E'%_matrix_accum'
+    AND p2.proname NOT LIKE E'%_matrix_accum'
 ORDER BY 1, 2;
 
 SELECT DISTINCT p1.proargtypes[0], p2.proargtypes[0]
@@ -186,6 +189,9 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
     (p1.proargtypes[0] < p2.proargtypes[0])
+    -- int2/int4/int8/float8_matrix_accum functions violate this
+    AND p1.proname NOT LIKE E'%_matrix_accum'
+    AND p2.proname NOT LIKE E'%_matrix_accum'
 ORDER BY 1, 2;
 
 SELECT DISTINCT p1.proargtypes[1], p2.proargtypes[1]
@@ -197,6 +203,9 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
     (p1.proargtypes[1] < p2.proargtypes[1])
+    -- int2/int4/int8/float8_matrix_accum functions violate this
+    AND p1.proname NOT LIKE E'%_matrix_accum'
+    AND p2.proname NOT LIKE E'%_matrix_accum'
 ORDER BY 1, 2;
 
 SELECT DISTINCT p1.proargtypes[2], p2.proargtypes[2]
@@ -1381,6 +1390,8 @@ SELECT relname, attname, attcollation
 FROM pg_class c, pg_attribute a
 WHERE c.oid = attrelid AND c.oid < 16384 AND
     c.relkind != 'v' AND  -- we don't care about columns in views
+    c.relkind != 'f' AND  -- GPDB: foreign/external tables are also OK.
+    c.relkind != 'c' AND  -- GPDB: as well as composite types
     attcollation != 0 AND
     attcollation != (SELECT oid FROM pg_collation WHERE collname = 'C');
 

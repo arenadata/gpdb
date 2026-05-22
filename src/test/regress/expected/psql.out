@@ -2653,6 +2653,7 @@ Owned by: public.psql_serial_tab.id
 
 \pset tuples_only true
 \df exp
+ pg_catalog | exp  | complex          | complex             | func
  pg_catalog | exp  | double precision | double precision    | func
  pg_catalog | exp  | numeric          | numeric             | func
 
@@ -2673,6 +2674,12 @@ Owned by: public.psql_serial_tab.id
 
 \pset tuples_only true
 \df exp
+Schema              | pg_catalog
+Name                | exp
+Result data type    | complex
+Argument data types | complex
+Type                | func
+--------------------+-----------------
 Schema              | pg_catalog
 Name                | exp
 Result data type    | double precision
@@ -2699,6 +2706,7 @@ integer|1|1|2147483647|1|no|1
 Owned by: public.psql_serial_tab.id
 \pset tuples_only true
 \df exp
+pg_catalog|exp|complex|complex|func
 pg_catalog|exp|double precision|double precision|func
 pg_catalog|exp|numeric|numeric|func
 \pset tuples_only false
@@ -2717,6 +2725,12 @@ Cache|1
 Owned by: public.psql_serial_tab.id
 \pset tuples_only true
 \df exp
+Schema|pg_catalog
+Name|exp
+Result data type|complex
+Argument data types|complex
+Type|func
+
 Schema|pg_catalog
 Name|exp
 Result data type|double precision
@@ -2740,6 +2754,7 @@ Owned by: public.psql_serial_tab.id
 
 \pset tuples_only true
 \df exp
+ pg_catalog | exp  | complex          | complex             | func
  pg_catalog | exp  | double precision | double precision    | func
  pg_catalog | exp  | numeric          | numeric             | func
 
@@ -2760,6 +2775,12 @@ Owned by: public.psql_serial_tab.id
 
 \pset tuples_only true
 \df exp
+Schema              | pg_catalog
+Name                | exp
+Result data type    | complex
+Argument data types | complex
+Type                | func
+--------------------+-----------------
 Schema              | pg_catalog
 Name                | exp
 Result data type    | double precision
@@ -2848,6 +2869,7 @@ Owned by: public.psql_serial_tab.id
 
 [cols="<l,<l,<l,<l,<l",frame="none"]
 |====
+|pg_catalog |exp |complex |complex |func
 |pg_catalog |exp |double precision |double precision |func
 |pg_catalog |exp |numeric |numeric |func
 |====
@@ -2876,6 +2898,12 @@ Owned by: public.psql_serial_tab.id
 
 [cols="h,l",frame="none"]
 |====
+2+|
+<l|Schema <l|pg_catalog
+<l|Name <l|exp
+<l|Result data type <l|complex
+<l|Argument data types <l|complex
+<l|Type <l|func
 2+|
 <l|Schema <l|pg_catalog
 <l|Name <l|exp
@@ -2986,6 +3014,7 @@ Type,Start,Minimum,Maximum,Increment,Cycles?,Cache
 integer,1,1,2147483647,1,no,1
 \pset tuples_only true
 \df exp
+pg_catalog,exp,complex,complex,func
 pg_catalog,exp,double precision,double precision,func
 pg_catalog,exp,numeric,numeric,func
 \pset tuples_only false
@@ -3000,6 +3029,11 @@ Cycles?,no
 Cache,1
 \pset tuples_only true
 \df exp
+Schema,pg_catalog
+Name,exp
+Result data type,complex
+Argument data types,complex
+Type,func
 Schema,pg_catalog
 Name,exp
 Result data type,double precision
@@ -3099,6 +3133,13 @@ select '\' as d1, '' as d2;
   <tr valign="top">
     <td align="left">pg_catalog</td>
     <td align="left">exp</td>
+    <td align="left">complex</td>
+    <td align="left">complex</td>
+    <td align="left">func</td>
+  </tr>
+  <tr valign="top">
+    <td align="left">pg_catalog</td>
+    <td align="left">exp</td>
     <td align="left">double precision</td>
     <td align="left">double precision</td>
     <td align="left">func</td>
@@ -3153,6 +3194,28 @@ select '\' as d1, '' as d2;
 \pset tuples_only true
 \df exp
 <table border="1">
+
+  <tr><td colspan="2">&nbsp;</td></tr>
+  <tr valign="top">
+    <th>Schema</th>
+    <td align="left">pg_catalog</td>
+  </tr>
+  <tr valign="top">
+    <th>Name</th>
+    <td align="left">exp</td>
+  </tr>
+  <tr valign="top">
+    <th>Result data type</th>
+    <td align="left">complex</td>
+  </tr>
+  <tr valign="top">
+    <th>Argument data types</th>
+    <td align="left">complex</td>
+  </tr>
+  <tr valign="top">
+    <th>Type</th>
+    <td align="left">func</td>
+  </tr>
 
   <tr><td colspan="2">&nbsp;</td></tr>
   <tr valign="top">
@@ -3436,6 +3499,7 @@ integer & 1 & 1 & 2147483647 & 1 & no & 1 \\
 \pset tuples_only true
 \df exp
 \begin{tabular}{l | l | l | l | l}
+pg\_catalog & exp & complex & complex & func \\
 pg\_catalog & exp & double precision & double precision & func \\
 pg\_catalog & exp & numeric & numeric & func \\
 \end{tabular}
@@ -3465,6 +3529,12 @@ Cache & 1 \\
 \pset tuples_only true
 \df exp
 \begin{tabular}{c|l}
+\hline
+Schema & pg\_catalog \\
+Name & exp \\
+Result data type & complex \\
+Argument data types & complex \\
+Type & func \\
 \hline
 Schema & pg\_catalog \\
 Name & exp \\
@@ -3650,6 +3720,15 @@ deallocate q;
 &
 \raggedright{exp}
 &
+\raggedright{complex}
+&
+\raggedright{complex}
+&
+\raggedright{func} \tabularnewline
+\raggedright{pg\_catalog}
+&
+\raggedright{exp}
+&
 \raggedright{double precision}
 &
 \raggedright{double precision}
@@ -3689,6 +3768,12 @@ Cache & 1 \\
 \pset tuples_only true
 \df exp
 \begin{tabular}{c|l}
+\hline
+Schema & pg\_catalog \\
+Name & exp \\
+Result data type & complex \\
+Argument data types & complex \\
+Type & func \\
 \hline
 Schema & pg\_catalog \\
 Name & exp \\
@@ -3977,6 +4062,7 @@ Owned by: public.psql_serial_tab.id
 .TS
 center;
 l | l | l | l | l.
+pg_catalog	exp	complex	complex	func
 pg_catalog	exp	double precision	double precision	func
 pg_catalog	exp	numeric	numeric	func
 .TE
@@ -4014,6 +4100,12 @@ Owned by: public.psql_serial_tab.id
 .TS
 center;
 c l;
+_
+Schema	pg_catalog
+Name	exp
+Result data type	complex
+Argument data types	complex
+Type	func
 _
 Schema	pg_catalog
 Name	exp
@@ -4591,8 +4683,11 @@ error: false
 error code: 00000
 \echo 'number of rows:' :ROW_COUNT
 number of rows: 19
--- cursor-fetched query with an error after the first group
-select 1/(15-unique2) from tenk1 order by unique2 limit 19;
+-- cursor-fetched query with an error after the first group. In GPDB, the
+-- query used in PostgreSQL errors out too early in the segments. Use a
+-- different query that behaves the way this is intended.
+--select 1/(15-unique2) from tenk1 order by unique2 limit 19;
+select 1/(15-g) from generate_series(1, 1000000) g;
  ?column? 
 ----------
         0

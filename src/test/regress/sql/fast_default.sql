@@ -2,6 +2,18 @@
 -- ALTER TABLE ADD COLUMN DEFAULT test
 --
 
+-- start_ignore
+
+-- GPDB currently prints a "Settings: " line in the EXPLAIN output, if
+-- there any GUCs are set. gpdiff masks them out, but it does not mask
+-- out the differences in "(xx rows)" lines that happens if there is
+-- no Settings line at all. The expected output does include some Settings.
+-- To make those "(xx rows)" lines stable, set a GUC. Doesn't matter which
+-- one, as long as it's printed in the Settings lines.
+set seq_page_cost=1.001;
+
+-- end_ignore
+
 SET search_path = fast_default;
 CREATE SCHEMA fast_default;
 CREATE TABLE m(id OID);
@@ -155,6 +167,10 @@ ALTER TABLE T ALTER COLUMN c_bpchar    DROP DEFAULT,
 
 INSERT INTO T VALUES (27), (28);
 
+-- start_ignore
+ANALYZE T;
+-- end_ignore
+
 SELECT pk, c_int, c_bpchar, c_text, c_date, c_timestamp,
        c_timestamp_null, c_array, c_small, c_small_null,
        c_big, c_num, c_time, c_interval,
@@ -273,6 +289,10 @@ ALTER TABLE T ADD COLUMN c_text TEXT DEFAULT 'hello';
 
 INSERT INTO T SELECT b, b - 10, (b + 10)::text FROM generate_series(21, 30) a(b);
 
+-- start_ignore
+ANALYZE T;
+-- end_ignore
+
 -- WHERE clause
 SELECT c_bigint, c_text FROM T WHERE c_bigint = -1 LIMIT 1;
 
@@ -342,6 +362,10 @@ SELECT * FROM T ORDER BY pk;
 
 -- Add an index
 CREATE INDEX i ON T(c_int, c_text);
+
+-- start_ignore
+ANALYZE T;
+-- end_ignore
 
 SELECT c_text FROM T WHERE c_int = -1;
 

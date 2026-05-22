@@ -52,4 +52,6 @@ extern TupleTableSlot *execute_attr_map_slot(AttrNumber *attrMap,
 
 extern void free_conversion_map(TupleConversionMap *map);
 
+extern AttrNumber attrMap(TupleConversionMap *map, AttrNumber attno);
+
 #endif							/* TUPCONVERT_H */

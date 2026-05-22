@@ -143,12 +143,16 @@ select t,strict_word_similarity('Kabankala',t) as sml from test_trgm2 where t %>
 
 explain (costs off)
 select t <->>> 'Alaikallupoddakulam', t from test_trgm2 order by t <->>> 'Alaikallupoddakulam' limit 7;
-                       QUERY PLAN                        
----------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Limit
-   ->  Index Scan using trgm_idx2 on test_trgm2
-         Order By: (t <->>> 'Alaikallupoddakulam'::text)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: ((t <->>> 'Alaikallupoddakulam'::text))
+         ->  Limit
+               ->  Index Scan using trgm_idx2 on test_trgm2
+                     Order By: (t <->>> 'Alaikallupoddakulam'::text)
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 select t <->>> 'Alaikallupoddakulam', t from test_trgm2 order by t <->>> 'Alaikallupoddakulam' limit 7;
  ?column? |            t             

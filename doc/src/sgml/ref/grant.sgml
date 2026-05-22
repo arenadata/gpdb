@@ -87,6 +87,10 @@ GRANT { USAGE | ALL [ PRIVILEGES ] }
   | SESSION_USER
 
 GRANT <replaceable class="parameter">role_name</replaceable> [, ...] TO <replaceable class="parameter">role_name</replaceable> [, ...] [ WITH ADMIN OPTION ]
+
+GRANT { SELECT | INSERT | ALL [PRIVILEGES] } 
+    ON PROTOCOL <replaceable>protocolname</replaceable>
+    TO <replaceable class="parameter">username</replaceable>
 </synopsis>
  </refsynopsisdiv>
 
@@ -241,6 +245,43 @@ GRANT <replaceable class="parameter">role_name</replaceable> [, ...] TO <replace
    to <literal>PUBLIC</literal>.  Note also that this form of the command does not
    allow the noise word <literal>GROUP</literal>.
   </para>
+ </refsect2>
+
+ <refsect2 id="sql-grant-description-protocols">
+ <title>Grant on Protocols</title>
+
+ <para>
+ After creating a custom protocol, specify CREATE TRUSTED PROTOCOL to be able 
+ to allowing any user besides the owner to access it. If the protocol is not 
+ trusted, you cannot give any other user permission to use it to read or write data. 
+ After a TRUSTED protocol is created, you can specify which other users can 
+ access it with the GRANT command. 
+ </para>
+
+ <para>
+  To allow a user to create a readable external table with a trusted protocol
+ </para>
+
+ <para> 
+  GRANT SELECT ON PROTOCOL protocolname TO username
+ </para>
+
+ <para>
+  To allow a user to create a writable external table with a trusted protocol
+ </para>
+
+ <para>
+  GRANT INSERT ON PROTOCOL protocolname TO username
+ </para>
+
+ <para>
+ To allow a user to create both readable and writable external table with a trusted protocol
+ </para>
+
+ <para>
+ GRANT ALL ON PROTOCOL protocolname TO username
+ </para>
+
  </refsect2>
  </refsect1>
 

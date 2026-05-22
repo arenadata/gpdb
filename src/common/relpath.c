@@ -121,7 +121,7 @@ GetDatabasePath(Oid dbNode, Oid spcNode)
 	{
 		/* All other tablespaces are accessed via symlinks */
 		return psprintf("pg_tblspc/%u/%s/%u",
-						spcNode, TABLESPACE_VERSION_DIRECTORY, dbNode);
+						spcNode, GP_TABLESPACE_VERSION_DIRECTORY, dbNode);
 	}
 }
 
@@ -133,6 +133,14 @@ GetDatabasePath(Oid dbNode, Oid spcNode)
  * Note: ideally, backendId would be declared as type BackendId, but relpath.h
  * would have to include a backend-only header to do that; doesn't seem worth
  * the trouble considering BackendId is just int anyway.
+ *
+ * In PostgreSQL, the 'backendid' is embedded in the filename of temporary
+ * relations. In GPDB, however, temporary relations are just prefixed with
+ * "t_*", without the backend id. For compatibility with upstream code, this
+ * function still takes 'backendid' as argument, but we only care whether
+ * it's InvalidBackendId or not. If you need to construct the path of a
+ * temporary relation, but don't know the real backend ID, pass
+ * TempRelBackendId.
  */
 char *
 GetRelationPath(Oid dbNode, Oid spcNode, Oid relNode,
@@ -167,12 +175,12 @@ GetRelationPath(Oid dbNode, Oid spcNode, Oid relNode,
 		else
 		{
 			if (forkNumber != MAIN_FORKNUM)
-				path = psprintf("base/%u/t%d_%u_%s",
-								dbNode, backendId, relNode,
+				path = psprintf("base/%u/t_%u_%s",
+								dbNode, relNode,
 								forkNames[forkNumber]);
 			else
-				path = psprintf("base/%u/t%d_%u",
-								dbNode, backendId, relNode);
+				path = psprintf("base/%u/t_%u",
+								dbNode, relNode);
 		}
 	}
 	else
@@ -182,25 +190,25 @@ GetRelationPath(Oid dbNode, Oid spcNode, Oid relNode,
 		{
 			if (forkNumber != MAIN_FORKNUM)
 				path = psprintf("pg_tblspc/%u/%s/%u/%u_%s",
-								spcNode, TABLESPACE_VERSION_DIRECTORY,
+								spcNode, GP_TABLESPACE_VERSION_DIRECTORY,
 								dbNode, relNode,
 								forkNames[forkNumber]);
 			else
 				path = psprintf("pg_tblspc/%u/%s/%u/%u",
-								spcNode, TABLESPACE_VERSION_DIRECTORY,
+								spcNode, GP_TABLESPACE_VERSION_DIRECTORY,
 								dbNode, relNode);
 		}
 		else
 		{
 			if (forkNumber != MAIN_FORKNUM)
-				path = psprintf("pg_tblspc/%u/%s/%u/t%d_%u_%s",
-								spcNode, TABLESPACE_VERSION_DIRECTORY,
-								dbNode, backendId, relNode,
+				path = psprintf("pg_tblspc/%u/%s/%u/t_%u_%s",
+								spcNode, GP_TABLESPACE_VERSION_DIRECTORY,
+								dbNode, relNode,
 								forkNames[forkNumber]);
 			else
-				path = psprintf("pg_tblspc/%u/%s/%u/t%d_%u",
-								spcNode, TABLESPACE_VERSION_DIRECTORY,
-								dbNode, backendId, relNode);
+				path = psprintf("pg_tblspc/%u/%s/%u/t_%u",
+								spcNode, GP_TABLESPACE_VERSION_DIRECTORY,
+								dbNode, relNode);
 		}
 	}
 	return path;

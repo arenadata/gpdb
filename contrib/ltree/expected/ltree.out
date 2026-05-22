@@ -3347,6 +3347,7 @@ SELECT * FROM ltreetest WHERE t ? '{23.*.1,23.*.2}' order by t asc;
  23.3.32.21.5.14.10.17.1
 (4 rows)
 
+-- start_ignore
 create unique index tstidx on ltreetest (t);
 set enable_seqscan=off;
 SELECT * FROM ltreetest WHERE t <  '12.3' order by t asc;
@@ -5388,6 +5389,7 @@ SELECT * FROM ltreetest WHERE t >  '12.3' order by t asc;
 (882 rows)
 
 drop index tstidx;
+-- end_ignore
 create index tstidx on ltreetest using gist (t);
 set enable_seqscan=off;
 SELECT * FROM ltreetest WHERE t <  '12.3' order by t asc;
@@ -7678,4 +7680,13 @@ SELECT count(*) FROM _ltreetest WHERE t ? '{23.*.1,23.*.2}' ;
 -------
     15
 (1 row)
+
+-- Test that has all opclasses
+select opcname,amname from pg_opclass opc,  pg_am am  where am.oid=opc.opcmethod and opcintype='ltree'::regtype;
+    opcname     | amname 
+----------------+--------
+ ltree_ops      | btree
+ gist_ltree_ops | gist
+ ltree_ops      | bitmap
+(3 rows)
 

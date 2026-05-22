@@ -2,7 +2,7 @@
 
 MODULE_big = ltree
 OBJS = 	ltree_io.o ltree_op.o lquery_op.o _ltree_op.o crc32.o \
-	ltxtquery_io.o ltxtquery_op.o ltree_gist.o _ltree_gist.o $(WIN32RES)
+	ltxtquery_io.o ltxtquery_op.o ltree_gist.o _ltree_gist.o
 PG_CPPFLAGS = -DLOWER_NODE
 
 EXTENSION = ltree
@@ -12,6 +12,7 @@ PGFILEDESC = "ltree - hierarchical label data type"
 HEADERS = ltree.h
 
 REGRESS = ltree
+REGRESS_OPTS += --init-file=$(top_srcdir)/src/test/regress/init_file
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

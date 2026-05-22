@@ -33,7 +33,7 @@
  * Note - caller must hold BUFFER_LOCK_EXCLUSIVE on the buffer.
  */
 void
-RelationPutHeapTuple(Relation relation,
+RelationPutHeapTuple(Relation relation pg_attribute_unused(),
 					 Buffer buffer,
 					 HeapTuple tuple,
 					 bool token)

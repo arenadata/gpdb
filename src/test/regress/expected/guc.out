@@ -577,6 +577,8 @@ SELECT current_user = 'regress_guc_user';
 
 -- discard everything
 DISCARD ALL;
+NOTICE:  command without clusterwide effect
+HINT:  Consider alternatives as DEALLOCATE ALL, or DISCARD TEMP if a clusterwide effect is desired.
 -- look again
 SELECT pg_listening_channels();
  pg_listening_channels 
@@ -640,17 +642,23 @@ reset search_path;
 -- Tests for function-local GUC settings
 --
 set work_mem = '3MB';
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 create function report_guc(text) returns text as
 $$ select current_setting($1) $$ language sql
 set work_mem = '1MB';
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 select report_guc('work_mem'), current_setting('work_mem');
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
  report_guc | current_setting 
 ------------+-----------------
  1MB        | 3MB
 (1 row)
 
 alter function report_guc(text) set work_mem = '2MB';
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 select report_guc('work_mem'), current_setting('work_mem');
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
  report_guc | current_setting 
 ------------+-----------------
  2MB        | 3MB
@@ -671,7 +679,11 @@ begin
 end $$
 language plpgsql
 set work_mem = '1MB';
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 select myfunc(0), current_setting('work_mem');
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
  myfunc | current_setting 
 --------+-----------------
  2MB    | 3MB
@@ -679,12 +691,14 @@ select myfunc(0), current_setting('work_mem');
 
 alter function myfunc(int) reset all;
 select myfunc(0), current_setting('work_mem');
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
  myfunc | current_setting 
 --------+-----------------
  2MB    | 2MB
 (1 row)
 
 set work_mem = '3MB';
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 -- but SET isn't
 create or replace function myfunc(int) returns text as $$
 begin
@@ -693,13 +707,18 @@ begin
 end $$
 language plpgsql
 set work_mem = '1MB';
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 select myfunc(0), current_setting('work_mem');
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
  myfunc | current_setting 
 --------+-----------------
  2MB    | 2MB
 (1 row)
 
 set work_mem = '3MB';
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 -- it should roll back on error, though
 create or replace function myfunc(int) returns text as $$
 begin
@@ -709,8 +728,12 @@ begin
 end $$
 language plpgsql
 set work_mem = '1MB';
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 select myfunc(0);
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 ERROR:  division by zero
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 CONTEXT:  SQL statement "SELECT 1/$1"
 PL/pgSQL function myfunc(integer) line 4 at PERFORM
 select current_setting('work_mem');
@@ -720,6 +743,8 @@ select current_setting('work_mem');
 (1 row)
 
 select myfunc(1), current_setting('work_mem');
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
  myfunc | current_setting 
 --------+-----------------
  2MB    | 2MB
@@ -776,3 +801,39 @@ set default_with_oids to f;
 -- Should not allow to set it to true.
 set default_with_oids to t;
 ERROR:  tables declared WITH OIDS are not supported
+SET "request.header.user-agent" = 'curl/7.29.0';
+SHOW "request.header.user-agent";
+ request.header.user-agent 
+---------------------------
+ curl/7.29.0
+(1 row)
+
+-- Test function with SET search_path
+create schema n1;
+create type ty1 as (i int);
+CREATE OR REPLACE FUNCTION n1.drop_table(v_schema character varying, v_table character varying) RETURNS text
+AS $$
+BEGIN
+    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(v_schema) || '.' || quote_ident(v_table) || ';';
+    RETURN '0';
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN SQLSTATE;
+END;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = n1, pg_temp;
+select n1.drop_table('public','t1');
+NOTICE:  table "t1" does not exist, skipping
+ drop_table 
+------------
+ 0
+(1 row)
+
+-- After funtion drop table, public schema is still in search_path
+create table public.t1(i ty1);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
+drop table public.t1;
+drop type public.ty1;
+drop function n1.drop_table(v_schema character varying, v_table character varying);
+drop schema n1;

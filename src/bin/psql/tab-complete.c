@@ -1,6 +1,8 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Copyright (c) 2000-2019, PostgreSQL Global Development Group
  *
  * src/bin/psql/tab-complete.c
@@ -705,6 +707,11 @@ static const SchemaQuery Query_for_list_of_statistics = {
 "  UNION ALL SELECT 'all') ss "\
 " WHERE substring(name,1,%d)='%s'"
 
+#define Query_for_list_of_resgroups \
+" SELECT pg_catalog.quote_ident(rsgname) "\
+"   FROM pg_catalog.pg_resgroup "\
+"  WHERE substring(pg_catalog.quote_ident(rsgname),1,%d)='%s'"
+
 #define Query_for_list_of_roles \
 " SELECT pg_catalog.quote_ident(rolname) "\
 "   FROM pg_catalog.pg_roles "\
@@ -1012,6 +1019,7 @@ static const pgsql_thing_t words_after_create[] = {
 	{"POLICY", NULL, NULL, NULL},
 	{"PROCEDURE", NULL, NULL, Query_for_list_of_procedures},
 	{"PUBLICATION", NULL, Query_for_list_of_publications},
+	{"RESOURCE", NULL},
 	{"ROLE", Query_for_list_of_roles},
 	{"ROUTINE", NULL, NULL, &Query_for_list_of_routines, THING_NO_CREATE},
 	{"RULE", "SELECT pg_catalog.quote_ident(rulename) FROM pg_catalog.pg_rules WHERE substring(pg_catalog.quote_ident(rulename),1,%d)='%s'"},
@@ -1044,6 +1052,7 @@ static const pgsql_thing_t words_after_create[] = {
 
 /* Storage parameters for CREATE TABLE and ALTER TABLE */
 static const char *const table_storage_parameters[] = {
+	"analyze_hll_non_part_table",
 	"autovacuum_analyze_scale_factor",
 	"autovacuum_analyze_threshold",
 	"autovacuum_enabled",
@@ -1986,8 +1995,15 @@ psql_completion(const char *text, int start, int end)
 	}
 	/* If we have ALTER TABLE <sth> SET, provide list of attributes and '(' */
 	else if (Matches("ALTER", "TABLE", MatchAny, "SET"))
-		COMPLETE_WITH("(", "LOGGED", "SCHEMA", "TABLESPACE", "UNLOGGED",
-					  "WITH", "WITHOUT");
+		COMPLETE_WITH("(", "ACCESS METHOD", "LOGGED", "SCHEMA",
+					  "TABLESPACE", "UNLOGGED", "WITH", "WITHOUT");
+
+	/*
+	 * If we have ALTER TABLE <smt> SET ACCESS METHOD provide a list of table
+	 * AMs.
+	 */
+	else if (Matches("ALTER", "TABLE", MatchAny, "SET", "ACCESS", "METHOD"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_table_access_methods);
 
 	/*
 	 * If we have ALTER TABLE <sth> SET TABLESPACE provide a list of
@@ -2686,6 +2702,28 @@ psql_completion(const char *text, int start, int end)
 	else if (Matches("CREATE", "ROLE|USER|GROUP", MatchAny, "IN"))
 		COMPLETE_WITH("GROUP", "ROLE");
 
+/* CREATE/DROP RESOURCE GROUP/QUEUE */
+	else if (Matches("CREATE|DROP", "RESOURCE"))
+	 {
+		static const char *const list_CREATERESOURCEGROUP[] =
+		{"GROUP", "QUEUE", NULL};
+
+		COMPLETE_WITH_LIST(list_CREATERESOURCEGROUP);
+	 }
+	/* CREATE/DROP RESOURCE GROUP */
+	else if (TailMatches("CREATE|DROP", "RESOURCE", "GROUP"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_resgroups);
+	/* CREATE RESOURCE GROUP <name> */
+	else if (TailMatches("CREATE|DROP", "RESOURCE", "GROUP", MatchAny))
+		COMPLETE_WITH("WITH (");
+	else if (TailMatches("RESOURCE", "GROUP", MatchAny, "WITH", "("))
+	{
+		static const char *const list_CREATERESOURCEGROUP[] =
+		{"CONCURRENCY", "CPU_RATE_LIMIT", "MEMORY_LIMIT", "MEMORY_REDZONE_LIMIT", NULL};
+
+		COMPLETE_WITH_LIST(list_CREATERESOURCEGROUP);
+	}
+
 /* CREATE TYPE */
 	else if (Matches("CREATE", "TYPE", MatchAny))
 		COMPLETE_WITH("(", "AS");
@@ -2724,6 +2762,7 @@ psql_completion(const char *text, int start, int end)
 		else if (TailMatches("=", MatchAnyExcept("*)")))
 			COMPLETE_WITH(",", ")");
 	}
+
 
 /* CREATE VIEW --- is allowed inside CREATE SCHEMA, so use TailMatches */
 	/* Complete CREATE VIEW <name> with AS */
@@ -3984,7 +4023,6 @@ _complete_from_query(const char *simple_query,
 	static int	list_index,
 				byte_length;
 	static PGresult *result = NULL;
-
 	/*
 	 * If this is the first time for this completion, we fetch a list of our
 	 * "things" from the backend.
@@ -4053,13 +4091,14 @@ _complete_from_query(const char *simple_query,
 
 			/*
 			 * When fetching relation names, suppress system catalogs unless
-			 * the input-so-far begins with "pg_".  This is a compromise
+			 * the input-so-far begins with "pg_" or "gp_".	 This is a compromise
 			 * between not offering system catalogs for completion at all, and
 			 * having them swamp the result when the input is just "p".
 			 */
 			if (strcmp(schema_query->catname,
 					   "pg_catalog.pg_class c") == 0 &&
-				strncmp(text, "pg_", 3) !=0)
+				strncmp(text, "pg_", 3) != 0 &&
+				strncmp(text, "gp_", 3) != 0)
 			{
 				appendPQExpBufferStr(&query_buffer,
 									 " AND c.relnamespace <> (SELECT oid FROM"

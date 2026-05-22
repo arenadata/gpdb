@@ -1,5 +1,5 @@
 --
--- UPDATE syntax tests
+-- UPDATE ... SET <col> = DEFAULT;
 --
 
 CREATE TABLE update_test (
@@ -16,20 +16,20 @@ CREATE TABLE upsert_test (
 INSERT INTO update_test VALUES (5, 10, 'foo');
 INSERT INTO update_test(b, a) VALUES (15, 10);
 
-SELECT * FROM update_test;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 UPDATE update_test SET a = DEFAULT, b = DEFAULT;
 
-SELECT * FROM update_test;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 -- aliases for the UPDATE target table
 UPDATE update_test AS t SET b = 10 WHERE t.a = 10;
 
-SELECT * FROM update_test;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 UPDATE update_test t SET b = t.b + 10 WHERE t.a = 10;
 
-SELECT * FROM update_test;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 --
 -- Test VALUES in FROM
@@ -38,7 +38,7 @@ SELECT * FROM update_test;
 UPDATE update_test SET a=v.i FROM (VALUES(100, 20)) AS v(i, j)
   WHERE update_test.b = v.j;
 
-SELECT * FROM update_test;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 -- fail, wrong data type:
 UPDATE update_test SET a = v.* FROM (VALUES(100, 20)) AS v(i, j)
@@ -52,9 +52,9 @@ INSERT INTO update_test SELECT a,b+1,c FROM update_test;
 SELECT * FROM update_test;
 
 UPDATE update_test SET (c,b,a) = ('bugle', b+11, DEFAULT) WHERE c = 'foo';
-SELECT * FROM update_test;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 UPDATE update_test SET (c,b) = ('car', a+b), a = a + 1 WHERE a = 10;
-SELECT * FROM update_test;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 -- fail, multi assignment to same column:
 UPDATE update_test SET (c,b) = ('car', a+b), b = a + 1 WHERE a = 10;
 
@@ -132,7 +132,6 @@ DROP FUNCTION xid_current();
 DROP TABLE update_test;
 DROP TABLE upsert_test;
 
-
 ---------------------------
 -- UPDATE with row movement
 ---------------------------
@@ -156,8 +155,11 @@ CREATE TABLE range_parted (
 -- Create partitions intentionally in descending bound order, so as to test
 -- that update-row-movement works with the leaf partitions not in bound order.
 CREATE TABLE part_b_20_b_30 (e varchar, c numeric, a text, b bigint, d int);
+-- GPDB: distribution policy must match the parent table.
+alter table part_b_20_b_30 set distributed by (a);
 ALTER TABLE range_parted ATTACH PARTITION part_b_20_b_30 FOR VALUES FROM ('b', 20) TO ('b', 30);
 CREATE TABLE part_b_10_b_20 (e varchar, c numeric, a text, b bigint, d int) PARTITION BY RANGE (c);
+alter table part_b_10_b_20 set distributed by (a);
 CREATE TABLE part_b_1_b_10 PARTITION OF range_parted FOR VALUES FROM ('b', 1) TO ('b', 10);
 ALTER TABLE range_parted ATTACH PARTITION part_b_10_b_20 FOR VALUES FROM ('b', 10) TO ('b', 20);
 CREATE TABLE part_a_10_a_20 PARTITION OF range_parted FOR VALUES FROM ('a', 10) TO ('a', 20);
@@ -171,6 +173,7 @@ UPDATE part_b_10_b_20 set b = b - 6;
 -- order, but let's make the situation a bit more complex by having the
 -- attribute numbers of the columns vary from their parent partition.
 CREATE TABLE part_c_100_200 (e varchar, c numeric, a text, b bigint, d int) PARTITION BY range (abs(d));
+
 ALTER TABLE part_c_100_200 DROP COLUMN e, DROP COLUMN c, DROP COLUMN a;
 ALTER TABLE part_c_100_200 ADD COLUMN c numeric, ADD COLUMN e varchar, ADD COLUMN a text;
 ALTER TABLE part_c_100_200 DROP COLUMN b;
@@ -180,7 +183,13 @@ CREATE TABLE part_d_15_20 PARTITION OF part_c_100_200 FOR VALUES FROM (15) TO (2
 
 ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_100_200 FOR VALUES FROM (100) TO (200);
 
+-- GPDB: distribution policy must match the parent table, so the previous command fails.
+-- Change the distribution key and try again.
+alter table part_c_100_200 set distributed by (a);
+ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_100_200 FOR VALUES FROM (100) TO (200);
+
 CREATE TABLE part_c_1_100 (e varchar, d int, c numeric, b bigint, a text);
+alter table part_c_1_100 set distributed by (a);
 ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_1_100 FOR VALUES FROM (1) TO (100);
 
 \set init_range_parted 'truncate range_parted; insert into range_parted VALUES (''a'', 1, 1, 1), (''a'', 10, 200, 1), (''b'', 12, 96, 1), (''b'', 13, 97, 2), (''b'', 15, 105, 16), (''b'', 17, 105, 19)'
@@ -514,8 +523,10 @@ CREATE TABLE list_parted (a numeric, b int, c int8) PARTITION BY list (a);
 CREATE TABLE sub_parted PARTITION OF list_parted for VALUES in (1) PARTITION BY list (b);
 
 CREATE TABLE sub_part1(b int, c int8, a numeric);
+alter table sub_part1 set distributed by (a); -- GPDB: distribution policy must match the parent table.
 ALTER TABLE sub_parted ATTACH PARTITION sub_part1 for VALUES in (1);
 CREATE TABLE sub_part2(b int, c int8, a numeric);
+alter table sub_part2 set distributed by (a); -- GPDB: distribution policy must match the parent table.
 ALTER TABLE sub_parted ATTACH PARTITION sub_part2 for VALUES in (2);
 
 CREATE TABLE list_part1(a numeric, b int, c int8);
@@ -578,6 +589,13 @@ DROP FUNCTION func_parted_mod_b();
 CREATE TABLE non_parted (id int);
 INSERT into non_parted VALUES (1), (1), (1), (2), (2), (2), (3), (3), (3);
 UPDATE list_parted t1 set a = 2 FROM non_parted t2 WHERE t1.a = t2.id and a = 1;
+
+-- In GPDB, the above UPDATE fails because the distribution key is updated, and
+-- the Split Update codepath isn't smart enough to handle this situation. With
+-- a non-Split Update, it works:
+ALTER TABLE list_parted SET DISTRIBUTED BY (c);
+UPDATE list_parted t1 set a = 2 FROM non_parted t2 WHERE t1.a = t2.id and a = 1;
+
 SELECT tableoid::regclass::text, * FROM list_parted ORDER BY 1, 2, 3, 4;
 DROP TABLE non_parted;
 

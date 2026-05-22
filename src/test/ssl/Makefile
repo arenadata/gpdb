@@ -74,7 +74,7 @@ ssl/server-ss.crt: ssl/server-cn-only.key ssl/server-cn-only.crt server-cn-only.
 
 # Password-protected version of server-cn-only.key
 ssl/server-password.key: ssl/server-cn-only.key
-	openssl rsa -des -in $< -out $@ -passout 'pass:secret1'
+	openssl rsa -aes256 -in $< -out $@ -passout 'pass:secret1'
 
 # Client certificate, signed by the client CA:
 ssl/client.crt: ssl/client.key ssl/client_ca.crt
@@ -139,7 +139,17 @@ clean distclean maintainer-clean:
 	rm -rf ssl/*.old ssl/new_certs_dir ssl/client*_tmp.key
 
 check:
+ifeq ($(with_openssl),yes)
 	$(prove_check)
+else
+	@echo "SSL is disabled for this build"
+endif
 
-installcheck:
+install:
+	./configure_ssl.sh
+
+HOSTNAME=$(shell hostname)
+installcheck: install
 	$(prove_installcheck)
+	$(top_builddir)/src/test/regress/pg_regress $(EXTRA_REGRESS_OPTS) --init-file=./init_file_ssl_connection --inputdir=$(srcdir) --dbname=test_sslconnection --schedule=$(srcdir)/ssl_connection_schedule --user=ssltestuser --host=$(HOSTNAME) --sslmode=verify-full
+	./clear_ssl.sh

@@ -4,6 +4,8 @@
  *	  support for the POSTGRES executor module
  *
  *
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -19,6 +21,9 @@
 #include "nodes/parsenodes.h"
 #include "utils/memutils.h"
 
+#include "cdb/cdbdef.h"                 /* CdbVisitOpt */
+
+struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
 
 /*
  * The "eflags" argument to ExecutorStart and the various ExecInitNode
@@ -35,11 +40,8 @@
  * of startup should occur.  However, error checks (such as permission checks)
  * should be performed.
  *
- * REWIND indicates that the plan node should try to efficiently support
- * rescans without parameter changes.  (Nodes must support ExecReScan calls
- * in any case, but if this flag was not given, they are at liberty to do it
- * through complete recalculation.  Note that a parameter change forces a
- * full recalculation in any case.)
+ * REWIND indicates that the plan node should expect to be rescanned. This
+ * implies delaying freeing up resources when EagerFree is called. XXX
  *
  * BACKWARD indicates that the plan node must respect the es_direction flag.
  * When this is not passed, the plan node will only be run forwards.
@@ -53,12 +55,23 @@
  * is responsible for there being a trigger context for them to be queued in.
  */
 #define EXEC_FLAG_EXPLAIN_ONLY	0x0001	/* EXPLAIN, no ANALYZE */
-#define EXEC_FLAG_REWIND		0x0002	/* need efficient rescan */
+#define EXEC_FLAG_REWIND		0x0002	/* expect rescan */
 #define EXEC_FLAG_BACKWARD		0x0004	/* need backward scan */
 #define EXEC_FLAG_MARK			0x0008	/* need mark/restore */
 #define EXEC_FLAG_SKIP_TRIGGERS 0x0010	/* skip AfterTrigger calls */
 #define EXEC_FLAG_WITH_NO_DATA	0x0020	/* rel scannability doesn't matter */
 
+#define RelinfoGetStorage(relinfo) ((relinfo)->ri_RelationDesc->rd_rel->relstorage)
+
+/*
+ * Indicate whether an executor node is running in the slice
+ * that a QE process is processing.
+ *
+ * This is currently called inside ExecInitXXX for each executor
+ * node.
+ *
+ * If this is called in QD or utility mode, this will return true.
+ */
 
 /* Hook for plugins to get control in ExecutorStart() */
 typedef void (*ExecutorStart_hook_type) (QueryDesc *queryDesc, int eflags);
@@ -99,6 +112,13 @@ extern bool ExecMaterializesOutput(NodeTag plantype);
 /*
  * prototypes from functions in execCurrent.c
  */
+extern void getCurrentOf(CurrentOfExpr *cexpr,
+			  ExprContext *econtext,
+			  Oid table_oid,
+			  ItemPointer current_tid,
+			  int *current_gp_segment_id,
+			  Oid *current_table_oid,
+			  char **cursor_name_p);
 extern bool execCurrentOf(CurrentOfExpr *cexpr,
 						  ExprContext *econtext,
 						  Oid table_oid,
@@ -139,6 +159,11 @@ extern TupleHashTable BuildTupleHashTableExt(PlanState *parent,
 extern TupleHashEntry LookupTupleHashEntry(TupleHashTable hashtable,
 										   TupleTableSlot *slot,
 										   bool *isnew);
+extern uint32 TupleHashTableHash(TupleHashTable hashtable,
+								 TupleTableSlot *slot);
+extern TupleHashEntry LookupTupleHashEntryHash(TupleHashTable hashtable,
+											   TupleTableSlot *slot,
+											   bool *isnew, uint32 hash);
 extern TupleHashEntry FindTupleHashEntry(TupleHashTable hashtable,
 										 TupleTableSlot *slot,
 										 ExprState *eqcomp,
@@ -212,6 +237,10 @@ extern TupleTableSlot *EvalPlanQualNext(EPQState *epqstate);
 extern void EvalPlanQualBegin(EPQState *epqstate, EState *parentestate);
 extern void EvalPlanQualEnd(EPQState *epqstate);
 
+extern Oid GetIntoRelOid(QueryDesc *queryDesc);
+
+extern Node *attrMapExpr(TupleConversionMap *map, Node *expr);
+
 /*
  * functions in execProcnode.c
  */
@@ -240,6 +269,21 @@ ExecProcNode(PlanState *node)
 }
 #endif
 
+extern void ExecSquelchNode(PlanState *node);
+
+typedef enum
+{
+	GP_IGNORE,
+	GP_ROOT_SLICE,
+	GP_NON_ROOT_ON_QE
+} GpExecIdentity;
+
+/* PlanState tree walking functions in execProcnode.c */
+CdbVisitOpt
+planstate_walk_node(PlanState      *planstate,
+			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+			        void           *context);
+
 /*
  * prototypes from functions in execExpr.c
  */
@@ -249,7 +293,7 @@ extern ExprState *ExecInitQual(List *qual, PlanState *parent);
 extern ExprState *ExecInitCheck(List *qual, PlanState *parent);
 extern List *ExecInitExprList(List *nodes, PlanState *parent);
 extern ExprState *ExecBuildAggTrans(AggState *aggstate, struct AggStatePerPhaseData *phase,
-									bool doSort, bool doHash);
+									bool doSort, bool doHash, bool nullcheck);
 extern ExprState *ExecBuildGroupingEqual(TupleDesc ldesc, TupleDesc rdesc,
 										 const TupleTableSlotOps *lops, const TupleTableSlotOps *rops,
 										 int numCols,
@@ -266,6 +310,8 @@ extern ExprState *ExecPrepareExpr(Expr *node, EState *estate);
 extern ExprState *ExecPrepareQual(List *qual, EState *estate);
 extern ExprState *ExecPrepareCheck(List *qual, EState *estate);
 extern List *ExecPrepareExprList(List *nodes, EState *estate);
+extern Datum ExecEvalFunctionArgToConst(FuncExpr *fexpr, int argno, bool *isnull);
+extern bool isJoinExprNull(List *joinExpr, ExprContext *econtext);
 
 /*
  * ExecEvalExpr
@@ -409,7 +455,8 @@ extern Tuplestorestate *ExecMakeTableFunctionResult(SetExprState *setexpr,
 													ExprContext *econtext,
 													MemoryContext argContext,
 													TupleDesc expectedDesc,
-													bool randomAccess);
+													bool randomAccess,
+													uint64 operatorMemKB);
 extern SetExprState *ExecInitFunctionResultSet(Expr *expr,
 											   ExprContext *econtext, PlanState *parent);
 extern Datum ExecMakeFunctionResultSet(SetExprState *fcache,
@@ -486,7 +533,9 @@ extern void end_tup_output(TupOutputState *tstate);
  */
 extern EState *CreateExecutorState(void);
 extern void FreeExecutorState(EState *estate);
+extern void CloseResultRelInfo(ResultRelInfo *resultRelInfo);
 extern ExprContext *CreateExprContext(EState *estate);
+extern ExprContext *CreateWorkExprContext(EState *estate);
 extern ExprContext *CreateStandaloneExprContext(void);
 extern void FreeExprContext(ExprContext *econtext, bool isCommit);
 extern void ReScanExprContext(ExprContext *econtext);
@@ -529,6 +578,7 @@ extern void ExecCreateScanSlotFromOuterPlan(EState *estate,
 extern bool ExecRelationIsTargetRelation(EState *estate, Index scanrelid);
 
 extern Relation ExecOpenScanRelation(EState *estate, Index scanrelid, int eflags);
+extern Relation ExecOpenScanExternalRelation(EState *estate, Index scanrelid);
 
 extern void ExecInitRangeTable(EState *estate, List *rangeTable);
 
@@ -541,7 +591,7 @@ exec_rt_fetch(Index rti, EState *estate)
 
 extern Relation ExecGetRangeTableRelation(EState *estate, Index rti);
 
-extern int	executor_errposition(EState *estate, int location);
+extern void executor_errposition(EState *estate, int location);
 
 extern void RegisterExprContextCallback(ExprContext *econtext,
 										ExprContextCallbackFunction function,
@@ -586,7 +636,6 @@ extern bool RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 										 TupleTableSlot *outslot);
 extern bool RelationFindReplTupleSeq(Relation rel, LockTupleMode lockmode,
 									 TupleTableSlot *searchslot, TupleTableSlot *outslot);
-
 extern void ExecSimpleRelationInsert(EState *estate, TupleTableSlot *slot);
 extern void ExecSimpleRelationUpdate(EState *estate, EPQState *epqstate,
 									 TupleTableSlot *searchslot, TupleTableSlot *slot);
@@ -597,4 +646,19 @@ extern void CheckCmdReplicaIdentity(Relation rel, CmdType cmd);
 extern void CheckSubscriptionRelkind(char relkind, const char *nspname,
 									 const char *relname);
 
+extern void fake_outer_params(JoinState *node);
+extern void ExecPrefetchQual(JoinState *node, bool isJoinQual);
+
+/* Additions for MPP Slice table utilities defined in execUtils.c */
+extern GpExecIdentity getGpExecIdentity(QueryDesc *queryDesc,
+										  ScanDirection direction,
+										  EState	   *estate);
+extern void mppExecutorFinishup(QueryDesc *queryDesc);
+extern void mppExecutorCleanup(QueryDesc *queryDesc);
+
+extern ResultRelInfo *targetid_get_partition(Oid targetid, EState *estate, bool openIndices);
+extern ResultRelInfo *slot_get_partition(TupleTableSlot *slot, EState *estate, bool openIndices);
+
+extern void
+change_varattnos_of_a_varno(Node *node, const AttrNumber *newattno, Index varno);
 #endif							/* EXECUTOR_H  */

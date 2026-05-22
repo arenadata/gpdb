@@ -1,0 +1,30 @@
+table definitions
+=================
+
+In Postgres, the definition of a catalog table is spread across
+multiple files.  The basic structure of the table is usually defined
+in an eponymous header file.  Any indexes on that table are defined in
+indexing.h.  If the table uses "large" columns, it requires a separate
+toast table in toasting.c|h.  If the table is shared, then
+catalog.c:isSharedRelation() must list the table and its associated
+indexes, and toast table and toast indexes if they exist.  Finally, any
+new catalog table header must be listed in the
+Postgres .bki source file dependencies in the catalog Makefile.
+
+In addition to the Postgres macros, you should declare any "foreign
+key" references in a table with a FOREIGN_KEY line. Those declarations
+are only used by gpcheckcat, they are not used for anything by the
+server itself.
+
+For example, the Greenplum resource queue capability table is a shared
+table with a unique index and two subsidiary indexes.  It also has a
+foreign key relationship with pg_resqueue and pg_resourcetype.  The
+FOREIGN_KEY definition is:
+
+FOREIGN_KEY(resqueueid REFERENCES pg_resqueue(oid));
+FOREIGN_KEY(restypid REFERENCES pg_resourcetype(restypid));
+
+If you modify any foreign key declarations, you must re-generate
+gpMgmt/bin/gppylib/data/<version>.json file. The src/backend/catalog
+Makefile contains a target to automatically regenerate the file on
+"make all".

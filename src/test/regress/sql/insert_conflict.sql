@@ -60,6 +60,8 @@ drop index both_index_expr_key;
 --
 -- Make sure that cross matching of attribute opclass/collation does not occur
 --
+-- GPDB: it is not possible (yet) to express a unique index with the required characteristics
+-- start_ignore
 create unique index cross_match on insertconflicttest(lower(fruit) collate "C", upper(fruit) text_pattern_ops);
 
 -- fails:
@@ -68,6 +70,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C", upper(fruit) text_pattern_ops) do nothing;
 
 drop index cross_match;
+-- end_ignore
 
 --
 -- Single key tests
@@ -157,6 +160,7 @@ drop index expr_part_comp_key_index;
 --
 -- Expression index tests
 --
+-- start_ignore
 create unique index expr_key_index on insertconflicttest(lower(fruit));
 
 -- inference succeeds:
@@ -168,6 +172,7 @@ insert into insertconflicttest values (22, 'Apricot') on conflict (upper(fruit))
 insert into insertconflicttest values (23, 'Blackberry') on conflict (fruit) do update set fruit = excluded.fruit;
 
 drop index expr_key_index;
+-- end_ignore
 
 --
 -- Expression index tests (with regular column)
@@ -192,6 +197,7 @@ drop index tricky_expr_comp_key_index;
 --
 -- Non-spurious duplicate violation tests
 --
+-- start_ignore
 create unique index key_index on insertconflicttest(key);
 create unique index fruit_index on insertconflicttest(fruit);
 
@@ -206,6 +212,7 @@ insert into insertconflicttest values (25, 'Fig') on conflict (fruit) do update 
 
 drop index key_index;
 drop index fruit_index;
+-- end_ignore
 
 --
 -- Test partial unique index inference
@@ -264,6 +271,8 @@ drop table syscolconflicttest;
 -- Previous tests all managed to not test any expressions requiring
 -- planner preprocessing ...
 --
+-- GPDB: it is not possible (yet) to express a unique index with expressions
+-- start_ignore
 create table insertconflict (a bigint, b bigint);
 
 create unique index insertconflicti1 on insertconflict(coalesce(a, 0));
@@ -281,6 +290,7 @@ insert into insertconflict values (1, 2)
 on conflict (b) where coalesce(a, 1) > 1 do nothing;
 
 drop table insertconflict;
+-- end_ignore
 
 --
 -- test insertion through view
@@ -404,6 +414,8 @@ insert into dropcol(key, keep1, keep2) values(1, '5', 5) on conflict(key)
 DROP TABLE dropcol;
 
 -- check handling of regular btree constraint along with gist constraint
+-- GPDB: does not support exclusion constraints
+-- start_ignore
 
 create table twoconstraints (f1 int unique, f2 box,
                              exclude using gist(f2 with &&));
@@ -416,6 +428,7 @@ insert into twoconstraints values(2, '((0,0),(1,2))')
   on conflict on constraint twoconstraints_f2_excl do nothing;  -- do nothing
 select * from twoconstraints;
 drop table twoconstraints;
+-- end_ignore
 
 -- check handling of self-conflicts at various isolation levels
 
@@ -451,7 +464,7 @@ drop table selfconflict;
 
 -- check ON CONFLICT handling with partitioned tables
 create table parted_conflict_test (a int unique, b char) partition by list (a);
-create table parted_conflict_test_1 partition of parted_conflict_test (b unique) for values in (1, 2);
+create table parted_conflict_test_1 partition of parted_conflict_test for values in (1, 2);
 
 -- no indexes required here
 insert into parted_conflict_test values (1, 'a') on conflict do nothing;
@@ -464,6 +477,8 @@ insert into parted_conflict_test values (1, 'a') on conflict (a) do update set b
 insert into parted_conflict_test_1 values (1, 'a') on conflict (a) do nothing;
 insert into parted_conflict_test_1 values (1, 'b') on conflict (a) do update set b = excluded.b;
 
+-- start_ignore
+-- Greenplum could not update the distribution column on conflict
 -- index on b required, which doesn't exist in parent
 insert into parted_conflict_test values (2, 'b') on conflict (b) do update set a = excluded.a;
 
@@ -472,6 +487,7 @@ insert into parted_conflict_test_1 values (2, 'b') on conflict (b) do update set
 
 -- should see (2, 'b')
 select * from parted_conflict_test order by a;
+-- end_ignore
 
 -- now check that DO UPDATE works correctly for target partition with
 -- different attribute numbers
@@ -540,11 +556,14 @@ drop table parted_conflict;
 -- test whole-row Vars in ON CONFLICT expressions
 create table parted_conflict (a int, b text, c int) partition by range (a);
 create table parted_conflict_1 (drp text, c int, a int, b text);
+alter table parted_conflict_1 set distributed by (a);
 alter table parted_conflict_1 drop column drp;
 create unique index on parted_conflict (a, b);
 alter table parted_conflict attach partition parted_conflict_1 for values from (0) to (1000);
 truncate parted_conflict;
 insert into parted_conflict values (50, 'cincuenta', 1);
+-- start_ignore
+-- Greenplum could not update the distribution column on conflict
 insert into parted_conflict values (50, 'cincuenta', 2)
   on conflict (a, b) do update set (a, b, c) = row(excluded.*)
   where parted_conflict = (50, text 'cincuenta', 1) and
@@ -552,6 +571,7 @@ insert into parted_conflict values (50, 'cincuenta', 2)
 
 -- should see (50, 'cincuenta', 2)
 select * from parted_conflict order by a;
+-- end_ignore
 
 -- test with statement level triggers
 create or replace function parted_conflict_update_func() returns trigger as $$
@@ -575,8 +595,26 @@ truncate parted_conflict;
 
 insert into parted_conflict values (0, 'cero', 1);
 
+-- Greenplum: this won't trigger, because the INSERT/UPDATE happens on the QEs,
+-- but FOR STATEMENT triggers could not be triggered on a QE
 insert into parted_conflict values(0, 'cero', 1)
   on conflict (a,b) do update set c = parted_conflict.c + 1;
 
 drop table parted_conflict;
 drop function parted_conflict_update_func();
+
+-- check that modification of replicated tables containing volatile functions is not supported.
+create table rpt_volatile(i int unique) distributed replicated;
+insert into rpt_volatile select i from generate_series(10,20)i;
+-- this should fail
+insert into rpt_volatile as m select x from generate_series(5, 15)x
+  on conflict (i) do update
+  set i = m.i*20 + 5 * random();
+insert into rpt_volatile as m select x from generate_series(5, 15)x
+  on conflict (i) do update
+  set i = m.i + 20 where m.i > 12 * random();
+-- this should work
+insert into rpt_volatile as m select x from generate_series(5, 15)x
+  on conflict (i) do update
+  set i = m.i + 20;
+drop table rpt_volatile;

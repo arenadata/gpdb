@@ -5,6 +5,8 @@
  *
  * See src/backend/utils/misc/README for design notes.
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  *
  *	  src/include/utils/guc_tables.h
@@ -49,6 +51,9 @@ typedef struct config_var_value
 
 /*
  * Groupings to help organize all the run-time options for display
+ *
+ * Note: When you modify this, you need to modify config_group_names[]
+ *       as well, which is located in guc.c.
  */
 enum config_group
 {
@@ -58,6 +63,9 @@ enum config_group
 	CONN_AUTH_SETTINGS,
 	CONN_AUTH_AUTH,
 	CONN_AUTH_SSL,
+
+	EXTERNAL_TABLES,                    /*CDB*/
+	APPENDONLY_TABLES,                  /*CDB*/
 	RESOURCES,
 	RESOURCES_MEM,
 	RESOURCES_DISK,
@@ -65,6 +73,7 @@ enum config_group
 	RESOURCES_VACUUM_DELAY,
 	RESOURCES_BGWRITER,
 	RESOURCES_ASYNCHRONOUS,
+	RESOURCES_MGM,
 	WAL,
 	WAL_SETTINGS,
 	WAL_CHECKPOINTS,
@@ -79,30 +88,59 @@ enum config_group
 	QUERY_TUNING,
 	QUERY_TUNING_METHOD,
 	QUERY_TUNING_COST,
-	QUERY_TUNING_GEQO,
 	QUERY_TUNING_OTHER,
+
 	LOGGING,
 	LOGGING_WHERE,
 	LOGGING_WHEN,
 	LOGGING_WHAT,
 	PROCESS_TITLE,
 	STATS,
+	STATS_ANALYZE,                      /*CDB*/
 	STATS_MONITORING,
 	STATS_COLLECTOR,
 	AUTOVACUUM,
 	CLIENT_CONN,
+
 	CLIENT_CONN_STATEMENT,
 	CLIENT_CONN_LOCALE,
 	CLIENT_CONN_PRELOAD,
 	CLIENT_CONN_OTHER,
 	LOCK_MANAGEMENT,
 	COMPAT_OPTIONS,
+
 	COMPAT_OPTIONS_PREVIOUS,
 	COMPAT_OPTIONS_CLIENT,
+    COMPAT_OPTIONS_IGNORED,             /*CDB*/
 	ERROR_HANDLING_OPTIONS,
+    GP_ARRAY_CONFIGURATION,            /*CDB*/
+    GP_ARRAY_TUNING,                   /*CDB*/
+
+    GP_WORKER_IDENTITY,                /*CDB*/
+	GP_ERROR_HANDLING,				   /*CDB*/
 	PRESET_OPTIONS,
 	CUSTOM_OPTIONS,
-	DEVELOPER_OPTIONS
+	DEVELOPER_OPTIONS,
+
+	/*
+	 * GPDB: deprecated GUCs. In this group, the GUCs are still functioning,
+	 * but we don't recommend customers to use them. They may be defunct in
+	 * the future release.
+	 */
+	DEPRECATED_OPTIONS,
+
+	/*
+	 * GPDB: defunct GUCs. In this group, the GUCs are defunct. The GUCs are still
+	 * there, but attempting to change their values will not have any effects.
+	 */
+	DEFUNCT_OPTIONS,
+
+
+
+
+
+
+	___CONFIG_GROUP_COUNT /* sentinel to indicate end of enumeration */
 };
 
 /*
@@ -174,6 +212,13 @@ struct config_generic
  */
 #define GUC_PENDING_RESTART 0x0002
 
+/* upper limit for GUC variables measured in kilobytes of memory */
+/* note that various places assume the byte size fits in a "long" variable */
+#if SIZEOF_SIZE_T > 4 && SIZEOF_LONG > 4
+#define MAX_KILOBYTES	INT_MAX
+#else
+#define MAX_KILOBYTES	(INT_MAX / 1024)
+#endif
 
 /* GUC records for specific variable types */
 
@@ -260,6 +305,7 @@ extern const char *const GucSource_Names[];
 
 /* get the current set of variables */
 extern struct config_generic **get_guc_variables(void);
+extern int get_num_guc_variables(void);
 
 extern void build_guc_variables(void);
 
@@ -267,6 +313,21 @@ extern void build_guc_variables(void);
 extern const char *config_enum_lookup_by_value(struct config_enum *record, int val);
 extern bool config_enum_lookup_by_name(struct config_enum *record,
 									   const char *value, int *retval);
+extern bool is_guc_modified(struct config_generic *conf);
 extern struct config_generic **get_explain_guc_options(int *num);
+
+extern bool parse_int(const char *value, int *result, int flags, const char **hintmsg);
+
+/* guc_gp.c needs this from guc.c */
+extern const struct config_enum_entry server_message_level_options[];
+
+/* guc_gp.c exports these for guc.c */
+extern struct config_bool ConfigureNamesBool_gp[];
+extern struct config_int ConfigureNamesInt_gp[];
+extern struct config_real ConfigureNamesReal_gp[];
+extern struct config_string ConfigureNamesString_gp[];
+extern struct config_enum ConfigureNamesEnum_gp[];
+
+extern void gpdb_assign_sync_flag(struct config_generic **guc_variables, int size, bool predefine);
 
 #endif							/* GUC_TABLES_H */

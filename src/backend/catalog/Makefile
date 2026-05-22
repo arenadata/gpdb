@@ -21,7 +21,19 @@ OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
 	   pg_db_role_setting.o pg_shdepend.o pg_subscription.o pg_type.o \
 	   storage.o toasting.o
 
+OBJS += pg_extprotocol.o \
+       pg_proc_callback.o \
+       aoseg.o aoblkdir.o gp_fastsequence.o gp_segment_config.o \
+       pg_attribute_encoding.o pg_compression.o aovisimap.o \
+       pg_appendonly.o \
+       oid_dispatch.o aocatalog.o storage_tablespace.o storage_database.o \
+       storage_tablespace_twophase.o storage_tablespace_xact.o \
+       gp_partition_template.o
+
+
 BKIFILES = postgres.bki postgres.description postgres.shdescription
+
+CATALOG_JSON:= $(addprefix $(top_srcdir)/gpMgmt/bin/gppylib/data/, $(addsuffix .json,$(GP_MAJORVERSION)))
 
 include $(top_srcdir)/src/backend/common.mk
 
@@ -42,11 +54,23 @@ CATALOG_HEADERS := \
 	pg_ts_config.h pg_ts_config_map.h pg_ts_dict.h \
 	pg_ts_parser.h pg_ts_template.h pg_extension.h \
 	pg_foreign_data_wrapper.h pg_foreign_server.h pg_user_mapping.h \
+	pg_resqueue.h pg_resqueuecapability.h pg_resourcetype.h \
+	pg_resgroup.h pg_resgroupcapability.h \
+	gp_configuration_history.h gp_id.h gp_distribution_policy.h gp_version_at_initdb.h \
+	gp_segment_configuration.h \
+	pg_appendonly.h \
+	gp_fastsequence.h pg_extprotocol.h \
+	pg_attribute_encoding.h \
+	pg_auth_time_constraint.h \
+	pg_compression.h \
+	pg_proc_callback.h \
+	pg_type_encoding.h \
+	pg_stat_last_operation.h pg_stat_last_shoperation.h \
 	pg_foreign_table.h pg_policy.h pg_replication_origin.h \
 	pg_default_acl.h pg_init_privs.h pg_seclabel.h pg_shseclabel.h \
 	pg_collation.h pg_partitioned_table.h pg_range.h pg_transform.h \
 	pg_sequence.h pg_publication.h pg_publication_rel.h pg_subscription.h \
-	pg_subscription_rel.h
+	pg_subscription_rel.h gp_partition_template.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h) schemapg.h
 
@@ -68,11 +92,23 @@ POSTGRES_BKI_DATA = $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_ts_template.dat pg_type.dat \
 	)
 
+POSTGRES_BKI_DATA += $(addprefix $(top_srcdir)/src/include/catalog/,\
+	pg_compression.dat \
+	pg_resgroup.dat pg_resgroupcapability.dat \
+	) \
+	$(top_builddir)/src/include/catalog/gp_version_at_initdb.dat
+
+
 all: distprep generated-header-symlinks
 
 distprep: bki-stamp
 
 .PHONY: generated-header-symlinks
+
+catalog_json: $(CATALOG_JSON)
+
+$(CATALOG_JSON): process_foreign_keys.pl $(POSTGRES_BKI_SRCS) $(top_srcdir)/src/include/catalog/catversion.h
+	cat $(POSTGRES_BKI_SRCS) $(top_srcdir)/src/include/catalog/catversion.h | $(PERL) process_foreign_keys.pl > $@
 
 generated-header-symlinks: $(top_builddir)/src/include/catalog/header-stamp
 
@@ -86,7 +122,7 @@ generated-header-symlinks: $(top_builddir)/src/include/catalog/header-stamp
 # version number when it changes.
 bki-stamp: genbki.pl Catalog.pm $(POSTGRES_BKI_SRCS) $(POSTGRES_BKI_DATA) $(top_srcdir)/configure.in
 	$(PERL) $< --include-path=$(top_srcdir)/src/include/ \
-		--set-version=$(MAJORVERSION) $(POSTGRES_BKI_SRCS)
+		--set-version=$(PG_MAJORVERSION) $(POSTGRES_BKI_SRCS)
 	touch $@
 
 # The generated headers must all be symlinked into builddir/src/include/,
@@ -108,14 +144,17 @@ install-data: bki-stamp installdirs
 	$(INSTALL_DATA) $(call vpathsearch,postgres.shdescription) '$(DESTDIR)$(datadir)/postgres.shdescription'
 	$(INSTALL_DATA) $(srcdir)/system_views.sql '$(DESTDIR)$(datadir)/system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
+	$(INSTALL_DATA) $(call vpathsearch,cdb_schema.sql) '$(DESTDIR)$(datadir)/cdb_init.d/cdb_schema.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
+	$(INSTALL_DATA) $(call vpathsearch,gp_toolkit.sql) '$(DESTDIR)$(datadir)/cdb_init.d/gp_toolkit.sql'
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(datadir)'
+	$(MKDIR_P) '$(DESTDIR)$(datadir)/cdb_init.d'
 
 .PHONY: uninstall-data
 uninstall-data:
-	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, $(BKIFILES) system_views.sql information_schema.sql sql_features.txt)
+	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, $(BKIFILES) system_views.sql information_schema.sql cdb_init.d/cdb_schema.sql sql_features.txt)
 
 # postgres.bki, postgres.description, postgres.shdescription,
 # and the generated headers are in the distribution tarball,

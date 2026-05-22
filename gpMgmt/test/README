@@ -1,0 +1,62 @@
+This directory contains the integration tests for the management scripts.
+These tests require the following Python modules to be installed: pygresql
+These modules can be installed by running "git submodule update --init --recursive"
+if they are not already installed on your machine.
+
+To run behave:
+
+source greenplum_path.sh
+cd gpMgmt
+
+"make -f Makefile.behave behave" will run all the integration tests.
+
+"make -f Makefile.behave behave tags=[tag1,tag2,...]" will run a certain subset
+of the integration tests. For a tutorial on Behave tags, see the documentation
+at http://pythonhosted.org/behave/tutorial.html#controlling-things-with-tags.
+
+"behave test/behave/mgmt_utils" will run all the integration tests.
+
+"behave test/behave/mgmt_utils --tags=[tag1,tag2,...]" will run a certain subset of the
+integration tests.
+
+# this will run all tests tagged with smoke
+make -f Makefile.behave behave tags=smoke
+
+# this will run all tests tagged with smoke AND mirrors
+make -f Makefile.behave behave flags="--tags smoke --tags mirrors"
+
+---------------------------NOTE ON BEHAVE 1.2.4 TAGS-------------------
+WARNING: The tag boolean logic syntax is different in this version versus
+the version documented online.
+
+From gpdb/gpMgmt/bin/pythonSrc/ext/behave-1.2.4/docs/behave.rst:
+
+| Tag Expression
+| --------------
+| 
+| Scenarios inherit tags declared on the Feature level. The simplest
+| TAG_EXPRESSION is simply a tag::
+| 
+|     --tags @dev
+| 
+| You may even leave off the "@" - behave doesn't mind.
+| 
+| When a tag in a tag expression starts with a ~, this represents boolean NOT::
+| 
+|     --tags ~@dev
+| 
+| A tag expression can have several tags separated by a comma, which represents
+| logical OR::
+| 
+|     --tags @dev,@wip
+| 
+| The --tags option can be specified several times, and this represents logical
+| AND, for instance this represents the boolean expression
+| "(@foo or not @bar) and @zap"::
+| 
+|     --tags @foo,~@bar --tags @zap.
+| 
+| Beware that if you want to use several negative tags to exclude several tags
+| you have to use logical AND::
+| 
+|     --tags ~@fixme --tags ~@buggy.

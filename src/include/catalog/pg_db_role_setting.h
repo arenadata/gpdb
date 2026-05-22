@@ -41,6 +41,10 @@ CATALOG(pg_db_role_setting,2964,DbRoleSettingRelationId) BKI_SHARED_RELATION
 #endif
 } FormData_pg_db_role_setting;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(setdatabase REFERENCES pg_database(oid));
+FOREIGN_KEY(setrole REFERENCES pg_authid(oid));
+
 typedef FormData_pg_db_role_setting * Form_pg_db_role_setting;
 
 /*

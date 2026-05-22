@@ -1,0 +1,827 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# Copyright (c) Greenplum Inc 2010. All Rights Reserved. 
+#
+import os
+import sys
+import signal
+
+# import GPDB modules
+try:
+    from gppylib.gpparseopts import *
+    from gppylib.gplog import *
+    from gppylib.commands import unix, gp, base, pg
+    from gppylib import gparray
+    from gppylib.db import dbconn
+    from gppylib.userinput import *
+    from gppylib.operations.detect_unreachable_hosts import get_unreachable_segment_hosts, update_unreachable_flag_for_segments
+    from gppylib.operations.initstandby import cleanup_pg_hba_backup_on_segment, restore_pg_hba_on_segment
+    from gppylib.operations.update_pg_hba_on_segments import update_pg_hba_on_segments_for_standby
+    from gppylib.operations.package import SyncPackages
+    from gppylib.commands.pg import PgBaseBackup
+except ImportError as e:
+    sys.exit('ERROR: Cannot import modules.  Please check that you '
+             'have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+EXECNAME = os.path.split(__file__)[-1]
+
+# initstandby state constants for rollback
+INIT_STANDBY_STATE_NOT_STARTED=0
+INIT_STANDBY_STATE_UPDATE_CATALOG=1
+INIT_STANDBY_STATE_UPDATE_PG_HBA=2
+INIT_STANDBY_STATE_COPY_FILES=3
+INIT_STANDBY_STATE_UPDATE_GPDBID=4
+INIT_STANDBY_STATE_STARTING_STANDBY=5
+
+g_init_standby_state=INIT_STANDBY_STATE_NOT_STARTED
+
+
+# default batch size
+DEFAULT_BATCH_SIZE=16
+
+# backup filename
+PG_HBA_BACKUP = 'pg_hba.conf.gpinitstandby.bak'
+
+_description = """The gpinitstandby utility adds a backup coordinator host to your
+Greenplum Database system. If your system has an existing backup
+coordinator host configured, use the -r option to remove it before adding 
+the new standby coordinator host.
+
+Before running this utility, make sure 
+that the Greenplum Database software is installed on the backup coordinator
+host and that you have exchanged SSH keys between hosts.  This utility
+should be run on the currently active primary coordinator host.
+
+The utility will perform the following steps:
+* Update the Greenplum Database system catalog to remove the
+  existing backup coordinator host information (if the -r option is supplied)
+* Update the Greenplum Database system catalog to add the new backup
+  coordinator host information (use the -n option to skip this step)
+* Edit the pg_hba.conf files of the segment instances to allow access
+  from the newly added standby coordinator.
+* Setup the backup coordinator instance on the alternate coordinator host
+* Start the synchronization process
+
+A backup coordinator host serves as a 'warm standby' in the event of the 
+primary coordinator host becoming nonoperational. The backup coordinator is kept 
+up to date by a transaction log replication process,
+which runs on the backup coordinator host and keeps the data between the 
+primary and backup coordinator hosts synchronized. If the primary coordinator 
+fails, the log replication process is shutdown, and the backup coordinator 
+can be activated in its place by using the gpactivatestandby utility. 
+Upon activation of the backup coordinator, the replicated logs are used to 
+reconstruct the state of the coordinator host at the time of the last 
+successfully committed transaction.
+"""
+
+_usage = """
+"""
+
+class GpInitStandbyException(Exception):
+    pass
+
+
+#-------------------------------------------------------------------------
+def parseargs():
+    """parses and validates command line args."""
+    
+    parser = OptParser(option_class=OptChecker,
+                       version='%prog version $Revision$')
+
+    parser.setHelp([])
+    parser.remove_option('-h')
+    
+    # General options section
+    optgrp = OptionGroup(parser, 'General options')
+    optgrp.add_option('-?', '--help', dest='help', action='store_true',
+                      help='display this help message and exit')
+    optgrp.add_option('-v', dest='version', action='store_true',
+                      help='display version information and exit')
+    parser.add_option_group(optgrp)
+
+    # Logging options section
+    optgrp = OptionGroup(parser, 'Logging options')
+    optgrp.add_option('-q', '--quiet', action='store_true',
+                      help='quiet mode, do not log progress to screen')
+    optgrp.add_option('-l', '--logfile', type='string', default=None,
+                      help='alternative logfile directory')
+    optgrp.add_option('-a', help='don\'t ask to confirm standby coordinator activation',
+                      dest='confirm', default=True, action='store_false')
+    optgrp.add_option('-D', '--debug', action='store_true', default=False,
+                      help='enable debug logging')
+    parser.add_option_group(optgrp)
+
+    # Standby initialization options section
+    optgrp = OptionGroup(parser, 'Standby initialization options')
+    optgrp.add_option('-s', '--standby-host', type='string', dest='standby_host',
+                      help='hostname of system to create standby coordinator on')
+    optgrp.add_option('-P', '--standby-port', type='int', dest='standby_port',
+                      help='port of system to create standby coordinator on')
+    optgrp.add_option('-S', '--standby-datadir', type='string', dest='standby_datadir',
+                      help='datadir of standby coordinator')
+    optgrp.add_option('-n', '--no-update', action='store_true', dest='no_update',
+                      help='do not update system catalog tables')
+    optgrp.add_option('-r', '--remove', action='store_true',
+                      help='remove current warm coordinator standby.  Use this option '
+                      'if the warm coordinator standby host has failed.  This option will '
+                      'need to shutdown the GPDB array to be able to complete the request')
+    optgrp.add_option('', '--hba-hostnames', action='store_true', dest='hba_hostnames',
+                      help='use hostnames instead of CIDR in pg_hba.conf')
+
+    # XXX - This option is added to keep backward compatibility with DCA tools.
+    # But this option plays no role in the whole process, its a No-Op
+    optgrp.add_option('-M', '--mode', type='string', default='smart',
+                      help='use specified mode when stopping the GPDB array.  Default: smart')
+
+    parser.add_option_group(optgrp)
+
+    
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+
+    if options.help:
+        parser.print_help()
+        parser.exit(0, None)
+
+    if options.version:
+        parser.print_version()
+        parser.exit(0, None)
+
+    if options.logfile and not os.path.exists(options.logfile):
+        logger.error('Log directory %s does not exist.' % options.logfile)
+        parser.exit(2, None)
+
+    # -s and -n are exclusive
+    if options.standby_host and options.no_update:
+        logger.error('Options -s and -n cannot be specified together.')
+        parser.exit(2, None)
+
+    # -S and -n are exclusive
+    if options.standby_datadir and options.no_update:
+        logger.error('Options -S and -n cannot be specified together.')
+        parser.exit(2, None)
+
+    # -s and -r are exclusive
+    if options.standby_host and options.remove:
+        logger.error('Options -s and -r cannot be specified together.')
+        parser.exit(2, None)
+
+    # we either need to delete or create or start
+    if not options.remove and not options.standby_host and not options.no_update:
+        logger.error('No action provided in the options.')
+        parser.print_help()
+        parser.exit(2, None)
+
+    # check that new standby host is up
+    if options.standby_host:
+        try:
+            gp.Ping.local('check new standby up', options.standby_host)
+        except:
+            logger.error('Unable to ping new standby host %s' % options.standby_host)
+            parser.exit(2, None)
+
+    return options, args
+   
+   
+#-------------------------------------------------------------------------
+def print_summary(options, array, standby_datadir, unreachable_hosts=[]):
+    """Display summary of gpinitstandby operations."""
+    
+    logger.info('-----------------------------------------------------')
+    if options.remove:
+        logger.info('Warm coordinator standby removal parameters')
+    else:
+        logger.info('Greenplum standby coordinator initialization parameters')
+    logger.info('-----------------------------------------------------')
+    logger.info('Greenplum coordinator hostname               = %s' \
+                    % array.coordinator.getSegmentHostName())
+    logger.info('Greenplum coordinator data directory         = %s' \
+                    % array.coordinator.getSegmentDataDirectory())
+    logger.info('Greenplum coordinator port                   = %s' \
+                    % array.coordinator.getSegmentPort())
+    if options.remove:
+        logger.info('Greenplum standby coordinator hostname       = %s' \
+                        % array.standbyCoordinator.getSegmentHostName())
+    else:
+        logger.info('Greenplum standby coordinator hostname       = %s' \
+                        % options.standby_host)
+
+    if array.standbyCoordinator:
+        standby_port = array.standbyCoordinator.getSegmentPort()
+    elif options.standby_port:
+        standby_port = options.standby_port
+    else:
+        standby_port = array.coordinator.getSegmentPort()
+
+    logger.info('Greenplum standby coordinator port           = %d' \
+                    % standby_port)
+
+    if array.standbyCoordinator:
+        logger.info('Greenplum standby coordinator data directory = %s' \
+                        % array.standbyCoordinator.getSegmentDataDirectory())
+    else:
+        if standby_datadir:
+            logger.info('Greenplum standby coordinator data directory = %s' % standby_datadir)
+        else:
+            raise GpInitStandbyException('No data directory specified for standby coordinator')
+
+    if not options.remove and options.no_update:
+        logger.info('Greenplum update system catalog         = Off')
+    elif not options.remove:
+        logger.info('Greenplum update system catalog         = On')
+
+    # Confirm the action
+    if options.confirm:
+        if options.remove:
+            yn = ask_yesno(None, 'Do you want to continue with deleting '
+                           'the standby coordinator?', 'N')
+        else:
+            yn = ask_yesno(None, 'Do you want to continue with '
+                           'standby coordinator initialization?', 'N')
+        if not yn:
+            raise GpInitStandbyException('User canceled')
+
+    # If the standby is initialized while some hosts are unreachable, the cluster will end up in an inconsistent
+    # state after those hosts are brought back up, because only some of them will have had their pg_hba.conf
+    # files modified appropriately.  To ensure consistency we can either abort and force the user to wait until
+    # their cluster is in a good state to init their standby, or we can go ahead and let them init it so long
+    # as they fix everything when they bring the hosts back up, and since both of those are the better choice in
+    # different circumstances we offer that choice to the user.
+    if len(unreachable_hosts) != 0 and not options.remove:
+        logger.warning('One or more segment hosts are not currently reachable: %s' % " ".join(unreachable_hosts))
+        if options.confirm:
+            logger.warning('If you continue with initialization, pg_hba.conf files on these hosts will not be updated.')
+            logger.warning('Manual effort will be required to update these files once all hosts are reachable again.')
+            if not ask_yesno(None, 'Do you want to continue?', 'N'):
+                raise GpInitStandbyException('User canceled')
+        else:
+            logger.warning('Proceeding will leave the cluster in an inconsistent state.')
+            logger.warning('If you want to continue with initialization, re-run gpinitstandby without the -a option.')
+            raise GpInitStandbyException('Unable to proceed while one or more hosts are unreachable')
+
+
+#-------------------------------------------------------------------------
+def getDbUrlForInitStandby():
+    """
+    Return the dbconn.DbURL instance that should be used for connecting
+    """
+
+    #
+    # use template1 to avoid using PGDATABASE value (which definitely won't work during initsystem)
+    #
+    return dbconn.DbURL(dbname="template1")
+
+#-------------------------------------------------------------------------
+def delete_standby(options):
+    """Removes the standby coordinator."""
+    try:
+        dburl = getDbUrlForInitStandby()
+        array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+    except:
+        logger.error('Failed to retrieve configuration information from the coordinator.')
+        raise
+    
+    # make sure we have a standby to delete
+    if not array.standbyCoordinator:
+        logger.error('Request made to remove warm coordinator standby, '  
+                     'but no standby located.')
+        raise GpInitStandbyException('no standby configured')
+    
+    print_summary(options, array, None)
+
+    # Disable Ctrl-C
+    signal.signal(signal.SIGINT,signal.SIG_IGN)
+    
+    try:
+        remove_standby_from_catalog(options, array)
+    except Exception as ex:
+        logger.error('Failed to remove standby coordinator from catalog.')
+        raise GpInitStandbyException(ex)
+    
+    stop_standby(array)
+ 
+    # delete directory
+    remove_standby_datadir(array)
+
+    # Reenable Ctrl-C
+    signal.signal(signal.SIGINT,signal.default_int_handler)
+  
+#-------------------------------------------------------------------------
+def remove_standby_datadir(array):
+    """Removes the data directory on the standby coordinator."""
+
+    # WALREP_FIXME: We should also remove tablespace paths for the server here.
+
+    if array.standbyCoordinator:
+        logger.info('Removing data directory on standby coordinator...')
+       
+        pool = base.WorkerPool(numWorkers=DEFAULT_BATCH_SIZE)
+        
+        cmd = unix.RemoveDirectory('delete standby datadir',
+                                   array.standbyCoordinator.getSegmentDataDirectory(), ctxt=base.REMOTE,
+                                   remoteHost=array.standbyCoordinator.getSegmentHostName())
+        pool.addCommand(cmd)
+
+        pool.join()
+        try:
+            pool.check_results()
+        except Exception as ex:
+            logger.error('Failed to remove data directory on standby coordinator.')
+            raise GpInitStandbyException(ex)
+        finally:
+            pool.haltWork()
+            
+def check_and_start_standby():
+    """Checks if standby coordinator is up and starts the standby coordinator, if stopped."""
+
+    dburl = getDbUrlForInitStandby()
+    array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+    if not array.standbyCoordinator:
+        logger.error('Cannot use -n option when standby coordinator has not yet been configured')
+        raise GpInitStandbyException('Standby coordinator not configured')
+ 
+    conn = dbconn.connect(dburl, utility=True)
+    sql = "SELECT * FROM pg_stat_replication"
+    cur = dbconn.query(conn, sql)
+    if cur.rowcount >= 1:
+        logger.info("Standy coordinator is already up and running.")
+        return
+
+    standby = array.standbyCoordinator
+    gp.start_standbycoordinator(standby.hostname,
+                           standby.datadir,
+                           standby.port)
+    logger.info("Successfully started standby coordinator")
+
+
+#-------------------------------------------------------------------------
+def create_standby(options):
+    """Creates the standby coordinator."""
+    
+    global g_init_standby_state
+    
+    array = None
+    
+    try:
+        try:
+            dburl = getDbUrlForInitStandby()
+            array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+            
+        except Exception as ex:
+            logger.error('Failed to retrieve configuration information from the coordinator.')
+            raise GpInitStandbyException(ex)
+
+        # prefer a user-passed flag, but default to the same filepath as coordinator
+        standby_datadir = options.standby_datadir or array.coordinator.getSegmentDataDirectory()
+
+        # validate
+        validate_standby_init(options, array, standby_datadir)
+
+        # check for unreachable hosts
+        segment_hosts = [seg.getSegmentHostName() for seg in array.getDbList() if not seg.isSegmentCoordinator() and not seg.isSegmentStandby()]
+        unreachable_hosts = get_unreachable_segment_hosts(segment_hosts, DEFAULT_BATCH_SIZE)
+        
+        # display summary
+        print_summary(options, array, standby_datadir, unreachable_hosts)
+        
+        # sync packages
+        # The design decision here is to squash any exceptions resulting from the 
+        # synchronization of packages. We should *not* disturb the user's attempts 
+        # initialize a standby.
+        try:
+            logger.info('Syncing Greenplum Database extensions to standby')
+            SyncPackages(options.standby_host).run()
+        except Exception as e:
+            logger.warning('Syncing of Greenplum Database extensions has failed.')
+            logger.warning('Please run gppkg --clean after successful standby initialization.')
+
+        # Disable Ctrl-C
+        signal.signal(signal.SIGINT,signal.SIG_IGN)
+
+        batch_size = 1
+        # update the catalog if needed
+        array = add_standby_to_catalog(options, standby_datadir)
+
+        # update unreachable flag for primary and mirror segments
+        update_unreachable_flag_for_segments(array, unreachable_hosts)
+
+        logger.info('Updating pg_hba.conf file...')
+        update_pg_hba_conf(options, array)
+        logger.debug('Updating pg_hba.conf file on segments...')
+        update_pg_hba_on_segments_for_standby(array, options.standby_host, options.hba_hostnames, batch_size)
+        logger.info('pg_hba.conf files updated successfully.')
+
+        copy_coordinator_datadir_to_standby(options, array, standby_datadir)
+        update_postgresql_conf(options, array)
+
+        try:
+            dburl = getDbUrlForInitStandby()
+            array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+            standby = array.standbyCoordinator
+            g_init_standby_state = INIT_STANDBY_STATE_STARTING_STANDBY
+            gp.start_standbycoordinator(standby.hostname,
+                                   standby.datadir,
+                                   standby.port)
+        except Exception as ex:
+            raise GpInitStandbyException('failed to start standby')
+
+    except Exception as ex:
+        # Something went wrong.  Based on the current state, we can rollback
+        # the operation.
+        logger.error('Failed to create standby')
+        if g_init_standby_state != INIT_STANDBY_STATE_NOT_STARTED:
+            logger.warn('Trying to rollback changes that have been made...')
+
+        if g_init_standby_state == INIT_STANDBY_STATE_UPDATE_CATALOG:
+
+            logger.info('Rolling back catalog change...')
+            undo_catalog_update(options, array)
+
+        elif g_init_standby_state == INIT_STANDBY_STATE_UPDATE_PG_HBA:
+
+            logger.info('Rolling back catalog change...')
+            undo_catalog_update(options, array)
+
+            logger.info('Restoring pg_hba.conf file...')
+            # undo pg_hba.conf change on segment first
+            restore_pg_hba_on_segment(array)
+            # undo pg_hba.conf on coordinator lastly
+            undo_update_pg_hba_conf(array)
+
+        elif (g_init_standby_state == INIT_STANDBY_STATE_COPY_FILES or
+            g_init_standby_state == INIT_STANDBY_STATE_UPDATE_GPDBID):
+
+            logger.info('Rolling back catalog change...')
+            undo_catalog_update(options, array)
+
+            logger.info('Restoring pg_hba.conf file...')
+            restore_pg_hba_on_segment(array)
+            undo_update_pg_hba_conf(array)
+
+        elif g_init_standby_state == INIT_STANDBY_STATE_STARTING_STANDBY:
+
+            # make a clean stop on standby, don't even wait for standby postmaster dies
+            stop_standby(array)
+
+            logger.info('Rolling back catalog change...')
+            undo_catalog_update(options, array)
+
+            logger.info('Restoring pg_hba.conf file...')
+            restore_pg_hba_on_segment(array)
+            undo_update_pg_hba_conf(array)
+
+        raise GpInitStandbyException(ex)
+
+    finally:
+        if (g_init_standby_state == INIT_STANDBY_STATE_UPDATE_PG_HBA or
+            g_init_standby_state == INIT_STANDBY_STATE_COPY_FILES or
+            g_init_standby_state == INIT_STANDBY_STATE_UPDATE_GPDBID or
+            g_init_standby_state == INIT_STANDBY_STATE_STARTING_STANDBY):
+
+            logger.info('Cleaning up pg_hba.conf backup files...')
+            # should cleanup on segments first
+            cleanup_pg_hba_backup_on_segment(array, unreachable_hosts)
+            cleanup_pg_hba_conf_backup(array)
+            logger.info('Backup files of pg_hba.conf cleaned up successfully.')
+
+        # Reenable Ctrl-C
+        signal.signal(signal.SIGINT,signal.default_int_handler)
+            
+#-------------------------------------------------------------------------
+def update_pg_hba_conf(options, array):
+    """Updates the pg_hba.conf file to include the ip addresses of the
+    standby coordinator."""
+    
+    global g_init_standby_state
+
+    logger.debug('Updating pg_hba.conf file on coordinator...')
+
+    g_init_standby_state=INIT_STANDBY_STATE_UPDATE_PG_HBA
+
+    try:
+        coordinator_data_dir = array.coordinator.getSegmentDataDirectory()
+        pg_hba_path = os.path.join(coordinator_data_dir, 'pg_hba.conf')
+        standby_ips = gp.IfAddrs.list_addrs(options.standby_host)
+        # IfAddrs as called doesn't return local address, but if standby
+        # will be on the same host, we should add it too.
+        if array.coordinator.getSegmentHostName() == options.standby_host:
+            standby_ips.append('127.0.0.1')
+        current_user = unix.UserId.local('get userid')
+        
+        # back it up
+        os.system('cp %s/pg_hba.conf %s/%s' \
+                  % (coordinator_data_dir, coordinator_data_dir, PG_HBA_BACKUP))
+        
+        # read in current pg_hba.conf file
+        fp = open(pg_hba_path, 'r')
+        pg_hba_conf = fp.readlines()
+        fp.close()
+        
+        # Find where the comments stop
+        index = 0
+        while pg_hba_conf[index].strip().startswith('#'):
+            index += 1
+
+        new_section = ['# standby coordinator host ip addresses\n']
+
+        def add_entry_to_new_section(values):
+            newline = '\t'.join(values) + '\n'
+            if newline not in pg_hba_conf:
+                new_section.append(newline)
+
+        if not options.hba_hostnames:
+            for ip in standby_ips:
+                cidr_suffix = '/128' if ':' in ip else '/32' # MPP-15889
+                address = ip + cidr_suffix
+                add_entry_to_new_section(['host', 'all', current_user, address, 'trust'])
+        else:
+            add_entry_to_new_section(['host', 'all', current_user, options.standby_host, 'trust'])
+
+        # new replication requires 'replication' string in database
+        # column to allow walsender connections.  We still keep 'all'
+        # because sometimes it is necessary to connect psql from
+        # standby host.  The host is known as trusted standby coordinator
+        # anyway. Use IfAddrs to correctly get all non-loopback
+        # ipv4 and ipv6 addresses.
+        # Add samehost replication to support single-host development.
+        add_entry_to_new_section(['host', 'replication', current_user, 'samehost', 'trust'])
+        if not options.hba_hostnames:
+            if_addrs = gp.IfAddrs.list_addrs(options.standby_host)
+            for ip in if_addrs:
+                cidr_suffix = '/128' if ':' in ip else '/32'  # MPP-15889
+                address = ip + cidr_suffix
+                add_entry_to_new_section(['host', 'replication', current_user, address, 'trust'])
+        else:
+            add_entry_to_new_section(['host', 'replication', current_user, options.standby_host, 'trust'])
+
+        # insert new section
+        pg_hba_conf[index:index] = new_section
+
+        # write it out
+        fp = open(pg_hba_path, 'w')
+        fp.writelines(pg_hba_conf)
+        fp.close()
+
+        # make it effective
+        pg.ReloadDbConf.local('pg_ctl reload', array.coordinator)
+
+    except Exception as ex:
+        logger.error('Failed to update pg_hba.conf file on coordinator.')
+        raise GpInitStandbyException(ex)
+
+
+#-------------------------------------------------------------------------
+def cleanup_pg_hba_conf_backup(array):
+    """Removes the pg_hba.conf backup."""
+    
+    logger.debug('Cleaning up pg_hba.conf backup on coordinator and standby')
+    coordinator_data_dir = array.coordinator.getSegmentDataDirectory()
+    standby_data_dir = array.standbyCoordinator.getSegmentDataDirectory()
+    
+    try:
+        unix.RemoveFile.local('cleanup coordinator pg_hba.conf backup', '%s/%s' % (coordinator_data_dir, PG_HBA_BACKUP))
+        unix.RemoveFile.remote('cleanup standby pg_hba.conf backup',
+                               array.standbyCoordinator.getSegmentHostName(),
+                               '%s/%s' % (standby_data_dir, PG_HBA_BACKUP))
+    except:
+        # ignore...
+        pass
+    
+
+#-------------------------------------------------------------------------
+def validate_standby_init(options, array, standby_datadir):
+    """Validates the parameters and environment."""
+    
+    logger.info('Validating environment and parameters for standby initialization...')
+    if array.standbyCoordinator:
+        logger.error('Standby coordinator already configured')
+        logger.info('If you want to start the stopped standby coordinator, use the -n option')
+        raise GpInitStandbyException('standby coordinator already configured')
+    
+    # make sure we have top level dir
+    base_dir = os.path.dirname(os.path.normpath(standby_datadir))
+    if not unix.FileDirExists.remote('check for parent of data dir',
+                                     options.standby_host,
+                                     base_dir):
+        logger.error('Parent directory %s does not exist on host %s' %(base_dir, options.standby_host))
+        logger.error('This directory must be created before running gpactivatestandby')
+        raise GpInitStandbyException('Parent directory %s does not exist' % base_dir)
+
+    # check that coordinator data dir does not exist on new host unless we are just re-syncing
+    logger.info('Checking for data directory %s on %s' % (standby_datadir, options.standby_host))
+    if unix.FileDirExists.remote('check for data dir', options.standby_host, standby_datadir):
+        logger.error('Data directory already exists on host %s' % options.standby_host)
+        if array.standbyCoordinator:
+            logger.error('If you want to just start the stopped standby, use the -n option')
+        if options.standby_host == array.coordinator.hostname:
+            logger.error(
+                'If you want to initialize a new standby on the same host as '
+                'the coordinator (not recommended), use -S and -P to specify a new '
+                'data directory and port'
+            )
+        raise GpInitStandbyException('coordinator data directory exists')
+
+    # disallow to create the same host/port
+    if (options.standby_host == array.coordinator.hostname and
+            (not options.standby_port or
+                options.standby_port == array.coordinator.port)):
+        raise GpInitStandbyException('cannot create standby on the same host and port')
+
+
+#-------------------------------------------------------------------------
+def get_add_standby_sql(hostname, address, datadir, port=None):
+    """Returns the SQL for adding a standby coordinator."""
+
+    if port is not None:
+        return "select gp_add_master_standby('%s', '%s', '%s', %d)" % (hostname, address, datadir, port)
+    else:
+        return "select gp_add_master_standby('%s', '%s', '%s')" % (hostname, address, datadir)
+
+
+#-------------------------------------------------------------------------
+def get_remove_standby_sql():
+    """Returns the SQL for removing a standby coordinator."""
+
+    sql = "select gp_remove_master_standby()"
+    return sql
+
+
+#-------------------------------------------------------------------------
+def add_standby_to_catalog(options, standby_datadir):
+    """Adds the standby to the catalog."""
+    
+    global g_init_standby_state
+    
+    try:
+        g_init_standby_state=INIT_STANDBY_STATE_UPDATE_CATALOG
+        dburl = getDbUrlForInitStandby()
+        conn = dbconn.connect(dburl, utility=True)
+    
+        logger.info('Adding standby coordinator to catalog...')
+    
+        sql = get_add_standby_sql(options.standby_host,
+                                  options.standby_host,
+                                  standby_datadir,
+                                  options.standby_port)
+    
+        dbconn.execSQL(conn, sql)
+        conn.commit()
+        conn.close()
+        logger.info('Database catalog updated successfully.')
+        array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+        return array
+    except Exception as ex:
+        logger.error('Failed to add standby to coordinator catalog.')
+        raise GpInitStandbyException(ex)
+
+
+#-------------------------------------------------------------------------  
+def remove_standby_from_catalog(options, array):
+    """Removes the standby from the catalog."""
+    # update catalog
+    try:
+        dburl = getDbUrlForInitStandby()
+        conn = dbconn.connect(dburl, utility=True)
+
+        logger.info('Removing standby coordinator from catalog...')
+        sql = get_remove_standby_sql()
+        
+        dbconn.execSQL(conn, sql)
+        conn.commit()
+        conn.close()
+        
+        logger.info('Database catalog updated successfully.')
+
+    except Exception as ex:
+        logger.error('Failed to remove standby from coordinator catalog.')
+        raise GpInitStandbyException(ex)
+        
+
+#-------------------------------------------------------------------------
+def copy_coordinator_datadir_to_standby(options, array, standby_datadir):
+    """Copies the data directory from the coordinator to the standby."""
+
+    global g_init_standby_state
+
+    g_init_standby_state=INIT_STANDBY_STATE_COPY_FILES
+
+    # WALREP_FIXME: Handle tablespaces. I think we need to update the dbid
+    # here in the data directory here already, and teach pg_basebackup to
+    # map the per-dbid directories to the new dbid.
+    
+    cmd = PgBaseBackup(target_datadir=standby_datadir,
+                       source_host=array.coordinator.getSegmentHostName(),
+                       source_port=str(array.coordinator.getSegmentPort()),
+                       ctxt=base.REMOTE,
+                       remoteHost=options.standby_host,
+                       forceoverwrite=True,
+                       target_gp_dbid=array.standbyCoordinator.dbid)
+    try:
+        cmd.run(validateAfter=True)
+    except Exception as ex:
+        logger.error('Failed to copy data directory from coordinator to standby.')
+        raise GpInitStandbyException(ex)
+
+
+#-------------------------------------------------------------------------
+def update_postgresql_conf(options, array):
+    """
+    Updates postgresql.conf to reflect the correct values.
+    """
+
+    coordinator = array.coordinator
+    standby = array.standbyCoordinator
+    if coordinator.getSegmentPort() == standby.getSegmentPort():
+        # nothing to do
+        return
+    cmd_name = "add port parameter on host %s" % standby.getSegmentHostName()
+    cmd = gp.GpConfigHelper(cmd_name,
+                            standby.getSegmentDataDirectory(),
+                            'port',
+                            value=str(standby.getSegmentPort()),
+                            ctxt=gp.REMOTE,
+                            remoteHost=standby.getSegmentHostName())
+    cmd.run(validateAfter=True)
+
+#-------------------------------------------------------------------------
+
+def stop_standby(array):
+    #stop standby coordinator if it is running
+    try:
+        standby_pid = gp.getPostmasterPID(array.standbyCoordinator.getSegmentHostName(),
+                                          array.standbyCoordinator.getSegmentDataDirectory())
+        if standby_pid > 0:
+            # stop it
+            logger.info('Stopping standby coordinator on %s' %
+                        array.standbyCoordinator.getSegmentHostName())
+            gp.SegmentStop.remote('stop standby',
+                                  array.standbyCoordinator.getSegmentHostName(),
+                                  array.standbyCoordinator.getSegmentDataDirectory())
+    except Exception as ex:
+        raise Exception('Failed to stop postmaster process on standby coordinator, %s' % ex)
+
+#-------------------------------------------------------------------------
+# Rollback functions
+#-------------------------------------------------------------------------
+
+def undo_catalog_update(options, array):
+    """Undoes the catalog updates."""
+    
+    try:
+        remove_standby_from_catalog(options, array)
+    except:
+        # Can't undo because the update never occured.  Ok to 
+        # ignore this exception and continue
+        pass
+        
+#-------------------------------------------------------------------------
+def undo_update_pg_hba_conf(array):
+    """Undoes the pg_hba.conf update."""
+    
+    logger.debug('Restoring pg_hba.conf file on coordinator...')
+    coordinator_data_dir = array.coordinator.getSegmentDataDirectory()
+    os.system('mv %s/%s %s/pg_hba.conf' % (coordinator_data_dir, PG_HBA_BACKUP, coordinator_data_dir))
+    # make it effective
+    pg.ReloadDbConf.local('pg_ctl reload', array.coordinator)
+
+
+#-------------------------------------------------------------------------
+# Main
+#-------------------------------------------------------------------------
+try:
+    # setup logging
+    logger = get_default_logger()
+    setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+
+    (options, args) = parseargs()
+
+    # Turn on debug logging if needed
+    if options.debug:
+        enable_verbose_logging()
+    if options.quiet:
+        quiet_stdout_logging()
+
+    # Kick off the work
+    if options.remove:
+        delete_standby(options)
+        logger.info('Successfully removed standby coordinator')
+    elif options.no_update:
+        check_and_start_standby()
+    else:
+        create_standby(options)
+        logger.info('Successfully created standby coordinator on %s' % options.standby_host)
+
+except KeyboardInterrupt:
+    logger.error('User canceled')
+    sys.exit(2)
+except Exception as ex:
+    if options.remove:
+        logger.error('Error removing standby coordinator: %s' % str(ex))
+    else:
+        logger.error('Error initializing standby coordinator: %s' % str(ex))
+    if options.debug:
+        logger.exception(ex)
+    sys.exit(2)
+
+sys.exit(0)

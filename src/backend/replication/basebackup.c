@@ -42,6 +42,23 @@
 #include "utils/relcache.h"
 #include "utils/timestamp.h"
 
+#include "access/genam.h"
+#include "access/hash.h"
+#include "access/xact.h"
+#include "cdb/cdbvars.h"
+#include "catalog/catalog.h"
+#include "catalog/indexing.h"
+#include "catalog/pg_database.h"
+#include "catalog/pg_tablespace.h"
+#include "storage/lmgr.h"
+#include "storage/proc.h"
+#include "utils/elog.h"
+#include "utils/fmgroids.h"
+#include "utils/faultinjector.h"
+#include "utils/guc.h"
+#include "utils/snapmgr.h"
+#include "utils/tarrable.h"
+
 
 typedef struct
 {
@@ -52,11 +69,14 @@ typedef struct
 	bool		includewal;
 	uint32		maxrate;
 	bool		sendtblspcmapfile;
+	HTAB	   *exclude;
 } basebackup_options;
 
 
+static bool match_exclude_list(char *path, HTAB *exclude);
+
 static int64 sendDir(const char *path, int basepathlen, bool sizeonly,
-					 List *tablespaces, bool sendtblspclinks);
+					 List *tablespaces, bool sendtblspclinks, HTAB *exclude);
 static bool sendFile(const char *readfilename, const char *tarfilename,
 					 struct stat *statbuf, bool missing_ok, Oid dboid);
 static void sendFileWithContent(const char *filename, const char *content);
@@ -153,6 +173,12 @@ static const char *excludeDirContents[] =
 	/* Contents zeroed on startup, see StartupSUBTRANS(). */
 	"pg_subtrans",
 
+	/* Contents unique to each segment instance. */
+	"log",
+
+	/* GPDB: Default gpbackup directory (backup contents) */
+	"backups",
+
 	/* end of list */
 	NULL
 };
@@ -183,6 +209,9 @@ static const char *excludeFiles[] =
 	"postmaster.pid",
 	"postmaster.opts",
 
+	/* GPDB: Default gpbackup directory (top-level directory) */
+	"backups",
+
 	/* end of list */
 	NULL
 };
@@ -204,7 +233,6 @@ static const char *const noChecksumFiles[] = {
 #endif
 	NULL,
 };
-
 
 /*
  * Called when ERROR or FATAL happens in perform_base_backup() after
@@ -246,6 +274,20 @@ perform_base_backup(basebackup_options *opt)
 								  labelfile, &tablespaces,
 								  tblspc_map_file,
 								  opt->progress, opt->sendtblspcmapfile);
+	Assert(!XLogRecPtrIsInvalid(startptr));
+
+	elogif(!debug_basebackup, LOG,
+		   "basebackup perform -- "
+		   "Basebackup start xlog location = %X/%X",
+		   (uint32) (startptr >> 32), (uint32) startptr);
+
+	/*
+	 * Set xlogCleanUpTo so that checkpoint process knows
+	 * which old xlog files should not be cleaned
+	 */
+	WalSndSetXLogCleanUpTo(startptr);
+
+	SIMPLE_FAULT_INJECTOR("base_backup_post_create_checkpoint");
 
 	/*
 	 * Once do_pg_start_backup has been called, ensure that any failure causes
@@ -275,7 +317,7 @@ perform_base_backup(basebackup_options *opt)
 
 		/* Add a node for the base directory at the end */
 		ti = palloc0(sizeof(tablespaceinfo));
-		ti->size = opt->progress ? sendDir(".", 1, true, tablespaces, true) : -1;
+		ti->size = opt->progress ? sendDir(".", 1, true, tablespaces, true, opt->exclude) : -1;
 		tablespaces = lappend(tablespaces, ti);
 
 		/* Send tablespace header */
@@ -331,10 +373,10 @@ perform_base_backup(basebackup_options *opt)
 				if (tblspc_map_file && opt->sendtblspcmapfile)
 				{
 					sendFileWithContent(TABLESPACE_MAP, tblspc_map_file->data);
-					sendDir(".", 1, false, tablespaces, false);
+					sendDir(".", 1, false, tablespaces, false, opt->exclude);
 				}
 				else
-					sendDir(".", 1, false, tablespaces, true);
+					sendDir(".", 1, false, tablespaces, true, opt->exclude);
 
 				/* ... and pg_control after everything else. */
 				if (lstat(XLOG_CONTROL_FILE, &statbuf) != 0)
@@ -551,6 +593,9 @@ perform_base_backup(basebackup_options *opt)
 						 errmsg("unexpected WAL file size \"%s\"", walFileName)));
 			}
 
+			elogif(debug_basebackup, LOG,
+				   "basebackup perform -- Sent xlog file %s", walFiles[i]);
+
 			/* wal_segment_size is a multiple of 512, so no need for padding */
 
 			FreeFile(fp);
@@ -623,6 +668,35 @@ compareWalFileNames(const ListCell *a, const ListCell *b)
 	return strcmp(fna + 8, fnb + 8);
 }
 
+/* Hash entire string */
+static uint32
+key_string_hash(const void *key, Size keysize)
+{
+	Size		s_len = strlen((const char *) key);
+
+	Assert(keysize == sizeof(char *));
+	return DatumGetUInt32(hash_any((const unsigned char *) key, (int) s_len));
+}
+
+/* Compare entire string. */
+static int
+key_string_compare(const void *key1, const void *key2, Size keysize)
+{
+	Assert(keysize == sizeof(char *));
+
+	return strcmp(*((const char **) key1), key2);
+}
+
+/* Copy string by copying pointer. */
+static void *
+key_string_copy(void *dest, const void *src, Size keysize)
+{
+	Assert(keysize == sizeof(char *));
+
+	*((char **) dest) = (char *) src;	/* trust caller re allocation */
+	return NULL;				/* not used */
+}
+
 /*
  * Parse the base backup options passed down by the parser
  */
@@ -640,6 +714,14 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 	bool		o_noverify_checksums = false;
 
 	MemSet(opt, 0, sizeof(*opt));
+
+	/*
+	 * The exclude hash table is only created if EXCLUDE options are specified.
+	 * The matching function is optimized to run fast when the hash table is
+	 * NULL.
+	 */
+	opt->exclude = NULL;
+
 	foreach(lopt, options)
 	{
 		DefElem    *defel = (DefElem *) lfirst(lopt);
@@ -708,6 +790,43 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 			opt->maxrate = (uint32) maxrate;
 			o_maxrate = true;
 		}
+		else if (strcmp(defel->defname, "exclude") == 0)
+		{
+			/* EXCLUDE option can be specified multiple times */
+			bool		found;
+
+			if (unlikely(opt->exclude == NULL))
+			{
+				HASHCTL		hashctl;
+
+				/*
+				 * The hash table stores the string keys in-place if the
+				 * `match` and `keycopy` functions are not explicitly
+				 * specified.  In our case MAXPGPATH bytes need to be reserved
+				 * for each key, which is too wasteful.
+				 *
+				 * By specifying the `match` and `keycopy` functions we could
+				 * allocate the strings separately and store only the string
+				 * pointers in the hash table.
+				 */
+				hashctl.hash = key_string_hash;
+				hashctl.match = key_string_compare;
+				hashctl.keycopy = key_string_copy;
+
+				/* The hash table is used as a set, only the keys are meaningful */
+				hashctl.keysize = sizeof(char *);
+				hashctl.entrysize = hashctl.keysize;
+
+				opt->exclude = hash_create("replication exclude",
+										   64 /* nelem */,
+										   &hashctl,
+										   HASH_ELEM | HASH_FUNCTION |
+										   HASH_COMPARE | HASH_KEYCOPY);
+			}
+
+			hash_search(opt->exclude, pstrdup(strVal(defel->arg)),
+						HASH_ENTER, &found);
+		}
 		else if (strcmp(defel->defname, "tablespace_map") == 0)
 		{
 			if (o_tablespace_map)
@@ -732,6 +851,22 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 	}
 	if (opt->label == NULL)
 		opt->label = "base backup";
+
+	if (opt->exclude)
+		hash_freeze(opt->exclude);
+
+	elogif(debug_basebackup, LOG,
+			"basebackup options -- "
+			"label = %s, "
+			"progress = %s, "
+			"fastcheckpoint = %s, "
+			"nowait = %s, "
+			"wal = %s",
+			opt->label,
+			opt->progress ? "true" : "false",
+			opt->fastcheckpoint ? "true" : "false",
+			opt->nowait ? "true" : "false",
+			opt->includewal ? "true" : "false");
 }
 
 
@@ -826,14 +961,26 @@ SendBackupHeader(List *tablespaces)
 		else
 		{
 			Size		len;
+			char		*link_path_to_be_sent;
 
 			len = strlen(ti->oid);
 			pq_sendint32(&buf, len);
 			pq_sendbytes(&buf, ti->oid, len);
 
-			len = strlen(ti->path);
+			if(ti->rpath == NULL)
+			{
+				/* Lop off the dbid before sending the link target. */
+				char *link_path_without_dbid = pstrdup(ti->path);
+				char *file_sep_before_dbid_in_link_path =
+						strrchr(link_path_without_dbid, '/');
+				*file_sep_before_dbid_in_link_path = '\0';
+				link_path_to_be_sent = link_path_without_dbid;
+			}
+			else
+				link_path_to_be_sent = ti->path;
+			len = strlen(link_path_to_be_sent);
 			pq_sendint32(&buf, len);
-			pq_sendbytes(&buf, ti->path, len);
+			pq_sendbytes(&buf, link_path_to_be_sent, len);
 		}
 		if (ti->size >= 0)
 			send_int8_string(&buf, ti->size / 1024);
@@ -845,6 +992,8 @@ SendBackupHeader(List *tablespaces)
 
 	/* Send a CommandComplete message */
 	pq_puttextmessage('C', "SELECT");
+
+	elogif(debug_basebackup, LOG, "basebackup header -- Sent basebackup header.");
 }
 
 /*
@@ -944,6 +1093,10 @@ sendFileWithContent(const char *filename, const char *content)
 		MemSet(buf, 0, pad);
 		pq_putmessage('d', buf, pad);
 	}
+
+	elogif(debug_basebackup, LOG,
+			"basebackup send file -- Sent file '%s' with content \n%s.",
+			filename, content);
 }
 
 /*
@@ -965,8 +1118,10 @@ sendTablespace(char *path, bool sizeonly)
 	 * the version directory in it that belongs to us.
 	 */
 	snprintf(pathbuf, sizeof(pathbuf), "%s/%s", path,
-			 TABLESPACE_VERSION_DIRECTORY);
+			 GP_TABLESPACE_VERSION_DIRECTORY);
 
+	elogif(debug_basebackup, LOG,
+		   "sendTablespace -- Sending tablespace version directory = %s", pathbuf);
 	/*
 	 * Store a directory entry in the tar file so we get the permissions
 	 * right.
@@ -983,13 +1138,29 @@ sendTablespace(char *path, bool sizeonly)
 		return 0;
 	}
 
-	size = _tarWriteHeader(TABLESPACE_VERSION_DIRECTORY, NULL, &statbuf,
+	size = _tarWriteHeader(GP_TABLESPACE_VERSION_DIRECTORY, NULL, &statbuf,
 						   sizeonly);
 
 	/* Send all the files in the tablespace version directory */
-	size += sendDir(pathbuf, strlen(path), sizeonly, NIL, true);
+	size += sendDir(pathbuf, strlen(path), sizeonly, NIL, true, NULL);
 
 	return size;
+}
+
+/*
+ * Check if client EXCLUDE option matches this path.  Current implementation
+ * is only the exact match for the relative path from the datadir root (e.g.
+ * "./log" etc).
+ */
+static bool
+match_exclude_list(char *path, HTAB *exclude)
+{
+	bool		found = false;
+
+	if (unlikely(exclude))
+		hash_search(exclude, path, HASH_FIND, &found);
+
+	return found;
 }
 
 /*
@@ -1003,10 +1174,12 @@ sendTablespace(char *path, bool sizeonly)
  * If sendtblspclinks is true, we need to include symlink
  * information in the tar file. If not, we can skip that
  * as it will be sent separately in the tablespace_map file.
+ *
+ * GPDB: Also omit any files in the 'exclude' list.
  */
 static int64
 sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
-		bool sendtblspclinks)
+		bool sendtblspclinks, HTAB *exclude)
 {
 	DIR		   *dir;
 	struct dirent *de;
@@ -1037,10 +1210,10 @@ sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
 		 * $PGDATA/base or a tablespace version path.
 		 */
 		if (strncmp(path, "./base", parentPathLen) == 0 ||
-			(parentPathLen >= (sizeof(TABLESPACE_VERSION_DIRECTORY) - 1) &&
-			 strncmp(lastDir - (sizeof(TABLESPACE_VERSION_DIRECTORY) - 1),
-					 TABLESPACE_VERSION_DIRECTORY,
-					 sizeof(TABLESPACE_VERSION_DIRECTORY) - 1) == 0))
+			(parentPathLen >= (sizeof(GP_TABLESPACE_VERSION_DIRECTORY) - 1) &&
+			 strncmp(lastDir - (sizeof(GP_TABLESPACE_VERSION_DIRECTORY) - 1),
+					 GP_TABLESPACE_VERSION_DIRECTORY,
+					 sizeof(GP_TABLESPACE_VERSION_DIRECTORY) - 1) == 0))
 			isDbDir = true;
 	}
 
@@ -1200,6 +1373,10 @@ sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
 			continue;			/* don't recurse into pg_wal */
 		}
 
+		/* Skip if client does not want */
+		if (match_exclude_list(pathbuf, exclude))
+			continue;
+
 		/* Allow symbolic links in pg_tblspc only */
 		if (strcmp(path, "./pg_tblspc") == 0 &&
 #ifndef WIN32
@@ -1219,12 +1396,17 @@ sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
 						(errcode_for_file_access(),
 						 errmsg("could not read symbolic link \"%s\": %m",
 								pathbuf)));
-			if (rllen >= sizeof(linkpath))
+			if (rllen >= MAX_TARABLE_SYMLINK_PATH_LENGTH)
 				ereport(ERROR,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-						 errmsg("symbolic link \"%s\" target is too long",
-								pathbuf)));
+						 errmsg("symbolic link \"%s\" target is too long and will not be added to the backup",
+								pathbuf),
+						 errdetail("The symbolic link with target \"%s\" is too long. Symlink targets with length greater than %d characters would be truncated.", pathbuf, MAX_TARABLE_SYMLINK_PATH_LENGTH)));
 			linkpath[rllen] = '\0';
+
+			/* Lop off the dbid before sending the link target. */
+			char *file_sep_before_dbid_in_link_path = strrchr(linkpath, '/');
+			*file_sep_before_dbid_in_link_path = '\0';
 
 			size += _tarWriteHeader(pathbuf + basepathlen + 1, linkpath,
 									&statbuf, sizeonly);
@@ -1282,7 +1464,7 @@ sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
 				skip_this_dir = true;
 
 			if (!skip_this_dir)
-				size += sendDir(pathbuf, basepathlen, sizeonly, tablespaces, sendtblspclinks);
+				size += sendDir(pathbuf, basepathlen, sizeonly, tablespaces, sendtblspclinks, exclude);
 		}
 		else if (S_ISREG(statbuf.st_mode))
 		{
@@ -1290,7 +1472,7 @@ sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
 
 			if (!sizeonly)
 				sent = sendFile(pathbuf, pathbuf + basepathlen + 1, &statbuf,
-								true, isDbDir ? pg_atoi(lastDir + 1, sizeof(Oid), 0) : InvalidOid);
+								true, isDbDir ? atooid(lastDir + 1) : InvalidOid);
 
 			if (sent || sizeonly)
 			{
@@ -1304,6 +1486,10 @@ sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
 					(errmsg("skipping special file \"%s\"", pathbuf)));
 	}
 	FreeDir(dir);
+
+	elogif(debug_basebackup && !sizeonly, LOG,
+			"baseabckup send dir -- Sent directory %s", path);
+
 	return size;
 }
 

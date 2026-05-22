@@ -34,14 +34,25 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/indexing.h"
+#include "catalog/storage_tablespace.h"
+#include "commands/tablespace.h"
+
 #include "libpq/auth.h"
+#include "libpq/hba.h"
 #include "libpq/libpq-be.h"
+#include "cdb/cdbendpoint.h"
+#include "cdb/cdbtm.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbutil.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
+#include "postmaster/fts.h"
 #include "postmaster/postmaster.h"
 #include "replication/walsender.h"
+#include "storage/backendid.h"
 #include "storage/bufmgr.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
@@ -54,15 +65,23 @@
 #include "storage/sync.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
+#include "utils/backend_cancel.h"
+#include "utils/faultinjector.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/portal.h"
 #include "utils/ps_status.h"
+#include "utils/relcache.h"
+#include "utils/resscheduler.h"
+#include "utils/sharedsnapshot.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/timeout.h"
+
+#include "utils/resource_manager.h"
+#include "utils/session_state.h"
 
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
@@ -74,13 +93,49 @@ static void ShutdownPostgres(int code, Datum arg);
 static void StatementTimeoutHandler(void);
 static void LockTimeoutHandler(void);
 static void IdleInTransactionSessionTimeoutHandler(void);
+static void IdleGangTimeoutHandler(void);
+static void ClientCheckTimeoutHandler(void);
 static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
+#ifdef USE_ORCA
+extern void InitGPOPT();
+extern void TerminateGPOPT();
+#endif
+
 
 /*** InitPostgres support ***/
 
+/*
+ * FindMyDatabase
+ *
+ * Get oids of the database and default tablespace by the database name.
+ * Returns true if succeeded.
+ *
+ * XXX: This shouldn't be necessary, but for now it's here for fts, etc.
+ */
+bool
+FindMyDatabase(const char *dbname, Oid *db_id, Oid *db_tablespace)
+{
+	HeapTuple		tuple;
+	Form_pg_database dbform;
+
+	tuple = GetDatabaseTuple(dbname);
+
+	if (!HeapTupleIsValid(tuple))
+		return false;
+
+	/* Return oids to the caller */
+	dbform = (Form_pg_database) GETSTRUCT(tuple);
+	*db_id = dbform->oid;
+	*db_tablespace = dbform->dattablespace;
+
+	/* Be tidy */
+	pfree(tuple);
+
+	return true;
+}
 
 /*
  * GetDatabaseTuple -- fetch the pg_database row for a database
@@ -561,8 +616,30 @@ BaseInit(void)
 	InitSync();
 	smgrinit();
 	InitBufferPoolAccess();
+
+	/* 
+	 * Initialize catalog tablespace storage component
+	 * with knowledge of how to perform unlink.
+	 * 
+	 * Needed for xlog replay and normal operations.
+	 */
+	TablespaceStorageInit(UnlinkTablespaceDirectory);
 }
 
+/*
+ * Make sure we reserve enough connections for FTS handler.
+ */
+static void check_superuser_connection_limit()
+{
+	if (!am_ftshandler &&
+		!IS_QUERY_DISPATCHER() &&
+		!HaveNFreeProcs(RESERVED_FTS_CONNECTIONS))
+		ereport(FATAL,
+				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
+						errmsg("connection limit exceeded for superusers (need "
+									   "at least %d connections reserved for FTS handler)",
+							   RESERVED_FTS_CONNECTIONS)));
+}
 
 /* --------------------------------
  * InitPostgres
@@ -606,6 +683,22 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	InitProcessPhase2();
 
+	/* Initialize SessionState entry */
+	SessionState_Init();
+	/* Initialize memory protection */
+	GPMemoryProtect_Init();
+
+#ifdef USE_ORCA
+	/* Initialize GPOPT */
+	OptimizerMemoryContext = AllocSetContextCreate(TopMemoryContext,
+												   "GPORCA Top-level Memory Context",
+												   ALLOCSET_DEFAULT_MINSIZE,
+												   ALLOCSET_DEFAULT_INITSIZE,
+												   ALLOCSET_DEFAULT_MAXSIZE);
+
+	InitGPOPT();
+#endif
+
 	/*
 	 * Initialize my entry in the shared-invalidation manager's array of
 	 * per-backend data.
@@ -633,6 +726,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		RegisterTimeout(LOCK_TIMEOUT, LockTimeoutHandler);
 		RegisterTimeout(IDLE_IN_TRANSACTION_SESSION_TIMEOUT,
 						IdleInTransactionSessionTimeoutHandler);
+		RegisterTimeout(IDLE_GANG_TIMEOUT, IdleGangTimeoutHandler);
+		RegisterTimeout(CLIENT_CONNECTION_CHECK_TIMEOUT, ClientCheckTimeoutHandler);
 	}
 
 	/*
@@ -724,8 +819,13 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * is critical for anything that reads heap pages, because HOT may decide
 	 * to prune them even if the process doesn't attempt to modify any
 	 * tuples.)
+	 *
+	 * Skip these steps if we are responding to a FTS message on mirror.
+	 * Mirror operates in standby mode and is not ready to start a
+	 * transaction or create a snapshot.  Neither are they required to
+	 * respond to a FTS message.
 	 */
-	if (!bootstrap)
+	if (!bootstrap && !am_mirror)
 	{
 		/* statement_timestamp must be set for timeouts to work correctly */
 		SetCurrentStatementStartTimestamp();
@@ -778,6 +878,18 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 			am_superuser = superuser();
 		}
 	}
+	else if (am_mirror)
+	{
+		Assert(am_ftshandler || am_faulthandler);
+		/*
+		 * A mirror must receive and act upon FTS messages.  Performing proper
+		 * authentication involves reading pg_authid.  Heap access is not
+		 * possible on mirror, which is in standby mode.
+		 */
+		FakeClientAuthentication(MyProcPort);
+		InitializeSessionUserIdStandalone();
+		am_superuser = true;
+	}
 	else
 	{
 		/* normal multiuser case */
@@ -785,6 +897,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		PerformAuthentication(MyProcPort);
 		InitializeSessionUserId(username, useroid);
 		am_superuser = superuser();
+		BackendCancelInit(MyBackendId);
 	}
 
 	/*
@@ -819,24 +932,47 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * The last few connection slots are reserved for superusers.  Replication
 	 * connections are drawn from slots reserved with max_wal_senders and not
 	 * limited by max_connections or superuser_reserved_connections.
+	 *
+	 * In Greenplum, there is a concept of restricted mode where
+	 * superuser_reserved_connections is set equal to max_connections making
+	 * it so only superusers can connect. Changes made in restricted mode need
+	 * to be replicated to the standby master. We currently only support one
+	 * walsender anyways so we should allow the connection to happen. This may
+	 * need to be reviewed later when we start supporting multiple mirrors.
 	 */
-	if (!am_superuser && !am_walsender &&
+	if ((!am_superuser /* || am_walsender */) &&
 		ReservedBackends > 0 &&
 		!HaveNFreeProcs(ReservedBackends))
 		ereport(FATAL,
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 				 errmsg("remaining connection slots are reserved for non-replication superuser connections")));
 
+	if (am_superuser)
+		check_superuser_connection_limit();
+
 	/* Check replication permissions needed for walsender processes. */
 	if (am_walsender)
 	{
 		Assert(!bootstrap);
 
-		if (!superuser() && !has_rolreplication(GetUserId()))
+		/*
+		 * must have authenticated as a replication role
+		 *
+		 * In Greenplum, this code path is overloaded for handling FTS messages
+		 * on primary as well as mirror.
+		 * has_rolreplication() performs a syscache lookup,
+		 * which cannot happen on mirror/standby.
+		 */
+		if (am_walsender && !superuser() && !has_rolreplication(GetUserId()))
 			ereport(FATAL,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser or replication role to start walsender")));
 	}
+
+	if ((am_ftshandler || am_faulthandler) && !am_superuser)
+		ereport(FATAL,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser role to handle FTS request")));
 
 	/*
 	 * If this is a plain walsender only supporting physical replication, we
@@ -844,7 +980,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * backend startup by processing any options from the startup packet, and
 	 * we're done.
 	 */
-	if (am_walsender && !am_db_walsender)
+	if ((am_walsender && !am_db_walsender) || am_ftshandler || am_faulthandler)
 	{
 		/* process any options passed in the startup packet */
 		if (MyProcPort != NULL)
@@ -861,7 +997,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		pgstat_bestart();
 
 		/* close the transaction we started above */
-		CommitTransactionCommand();
+		if (!am_mirror)
+			CommitTransactionCommand();
 
 		return;
 	}
@@ -1053,6 +1190,40 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	if (MyProcPort != NULL)
 		process_startup_options(MyProcPort, am_superuser);
 
+	/*
+	 * am_cursor_retrieve_handler is set by GUC so need to judge after calling
+	 * process_startup_options().
+	 */
+	if (am_cursor_retrieve_handler)
+	{
+		Gp_role = GP_ROLE_UTILITY;
+
+		/* Sanity check for security: This should not happen but in case ... */
+		if (!retrieve_conn_authenticated)
+			ereport(FATAL,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("retrieve connection was not authenticated for unknown reason")));
+		InitRetrieveCtl();
+	}
+
+	/*
+	 * Maintenance Mode: allow superuser to connect when
+	 * gp_maintenance_conn GUC is set.  We cannot check it until
+	 * process_startup_options parses the GUC.
+	 */
+	if (gp_maintenance_mode && Gp_role == GP_ROLE_DISPATCH &&
+		!(am_superuser && gp_maintenance_conn))
+		ereport(FATAL,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("maintenance mode: connected by superuser only")));
+
+	if (Gp_role == GP_ROLE_EXECUTE && gp_session_id < 0)
+		ereport(FATAL,
+				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+				 errmsg("connections to primary segments are not allowed"),
+				 errdetail("This database instance is running as a primary segment in a Greenplum cluster and does not permit direct connections."),
+				 errhint("To force a connection anyway (dangerous!), use utility mode.")));
+
 	/* Process pg_db_role_setting options */
 	process_settings(MyDatabaseId, GetSessionUserId());
 
@@ -1074,9 +1245,62 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	/* Initialize this backend's session state. */
 	InitializeSession();
 
-	/* report this backend in the PgBackendStatus array */
-	if (!bootstrap)
+	/*
+	 * report this backend in the PgBackendStatus array, meanwhile, we do not
+	 * want users to see auxiliary background worker like fts in pg_stat_* views.
+	 */
+	if (!bootstrap && !amAuxiliaryBgWorker())
 		pgstat_bestart();
+
+	/* 
+     * MPP package setup 
+     *
+     * Primary function is to establish connections to the qExecs.
+     * This is SKIPPED when the database is in bootstrap mode or 
+     * Is not UnderPostmaster.
+     */
+    if (!bootstrap && IsUnderPostmaster)
+    {
+		cdb_setup();
+		on_proc_exit( cdb_cleanup, 0 );
+    }
+
+    /* 
+     * MPP SharedSnapshot Setup
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		addSharedSnapshot("Query Dispatcher", gp_session_id);
+	}
+    else if (IS_QUERY_DISPATCHER() && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+    {
+		/* 
+		 * Entry db singleton QE is a user of the shared snapshot -- not a creator.
+		 * The lookup will occur once the distributed snapshot has been received.
+		 */	
+		lookupSharedSnapshot("Entry DB Singleton", "Query Dispatcher", gp_session_id);
+    }
+    else if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		if (Gp_is_writer)
+		{
+			addSharedSnapshot("Writer qExec", gp_session_id);
+		}
+		else
+		{
+			/*
+			 * NOTE: This assumes that the Slot has already been
+			 *       allocated by the writer.  Need to make sure we
+			 *       always allocate the writer qExec first.
+			 */			 			
+			lookupSharedSnapshot("Reader qExec", "Writer qExec", gp_session_id);
+		}
+	}
+
+	/*
+	 * Initialize resource manager.
+	 */
+	InitResManager();
 
 	/* close the transaction we started above */
 	if (!bootstrap)
@@ -1144,6 +1368,33 @@ process_startup_options(Port *port, bool am_superuser)
 
 		SetConfigOption(name, value, gucctx, PGC_S_CLIENT);
 	}
+
+	/* Set GUCs that have been changed in the QD */
+	/* NOTE: this code block will not change the reset_val of the GUCs */
+	if (port->diff_options)
+	{
+		char	  **av;
+		int			maxac;
+		int			ac;
+
+		maxac = 1 + (strlen(port->diff_options) + 1)/2;
+
+		av = (char **) palloc(maxac * sizeof(char *));
+		ac = 0;
+
+		pg_split_opts(av, &ac, port->diff_options);
+
+		av[ac] = NULL;
+		Assert(ac < maxac);
+		for (int i = 0; i < ac; i++)
+		{
+			char *name = NULL;
+			char *val = NULL;
+			ParseLongOption(av[i], &name, &val);
+			SetConfigOption(name, val, gucctx, PGC_S_SESSION);
+		}
+		pfree(av);
+	}
 }
 
 /*
@@ -1191,6 +1442,24 @@ ShutdownPostgres(int code, Datum arg)
 {
 	/* Make sure we've killed any active transaction */
 	AbortOutOfAnyTransaction();
+
+	/*
+	 * If there was a segment OOM for which we haven't already reported
+	 * our usage, report now.
+	 */
+	ReportOOMConsumption();
+
+#ifdef USE_ORCA
+	TerminateGPOPT();
+
+	if (OptimizerMemoryContext != NULL)
+		MemoryContextDelete(OptimizerMemoryContext);
+#endif
+
+	/* Disable memory protection */
+	GPMemoryProtect_Shutdown();
+	/* Release SessionState entry */
+	SessionState_Shutdown();
 
 	/*
 	 * User locks are not released by transaction end, so be sure to release
@@ -1241,6 +1510,22 @@ IdleInTransactionSessionTimeoutHandler(void)
 	IdleInTransactionSessionTimeoutPending = true;
 	InterruptPending = true;
 	SetLatch(MyLatch);
+}
+
+static void
+IdleGangTimeoutHandler(void)
+{
+	IdleGangTimeoutPending = true;
+	InterruptPending = true;
+	SetLatch(MyLatch);
+}
+
+static void
+ClientCheckTimeoutHandler(void)
+{
+	CheckClientConnectionPending = true;
+	InterruptPending = true;
+	SetLatch(&MyProc->procLatch);
 }
 
 /*

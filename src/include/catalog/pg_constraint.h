@@ -24,6 +24,10 @@
 #include "catalog/dependency.h"
 #include "nodes/pg_list.h"
 
+#include "catalog/dependency.h"
+#include "nodes/pg_list.h"
+#include "access/attnum.h"
+
 /* ----------------
  *		pg_constraint definition.  cpp turns this into
  *		typedef struct FormData_pg_constraint
@@ -147,6 +151,12 @@ CATALOG(pg_constraint,2606,ConstraintRelationId)
 #endif
 } FormData_pg_constraint;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(connamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(conrelid REFERENCES pg_class(oid));
+FOREIGN_KEY(contypid REFERENCES pg_type(oid));
+FOREIGN_KEY(confrelid REFERENCES pg_class(oid));
+
 /* ----------------
  *		Form_pg_constraint corresponds to a pointer to a tuple with
  *		the format of pg_constraint relation.
@@ -233,6 +243,12 @@ extern Bitmapset *get_relation_constraint_attnos(Oid relid, const char *conname,
 												 bool missing_ok, Oid *constraintOid);
 extern Oid	get_domain_constraint_oid(Oid typid, const char *conname, bool missing_ok);
 extern Oid	get_relation_idx_constraint_oid(Oid relationId, Oid indexId);
+
+/**
+ * Identify primary key column from foreign key column.
+ */
+extern bool ConstraintGetPrimaryKeyOf(Oid relid, AttrNumber attno,
+					Oid *pkrelid, AttrNumber *pkattno);
 
 extern Bitmapset *get_primary_key_attnos(Oid relid, bool deferrableOk,
 										 Oid *constraintOid);

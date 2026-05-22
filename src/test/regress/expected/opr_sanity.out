@@ -168,9 +168,13 @@ WHERE p1.oid < p2.oid AND
      p1.proretset != p2.proretset OR
      p1.provolatile != p2.provolatile OR
      p1.pronargs != p2.pronargs);
- oid | proname | oid | proname 
------+---------+-----+---------
-(0 rows)
+ oid  |      proname      | oid  |       proname       
+------+-------------------+------+---------------------
+ 6212 | int2_matrix_accum | 6214 | int8_matrix_accum
+ 6212 | int2_matrix_accum | 6215 | float8_matrix_accum
+ 6213 | int4_matrix_accum | 6214 | int8_matrix_accum
+ 6213 | int4_matrix_accum | 6215 | float8_matrix_accum
+(4 rows)
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.
@@ -191,6 +195,9 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
     (p1.prorettype < p2.prorettype)
+    -- int2/int4/int8/float8_matrix_accum functions violate this
+    AND p1.proname NOT LIKE E'%_matrix_accum'
+    AND p2.proname NOT LIKE E'%_matrix_accum'
 ORDER BY 1, 2;
  prorettype | prorettype 
 ------------+------------
@@ -207,6 +214,9 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
     (p1.proargtypes[0] < p2.proargtypes[0])
+    -- int2/int4/int8/float8_matrix_accum functions violate this
+    AND p1.proname NOT LIKE E'%_matrix_accum'
+    AND p2.proname NOT LIKE E'%_matrix_accum'
 ORDER BY 1, 2;
  proargtypes | proargtypes 
 -------------+-------------
@@ -225,6 +235,9 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc NOT LIKE E'range\\_constructor_' AND
     p2.prosrc NOT LIKE E'range\\_constructor_' AND
     (p1.proargtypes[1] < p2.proargtypes[1])
+    -- int2/int4/int8/float8_matrix_accum functions violate this
+    AND p1.proname NOT LIKE E'%_matrix_accum'
+    AND p2.proname NOT LIKE E'%_matrix_accum'
 ORDER BY 1, 2;
  proargtypes | proargtypes 
 -------------+-------------
@@ -1070,12 +1083,14 @@ ORDER BY 1, 2;
  *<=  | *>
  *<>  | *=
  <    | >=
+ <<   | >>=
+ <<=  | >>
  <=   | >
  <>   | =
  <>   | ~=
  ~<=~ | ~>~
  ~<~  | ~>=~
-(13 rows)
+(15 rows)
 
 -- A mergejoinable or hashjoinable operator must be binary, must return
 -- boolean, and must have a commutator (itself, unless it's a cross-type
@@ -1409,9 +1424,14 @@ WHERE a.aggfnoid = p.oid AND
      -- we could carry the check further, but 3 args is enough for now
      OR (p.pronargs > 3)
     );
- aggfnoid | proname | oid | proname 
-----------+---------+-----+---------
-(0 rows)
+ aggfnoid |      proname       | oid  |                  proname                  
+----------+--------------------+------+-------------------------------------------
+     7189 | gp_percentile_cont | 7184 | gp_percentile_cont_float8_transition
+     7190 | gp_percentile_cont | 7185 | gp_percentile_cont_interval_transition
+     7191 | gp_percentile_cont | 7186 | gp_percentile_cont_timestamp_transition
+     7192 | gp_percentile_cont | 7187 | gp_percentile_cont_timestamptz_transition
+     7194 | gp_percentile_disc | 7193 | gp_percentile_disc_transition
+(5 rows)
 
 -- Cross-check finalfn (if present) against its entry in pg_proc.
 SELECT a.aggfnoid::oid, p.proname, pfn.oid, pfn.proname
@@ -1432,9 +1452,13 @@ WHERE a.aggfnoid = p.oid AND
      -- we could carry the check further, but 4 args is enough for now
      OR (pfn.pronargs > 4)
     );
- aggfnoid | proname | oid | proname 
-----------+---------+-----+---------
-(0 rows)
+ aggfnoid |      proname       | oid  |       proname       
+----------+--------------------+------+---------------------
+     7189 | gp_percentile_cont | 7188 | gp_percentile_final
+     7190 | gp_percentile_cont | 7188 | gp_percentile_final
+     7191 | gp_percentile_cont | 7188 | gp_percentile_final
+     7192 | gp_percentile_cont | 7188 | gp_percentile_final
+(4 rows)
 
 -- If transfn is strict then either initval should be non-NULL, or
 -- input type should match transtype so that the first non-null input
@@ -1865,17 +1889,21 @@ ORDER BY 1, 2, 3;
 ------------+--------------+---------
         403 |            1 | *<
         403 |            1 | <
+        403 |            1 | <<
         403 |            1 | ~<~
         403 |            2 | *<=
+        403 |            2 | <<=
         403 |            2 | <=
         403 |            2 | ~<=~
         403 |            3 | *=
         403 |            3 | =
         403 |            4 | *>=
         403 |            4 | >=
+        403 |            4 | >>=
         403 |            4 | ~>=~
         403 |            5 | *>
         403 |            5 | >
+        403 |            5 | >>
         403 |            5 | ~>~
         405 |            1 | =
         783 |            1 | <<
@@ -1988,7 +2016,25 @@ ORDER BY 1, 2, 3;
        4000 |           26 | >>
        4000 |           27 | >>=
        4000 |           28 | ^@
-(125 rows)
+       7013 |            1 | *<
+       7013 |            1 | <
+       7013 |            1 | <<
+       7013 |            1 | ~<~
+       7013 |            2 | *<=
+       7013 |            2 | <<=
+       7013 |            2 | <=
+       7013 |            2 | ~<=~
+       7013 |            3 | *=
+       7013 |            3 | =
+       7013 |            4 | *>=
+       7013 |            4 | >=
+       7013 |            4 | >>=
+       7013 |            4 | ~>=~
+       7013 |            5 | *>
+       7013 |            5 | >
+       7013 |            5 | >>
+       7013 |            5 | ~>~
+(147 rows)
 
 -- Check that all opclass search operators have selectivity estimators.
 -- This is not absolutely required, but it seems a reasonable thing
@@ -2129,10 +2175,11 @@ FROM (SELECT indexrelid, indrelid, unnest(indkey) as ikey,
 WHERE a.attrelid = indrelid AND a.attnum = ikey AND opc.oid = iclass AND
       (opcintype != atttypid OR icoll != attcollation)
 ORDER BY 1;
-        indexrelid        |   indrelid   | attname  | atttypid | opcname 
---------------------------+--------------+----------+----------+---------
- pg_aggregate_fnoid_index | pg_aggregate | aggfnoid | regproc  | oid_ops
-(1 row)
+                indexrelid                 |     indrelid     | attname  | atttypid | opcname 
+-------------------------------------------+------------------+----------+----------+---------
+ pg_aggregate_fnoid_index                  | pg_aggregate     | aggfnoid | regproc  | oid_ops
+ pg_proc_callback_profnoid_promethod_index | pg_proc_callback | profnoid | regproc  | oid_ops
+(2 rows)
 
 -- Check for system catalogs with collation-sensitive ordering.  This is not
 -- a representational error in pg_index, but simply wrong catalog design.
@@ -2143,6 +2190,8 @@ SELECT relname, attname, attcollation
 FROM pg_class c, pg_attribute a
 WHERE c.oid = attrelid AND c.oid < 16384 AND
     c.relkind != 'v' AND  -- we don't care about columns in views
+    c.relkind != 'f' AND  -- GPDB: foreign/external tables are also OK.
+    c.relkind != 'c' AND  -- GPDB: as well as composite types
     attcollation != 0 AND
     attcollation != (SELECT oid FROM pg_collation WHERE collname = 'C');
  relname | attname | attcollation 

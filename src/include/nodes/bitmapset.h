@@ -32,7 +32,23 @@ struct List;
  * they're not wider than the processor can handle efficiently.  We use
  * 64-bit words if pointers are that large, else 32-bit words.
  */
-#if SIZEOF_VOID_P >= 8
+/*
+ * GPDB_12_MERGE_FIXME Disable 64-bit word size for bitmap sets.
+ * Appenoptimized tables use bitmapset interface to encode tuple visibility.
+ * These bitmap sets make their way to disk, inside aovisimap tuples.
+ * Increasing word size will affect the ability to interpret existing
+ * appendoptimized visibility data written with 32-bit word size.  Therefore,
+ * we must continue to use 32-bit bitmap words or rewrite all existing
+ * appendoptimized tables during upgrade (not viable).  The goal of this fixme
+ * is to explore if the performance benefit of larger bitmapwords can still be
+ * availed by distinguishing on-disk bitmap usage from strictly in-memory
+ * bitmap usage.  E.g. define a new type bitmapword32 and use it in
+ * appendoptimized code.  On a related note, tbm_bitmapword is Greenplum
+ * specific 64-bit wide type used for TID bitmaps.  Can we start using
+ * bitmapword for TID bitmaps, just like upastream, and eliminate
+ * tbm_bitmapword?
+ */
+#if false && SIZEOF_VOID_P >= 8
 
 #define BITS_PER_BITMAPWORD 64
 typedef uint64 bitmapword;		/* must be an unsigned type */
@@ -116,5 +132,20 @@ extern int	bms_prev_member(const Bitmapset *a, int prevbit);
 
 /* support for hashtables using Bitmapsets as keys: */
 extern uint32 bms_hash_value(const Bitmapset *a);
+extern uint32 bitmap_hash(const void *key, Size keysize);
+extern int	bitmap_match(const void *key1, const void *key2, Size keysize);
+
+/* 
+ * returns true iff the bitmap is sufficently large that
+ * it stores the bit for member x
+ */
+extern bool bms_covers_member(const Bitmapset *a, int x);
+
+/* 
+ * Extend the bitmap a to have at least wc number of words.
+ * If wc is smaller than the bitmap a, the bitmap a
+ * is returned
+ */
+extern Bitmapset *bms_resize(Bitmapset *a, int wc);
 
 #endif							/* BITMAPSET_H */

@@ -4,6 +4,8 @@
  *	   routines for accessing the system catalogs
  *
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -33,6 +35,7 @@
 #include "catalog/pg_statistic_ext.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
+#include "commands/tablecmds.h"
 #include "nodes/makefuncs.h"
 #include "nodes/supportnodes.h"
 #include "optimizer/clauses.h"
@@ -52,6 +55,13 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/snapmgr.h"
+
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbrelsize.h"
+#include "catalog/pg_appendonly.h"
+#include "catalog/pg_foreign_server.h"
+#include "catalog/pg_inherits.h"
+#include "utils/guc.h"
 
 
 /* GUC parameter */
@@ -139,14 +149,27 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	rel->attr_widths = (int32 *)
 		palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(int32));
 
+    /*
+     * CDB: Get partitioning key info for distributed relation.
+     */
+    rel->cdbpolicy = RelationGetPartitioningKey(relation);
+	rel->relam = relation->rd_rel->relam;
+
 	/*
 	 * Estimate relation size --- unless it's an inheritance parent, in which
 	 * case the size we want is not the rel's own size but the size of its
 	 * inheritance tree.  That will be computed in set_append_rel_size().
 	 */
 	if (!inhparent)
-		estimate_rel_size(relation, rel->attr_widths - rel->min_attr,
-						  &rel->pages, &rel->tuples, &rel->allvisfrac);
+	{
+		cdb_estimate_rel_size(
+			rel,
+			relation,
+			rel->attr_widths - rel->min_attr,
+			&rel->pages,
+			&rel->tuples,
+			&rel->allvisfrac);
+	}
 
 	/* Retrieve the parallel_workers reloption, or -1 if not set. */
 	rel->rel_parallel_workers = RelationGetParallelWorkers(relation, -1);
@@ -391,20 +414,18 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * a table, except we can be sure that the index is not larger
 			 * than the table.
 			 */
-			if (info->indpred == NIL)
-			{
-				info->pages = RelationGetNumberOfBlocks(indexRelation);
-				info->tuples = rel->tuples;
-			}
-			else
-			{
-				double		allvisfrac; /* dummy */
+			double		allvisfrac; /* dummy */
 
-				estimate_rel_size(indexRelation, NULL,
-								  &info->pages, &info->tuples, &allvisfrac);
-				if (info->tuples > rel->tuples)
-					info->tuples = rel->tuples;
-			}
+			cdb_estimate_rel_size(rel,
+                                  indexRelation,
+                                  NULL,
+                                  &info->pages,
+                                  &info->tuples,
+                                  &allvisfrac);
+
+			if (!info->indpred ||
+				info->tuples > rel->tuples)
+				info->tuples = rel->tuples;
 
 			if (info->relam == BTREE_AM_OID)
 			{
@@ -441,11 +462,13 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	{
 		rel->serverid = GetForeignServerIdByRelId(RelationGetRelid(relation));
 		rel->fdwroutine = GetFdwRoutineForRelation(relation, true);
+		rel->exec_location = GetForeignTable(RelationGetRelid(relation))->exec_location;
 	}
 	else
 	{
 		rel->serverid = InvalidOid;
 		rel->fdwroutine = NULL;
+		rel->exec_location = FTEXECLOCATION_NOT_DEFINED;
 	}
 
 	/* Collect info about relation's foreign keys, if relevant */
@@ -467,6 +490,210 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	 */
 	if (get_relation_info_hook)
 		(*get_relation_info_hook) (root, relationObjectId, inhparent, rel);
+}
+
+/*
+ * cdb_estimate_rel_size - estimate # pages and # tuples in a table or index
+ *
+ * If attr_widths isn't NULL, it points to the zero-index entry of the
+ * relation's attr_width[] cache; we fill this in if we have need to compute
+ * the attribute widths for estimation purposes.
+ *
+ * The returned estimates are for the table as whole. If you need the
+ * per-segment size, divide by # of segments if the policy is partitioned.
+ */
+void
+cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
+                      Relation      rel,
+                      int32        *attr_widths,
+				      BlockNumber  *pages,
+                      double       *tuples,
+                      double       *allvisfrac)
+{
+	BlockNumber relpages;
+	double		reltuples;
+	BlockNumber relallvisible;
+	double		density;
+    BlockNumber curpages = 0;
+	bool		use_external_table_defaults = false;
+
+    /* Rel not distributed?  RelationGetNumberOfBlocks can get actual #pages. */
+    if (!relOptInfo->cdbpolicy ||
+        relOptInfo->cdbpolicy->ptype == POLICYTYPE_ENTRY)
+    {
+        estimate_rel_size(rel, attr_widths, pages, tuples, allvisfrac);
+        return;
+    }
+
+	/* coerce values in pg_class to more desirable types */
+	relpages = (BlockNumber) rel->rd_rel->relpages;
+	reltuples = (double) rel->rd_rel->reltuples;
+	relallvisible = (BlockNumber) rel->rd_rel->relallvisible;
+
+	/*
+	 * Asking the QE for the size of the relation is a bit expensive.  Do we
+	 * want to do it all the time?  Or only for tables that have never had
+	 * analyze run?
+	 */
+	if (relpages > 0)
+	{
+		/*
+		 * Let's trust the values we had from analyze, even though they might
+		 * be out of date.
+		 *
+		 * NOTE: external tables are created with estimated larger than zero
+		 * values, therefore we will get here too even though we can never
+		 * analyze them.
+		 */
+		curpages = relpages;
+	}
+	else if (rel_is_external_table(RelationGetRelid(rel)))
+	{
+		/* Note: we can't use relOptinfo->serverid here, because isn't filled in yet */
+		use_external_table_defaults = true;
+		curpages = DEFAULT_EXTERNAL_TABLE_PAGES;
+	}
+	else
+	{
+		/*
+		 * If GUC gp_enable_relsize_collection is on, get the size of the table
+		 * to derive curpages, else use the default value.
+		 */
+		if (gp_enable_relsize_collection)
+			curpages = cdbRelMaxSegSize(rel) / BLCKSZ;
+		else
+			curpages = DEFAULT_INTERNAL_TABLE_PAGES;
+	}
+
+	/* report estimated # pages */
+	*pages = curpages;
+
+	/*
+	 * If it's an index, discount the metapage.  This is a kluge because it
+	 * assumes more than it ought to about index contents; it's reasonably OK
+	 * for btrees but a bit suspect otherwise.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_INDEX && relpages > 0)
+	{
+		curpages--;
+		relpages--;
+	}
+
+	/*
+	 * Estimate number of tuples from previous tuple density (as of last
+	 * analyze)
+	 */
+	if (relpages > 0)
+		density = reltuples / (double) relpages;
+	else if (use_external_table_defaults)
+	{
+		/*
+		 * For an external table with no estimates stored in pg_class, use
+		 * defaults.
+		 */
+		density = DEFAULT_EXTERNAL_TABLE_TUPLES /
+			(double) DEFAULT_EXTERNAL_TABLE_PAGES;
+	}
+	else
+	{
+		/*
+		 * When we have no data because the relation was truncated, estimate
+		 * tuples per page from attribute datatypes.
+		 *
+		 * (This is the same computation as in get_relation_info()
+		 */
+		int32		tuple_width;
+
+		tuple_width = get_rel_data_width(rel, attr_widths);
+		tuple_width += sizeof(HeapTupleHeaderData);
+		tuple_width += sizeof(ItemPointerData);
+		/* note: integer division is intentional here */
+		density = (BLCKSZ - SizeOfPageHeaderData) / tuple_width;
+	}
+	*tuples = rint(density * (double) curpages);
+
+	/*
+	 * We use relallvisible as-is, rather than scaling it up like we
+	 * do for the pages and tuples counts, on the theory that any
+	 * pages added since the last VACUUM are most likely not marked
+	 * all-visible.  But costsize.c wants it converted to a fraction.
+	 */
+	if (relallvisible == 0 || curpages <= 0)
+		*allvisfrac = 0;
+	else if ((double) relallvisible >= curpages)
+		*allvisfrac = 1;
+	else
+		*allvisfrac = (double) relallvisible / curpages;
+
+	elog(DEBUG2, "cdb_estimate_rel_size estimated %g tuples, %d pages, and"
+		" %f allvisfrac", *tuples, (int) *pages, *allvisfrac);
+}
+
+/*
+ * Get the total size of a partitioned table, including all partitions.
+ *
+ * Only used with ORCA, currently. This is slightly different from
+ * cdb_estimate_rel_size(), in that if the relation is a partitioned table
+ * (or general inherited table, but ORCA doesn't deal with general general
+ * inheritance), this sums up the estimates from the child tables. Also, if
+ * gp_enable_relsize_collection is off, and none of the partitions have been
+ * analyzed, this returns 0 rather than the default constant estimate.
+ */
+double
+cdb_estimate_partitioned_numtuples(Relation rel)
+{
+	List	   *inheritors;
+	ListCell   *lc;
+	double		totaltuples;
+
+
+	if (rel->rd_rel->reltuples > 0)
+		return rel->rd_rel->reltuples;
+
+	inheritors = find_all_inheritors(RelationGetRelid(rel),
+									 AccessShareLock,
+									 NULL);
+	totaltuples = 0;
+	foreach(lc, inheritors)
+	{
+		Oid			childid = lfirst_oid(lc);
+		Relation	childrel;
+		double		childtuples;
+
+		if (childid != RelationGetRelid(rel))
+			childrel = try_table_open(childid, NoLock, false);
+		else
+			childrel = rel;
+
+		childtuples = childrel->rd_rel->reltuples;
+
+		if (gp_enable_relsize_collection && childtuples == 0)
+		{
+			RelOptInfo *dummy_reloptinfo;
+			BlockNumber	numpages;
+			double		allvisfrac;
+
+			dummy_reloptinfo = makeNode(RelOptInfo);
+			dummy_reloptinfo->cdbpolicy = rel->rd_cdbpolicy;
+
+			cdb_estimate_rel_size(dummy_reloptinfo,
+								  childrel,
+								  NULL,
+								  &numpages,
+								  &childtuples,
+								  &allvisfrac);
+			pfree(dummy_reloptinfo);
+		}
+		if (childtuples == 0 && rel_is_external_table(RelationGetRelid(childrel)))
+		{
+			childtuples = DEFAULT_EXTERNAL_TABLE_TUPLES;
+		}
+		totaltuples += childtuples;
+
+		if (childrel != rel)
+			heap_close(childrel, NoLock);
+	}
+	return totaltuples;
 }
 
 /*
@@ -955,6 +1182,9 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 		case RELKIND_RELATION:
 		case RELKIND_MATVIEW:
 		case RELKIND_TOASTVALUE:
+		case RELKIND_AOSEGMENTS:
+		case RELKIND_AOBLOCKDIR:
+		case RELKIND_AOVISIMAP:
 			table_relation_estimate_size(rel, attr_widths, pages, tuples,
 										 allvisfrac);
 			break;
@@ -1256,6 +1486,7 @@ get_relation_constraints(PlannerInfo *root,
 					 */
 					ntest->argisrow = false;
 					ntest->location = -1;
+
 					result = lappend(result, ntest);
 				}
 			}
@@ -1498,6 +1729,29 @@ relation_excluded_by_constraints(PlannerInfo *root,
 	}
 
 	/*
+	 * GPDB: Check if there's a constant False condition. That's unlikely
+	 * to help much in most cases, as we'll create a Result node with
+	 * a False one-time filter anyway, so the underlying plan will not
+	 * be executed in any case. But we can avoid some planning overhead.
+	 * Also, the Result node might be put under a Motion node, so we avoid
+	 * a little bit of network traffic at execution time, if we can eliminate
+	 * the relation altogether here.
+	 */
+	foreach(lc, rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		if (IsA(rinfo->clause, Const))
+		{
+			Const *c = (Const *) rinfo->clause;
+
+			if (c->consttype == BOOLOID &&
+				(c->constisnull || DatumGetBool(c->constvalue) == false))
+				return true;
+		}
+	}
+
+	/*
 	 * We can use weak refutation here, since we're comparing restriction
 	 * clauses with restriction clauses.
 	 */
@@ -1642,6 +1896,12 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 
 		case RTE_SUBQUERY:
 			subquery = rte->subquery;
+			if ( subquery->querySource == QSRC_PLANNER )
+			{
+				/* MPP: punt since parse tree correspondence in doubt */
+				tlist = NIL;
+				break;
+			}
 			foreach(l, subquery->targetList)
 			{
 				TargetEntry *tle = (TargetEntry *) lfirst(l);
@@ -1660,6 +1920,7 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 			}
 			break;
 
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 		case RTE_TABLEFUNC:
 		case RTE_VALUES:

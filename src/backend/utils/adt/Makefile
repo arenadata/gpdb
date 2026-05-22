@@ -7,6 +7,7 @@
 subdir = src/backend/utils/adt
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
+override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
 # keep this list arranged alphabetically or it gets to be a mess
 OBJS = acl.o amutils.o arrayfuncs.o array_expanded.o array_selfuncs.o \
@@ -47,5 +48,9 @@ clean distclean maintainer-clean:
 like.o: like.c like_match.c
 
 varlena.o: varlena.c levenshtein.c
+
+# GPDB additions
+OBJS +=	complex_type.o gp_dump_oids.o gp_optimizer_functions.o \
+	interpolate.o matrix.o pivot.o
 
 include $(top_srcdir)/src/backend/common.mk

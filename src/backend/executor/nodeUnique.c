@@ -33,6 +33,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeUnique.h"
 #include "miscadmin.h"

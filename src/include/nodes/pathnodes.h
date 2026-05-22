@@ -4,6 +4,8 @@
  *	  Definitions for planner's internal data structures, especially Paths.
  *
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -19,7 +21,12 @@
 #include "lib/stringinfo.h"
 #include "nodes/params.h"
 #include "nodes/parsenodes.h"
+#include "nodes/plannodes.h"
+#include "nodes/primnodes.h"
 #include "storage/block.h"
+#include "nodes/plannerconfig.h"
+#include "cdb/cdbpathlocus.h"
+#include "foreign/foreign.h"
 
 
 /*
@@ -27,6 +34,11 @@
  *		Set of relation identifiers (indexes into the rangetable).
  */
 typedef Bitmapset *Relids;
+
+/*
+ * Estimated costs
+ */
+typedef double EstimatedBytes;  /* an estimated number of bytes */
 
 /*
  * When looking for a "cheapest path", this enum specifies whether we want
@@ -58,11 +70,15 @@ typedef struct AggClauseCosts
 {
 	int			numAggs;		/* total number of aggregate functions */
 	int			numOrderedAggs; /* number w/ DISTINCT/ORDER BY/WITHIN GROUP */
+	int			numPureOrderedAggs; /* CDB: number that use ORDER BY/WITHIN GROUP, not counting DISTINCT */
+	bool		hasNonCombine;	/* CDB: any agg func w/o a combine func? */
 	bool		hasNonPartial;	/* does any agg not support partial mode? */
 	bool		hasNonSerial;	/* is any partial agg non-serializable? */
 	QualCost	transCost;		/* total per-input-row execution costs */
 	QualCost	finalCost;		/* total per-aggregated-row costs */
 	Size		transitionSpace;	/* space for pass-by-ref transition data */
+
+	List	   *distinctAggrefs;	/* CDB: List of Aggrfefs with aggdistinct */
 } AggClauseCosts;
 
 /*
@@ -75,8 +91,10 @@ typedef enum UpperRelationKind
 	UPPERREL_PARTIAL_GROUP_AGG, /* result of partial grouping/aggregation, if
 								 * any */
 	UPPERREL_GROUP_AGG,			/* result of grouping/aggregation, if any */
+	UPPERREL_CDB_FIRST_STAGE_GROUP_AGG,
 	UPPERREL_WINDOW,			/* result of window functions, if any */
 	UPPERREL_DISTINCT,			/* result of "SELECT DISTINCT", if any */
+	UPPERREL_CDB_FIRST_STAGE_DISTINCT,
 	UPPERREL_ORDERED,			/* result of ORDER BY, if any */
 	UPPERREL_FINAL				/* result of any remaining top-level actions */
 	/* NB: UPPERREL_FINAL must be last enum entry; it's used to size arrays */
@@ -93,6 +111,45 @@ typedef enum InheritanceKind
 	INHKIND_INHERITED,
 	INHKIND_PARTITIONED
 } InheritanceKind;
+
+/*
+ * ApplyShareInputContext is used in different stages of ShareInputScan
+ * processing. This is mostly used as working area during the stages, but
+ * some information is also carried through multiple stages.
+ */
+typedef struct ApplyShareInputContextPerShare
+{
+	int			producer_slice_id;
+	Bitmapset  *participant_slices;
+} ApplyShareInputContextPerShare;
+
+typedef struct ApplyShareInputContext
+{
+	/* curr_rtable is used by all stages when traversing into subqueries */
+	List	   *curr_rtable;
+
+	/*
+	 * Populated in dag_to_tree() (or collect_shareinput_producers() for ORCA),
+	 * used in replace_shareinput_targetlists()
+	 */
+	Plan	  **shared_plans;
+	int			shared_input_count;
+
+	/*
+	 * State for replace_shareinput_targetlists()
+	 */
+	int		   *share_refcounts;
+	int			share_refcounts_sz;		/* allocated sized of 'share_refcounts' */
+
+	/*
+	 * State for apply_sharinput_xslice() walkers.
+	 */
+	PlanSlice  *slices;			/* root->glob->slices */
+	List	   *motStack;		/* stack of motionIds leading to current node */
+	ApplyShareInputContextPerShare *shared_inputs; /* one for each share */
+	Bitmapset  *qdShares;		/* share_ids that are referenced from QD slices */
+
+} ApplyShareInputContext;
 
 /*----------
  * PlannerGlobal
@@ -112,6 +169,8 @@ typedef struct PlannerGlobal
 	List	   *subplans;		/* Plans for SubPlan nodes */
 
 	List	   *subroots;		/* PlannerInfos for SubPlan nodes */
+
+	int		   *subplan_sliceIds;	/* slice IDs for SubPlan nodes. */
 
 	Bitmapset  *rewindPlanIDs;	/* indices of subplans that require REWIND */
 
@@ -136,6 +195,10 @@ typedef struct PlannerGlobal
 	int			lastPlanNodeId; /* highest plan node ID assigned */
 
 	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+	bool		oneoffPlan;		/* redo plan on every execution? */
+	Oid			simplyUpdatableRel; /* if valid, query can be used with CURRENT OF for this rel */
+
+	ApplyShareInputContext share;	/* workspace for GPDB plan sharing */
 
 	bool		dependsOnRole;	/* is plan specific to current role? */
 
@@ -146,12 +209,20 @@ typedef struct PlannerGlobal
 	char		maxParallelHazard;	/* worst PROPARALLEL hazard level */
 
 	PartitionDirectory partition_directory; /* partition descriptors */
+
+	/* GPDB: flags to support COPY's IGNORE EXTERNAL PARTITIONS option. */
+	bool		skip_foreign_partitions;	/* don't expand foreign partitions */
+	bool		foreign_partition_was_skipped; /* foreign partition was skipped */
+	bool		is_parallel_cursor;
+
+	/*
+	 * Slice table. Built by cdbllize_build_slice_table() near the end of
+	 * planning, and copied to the final PlannedStmt.
+	 */
+	int			numSlices;
+	struct PlanSlice *slices;
+
 } PlannerGlobal;
-
-/* macro for fetching the Plan associated with a SubPlan node */
-#define planner_subplan_get_plan(root, subplan) \
-	((Plan *) list_nth((root)->glob->subplans, (subplan)->plan_id - 1))
-
 
 /*----------
  * PlannerInfo
@@ -265,10 +336,17 @@ struct PlannerInfo
 
 	List	   *eq_classes;		/* list of active EquivalenceClasses */
 
+	List	   *non_eq_clauses;	/* list of non-equivalence clauses */
+
 	bool		ec_merging_done;	/* set true once ECs are canonical */
 
 	List	   *canon_pathkeys; /* list of "canonical" PathKeys */
 
+	List       *list_cteplaninfo; /* list of CtePlannerInfo, one for each CTE */
+
+	/*
+	 * Outer join info
+	 */
 	List	   *left_join_clauses;	/* list of RestrictInfos for mergejoinable
 									 * outer join clauses w/nonnullable var on
 									 * left */
@@ -305,6 +383,9 @@ struct PlannerInfo
 	List	   *part_schemes;	/* Canonicalised partition schemes used in the
 								 * query. */
 
+	/* hint on where the result of the query will be needed. Null if not known */
+	CdbPathLocus final_locus;
+
 	List	   *initial_rels;	/* RelOptInfos we are now trying to join */
 
 	/* Use fetch_upper_rel() to get any particular upper rel */
@@ -326,6 +407,7 @@ struct PlannerInfo
 
 	/* Fields filled during create_plan() for use in setrefs.c */
 	AttrNumber *grouping_map;	/* for GroupingFunc fixup */
+	int			grouping_map_size;
 	List	   *minmax_aggs;	/* List of MinMaxAggInfos */
 
 	MemoryContext planner_cxt;	/* context holding PlannerInfo */
@@ -356,13 +438,77 @@ struct PlannerInfo
 	/* These fields are workspace for createplan.c */
 	Relids		curOuterRels;	/* outer rels above current node */
 	List	   *curOuterParams; /* not-yet-assigned NestLoopParams */
+	int			numMotions;
+
+	PlanSlice  *curSlice;
+
+	PlannerConfig *config;		/* Planner configuration */
+
+	/*
+	 * Join pruning bookkeeping for create_plan(). Stack of candidate joins
+	 * above current node that can be used for join partition pruning.
+	 *
+	 * GPDB_13_MERGE_FIXME: this is currently used as a stack with
+	 * lcons() and list_delete_first(). With v13 and commits 1cff1b95ab
+	 * and d97b714a21, we should use lappend() and list_delete_last()
+	 * instead, for performance.
+	 */
+	List	   *partition_selector_candidates;
 
 	/* optional private data for join_search_hook, e.g., GEQO */
 	void	   *join_search_private;
 
 	/* Does this query modify any partition key columns? */
 	bool		partColsUpdated;
+
+	int			upd_del_replicated_table;
+	bool		is_split_update;	/* true if UPDATE that modifies
+									 * distribution key columns */
+	bool		is_correlated_subplan; /* true for correlated subqueries nested within subplans */
 };
+
+/*
+ * CtePlanInfo
+ *    Information for subplans that are associated with a CTE.
+ */
+typedef struct CtePlanInfo
+{
+	/*
+	 * A subplan, prepared for sharing among many CTE references by
+	 * prepare_plan_for_sharing(), that implements the CTE. NULL if the
+	 * CTE is not shared among references.
+	 */
+	Plan *shared_plan;
+
+	/*
+	 * The subroot corresponding to the subplan.
+	 */
+	PlannerInfo *subroot;
+} CtePlanInfo;
+
+/*
+ * This is used in create_plan_recurse() to keep track of joins above
+ * the current node that could be used for join partition pruning.
+ */
+typedef struct
+{
+	List	   *joinrestrictinfo;
+
+	PlanSlice  *slice;			/* slice containing the join */
+
+	Relids		inner_relids;	/* rels on the inner side of the join
+								 * that can provide vars for pruning */
+
+	List	   *selectors;	/* list of PartitionSelectorInfos */
+
+} PartitionSelectorCandidateInfo;
+
+typedef struct
+{
+	/* Has this selector been connected to an Append node? */
+	int			paramid;
+	struct PartitionPruneInfo *part_prune_info;
+} PartitionSelectorInfo;
 
 
 /*
@@ -405,6 +551,31 @@ typedef struct PartitionSchemeData
 }			PartitionSchemeData;
 
 typedef struct PartitionSchemeData *PartitionScheme;
+
+/*
+ * Fetch the Plan associated with a SubPlan node during planning.
+ */
+static inline struct Plan *planner_subplan_get_plan(struct PlannerInfo *root, SubPlan *subplan) 
+{
+	return (Plan *) list_nth(root->glob->subplans, subplan->plan_id - 1);
+}
+
+/**
+ * Fetch the root (PlannerInfo) for a subplan
+ */
+static inline struct PlannerInfo *planner_subplan_get_root(struct PlannerInfo *root, SubPlan *subplan)
+{
+	return (PlannerInfo *) list_nth(root->glob->subroots, subplan->plan_id - 1);
+}
+
+/*
+ * Rewrite the Plan associated with a SubPlan node during planning.
+ */
+static inline void planner_subplan_put_plan(struct PlannerInfo *root, SubPlan *subplan, Plan *plan) 
+{
+	ListCell *cell = list_nth_cell(root->glob->subplans, subplan->plan_id-1);
+	cell->data.ptr_value = plan;
+}
 
 /*----------
  * RelOptInfo
@@ -596,6 +767,10 @@ typedef struct PartitionSchemeData *PartitionScheme;
  * expressions from non-nullable and nullable relations resp. Lists at any
  * given position in those arrays together contain as many elements as the
  * number of joining relations.
+ *
+ * GPDB: Even if the relation is distributed, 'rows', 'tuples' and 'pages' are
+ * totals are across all segments. Divide by cdbpolicy->numsegments to get the
+ * sizes of a distributed scan node.
  *----------
  */
 typedef enum RelOptKind
@@ -681,10 +856,12 @@ typedef struct RelOptInfo
 	List	   *statlist;		/* list of StatisticExtInfo */
 	BlockNumber pages;			/* size estimates derived from pg_class */
 	double		tuples;
+    struct GpPolicy   *cdbpolicy;      /* distribution of stored tuples */
+	Oid			relam;			/* form_pg_class access method */
 	double		allvisfrac;
 	Bitmapset  *eclass_indexes; /* Indexes in PlannerInfo's eq_classes list of
 								 * ECs that mention this rel */
-	PlannerInfo *subroot;		/* if subquery */
+	PlannerInfo *subroot;		/* if subquery (in GPDB: or CTE) */
 	List	   *subplan_params; /* if subquery */
 	int			rel_parallel_workers;	/* wanted number of parallel workers */
 
@@ -692,6 +869,7 @@ typedef struct RelOptInfo
 	Oid			serverid;		/* identifies server for the table or join */
 	Oid			userid;			/* identifies user to check access as */
 	bool		useridiscurrent;	/* join is only valid for current user */
+	char		exec_location;  /* execute on MASTER, ANY or ALL SEGMENTS, Greenplum MPP specific */
 	/* use "struct FdwRoutine" to avoid including fdwapi.h here */
 	struct FdwRoutine *fdwroutine;
 	void	   *fdw_private;
@@ -726,6 +904,15 @@ typedef struct RelOptInfo
 	List	  **partexprs;		/* Non-nullable partition key expressions. */
 	List	  **nullable_partexprs; /* Nullable partition key expressions. */
 	List	   *partitioned_child_rels; /* List of RT indexes. */
+
+	/*
+	 * In a subquery, if this base relation contains quals that must
+	 * be evaluated at "outerquery" locus, and the base relation has a
+	 * different locus, they are kept here in 'upperrestrictinfo', instead of
+	 * 'baserestrictinfo'.
+	 */
+	List	   *upperrestrictinfo;		/* RestrictInfo structures (if base
+										 * rel) */
 } RelOptInfo;
 
 /*
@@ -747,6 +934,13 @@ typedef struct RelOptInfo
 #define REL_HAS_ALL_PART_PROPS(rel)	\
 	((rel)->part_scheme && (rel)->boundinfo && (rel)->nparts > 0 && \
 	 (rel)->part_rels && (rel)->partexprs && (rel)->nullable_partexprs)
+
+/*
+ * Convenience macro to verify if a relation supports TID scans
+ */
+#define REL_SUPPORTS_TID_SCAN(rel) \
+	((rel)->relam != AO_ROW_TABLE_AM_OID &&	\
+	 (rel)->relam != AO_COLUMN_TABLE_AM_OID)
 
 /*
  * IndexOptInfo
@@ -836,6 +1030,7 @@ struct IndexOptInfo
 	bool		amhasgettuple;	/* does AM have amgettuple interface? */
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
 	bool		amcanparallel;	/* does AM support parallel scan? */
+
 	/* Rather than include amapi.h here, we declare amcostestimate like this */
 	void		(*amcostestimate) ();	/* AM's cost estimator */
 };
@@ -1016,6 +1211,30 @@ typedef struct PathKey
 	bool		pk_nulls_first; /* do NULLs come before normal values? */
 } PathKey;
 
+/*
+ * DistributionKeys
+ *
+ * Like PathKey, but is used to represent data distribution by hash across
+ * segments (DISTRIBUTED BY), rather than sort ordering.
+ */
+typedef struct DistributionKey
+{
+	NodeTag		type;
+
+	List	   *dk_eclasses;	/* the value that is distributed */
+
+	/* Hash operator family that determines the hash function to use */
+	Oid			dk_opfamily;
+} DistributionKey;
+
+/*
+ * CdbEquivClassIsConstant
+ *      is true if the equivalence class represents a pseudo-constant
+ *
+ * This is copied from MUST_BE_REDUNDANT in pathkeys.c
+ */
+#define CdbEquivClassIsConstant(eclass)						\
+	((eclass)->ec_has_const && !(eclass)->ec_below_outer_join)
 
 /*
  * PathTarget
@@ -1067,6 +1286,9 @@ typedef struct PathTarget
  * in join cases it's NIL because the set of relevant clauses varies depending
  * on how the join is formed.  The relevant clauses will appear in each
  * parameterized join path's joinrestrictinfo list, instead.
+ *
+ * GPDB: Like the rowcount in RelOptInfo, 'ppi_rows' is the total across all
+ * segments.
  */
 typedef struct ParamPathInfo
 {
@@ -1106,6 +1328,13 @@ typedef struct ParamPathInfo
  *
  * "pathkeys" is a List of PathKey nodes (see above), describing the sort
  * ordering of the path's output rows.
+ *
+ * GPDB: The 'rows' estimate, as well as al the costs, are *per node* values.
+ * That's similar to upstream parallel Paths, which also hold estimates
+ * per worker. But note that the 'rows', 'tuples', 'pages' in RelOptInfo
+ * are for the whole relation, across all segmnents! So you cannot generally
+ * assign RelOptInfo->rows to Path->rows, you will need to adjust it for
+ * the number of segments used to execute the Path..
  */
 typedef struct Path
 {
@@ -1127,13 +1356,79 @@ typedef struct Path
 	Cost		startup_cost;	/* cost expended before fetching any tuples */
 	Cost		total_cost;		/* total cost (assuming all tuples fetched) */
 
+	EstimatedBytes  memory;     /* executor RAM needed for Path + kids */
+
+	CdbPathLocus    locus;      /* distribution of the result tuples */
+
+	bool        motionHazard;   /* true => path contains a CdbMotion operator
+					without a slackening operator above it */
+
+	bool		rescannable;    /* CDB: true => path can accept ExecRescan call
+                                 */
 	List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of PathKey nodes; see above */
+
+	/*
+	 * sameslice_relids indicates which (base) relations will be executed in
+	 * the same slice, if this path is chosen. It is used in partition planning,
+	 * to decide if it's safe to create a PartitionSelector node that affects
+	 * other nodes at a distance. That can only be done if the PartitionSelector
+	 * would be executed in the same slice.
+	 *
+	 * This is a conservative estimate, it's always safe to set it to NULL if
+	 * unsure, and the worst that will happen is that you lose out on potential
+	 * optimizations.
+	 */
+	Relids		sameslice_relids;
 } Path;
+
+/* 
+ * AppendOnlyPath is used for append-only table scans. 
+ */
+typedef struct AppendOnlyPath
+{
+	Path		path;
+
+	/* for now it's pretty plain.. */
+} AppendOnlyPath;
+
+/*
+ * AOCSPath is used for append-only column store table scans.
+ */
+typedef struct AOCSPath
+{
+	Path		path;
+
+	/* for now it's pretty plain.. */
+} AOCSPath;
+
+/*
+ * PartitionSelectorPath is used for injection of partition selectors
+ */
+typedef struct PartitionSelectorPath
+{
+	Path		path;
+
+    Path	   *subpath;
+
+	int			paramid;
+	struct PartitionPruneInfo *part_prune_info;
+} PartitionSelectorPath;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
 #define PATH_REQ_OUTER(path)  \
 	((path)->param_info ? (path)->param_info->ppi_req_outer : (Relids) NULL)
+
+/*
+ * GPDB: CTEs are planned differently from upstream.
+ */
+typedef struct CtePath
+{
+	Path		path;
+
+	Path	   *subpath; /* if NULL, this is a shared CTE reference;
+						  * get the plan from the CtePlanInfo */
+} CtePath;
 
 /*----------
  * IndexPath represents an index scan over a single index.
@@ -1183,6 +1478,13 @@ typedef struct IndexPath
 	ScanDirection indexscandir;
 	Cost		indextotalcost;
 	Selectivity indexselectivity;
+    int         num_leading_eq; /* CDB: number of leading key columns matched by
+                                 * equality predicates in indexquals.  If equal
+                                 * to indexinfo->ncolumns, at most one distinct
+                                 * value of the index key can satisfy the quals.
+                                 * Further if the index is unique, we can assume
+                                 * at most one visible row satisfies the quals.
+                                 */
 } IndexPath;
 
 /*
@@ -1292,6 +1594,24 @@ typedef struct TidPath
 } TidPath;
 
 /*
+ * CdbMotionPath represents transmission of the child Path results
+ * from a set of sending processes to a set of receiving processes.
+ *
+ * Normally, the distribution is determined by the 'locus' of the path.
+ * However, if the distribution cannot be represented by a DistributionKeys,
+ * an alternative representation is to mark the locus as Strewn, and list
+ * the hash columns in 'policy'. In the normal case, 'policy' is not used.
+ */
+typedef struct CdbMotionPath
+{
+	Path		path;
+    Path	   *subpath;
+	bool		is_explicit_motion;
+
+	GpPolicy   *policy;
+} CdbMotionPath;
+
+/*
  * SubqueryScanPath represents a scan of an unflattened subquery-in-FROM
  *
  * Note that the subpath comes from a different planning domain; for example
@@ -1303,7 +1623,22 @@ typedef struct SubqueryScanPath
 {
 	Path		path;
 	Path	   *subpath;		/* path representing subquery execution */
+
+	/* In gpdb, we need to rebuild a SubqueryScanPath if MotionPath push down*/
+	Relids      required_outer;
 } SubqueryScanPath;
+
+/*
+ * TableFunctionScanPath represents a scan of an unflattened subquery-in-FROM
+ *
+ * Note that the subpath comes from a different planning domain, like in
+ * SubqueryScanPath.
+ */
+typedef struct TableFunctionScanPath
+{
+	Path		path;
+	Path	   *subpath;		/* path representing subquery execution */
+} TableFunctionScanPath;
 
 /*
  * ForeignPath represents a potential scan of a foreign table, foreign join
@@ -1426,6 +1761,18 @@ typedef struct MaterialPath
 {
 	Path		path;
 	Path	   *subpath;
+    bool        cdb_strict;     /* true  => consume and store all input tuples
+                                 *            before yielding output tuples
+                                 * false => memoize tuples as they stream thru
+                                 */
+
+	/*
+	 * If 'cdb_shield_child_from_rescans' is set, the sub-plan is not
+	 * rescannable, and the Material never call rescan on it. (The Material
+	 * node will keep all tuples, even if REWIND/BACKWARD/MARK executor flags
+	 * are not set.)
+	 */
+	bool		cdb_shield_child_from_rescans;
 } MaterialPath;
 
 /*
@@ -1505,6 +1852,15 @@ typedef struct JoinPath
 	 * parent RelOptInfo.
 	 */
 } JoinPath;
+
+/*
+ * IsJoinPath
+ *      Returns true if the node type is one that derives from JoinPath.
+ */
+#define IsJoinPath(node)        \
+    (IsA((node), NestPath) ||   \
+     IsA((node), HashPath) ||   \
+     IsA((node), MergePath))
 
 /*
  * A nested-loop path needs no special fields.
@@ -1593,6 +1949,20 @@ typedef struct ProjectionPath
 	Path		path;
 	Path	   *subpath;		/* path representing input source */
 	bool		dummypp;		/* true if no separate Result is needed */
+
+	/*
+	 * Greenplum specific field:
+	 * If force is true, we always create a Result plannode.
+	 */
+	bool        force;
+
+	List	   *cdb_restrict_clauses;
+
+	/*
+	 * CDB: projection with qual gp_execution_segment() = <segid>,
+	 * for such case we should consider update directdispatch info.
+	 */
+	List	   *direct_dispath_contentIds;
 } ProjectionPath;
 
 /*
@@ -1665,6 +2035,7 @@ typedef struct AggPath
 	double		numGroups;		/* estimated number of groups in input */
 	List	   *groupClause;	/* a list of SortGroupClause's */
 	List	   *qual;			/* quals (HAVING quals), if any */
+	bool		streaming;
 } AggPath;
 
 /*
@@ -1698,6 +2069,7 @@ typedef struct GroupingSetsPath
 	Path		path;
 	Path	   *subpath;		/* path representing input source */
 	AggStrategy aggstrategy;	/* basic strategy */
+	AggSplit	aggsplit;		/* agg-splitting mode, see nodes.h */
 	List	   *rollups;		/* list of RollupData */
 	List	   *qual;			/* quals (HAVING quals), if any */
 } GroupingSetsPath;
@@ -1721,6 +2093,22 @@ typedef struct WindowAggPath
 	Path	   *subpath;		/* path representing input source */
 	WindowClause *winclause;	/* WindowClause we'll be using */
 } WindowAggPath;
+
+/*
+ * TupleSplitPath represents tuple split by DQAs expr
+ *
+ * In gpdb, we need to split one input tuple to n output tuples for MultiDQA
+ * MPP execution. Each output tuple only contains one DQA expr and all GROUP BY
+ * exprs.
+ */
+typedef struct TupleSplitPath
+{
+	Path		path;
+	Path	   *subpath;		/* path representing input source */
+	List	   *groupClause;	/* a list of SortGroupClause's */
+
+	List	   *dqa_expr_lst;
+} TupleSplitPath;
 
 /*
  * SetOpPath represents a set-operation, that is INTERSECT or EXCEPT
@@ -1762,6 +2150,16 @@ typedef struct LockRowsPath
 } LockRowsPath;
 
 /*
+ * SplitUpdatePath
+ */
+typedef struct SplitUpdatePath
+{
+	Path		path;
+	Path	   *subpath;
+	Index		resultRelation;
+} SplitUpdatePath;
+
+/*
  * ModifyTablePath represents performing INSERT/UPDATE/DELETE modifications
  *
  * We represent most things that will be in the ModifyTable plan node
@@ -1777,6 +2175,7 @@ typedef struct ModifyTablePath
 	Index		rootRelation;	/* Root RT index, if target is partitioned */
 	bool		partColsUpdated;	/* some part key in hierarchy updated */
 	List	   *resultRelations;	/* integer list of RT indexes */
+	List	   *is_split_updates;
 	List	   *subpaths;		/* Path(s) producing source data */
 	List	   *subroots;		/* per-target-table PlannerInfos */
 	List	   *withCheckOptionLists;	/* per-target-table WCO lists */
@@ -1955,6 +2354,12 @@ typedef struct RestrictInfo
 	bool		leakproof;		/* true if known to contain no leaked Vars */
 
 	Index		security_level; /* see comment above */
+
+	/*
+	 * GPDB: does the clause refer to outer query levels? (Which implies that
+	 * it must be evaluted in the same slice as the parent query)
+	 */
+	bool		contain_outer_query_references;
 
 	/* The set of relids (varnos) actually referenced in the clause: */
 	Relids		clause_relids;
@@ -2240,6 +2645,18 @@ typedef struct AppendRelInfo
  * The idea is to evaluate the expression at (only) the ph_eval_at join level,
  * then allow it to bubble up like a Var until the ph_needed join level.
  * ph_needed has the same definition as attr_needed for a regular Var.
+ * ph_may_need is an initial estimate of ph_needed, formed using the
+ * syntactic locations of references to the PHV.  We need this in order to
+ * determine whether the PHV reference forces a join ordering constraint:
+ * if the PHV has to be evaluated below the nullable side of an outer join,
+ * and then used above that outer join, we must constrain join order to ensure
+ * there's a valid place to evaluate the PHV below the join.  The final
+ * actual ph_needed level might be lower than ph_may_need, but we can't
+ * determine that until later on.  Fortunately this doesn't matter for what
+ * we need ph_may_need for: if there's a PHV reference syntactically
+ * above the outer join, it's not going to be allowed to drop below the outer
+ * join, so we would come to the same conclusions about join order even if
+ * we had the final ph_needed value to compare to.
  *
  * The PlaceHolderVar's expression might contain LATERAL references to vars
  * coming from outside its syntactic scope.  If so, those rels are *not*
@@ -2340,6 +2757,22 @@ typedef struct PlannerParamItem
 } PlannerParamItem;
 
 /*
+ * A Mapping created by the QD during data loading that maps a
+ * relation id to the segfile number that is should be inserting
+ * into (in cases of inserting into a partitioned table the QD
+ * assigns a segno for each possible partition child relation).
+ * 
+ * It is a node because it needs to get serialized as a part of 
+ * CopyStmt.
+ */
+typedef struct SegfileMapNode
+{
+	NodeTag 	type;
+	Oid			relid;
+	int			segno;
+} SegfileMapNode;
+
+/*
  * When making cost estimates for a SEMI/ANTI/inner_unique join, there are
  * some correction factors that are needed in both nestloop and hash joins
  * to account for the fact that the executor can stop scanning inner rows
@@ -2382,6 +2815,7 @@ typedef struct JoinPathExtraData
 	SpecialJoinInfo *sjinfo;
 	SemiAntiJoinFactors semifactors;
 	Relids		param_source_rels;
+	List	   *redistribution_clauses;
 } JoinPathExtraData;
 
 /*
@@ -2402,6 +2836,12 @@ typedef struct JoinPathExtraData
 #define GROUPING_CAN_USE_SORT       0x0001
 #define GROUPING_CAN_USE_HASH       0x0002
 #define GROUPING_CAN_PARTIAL_AGG	0x0004
+/*
+ * PostgreSQL's executor doesn't support hashed aggregation
+ * with DISTINCT, because it's supposed to be "a certain loser",
+ * which is not that certion in Greenplum MPP architecture.
+ */
+#define GROUPING_CAN_USE_MPP_HASH   0x0008
 
 /*
  * What kind of partitionwise aggregation is in use?

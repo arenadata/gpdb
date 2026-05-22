@@ -95,6 +95,10 @@ be_lo_open(PG_FUNCTION_ARGS)
 	LargeObjectDesc *lobjDesc;
 	int			fd;
 
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
+
 #if FSDB
 	elog(DEBUG4, "lo_open(%u,%d)", lobjId, mode);
 #endif
@@ -112,6 +116,10 @@ Datum
 be_lo_close(PG_FUNCTION_ARGS)
 {
 	int32		fd = PG_GETARG_INT32(0);
+
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
 
 	if (fd < 0 || fd >= cookies_size || cookies[fd] == NULL)
 		ereport(ERROR,
@@ -198,6 +206,10 @@ be_lo_lseek(PG_FUNCTION_ARGS)
 	int32		whence = PG_GETARG_INT32(2);
 	int64		status;
 
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
+
 	if (fd < 0 || fd >= cookies_size || cookies[fd] == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -238,6 +250,10 @@ be_lo_creat(PG_FUNCTION_ARGS)
 {
 	Oid			lobjId;
 
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
+
 	/*
 	 * We don't actually need to store into fscxt, but create it anyway to
 	 * ensure that AtEOXact_LargeObject knows there is state to clean up
@@ -253,6 +269,10 @@ Datum
 be_lo_create(PG_FUNCTION_ARGS)
 {
 	Oid			lobjId = PG_GETARG_OID(0);
+
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
 
 	/*
 	 * We don't actually need to store into fscxt, but create it anyway to
@@ -270,6 +290,10 @@ be_lo_tell(PG_FUNCTION_ARGS)
 {
 	int32		fd = PG_GETARG_INT32(0);
 	int64		offset;
+
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
 
 	if (fd < 0 || fd >= cookies_size || cookies[fd] == NULL)
 		ereport(ERROR,
@@ -308,6 +332,10 @@ Datum
 be_lo_unlink(PG_FUNCTION_ARGS)
 {
 	Oid			lobjId = PG_GETARG_OID(0);
+
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
 
 	/*
 	 * Must be owner of the large object.  It would be cleaner to check this
@@ -356,6 +384,10 @@ be_loread(PG_FUNCTION_ARGS)
 	bytea	   *retval;
 	int			totalread;
 
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
+
 	if (len < 0)
 		len = 0;
 
@@ -373,6 +405,10 @@ be_lowrite(PG_FUNCTION_ARGS)
 	bytea	   *wbuf = PG_GETARG_BYTEA_PP(1);
 	int			bytestowrite;
 	int			totalwritten;
+
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
 
 	bytestowrite = VARSIZE_ANY_EXHDR(wbuf);
 	totalwritten = lo_write(fd, VARDATA_ANY(wbuf), bytestowrite);
@@ -392,6 +428,10 @@ be_lo_import(PG_FUNCTION_ARGS)
 {
 	text	   *filename = PG_GETARG_TEXT_PP(0);
 
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
+
 	PG_RETURN_OID(lo_import_internal(filename, InvalidOid));
 }
 
@@ -404,6 +444,10 @@ be_lo_import_with_oid(PG_FUNCTION_ARGS)
 {
 	text	   *filename = PG_GETARG_TEXT_PP(0);
 	Oid			oid = PG_GETARG_OID(1);
+
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
 
 	PG_RETURN_OID(lo_import_internal(filename, oid));
 }
@@ -570,6 +614,10 @@ be_lo_truncate(PG_FUNCTION_ARGS)
 {
 	int32		fd = PG_GETARG_INT32(0);
 	int32		len = PG_GETARG_INT32(1);
+
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("large objects are not supported")));
 
 	lo_truncate_internal(fd, len);
 	PG_RETURN_INT32(0);

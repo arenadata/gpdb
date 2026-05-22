@@ -64,6 +64,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 	Query	   *query;
 	List	   *query_list;
 	int			i;
+	NodeTag		srctag;  /* GPDB */
 
 	/*
 	 * Disallow empty-string statement name (conflicts with protocol-level
@@ -148,15 +149,22 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
+			srctag = T_SelectStmt;
+			break;
 		case CMD_INSERT:
+			srctag = T_InsertStmt;
+			break;
 		case CMD_UPDATE:
+			srctag = T_UpdateStmt;
+			break;
 		case CMD_DELETE:
-			/* OK */
+			srctag = T_DeleteStmt;
 			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION),
 					 errmsg("utility statements cannot be prepared")));
+			srctag = T_Query;	/* keep compiler quiet */
 			break;
 	}
 
@@ -167,6 +175,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 	CompleteCachedPlan(plansource,
 					   query_list,
 					   NULL,
+					   srctag,
 					   argtypes,
 					   nargs,
 					   NULL,
@@ -243,21 +252,28 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 									   entry->plansource->query_string);
 
 	/* Replan if needed, and increment plan refcount for portal */
-	cplan = GetCachedPlan(entry->plansource, paramLI, false, NULL);
+	cplan = GetCachedPlan(entry->plansource, paramLI, false, NULL, intoClause);
 	plan_list = cplan->stmt_list;
 
 	/*
-	 * For CREATE TABLE ... AS EXECUTE, we must verify that the prepared
-	 * statement is one that produces tuples.  Currently we insist that it be
-	 * a plain old SELECT.  In future we might consider supporting other
-	 * things such as INSERT ... RETURNING, but there are a couple of issues
-	 * to be settled first, notably how WITH NO DATA should be handled in such
-	 * a case (do we really want to suppress execution?) and how to pass down
-	 * the OID-determining eflags (PortalStart won't handle them in such a
-	 * case, and for that matter it's not clear the executor will either).
+	 * For CREATE TABLE / AS EXECUTE, we must make a copy of the stored query
+	 * so that we can modify its destination (yech, but this has always been
+	 * ugly).  For regular EXECUTE we can just use the cached query, since the
+	 * executor is read-only.
 	 *
-	 * For CREATE TABLE ... AS EXECUTE, we also have to ensure that the proper
-	 * eflags and fetch count are passed to PortalStart/PortalRun.
+	 * In GPDB, we use the current parameter values in the planning, because
+	 * that potentially gives a better plan. It also means that we have to
+	 * re-plan the query on every EXECUTE, but for long-running OLAP queries
+	 * that GPDB is typically used for, that seems like a good tradeoff.
+	 *
+	 * In GPDB the plan for CREATE TABLE / AS EXECUTE also depends on the
+	 * DISTRIBUTED BY clause of the target table. For example, if the table is
+	 * distributed by 'column1', then the rows to insert must be moved to the
+	 * correct nodes, determined by 'column1'. That's a very different plan
+	 * than what you get if you run the plain SELECT from the master; in that
+	 * case all the output rows will be fetched into the master. Because of
+	 * that, we also have to pass the into-clause to
+	 * RevalidateCachedPlanWithParams. (MPP-8135)
 	 */
 	if (intoClause)
 	{
@@ -272,6 +288,9 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("prepared statement is not a SELECT")));
+
+		/*GPDB: Save the target information in PlannedStmt */
+		pstmt->intoClause = copyObject(intoClause);
 
 		/* Set appropriate eflags */
 		eflags = GetIntoRelEFlags(intoClause);
@@ -292,6 +311,7 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 	PortalDefineQuery(portal,
 					  NULL,
 					  query_string,
+					  entry->plansource->sourceTag,
 					  entry->plansource->commandTag,
 					  plan_list,
 					  cplan);
@@ -299,7 +319,7 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 	/*
 	 * Run the portal as appropriate.
 	 */
-	PortalStart(portal, paramLI, eflags, GetActiveSnapshot());
+	PortalStart(portal, paramLI, eflags, GetActiveSnapshot(), NULL);
 
 	(void) PortalRun(portal, count, false, true, dest, dest, completionTag);
 
@@ -438,6 +458,8 @@ InitQueryHashTable(void)
  * the specified key.  The passed CachedPlanSource should be "unsaved"
  * in case we get an error here; we'll save it once we've created the hash
  * table entry.
+ * The original query nodetag is saved as well, only used if resource
+ * scheduling is enabled.
  */
 void
 StorePreparedStatement(const char *stmt_name,
@@ -642,6 +664,25 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	if (!entry->plansource->fixed_result)
 		elog(ERROR, "EXPLAIN EXECUTE does not support variable-result cached plans");
 
+	/*
+	 * In Greenplum we first need to evaluate the parameters since we pass
+	 * paramLI to RevalidateCachedPlanWithParams(), while PostgreSQL uses
+	 * RevalidateCachedPlan().
+	 */
+
+	/* Evaluate parameters, if any */
+	if (entry->plansource->num_params)
+	{
+		/*
+		 * Need an EState to evaluate parameters; must not delete it till end
+		 * of query, in case parameters are pass-by-reference.
+		 */
+		estate = CreateExecutorState();
+		estate->es_param_list_info = params;
+		paramLI = EvaluateParams(entry, execstmt->params,
+								 queryString, estate);
+	}
+
 	query_string = entry->plansource->query_string;
 
 	/* Evaluate parameters, if any */
@@ -660,7 +701,7 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	}
 
 	/* Replan if needed, and acquire a transient refcount */
-	cplan = GetCachedPlan(entry->plansource, paramLI, true, queryEnv);
+	cplan = GetCachedPlan(entry->plansource, paramLI, true, queryEnv, into);
 
 	INSTR_TIME_SET_CURRENT(planduration);
 	INSTR_TIME_SUBTRACT(planduration, planstart);
@@ -674,7 +715,7 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 
 		if (pstmt->commandType != CMD_UTILITY)
 			ExplainOnePlan(pstmt, into, es, query_string, paramLI, queryEnv,
-						   &planduration);
+						   &planduration, 0);
 		else
 			ExplainOneUtility(pstmt->utilityStmt, into, es, query_string,
 							  paramLI, queryEnv);

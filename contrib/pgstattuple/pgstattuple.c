@@ -258,6 +258,9 @@ pgstat_relation(Relation rel, FunctionCallInfo fcinfo)
 		case RELKIND_MATVIEW:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_SEQUENCE:
+		case RELKIND_AOSEGMENTS:
+		case RELKIND_AOBLOCKDIR:
+		case RELKIND_AOVISIMAP:
 			return pgstat_heap(rel, fcinfo);
 		case RELKIND_INDEX:
 			switch (rel->rd_rel->relam)
@@ -349,7 +352,7 @@ pgstat_heap(Relation rel, FunctionCallInfo fcinfo)
 		/* must hold a buffer lock to call HeapTupleSatisfiesVisibility */
 		LockBuffer(hscan->rs_cbuf, BUFFER_LOCK_SHARE);
 
-		if (HeapTupleSatisfiesVisibility(tuple, &SnapshotDirty, hscan->rs_cbuf))
+		if (HeapTupleSatisfiesVisibility(rel, tuple, &SnapshotDirty, hscan->rs_cbuf))
 		{
 			stat.tuple_len += tuple->t_len;
 			stat.tuple_count++;

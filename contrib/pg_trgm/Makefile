@@ -10,6 +10,7 @@ DATA = pg_trgm--1.3--1.4.sql \
 PGFILEDESC = "pg_trgm - trigram matching"
 
 REGRESS = pg_trgm pg_word_trgm pg_strict_word_trgm
+REGRESS_OPTS += --init-file=$(top_srcdir)/src/test/regress/init_file
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

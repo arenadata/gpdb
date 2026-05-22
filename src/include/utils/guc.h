@@ -4,6 +4,8 @@
  * External declarations pertaining to backend/utils/misc/guc.c and
  * backend/utils/misc/guc-file.l
  *
+ * Portions Copyright (c) 2007-2010, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Copyright (c) 2000-2019, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
@@ -17,6 +19,14 @@
 #include "tcop/dest.h"
 #include "utils/array.h"
 
+#define MAX_AUTHENTICATION_TIMEOUT (600)
+#define MAX_PRE_AUTH_DELAY (60)
+/*
+ * One connection must be reserved for FTS to always able to probe
+ * primary. So, this acts as lower limit on reserved superuser connections on
+ * primaries.
+ */
+#define RESERVED_FTS_CONNECTIONS (1)
 
 /* upper limit for GUC variables measured in kilobytes of memory */
 /* note that various places assume the byte size fits in a "long" variable */
@@ -114,6 +124,7 @@ typedef enum
 	PGC_S_USER,					/* per-user setting */
 	PGC_S_DATABASE_USER,		/* per-user-and-database setting */
 	PGC_S_CLIENT,				/* from client connection request */
+	PGC_S_RESGROUP,				/* per-resgroup setting */
 	PGC_S_OVERRIDE,				/* special case to forcibly set default */
 	PGC_S_INTERACTIVE,			/* dividing line for error reporting */
 	PGC_S_TEST,					/* test per-database or per-user setting */
@@ -231,6 +242,18 @@ typedef enum
 
 #define GUC_UNIT				(GUC_UNIT_MEMORY | GUC_UNIT_TIME)
 
+/* GPDB speific */
+#define GUC_DISALLOW_USER_SET  0x00200000 /* Do not allow this GUC to be set by the user */
+#define GUC_GPDB_NEED_SYNC     0x00400000  /* guc value is synced between master and primary */
+#define GUC_GPDB_NO_SYNC       0x00800000  /* guc value is not synced between master and primary */
+
+/* GUC lists for gp_guc_list_init().  (List of struct config_generic) */
+extern List    *gp_guc_list_for_explain;
+extern List    *gp_guc_list_for_no_plan;
+
+/* Changed GUC which need to be pass to QE from QD */
+extern List *gp_guc_restore_list;
+extern bool gp_guc_need_restore;
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
 extern bool log_duration;
@@ -239,10 +262,80 @@ extern bool Debug_print_parse;
 extern bool Debug_print_rewritten;
 extern bool Debug_pretty_print;
 
+extern bool	Debug_print_full_dtm;
+extern bool	Debug_print_snapshot_dtm;
+extern bool Debug_disable_distributed_snapshot;
+extern bool Debug_abort_after_distributed_prepared;
+extern bool Debug_appendonly_print_insert;
+extern bool Debug_appendonly_print_insert_tuple;
+extern bool Debug_appendonly_print_scan;
+extern bool Debug_appendonly_print_scan_tuple;
+extern bool Debug_appendonly_print_delete;
+extern bool Debug_appendonly_print_storage_headers;
+extern bool Debug_appendonly_use_no_toast;
+extern bool Debug_appendonly_print_blockdirectory;
+extern bool Debug_appendonly_print_read_block;
+extern bool Debug_appendonly_print_append_block;
+extern bool Debug_appendonly_print_segfile_choice;
+extern bool test_AppendOnlyHash_eviction_vs_just_marking_not_inuse;
+extern bool Debug_appendonly_print_datumstream;
+extern bool Debug_appendonly_print_visimap;
+extern bool Debug_appendonly_print_compaction;
+extern bool Debug_bitmap_print_insert;
+extern bool enable_checksum_on_tables;
+extern int  gp_max_local_distributed_cache;
+extern bool gp_local_distributed_cache_stats;
+extern bool gp_appendonly_verify_block_checksums;
+extern bool gp_appendonly_verify_write_block;
+extern bool gp_appendonly_compaction;
+
+/*
+ * Threshold of the ratio of dirty data in a segment file
+ * over which the segment file will be compacted during
+ * lazy vacuum.
+ * 0 indicates compact whenever there is hidden data.
+ * 10 indicates that a segment should be compacted when more than
+ * 10% of the tuples are hidden.
+ */
+extern int  gp_appendonly_compaction_threshold;
+extern bool gp_heap_require_relhasoids_match;
+extern bool	debug_xlog_record_read;
+extern bool Debug_cancel_print;
+extern bool Debug_datumstream_write_print_small_varlena_info;
+extern bool Debug_datumstream_write_print_large_varlena_info;
+extern bool Debug_datumstream_read_check_large_varlena_integrity;
+extern bool Debug_datumstream_block_read_check_integrity;
+extern bool Debug_datumstream_block_write_check_integrity;
+extern bool Debug_datumstream_read_print_varlena_info;
+extern bool Debug_datumstream_write_use_small_initial_buffers;
+extern bool	Debug_database_command_print;
+extern bool Debug_resource_group;
+extern bool gp_create_table_random_default_distribution;
+extern bool gp_allow_non_uniform_partitioning_ddl;
+extern int  dtx_phase2_retry_second;
+extern bool gp_log_suboverflow_statement;
+/* WAL replication debug gucs */
+extern bool debug_walrepl_snd;
+extern bool debug_walrepl_syncrep;
+extern bool debug_walrepl_rcv;
+extern bool debug_basebackup;
+
+extern int rep_lag_avoidance_threshold;
+
+extern bool gp_maintenance_mode;
+extern bool gp_maintenance_conn;
+extern bool allow_segment_DML;
+
+extern bool gp_ignore_error_table;
+
+extern bool	Debug_dtm_action_primary;
+
+extern bool gp_log_optimization_time;
 extern bool log_parser_stats;
 extern bool log_planner_stats;
 extern bool log_executor_stats;
 extern bool log_statement_stats;
+extern bool log_dispatch_stats;
 extern bool log_btree_build_stats;
 
 extern PGDLLIMPORT bool check_function_bodies;
@@ -276,6 +369,262 @@ extern int	tcp_user_timeout;
 #ifdef TRACE_SORT
 extern bool trace_sort;
 #endif
+
+extern bool vmem_process_interrupt;
+extern bool execute_pruned_plan;
+
+extern bool gp_enable_relsize_collection;
+
+/* Debug DTM Action */
+typedef enum
+{
+	DEBUG_DTM_ACTION_NONE = 0,
+	DEBUG_DTM_ACTION_DELAY = 1,
+	DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND = 2,
+	DEBUG_DTM_ACTION_FAIL_END_COMMAND = 3,
+	DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND = 4,
+
+	DEBUG_DTM_ACTION_LAST = 4
+}	DebugDtmAction;
+
+/* Debug DTM Action */
+typedef enum
+{
+	DEBUG_DTM_ACTION_TARGET_NONE = 0,
+	DEBUG_DTM_ACTION_TARGET_PROTOCOL = 1,
+	DEBUG_DTM_ACTION_TARGET_SQL = 2,
+
+	DEBUG_DTM_ACTION_TARGET_LAST = 2
+}	DebugDtmActionTarget;
+
+extern char *Debug_dtm_action_sql_command_tag;
+extern char *Debug_dtm_action_str;
+extern char *Debug_dtm_action_target_str;
+extern int Debug_dtm_action;
+extern int Debug_dtm_action_target;
+extern int Debug_dtm_action_protocol;
+extern int Debug_dtm_action_segment;
+extern int Debug_dtm_action_nestinglevel;
+
+
+/* Enable check for compatibility of encoding and locale in createdb */
+extern bool gp_encoding_check_locale_compatibility;
+
+
+extern int	gp_connection_send_timeout;
+
+extern bool create_restartpoint_on_ckpt_record_replay;
+
+/* Macros to define the level of memory accounting to show in EXPLAIN ANALYZE */
+#define EXPLAIN_MEMORY_VERBOSITY_SUPPRESS	0 /* Suppress memory reporting in explain analyze */
+#define EXPLAIN_MEMORY_VERBOSITY_SUMMARY	1 /* Summary of memory usage for each owner in explain analyze */
+#define EXPLAIN_MEMORY_VERBOSITY_DETAIL		2 /* Detail memory accounting tree for each slice in explain analyze */
+
+/* ORCA related definitions */
+#define OPTIMIZER_XFORMS_COUNT 400 /* number of transformation rules */
+
+/* types of optimizer failures */
+#define OPTIMIZER_ALL_FAIL 			0  /* all failures */
+#define OPTIMIZER_UNEXPECTED_FAIL 	1  /* unexpected failures */
+#define OPTIMIZER_EXPECTED_FAIL 	2 /* expected failures */
+
+/* optimizer minidump mode */
+#define OPTIMIZER_MINIDUMP_FAIL  	0  /* create optimizer minidump on failure */
+#define OPTIMIZER_MINIDUMP_ALWAYS 	1  /* always create optimizer minidump */
+
+/* optimizer cost model */
+#define OPTIMIZER_GPDB_LEGACY           0       /* GPDB's legacy cost model */
+#define OPTIMIZER_GPDB_CALIBRATED       1       /* GPDB's calibrated cost model */
+#define OPTIMIZER_GPDB_EXPERIMENTAL     2       /* GPDB's experimental cost model */
+
+
+/* Optimizer related gucs */
+extern bool	optimizer;
+extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
+extern bool	optimizer_log;
+extern int  optimizer_log_failure;
+extern bool	optimizer_trace_fallback;
+extern int optimizer_minidump;
+extern int  optimizer_cost_model;
+extern bool optimizer_metadata_caching;
+extern int	optimizer_mdcache_size;
+
+/* Optimizer debugging GUCs */
+extern bool optimizer_print_query;
+extern bool optimizer_print_plan;
+extern bool optimizer_print_xform;
+extern bool	optimizer_print_memo_after_exploration;
+extern bool	optimizer_print_memo_after_implementation;
+extern bool	optimizer_print_memo_after_optimization;
+extern bool	optimizer_print_job_scheduler;
+extern bool	optimizer_print_expression_properties;
+extern bool	optimizer_print_group_properties;
+extern bool	optimizer_print_optimization_context;
+extern bool optimizer_print_optimization_stats;
+extern bool optimizer_print_xform_results;
+
+/* array of xforms disable flags */
+extern bool optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
+extern char *optimizer_search_strategy_path;
+
+/* GUCs to tell Optimizer to enable a physical operator */
+extern bool optimizer_enable_nljoin;
+extern bool optimizer_enable_indexjoin;
+extern bool optimizer_enable_motions_masteronly_queries;
+extern bool optimizer_enable_motions;
+extern bool optimizer_enable_motion_broadcast;
+extern bool optimizer_enable_motion_gather;
+extern bool optimizer_enable_motion_redistribute;
+extern bool optimizer_enable_sort;
+extern bool optimizer_enable_materialize;
+extern bool optimizer_enable_partition_propagation;
+extern bool optimizer_enable_partition_selection;
+extern bool optimizer_enable_outerjoin_rewrite;
+extern bool optimizer_enable_multiple_distinct_aggs;
+extern bool optimizer_enable_hashjoin_redistribute_broadcast_children;
+extern bool optimizer_enable_broadcast_nestloop_outer_child;
+extern bool optimizer_enable_streaming_material;
+extern bool optimizer_enable_gather_on_segment_for_dml;
+extern bool optimizer_enable_assert_maxonerow;
+extern bool optimizer_enable_constant_expression_evaluation;
+extern bool optimizer_enable_bitmapscan;
+extern bool optimizer_enable_outerjoin_to_unionall_rewrite;
+extern bool optimizer_enable_ctas;
+extern bool optimizer_enable_dml;
+extern bool	optimizer_enable_dml_constraints;
+extern bool optimizer_enable_direct_dispatch;
+extern bool optimizer_enable_master_only_queries;
+extern bool optimizer_enable_hashjoin;
+extern bool optimizer_enable_dynamictablescan;
+extern bool optimizer_enable_indexscan;
+extern bool optimizer_enable_indexonlyscan;
+extern bool optimizer_enable_tablescan;
+extern bool optimizer_enable_eageragg;
+extern bool optimizer_expand_fulljoin;
+extern bool optimizer_enable_hashagg;
+extern bool optimizer_enable_groupagg;
+extern bool optimizer_enable_mergejoin;
+extern bool optimizer_prune_unused_columns;
+extern bool optimizer_enable_redistribute_nestloop_loj_inner_child;
+extern bool optimizer_force_comprehensive_join_implementation;
+extern bool optimizer_enable_replicated_table;
+
+/* Optimizer plan enumeration related GUCs */
+extern bool optimizer_enumerate_plans;
+extern bool optimizer_sample_plans;
+extern int	optimizer_plan_id;
+extern int	optimizer_samples_number;
+
+/* Optimizer Just In Time (JIT) compilation related GUCs*/
+extern  bool	optimizer_jit_enabled;
+extern  double  optimizer_jit_above_cost;
+extern  double  optimizer_jit_inline_above_cost;
+extern  double  optimizer_jit_optimize_above_cost;
+
+/* Cardinality estimation related GUCs used by the Optimizer */
+extern bool optimizer_extract_dxl_stats;
+extern bool optimizer_extract_dxl_stats_all_nodes;
+extern bool optimizer_print_missing_stats;
+extern double optimizer_damping_factor_filter;
+extern double optimizer_damping_factor_join;
+extern double optimizer_damping_factor_groupby;
+extern bool optimizer_dpe_stats;
+extern bool optimizer_enable_derive_stats_all_groups;
+
+/* Costing or tuning related GUCs used by the Optimizer */
+extern int optimizer_segments;
+extern int optimizer_penalize_broadcast_threshold;
+extern double optimizer_cost_threshold;
+extern double optimizer_nestloop_factor;
+extern double optimizer_sort_factor;
+
+/* Optimizer hints */
+extern int optimizer_array_expansion_threshold;
+extern int optimizer_join_order_threshold;
+extern int optimizer_join_order;
+extern int optimizer_join_arity_for_associativity_commutativity;
+extern int optimizer_cte_inlining_bound;
+extern int optimizer_push_group_by_below_setop_threshold;
+extern int optimizer_xform_bind_threshold;
+extern int optimizer_skew_factor;
+extern bool optimizer_force_multistage_agg;
+extern bool optimizer_force_three_stage_scalar_dqa;
+extern bool optimizer_force_expanded_distinct_aggs;
+extern bool optimizer_force_agg_skew_avoidance;
+extern bool optimizer_penalize_skew;
+extern bool optimizer_prune_computed_columns;
+extern bool optimizer_push_requirements_from_consumer_to_producer;
+extern bool optimizer_enforce_subplans;
+extern bool optimizer_apply_left_outer_to_union_all_disregarding_stats;
+extern bool optimizer_use_external_constant_expression_evaluation_for_ints;
+extern bool optimizer_remove_order_below_dml;
+extern bool optimizer_multilevel_partitioning;
+extern bool optimizer_parallel_union;
+extern bool optimizer_array_constraints;
+extern bool optimizer_cte_inlining;
+extern bool optimizer_enable_space_pruning;
+extern bool optimizer_enable_associativity;
+extern bool optimizer_enable_range_predicate_dpe;
+
+/* Analyze related GUCs for Optimizer */
+extern bool optimizer_analyze_root_partition;
+extern bool optimizer_analyze_midlevel_partition;
+
+extern bool optimizer_use_gpdb_allocators;
+
+/* optimizer GUCs for replicated table */
+extern bool optimizer_replicated_table_insert;
+
+/* GUCs for slice table*/
+extern int	gp_max_slices;
+
+/**
+ * Enable logging of DPE match in optimizer.
+ */
+extern bool	optimizer_partition_selection_log;
+
+/* optimizer join heuristic models */
+#define JOIN_ORDER_IN_QUERY                 0
+#define JOIN_ORDER_GREEDY_SEARCH            1
+#define JOIN_ORDER_EXHAUSTIVE_SEARCH        2
+#define JOIN_ORDER_EXHAUSTIVE2_SEARCH       3
+
+/* Time based authentication GUC */
+extern char  *gp_auth_time_override_str;
+
+extern char  *gp_default_storage_options;
+
+/* copy GUC */
+extern bool gp_enable_segment_copy_checking;
+
+extern int writable_external_table_bufsize;
+
+/* Enable passing of query constraints to external table providers */
+extern bool gp_external_enable_filter_pushdown;
+
+/* Enable the Global Deadlock Detector */
+extern bool gp_enable_global_deadlock_detector;
+
+extern bool gp_log_endpoints;
+
+extern bool gp_allow_date_field_width_5digits;
+
+typedef enum
+{
+	INDEX_CHECK_NONE,
+	INDEX_CHECK_SYSTEM,
+	INDEX_CHECK_ALL
+} IndexCheckType;
+
+extern IndexCheckType gp_indexcheck_insert;
+
+/* Storage option names */
+#define SOPT_FILLFACTOR    "fillfactor"
+#define SOPT_BLOCKSIZE     "blocksize"
+#define SOPT_COMPTYPE      "compresstype"
+#define SOPT_COMPLEVEL     "compresslevel"
+#define SOPT_CHECKSUM      "checksum"
+#define SOPT_ANALYZEHLL    "analyze_hll_non_part_table"
 
 /*
  * Functions exported by guc.c
@@ -373,6 +722,7 @@ extern void GetConfigOptionByNum(int varnum, const char **values, bool *noshow);
 extern int	GetNumConfigOptions(void);
 
 extern void SetPGVariable(const char *name, List *args, bool is_local);
+extern void SetPGVariableOptDispatch(const char *name, List *args, bool is_local, bool gp_dispatch);
 extern void GetPGVariable(const char *name, DestReceiver *dest);
 extern TupleDesc GetPGVariableResultDesc(const char *name);
 
@@ -384,6 +734,13 @@ extern void ProcessGUCArray(ArrayType *array,
 extern ArrayType *GUCArrayAdd(ArrayType *array, const char *name, const char *value);
 extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
 extern ArrayType *GUCArrayReset(ArrayType *array);
+
+extern void pg_timezone_abbrev_initialize(void);
+
+extern struct config_generic *find_option(const char *name,
+				bool create_placeholders, int elevel);
+
+extern void set_gp_replication_config(const char *name, const char *value);
 
 #ifdef EXEC_BACKEND
 extern void write_nondefault_variables(GucContext context);
@@ -434,5 +791,19 @@ extern void assign_search_path(const char *newval, void *extra);
 /* in access/transam/xlog.c */
 extern bool check_wal_buffers(int *newval, void **extra, GucSource source);
 extern void assign_xlog_sync_method(int new_sync_method, void *extra);
+
+/* in cdb/cdbvars.c */
+extern bool check_gp_role(char **newval, void **extra, GucSource source);
+extern void assign_gp_role(const char *newval, void *extra);
+extern const char *show_gp_role(void);
+extern void assign_gp_write_shared_snapshot(bool newval, void *extra);
+extern bool gpvars_check_gp_resource_manager_policy(char **newval, void **extra, GucSource source);
+extern void gpvars_assign_gp_resource_manager_policy(const char *newval, void *extra);
+extern const char *gpvars_show_gp_resource_manager_policy(void);
+extern const char *gpvars_assign_gp_resqueue_memory_policy(const char *newval, bool doit, GucSource source);
+extern const char *gpvars_show_gp_resqueue_memory_policy(void);
+extern bool gpvars_check_statement_mem(int *newval, void **extra, GucSource source);
+extern int guc_name_compare(const char *namea, const char *nameb);
+extern void DispatchSyncPGVariable(struct config_generic * gconfig);
 
 #endif							/* GUC_H */

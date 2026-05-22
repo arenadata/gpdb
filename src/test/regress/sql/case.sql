@@ -6,7 +6,7 @@
 CREATE TABLE CASE_TBL (
   i integer,
   f double precision
-);
+) distributed by (f);
 
 CREATE TABLE CASE2_TBL (
   i integer,
@@ -68,8 +68,8 @@ SELECT CASE WHEN 1=0 THEN 1/0 WHEN 1=1 THEN 1 ELSE 2/0 END;
 SELECT CASE 1 WHEN 0 THEN 1/0 WHEN 1 THEN 1 ELSE 2/0 END;
 
 -- However we do not currently suppress folding of potentially
--- reachable subexpressions
-SELECT CASE WHEN i > 100 THEN 1/0 ELSE 0 END FROM case_tbl;
+-- reachable subexpressions  (but MPP does... So we get different answer from postgres).
+--SELECT CASE WHEN i > 100 THEN 1/0 ELSE 0 END FROM case_tbl;
 
 -- Test for cases involving untyped literals in test expression
 SELECT CASE 'a' WHEN 'a' THEN 1 ELSE 2 END;

@@ -1,0 +1,58 @@
+<!--
+PostgreSQL documentation
+-->
+
+<refentry id="sql-dropprotocol">
+ <indexterm zone="sql-dropprotocol">
+  <primary>DROP PROTOCOL</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP PROTOCOL</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP PROTOCOL</refname>
+  <refpurpose>remove a custom access protocol</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+
+DROP PROTOCOL [IF EXISTS] name
+
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+ </refsect1>
+
+</refentry>

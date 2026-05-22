@@ -18,24 +18,38 @@ CREATE FUNCTION f_leak (text)
        RETURNS bool LANGUAGE 'plpgsql' COST 0.0000001
        AS 'BEGIN RAISE NOTICE ''f_leak => %'', $1; RETURN true; END';
 
+-- GPDB: force distribute all tables onto a single segment
+-- to guarantee deterministic ordering of NOTICE later:
+-- they are otherwise sensitive to timing and network.
 CREATE TABLE customer (
-       cid      int primary key,
+       cid      int,
        name     text not null,
        tel      text,
-       passwd	text
-);
+       passwd	text,
+       dist_key int default 1,
+       unique (dist_key, cid)
+) DISTRIBUTED BY (dist_key);
 
 CREATE TABLE credit_card (
-       cid      int references customer(cid),
+       cid      int,
        cnum     text,
-       climit   int
-);
+       climit   int,
+       dist_key int default 1,
+       foreign key (dist_key, cid) references customer(dist_key, cid)
+) DISTRIBUTED BY (dist_key);
 
 CREATE TABLE credit_usage (
-       cid      int references customer(cid),
+       cid      int,
        ymd      date,
-       usage    int
-);
+       usage    int,
+       dist_key int default 1,
+       foreign key (dist_key, cid) references customer(dist_key, cid)
+) DISTRIBUTED BY (dist_key);
+
+-- start_ignore
+-- Force planner to use default stats
+SET gp_autostats_mode = none;
+-- end_ignore
 
 INSERT INTO customer
        VALUES (101, 'regress_alice', '+81-12-3456-7890', 'passwd123'),
@@ -57,21 +71,21 @@ INSERT INTO credit_usage
 	      (103, '2011-10-15', 480);
 
 CREATE VIEW my_property_normal AS
-       SELECT * FROM customer WHERE name = current_user;
+       SELECT cid, name, tel, passwd FROM customer WHERE name = current_user;
 CREATE VIEW my_property_secure WITH (security_barrier) AS
-       SELECT * FROM customer WHERE name = current_user;
+       SELECT cid, name, tel, passwd FROM customer WHERE name = current_user;
 
 CREATE VIEW my_credit_card_normal AS
-       SELECT * FROM customer l NATURAL JOIN credit_card r
+       SELECT cid, name, tel, passwd, cnum, climit FROM customer l NATURAL JOIN credit_card r
        WHERE l.name = current_user;
 CREATE VIEW my_credit_card_secure WITH (security_barrier) AS
-       SELECT * FROM customer l NATURAL JOIN credit_card r
+       SELECT cid, name, tel, passwd, cnum, climit FROM customer l NATURAL JOIN credit_card r
        WHERE l.name = current_user;
 
 CREATE VIEW my_credit_card_usage_normal AS
-       SELECT * FROM my_credit_card_secure l NATURAL JOIN credit_usage r;
+       SELECT l.*, ymd, usage FROM my_credit_card_secure l NATURAL JOIN credit_usage r;
 CREATE VIEW my_credit_card_usage_secure WITH (security_barrier) AS
-       SELECT * FROM my_credit_card_secure l NATURAL JOIN credit_usage r;
+       SELECT l.*, ymd, usage FROM my_credit_card_secure l NATURAL JOIN credit_usage r;
 
 GRANT SELECT ON my_property_normal TO public;
 GRANT SELECT ON my_property_secure TO public;

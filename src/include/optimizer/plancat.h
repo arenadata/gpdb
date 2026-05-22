@@ -4,6 +4,8 @@
  *	  prototypes for plancat.c.
  *
  *
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -32,6 +34,14 @@ extern List *infer_arbiter_indexes(PlannerInfo *root);
 
 extern void estimate_rel_size(Relation rel, int32 *attr_widths,
 							  BlockNumber *pages, double *tuples, double *allvisfrac);
+
+extern void cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
+							  Relation      rel,
+							  int32        *attr_widths,
+							  BlockNumber  *pages,
+							  double       *tuples,
+							  double       *allvisfrac);
+extern double cdb_estimate_partitioned_numtuples(Relation rel);
 
 extern int32 get_rel_data_width(Relation rel, int32 *attr_widths);
 extern int32 get_relation_data_width(Oid relid, int32 *attr_widths);
@@ -73,5 +83,10 @@ extern double get_function_rows(PlannerInfo *root, Oid funcid, Node *node);
 extern bool has_row_triggers(PlannerInfo *root, Index rti, CmdType event);
 
 extern bool has_stored_generated_columns(PlannerInfo *root, Index rti);
+
+#define DEFAULT_EXTERNAL_TABLE_PAGES 1000
+#define DEFAULT_EXTERNAL_TABLE_TUPLES 1000000
+
+#define DEFAULT_INTERNAL_TABLE_PAGES 100
 
 #endif							/* PLANCAT_H */

@@ -177,12 +177,11 @@ struct XLogReaderState
 	 * Safe point to read to in currTLI if current TLI is historical
 	 * (tliSwitchPoint) or InvalidXLogRecPtr if on current timeline.
 	 *
-	 * Actually set to the start of the segment containing the timeline switch
-	 * that ends currTLI's validity, not the LSN of the switch its self, since
-	 * we can't assume the old segment will be present.
+	 * Actually set to the start of the segment containing the timeline
+	 * switch that ends currTLI's validity, not the LSN of the switch
+	 * its self, since we can't assume the old segment will be present.
 	 */
 	XLogRecPtr	currTLIValidUntil;
-
 	/*
 	 * If currTLI is not the most recent known timeline, the next timeline to
 	 * read from when currTLIValidUntil is reached.
@@ -198,6 +197,16 @@ struct XLogReaderState
 
 	/* Buffer to hold error message */
 	char	   *errormsg_buf;
+
+	/*
+	 * Set at the end of recovery: the start point of a partial record at the
+	 * end of WAL (InvalidXLogRecPtr if there wasn't one), and the start
+	 * location of its first contrecord that went missing.
+	 */
+	XLogRecPtr	abortedRecPtr;
+	XLogRecPtr	missingContrecPtr;
+	/* Set when XLP_FIRST_IS_OVERWRITE_CONTRECORD is found */
+	XLogRecPtr	overwrittenRecPtr;
 };
 
 /* Get a new XLogReader */
@@ -216,10 +225,16 @@ extern struct XLogRecord *XLogReadRecord(XLogReaderState *state,
 extern bool XLogReaderValidatePageHeader(XLogReaderState *state,
 										 XLogRecPtr recptr, char *phdr);
 
+/* Validate a page */
+extern bool XLogReaderValidatePageHeader(XLogReaderState *state,
+					XLogRecPtr recptr, char *phdr);
+
 /* Invalidate read state */
 extern void XLogReaderInvalReadState(XLogReaderState *state);
 
-#ifdef FRONTEND
+/* In GPDB, this is needed in the backend, too, for WAL replication tests. */
+/* #ifdef FRONTEND */
+#if 1
 extern XLogRecPtr XLogFindNextRecord(XLogReaderState *state, XLogRecPtr RecPtr);
 #endif							/* FRONTEND */
 

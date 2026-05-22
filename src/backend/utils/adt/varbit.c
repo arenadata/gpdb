@@ -16,6 +16,7 @@
 
 #include "postgres.h"
 
+#include "access/hash.h"
 #include "access/htup_details.h"
 #include "common/int.h"
 #include "libpq/pqformat.h"
@@ -199,8 +200,8 @@ bit_in(PG_FUNCTION_ARGS)
 			else if (*sp != '0')
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("\"%c\" is not a valid binary digit",
-								*sp)));
+						 errmsg("\"%.*s\" is not a valid binary digit",
+								pg_mblen(sp), sp)));
 
 			x >>= 1;
 			if (x == 0)
@@ -224,8 +225,8 @@ bit_in(PG_FUNCTION_ARGS)
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("\"%c\" is not a valid hexadecimal digit",
-								*sp)));
+						 errmsg("\"%.*s\" is not a valid hexadecimal digit",
+								pg_mblen(sp), sp)));
 
 			if (bc)
 			{
@@ -511,8 +512,8 @@ varbit_in(PG_FUNCTION_ARGS)
 			else if (*sp != '0')
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("\"%c\" is not a valid binary digit",
-								*sp)));
+						 errmsg("\"%.*s\" is not a valid binary digit",
+								pg_mblen(sp), sp)));
 
 			x >>= 1;
 			if (x == 0)
@@ -536,8 +537,8 @@ varbit_in(PG_FUNCTION_ARGS)
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("\"%c\" is not a valid hexadecimal digit",
-								*sp)));
+						 errmsg("\"%.*s\" is not a valid hexadecimal digit",
+								pg_mblen(sp), sp)));
 
 			if (bc)
 			{
@@ -1751,10 +1752,6 @@ bitposition(PG_FUNCTION_ARGS)
 				{
 					mask2 = end_mask << (BITS_PER_BYTE - is);
 					is_match = mask2 == 0;
-#if 0
-					elog(DEBUG4, "S. %d %d em=%2x sm=%2x r=%d",
-						 i, is, end_mask, mask2, is_match);
-#endif
 					break;
 				}
 				cmp = *s << (BITS_PER_BYTE - is);
@@ -1880,4 +1877,12 @@ bitgetbit(PG_FUNCTION_ARGS)
 		PG_RETURN_INT32(1);
 	else
 		PG_RETURN_INT32(0);
+}
+
+Datum
+bithash(PG_FUNCTION_ARGS)
+{
+	VarBit	   *arg1 = PG_GETARG_VARBIT_P(0);
+
+	return hash_any(VARBITS(arg1), VARBITBYTES(arg1));
 }

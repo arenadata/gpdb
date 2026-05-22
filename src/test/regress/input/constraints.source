@@ -8,6 +8,11 @@
 --  - EXCLUDE clauses
 --
 
+-- start_matchsubs
+-- m/DETAIL:  Failing row contains \(.*\)/
+-- s/DETAIL:  Failing row contains \(.*\)/DETAIL:  Failing row contains (#####)/
+-- end_matchsubs
+
 --
 -- DEFAULT syntax
 --
@@ -23,7 +28,7 @@ INSERT INTO DEFAULT_TBL VALUES (3, null, 1.0);
 
 SELECT '' AS five, * FROM DEFAULT_TBL;
 
-CREATE SEQUENCE DEFAULT_SEQ;
+CREATE SEQUENCE DEFAULT_SEQ CACHE 1;
 
 CREATE TABLE DEFAULTEXPR_TBL (i1 int DEFAULT 100 + (200-199) * 2,
 	i2 int DEFAULT nextval('default_seq'));
@@ -63,7 +68,7 @@ INSERT INTO CHECK_TBL VALUES (1);
 
 SELECT '' AS three, * FROM CHECK_TBL;
 
-CREATE SEQUENCE CHECK_SEQ;
+CREATE SEQUENCE CHECK_SEQ CACHE 1;
 
 CREATE TABLE CHECK2_TBL (x int, y text, z int,
 	CONSTRAINT SEQUENCE_CON
@@ -82,13 +87,13 @@ SELECT '' AS two, * from CHECK2_TBL;
 -- Check constraints on INSERT
 --
 
-CREATE SEQUENCE INSERT_SEQ;
+CREATE SEQUENCE INSERT_SEQ CACHE 1;
 
 CREATE TABLE INSERT_TBL (x INT DEFAULT nextval('insert_seq'),
 	y TEXT DEFAULT '-NULL-',
-	z INT DEFAULT -1 * currval('insert_seq'),
+	z INT DEFAULT -1 * (nextval('insert_seq')-1),
 	CONSTRAINT INSERT_TBL_CON CHECK (x >= 3 AND y <> 'check failed' AND x < 8),
-	CHECK (x + z = 0));
+	CHECK (x + z = 0)) DISTRIBUTED BY(y);
 
 INSERT INTO INSERT_TBL(x,z) VALUES (2, -2);
 
@@ -106,10 +111,25 @@ INSERT INTO INSERT_TBL(y) VALUES ('-!NULL-');
 
 SELECT '' AS four, * FROM INSERT_TBL;
 
+-- GPDB: reset the table contents to match upstream.
+delete from insert_tbl;
+insert into insert_tbl values
+  (3, 'Y', -3),
+  (7, '-NULL-', -7),
+  (7, '!check failed', -7),
+  (4, '-!NULL-', -4);
+
 INSERT INTO INSERT_TBL(y,z) VALUES ('check failed', 4);
 INSERT INTO INSERT_TBL(x,y) VALUES (5, 'check failed');
+-- these fail on GPDB, because we cannot use currval in the z columns' DEFAULT like in upstream.
 INSERT INTO INSERT_TBL(x,y) VALUES (5, '!check failed');
 INSERT INTO INSERT_TBL(y) VALUES ('-!NULL-');
+
+-- GPDB: fix the table contents to match upstream again, so that the subsequent
+-- tests start with the same state as in upstream.
+insert into insert_tbl values
+  (5, '!check failed', -5),
+  (6, '-!NULL-', -6);
 
 SELECT '' AS six, * FROM INSERT_TBL;
 
@@ -117,7 +137,7 @@ SELECT 'seven' AS one, nextval('insert_seq');
 
 INSERT INTO INSERT_TBL(y) VALUES ('Y');
 
-SELECT 'eight' AS one, currval('insert_seq');
+SELECT 'eight' AS one, nextval('insert_seq');
 
 -- According to SQL, it is OK to insert a record that gives rise to NULL
 -- constraint-condition results.  Postgres used to reject this, but it
@@ -206,13 +226,24 @@ CREATE TEMP TABLE tmp (xd INT, yd TEXT, zd INT);
 INSERT INTO tmp VALUES (null, 'Y', null);
 INSERT INTO tmp VALUES (5, '!check failed', null);
 INSERT INTO tmp VALUES (null, 'try again', null);
-INSERT INTO INSERT_TBL(y) select yd from tmp;
+
+-- GPDB: This INSERT  doesn't work in GPDB, because the default is
+-- different. Fix the table contents again for the next test.
+--
+--INSERT INTO INSERT_TBL(y) select yd from tmp;
+INSERT INTO INSERT_TBL VALUES
+  (4, 'Y', -4),
+  (5, '!check failed', -5),
+  (6, 'try again', -6);
 
 SELECT '' AS three, * FROM INSERT_TBL;
 
 INSERT INTO INSERT_TBL SELECT * FROM tmp WHERE yd = 'try again';
 INSERT INTO INSERT_TBL(y,z) SELECT yd, -7 FROM tmp WHERE yd = 'try again';
 INSERT INTO INSERT_TBL(y,z) SELECT yd, -8 FROM tmp WHERE yd = 'try again';
+
+-- GPDB: Fixup
+INSERT INTO INSERT_TBL VALUES (7, 'try again', -7);
 
 SELECT '' AS four, * FROM INSERT_TBL;
 
@@ -339,6 +370,10 @@ UPDATE unique_tbl SET i = i+1;
 
 SELECT * FROM unique_tbl;
 
+-- GPDB: the above fails, because distribution columns cannot be UPDATEd (without ORCA).
+-- Reset the table to the state the rest of the test expects
+TRUNCATE unique_tbl;
+INSERT INTO unique_tbl VALUES (1, 'one'), (2, 'two'), (3, 'tree'), (4, 'four'), (5, 'five');
 -- explicitly defer the constraint
 BEGIN;
 
@@ -368,6 +403,10 @@ DELETE FROM unique_tbl WHERE i = 5 AND t = 'five';
 COMMIT;
 
 SELECT * FROM unique_tbl;
+
+-- GPDB: Reset the table to the state the rest of the test expects, again.
+TRUNCATE unique_tbl;
+INSERT INTO unique_tbl VALUES (3, 'three'), (1, 'five'), (5, 'one'), (4, 'two'), (2, 'four');
 
 -- should fail at commit-time
 BEGIN;
@@ -449,7 +488,7 @@ CREATE TABLE circles (
   EXCLUDE USING gist
     (c1 WITH &&, (c2::circle) WITH &&)
     WHERE (circle_center(c1) <> '(0,0)')
-);
+) DISTRIBUTED REPLICATED;
 
 -- these should succeed because they don't match the index predicate
 INSERT INTO circles VALUES('<(0,0), 5>', '<(0,0), 5>');

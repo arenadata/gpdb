@@ -4,6 +4,8 @@
  *	  POSTGRES relation descriptor (a/k/a relcache entry) definitions.
  *
  *
+ * Portions Copyright (c) 2005-2009, Greenplum inc.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -16,6 +18,7 @@
 
 #include "access/tupdesc.h"
 #include "access/xlog.h"
+#include "catalog/pg_appendonly.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_index.h"
 #include "catalog/pg_publication.h"
@@ -26,6 +29,8 @@
 #include "storage/relfilenode.h"
 #include "utils/relcache.h"
 #include "utils/reltrigger.h"
+
+#include "catalog/pg_am.h"
 
 
 /*
@@ -88,6 +93,8 @@ typedef struct RelationData
 	RuleLock   *rd_rules;		/* rewrite rules */
 	MemoryContext rd_rulescxt;	/* private memory cxt for rd_rules, if any */
 	TriggerDesc *trigdesc;		/* Trigger info, or NULL if rel has none */
+    struct GpPolicy *rd_cdbpolicy; /* Partitioning info if distributed rel */
+
 	/* use "struct" here to avoid needing to include rowsecurity.h: */
 	struct RowSecurityDesc *rd_rsdesc;	/* row security policies, or NULL */
 
@@ -273,6 +280,12 @@ typedef struct StdRdOptions
 	int			parallel_workers;	/* max number of parallel workers */
 	bool		vacuum_index_cleanup;	/* enables index vacuuming and cleanup */
 	bool		vacuum_truncate;	/* enables vacuum to truncate a relation */
+	bool		analyze_hll_non_part_table; 		/* force hll statistics collection on relation */
+
+	int			blocksize;		/* max varblock size (AO rels only) */
+	int			compresslevel;  /* compression level (AO rels only) */
+	char		compresstype[NAMEDATALEN]; /* compression type (AO rels only) */
+	bool		checksum;		/* checksum (AO rels only) */
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10
@@ -391,6 +404,57 @@ typedef struct ViewOptions
 
 #define InvalidRelation ((Relation) NULL)
 
+/* GPDB_12_MERGE_FIXME: I hope we don't need these macros anymore, now that
+ * everything should go through the table access method API.
+ */
+
+#define RelationIsHeap(relation) \
+	((relation)->rd_rel->relam == HEAP_TABLE_AM_OID)
+
+/*
+ * CAUTION: this macro is a violation of the absraction that table AM and
+ * index AM interfaces provide.  Use of this macro is discouraged.  If
+ * table/index AM API falls short for your use case, consider enhancing the
+ * interface.
+ *
+ * RelationIsAoRows
+ * 		True iff relation has append only storage with row orientation
+ */
+#define RelationIsAoRows(relation) \
+	((relation)->rd_rel->relam == AO_ROW_TABLE_AM_OID)
+
+/*
+ * CAUTION: this macro is a violation of the absraction that table AM and
+ * index AM interfaces provide.  Use of this macro is discouraged.  If
+ * table/index AM API falls short for your use case, consider enhancing the
+ * interface.
+ *
+ * RelationIsAoCols
+ * 		True iff relation has append only storage with column orientation
+ */
+#define RelationIsAoCols(relation) \
+	((relation)->rd_rel->relam == AO_COLUMN_TABLE_AM_OID)
+
+/*
+ * CAUTION: this macro is a violation of the absraction that table AM and
+ * index AM interfaces provide.  Use of this macro is discouraged.  If
+ * table/index AM API falls short for your use case, consider enhancing the
+ * interface.
+ *
+ * RelationIsAppendOptimized
+ * 		True iff relation has append only storage (can be row or column orientation)
+ */
+#define RelationIsAppendOptimized(relation) \
+	((RelationIsAoRows(relation) || RelationIsAoCols(relation)) && \
+		relation->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+
+/*
+ * RelationIsBitmapIndex
+ *      True iff relation is a bitmap index
+ */
+#define RelationIsBitmapIndex(relation) \
+	((bool)((relation)->rd_rel->relam == BITMAP_AM_OID))
+
 /*
  * RelationHasReferenceCountZero
  *		True iff relation reference count is zero.
@@ -474,7 +538,10 @@ typedef struct ViewOptions
 #define RelationOpenSmgr(relation) \
 	do { \
 		if ((relation)->rd_smgr == NULL) \
-			smgrsetowner(&((relation)->rd_smgr), smgropen((relation)->rd_node, (relation)->rd_backend)); \
+			smgrsetowner(&((relation)->rd_smgr), \
+						 smgropen((relation)->rd_node, \
+								  (relation)->rd_backend, \
+								  RelationIsAppendOptimized(relation)?SMGR_AO:SMGR_MD)); \
 	} while (0)
 
 /*
@@ -522,8 +589,26 @@ typedef struct ViewOptions
 /*
  * RelationUsesLocalBuffers
  *		True if relation's pages are stored in local buffers.
+ *
+ * In GPDB, we do not use local buffers for temp tables because segmates need
+ * to share temp table contents.  Currently, there is no other reason to use
+ * local buffers.
  */
-#define RelationUsesLocalBuffers(relation) \
+#define RelationUsesLocalBuffers(relation) false
+
+/*
+ * Greenplum: a separate implementation of the SMGR API is used for
+ * append-optimized relations.  This implementation is intended for relations
+ * that do not use shared/local buffers.
+ */
+#define RelationUsesBufferManager(relation) \
+	((relation)->rd_smgr->smgr_which == SMGR_MD)
+
+/*
+ * RelationUsesTempNamespace
+ *		True if relation's catalog entries live in a private namespace.
+ */
+#define RelationUsesTempNamespace(relation) \
 	((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 
 /*

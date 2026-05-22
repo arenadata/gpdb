@@ -57,6 +57,11 @@ CATALOG(pg_language,2612,LanguageRelationId)
 #endif
 } FormData_pg_language;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(lanplcallfoid REFERENCES pg_proc(oid));
+FOREIGN_KEY(lanvalidator REFERENCES pg_proc(oid));
+FOREIGN_KEY(lanowner REFERENCES pg_authid(oid));
+
 /* ----------------
  *		Form_pg_language corresponds to a pointer to a tuple with
  *		the format of pg_language relation.

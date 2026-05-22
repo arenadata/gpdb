@@ -8,7 +8,6 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres_fe.h"
-
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
@@ -27,7 +26,10 @@
 #include "common/file_perm.h"
 #include "common/file_utils.h"
 #include "common/restricted_token.h"
+#include "fe_utils/recovery_gen.h"
 #include "getopt_long.h"
+#include "common/restricted_token.h"
+#include "utils/palloc.h"
 #include "storage/bufpage.h"
 
 static void usage(const char *progname);
@@ -40,10 +42,14 @@ static void digestControlFile(ControlFileData *ControlFile, char *source,
 static void syncTargetDirectory(void);
 static void sanityChecks(void);
 static void findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex);
+static void ensureCleanShutdown(const char *argv0);
+static int32 get_target_dbid(const char *argv0);
+static void disconnect_atexit(void);
 
 static ControlFileData ControlFile_target;
 static ControlFileData ControlFile_source;
 
+int32 dbid_target;
 const char *progname;
 int			WalSegSz;
 
@@ -75,6 +81,9 @@ usage(const char *progname)
 	printf(_("  -D, --target-pgdata=DIRECTORY  existing data directory to modify\n"));
 	printf(_("      --source-pgdata=DIRECTORY  source data directory to synchronize with\n"));
 	printf(_("      --source-server=CONNSTR    source server to synchronize with\n"));
+	printf(_("  -S, --slot=SLOTNAME            replication slot to use\n"));
+	printf(_("  -R, --write-recovery-conf      write configuration for replication\n"
+			 "                                 (requires --source-server)\n"));
 	printf(_("  -n, --dry-run                  stop before modifying anything\n"));
 	printf(_("  -N, --no-sync                  do not wait for changes to be written\n"
 			 "                                 safely to disk\n"));
@@ -92,6 +101,8 @@ main(int argc, char **argv)
 	static struct option long_options[] = {
 		{"help", no_argument, NULL, '?'},
 		{"target-pgdata", required_argument, NULL, 'D'},
+		{"write-recovery-conf", no_argument, NULL, 'R'},
+		{"slot", required_argument, NULL, 'S'},
 		{"source-pgdata", required_argument, NULL, 1},
 		{"source-server", required_argument, NULL, 2},
 		{"version", no_argument, NULL, 'V'},
@@ -114,6 +125,8 @@ main(int argc, char **argv)
 	XLogRecPtr	endrec;
 	TimeLineID	endtli;
 	ControlFileData ControlFile_new;
+	bool		writerecoveryconf = false;
+	char		*replication_slot = NULL;
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_rewind"));
@@ -129,12 +142,12 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_rewind (PostgreSQL) " PG_VERSION);
+			puts("pg_rewind (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "D:nNP", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "D:nNPRS:", long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -150,8 +163,16 @@ main(int argc, char **argv)
 				dry_run = true;
 				break;
 
+			case 'S':
+				replication_slot = pg_strdup(optarg);
+				break;
+
 			case 'N':
 				do_sync = false;
+				break;
+
+			case 'R':
+				writerecoveryconf = true;
 				break;
 
 			case 3:
@@ -186,9 +207,23 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	if (datadir_source != NULL && connstr_source != NULL)
+	{
+		fprintf(stderr, _("%s: only one of --source-pgdata or --source-server can be specified\n"), progname);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		exit(1);
+	}
+
 	if (datadir_target == NULL)
 	{
 		pg_log_error("no target data directory specified (--target-pgdata)");
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		exit(1);
+	}
+
+	if (writerecoveryconf && connstr_source == NULL)
+	{
+		pg_log_error("no source server information (--source--server) specified for --write-recovery-conf");
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 		exit(1);
 	}
@@ -197,6 +232,13 @@ main(int argc, char **argv)
 	{
 		pg_log_error("too many command-line arguments (first is \"%s\")",
 					 argv[optind]);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		exit(1);
+	}
+
+	if (!writerecoveryconf && replication_slot != NULL)
+	{
+		fprintf(stderr, _("%s: --slot can be specified only if --write-recovery-conf is specified\n"), progname);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 		exit(1);
 	}
@@ -229,6 +271,8 @@ main(int argc, char **argv)
 
 	umask(pg_mode_mask);
 
+	atexit(disconnect_atexit);
+
 	/* Connect to remote server */
 	if (connstr_source)
 		libpqConnect(connstr_source);
@@ -241,9 +285,26 @@ main(int argc, char **argv)
 	digestControlFile(&ControlFile_target, buffer, size);
 	pg_free(buffer);
 
+	/*
+	 * If the target instance was not cleanly shut down, run a single-user
+	 * postgres session really quickly and reload the control file to get the
+	 * new state.
+	 */
+	if (ControlFile_target.state != DB_SHUTDOWNED &&
+		ControlFile_target.state != DB_SHUTDOWNED_IN_RECOVERY)
+	{
+		ensureCleanShutdown(argv[0]);
+
+		buffer = slurpFile(datadir_target, "global/pg_control", &size);
+		digestControlFile(&ControlFile_target, buffer, size);
+		pg_free(buffer);
+	}
+
 	buffer = fetchFile("global/pg_control", &size);
 	digestControlFile(&ControlFile_source, buffer, size);
 	pg_free(buffer);
+
+	dbid_target = get_target_dbid(argv[0]);
 
 	sanityChecks();
 
@@ -253,7 +314,8 @@ main(int argc, char **argv)
 	 */
 	if (ControlFile_target.checkPointCopy.ThisTimeLineID == ControlFile_source.checkPointCopy.ThisTimeLineID)
 	{
-		pg_log_info("source and target cluster are on the same timeline");
+		pg_log_info("source and target cluster are on the same timeline: %u",
+			   ControlFile_source.checkPointCopy.ThisTimeLineID);
 		rewind_needed = false;
 	}
 	else
@@ -297,6 +359,9 @@ main(int argc, char **argv)
 	if (!rewind_needed)
 	{
 		pg_log_info("no rewind required");
+		if (writerecoveryconf)
+			WriteRecoveryConfig(conn, datadir_target,
+								GenerateRecoveryConfig(conn, replication_slot));
 		exit(0);
 	}
 
@@ -308,7 +373,7 @@ main(int argc, char **argv)
 				chkpttli);
 
 	/*
-	 * Build the filemap, by comparing the source and target data directories.
+	 * Collect information about all files in the target and source systems.
 	 */
 	filemap_create();
 	if (showprogress)
@@ -329,8 +394,12 @@ main(int argc, char **argv)
 		pg_log_info("reading WAL in target");
 	extractPageMap(datadir_target, chkptrec, lastcommontliIndex,
 				   ControlFile_target.checkPoint);
-	filemap_finalize();
 
+	/*
+	 * We have collected all information we need from both systems. Decide
+	 * what to do with each file.
+	 */
+	decide_file_actions();
 	if (showprogress)
 		calculate_totals();
 
@@ -389,6 +458,10 @@ main(int argc, char **argv)
 	ControlFile_new.minRecoveryPointTLI = endtli;
 	ControlFile_new.state = DB_IN_ARCHIVE_RECOVERY;
 	update_controlfile(datadir_target, &ControlFile_new, do_sync);
+
+	if (writerecoveryconf)
+		WriteRecoveryConfig(conn, datadir_target,
+							GenerateRecoveryConfig(conn, replication_slot));
 
 	if (showprogress)
 		pg_log_info("syncing target data directory");
@@ -739,6 +812,12 @@ digestControlFile(ControlFileData *ControlFile, char *src, size_t size)
  * most dirty buffers to disk.  Additionally fsync_pgdata uses a two-pass
  * approach (only initiating writeback in the first pass), which often reduces
  * the overall amount of IO noticeably.
+ *
+ * gpdb: We assume that all files are synchronized before rewinding and thus we
+ * just need to synchronize those affected files. This is a resonable
+ * assumption for gpdb since we've ensured that the db state is clean shutdown
+ * in pg_rewind by running single mode postgres if needed and also we do not
+ * copy an unsynchronized dababase without sync as the target base.
  */
 static void
 syncTargetDirectory(void)
@@ -746,5 +825,187 @@ syncTargetDirectory(void)
 	if (!do_sync || dry_run)
 		return;
 
-	fsync_pgdata(datadir_target, PG_VERSION_NUM);
+	file_entry_t *entry;
+	int			  i;
+
+	if (chdir(datadir_target) < 0)
+	{
+		pg_log_error("could not change directory to \"%s\": %m", datadir_target);
+		exit(1);
+	}
+
+	for (i = 0; i < filemap->narray; i++)
+	{
+		entry = filemap->array[i];
+
+		if (entry->target_pages_to_overwrite.bitmapsize > 0)
+			fsync_fname(entry->path, false);
+		else
+		{
+			switch (entry->action)
+			{
+				case FILE_ACTION_COPY:
+				case FILE_ACTION_TRUNCATE:
+				case FILE_ACTION_COPY_TAIL:
+					fsync_fname(entry->path, false);
+					break;
+
+				case FILE_ACTION_CREATE:
+					fsync_fname(entry->path,
+								entry->source_type == FILE_TYPE_DIRECTORY);
+					/* FALLTHROUGH */
+				case FILE_ACTION_REMOVE:
+					/*
+					 * Fsync the parent directory if we either create or delete
+					 * files/directories in the parent directory. The parent
+					 * directory might be missing as expected, so fsync it could
+					 * fail but we ignore that error.
+					 */
+					fsync_parent_path(entry->path);
+					break;
+
+				case FILE_ACTION_NONE:
+					break;
+
+				default:
+					pg_fatal("no action decided for \"%s\"", entry->path);
+					break;
+			}
+		}
+	}
+
+	/* fsync some files that are (possibly) written by pg_rewind. */
+	fsync_fname("global/pg_control", false);
+	fsync_fname("backup_label", false);
+	fsync_fname("postgresql.auto.conf", false);
+	fsync_fname(".", true); /* due to new file backup_label. */
+}
+
+/*
+ * Ensure clean shutdown of target instance by launching single-user mode
+ * postgres to do crash recovery.
+ */
+static void
+ensureCleanShutdown(const char *argv0)
+{
+	int		ret;
+#define MAXCMDLEN (2 * MAXPGPATH)
+	char	exec_path[MAXPGPATH];
+	char	cmd[MAXCMDLEN];
+
+	/* locate postgres binary */
+	if ((ret = find_other_exec(argv0, "postgres",
+							   "postgres (Greenplum Database) " PG_VERSION "\n",
+							   exec_path)) < 0)
+	{
+		char        full_path[MAXPGPATH];
+
+		if (find_my_exec(argv0, full_path) < 0)
+			strlcpy(full_path, progname, sizeof(full_path));
+
+		if (ret == -1)
+			pg_fatal("The program \"postgres\" is needed by %s but was \n"
+					 "not found in the same directory as \"%s\".\n"
+					 "Check your installation.\n", progname, full_path);
+		else
+			pg_fatal("The program \"postgres\" was found by \"%s\"\n"
+					 "but was not the same version as %s.\n"
+					 "Check your installation.\n", full_path, progname);
+	}
+
+	/* only skip processing after ensuring presence of postgres */
+	if (dry_run)
+		return;
+
+	/* finally run postgres single-user mode */
+	/*
+	 * gpdb: use postgres instead of template1, else the below postgres
+	 * instance might hang in the below scenario:
+	 *
+	 * 1. There was a prepared but not finished "create database " dtx
+	 *    transaction which was recovered during crash recovery in the startup
+	 *    process and thus it holds the lock of database template1 since
+	 *    by default template1 is the template for database creation.
+	 *
+	 * 2. Single mode postgres process will execute the below code in
+	 * InitPostgres() after finishing crash recovery (i.e. calling
+	 * startupXLOG()) and then hang due to lock conflict.
+	 *
+	 *    LockSharedObject(DatabaseRelationId, ...);
+	 *
+	 * DB_FOR_COMMON_ACCESS is used in fts probe, dtx recovery, gdd so it's
+	 * hard to have the above kind of dtx transaction on DB_FOR_COMMON_ACCESS
+	 * since the commands (e.g. create database with template
+	 * DB_FOR_COMMON_ACCESS) would fail.
+	 */
+	snprintf(cmd, MAXCMDLEN, "\"%s\" --single -D \"%s\" %s < %s",
+			 exec_path, datadir_target, DB_FOR_COMMON_ACCESS, DEVNULL);
+
+	if (system(cmd) != 0)
+		pg_fatal("postgres single-user mode of target instance failed for command: %s", cmd);
+}
+
+static int32
+get_target_dbid(const char *argv0)
+{
+	char		cmd_output[1024];
+	FILE	   *output;
+	int32 		dbid;
+
+	int		ret;
+#define MAXCMDLEN (2 * MAXPGPATH)
+	char	exec_path[MAXPGPATH];
+	char	cmd[MAXCMDLEN];
+	long	parsed_dbid;
+
+	/* locate postgres binary */
+	if ((ret = find_other_exec(argv0, "postgres",
+							   "postgres (Greenplum Database) " PG_VERSION "\n",
+							   exec_path)) < 0)
+	{
+		char        full_path[MAXPGPATH];
+
+		if (find_my_exec(argv0, full_path) < 0)
+			strlcpy(full_path, progname, sizeof(full_path));
+
+		if (ret == -1)
+			pg_fatal("The program \"postgres\" is needed by %s but was \n"
+					 "not found in the same directory as \"%s\".\n"
+					 "Check your installation.\n", progname, full_path);
+		else
+			pg_fatal("The program \"postgres\" was found by \"%s\"\n"
+					 "but was not the same version as %s.\n"
+					 "Check your installation.\n", full_path, progname);
+	}
+
+	snprintf(cmd, MAXCMDLEN, "\"%s\" -D \"%s\" -C gp_dbid",
+			 exec_path, datadir_target);
+
+	if ((output = popen(cmd, "r")) == NULL ||
+		fgets(cmd_output, sizeof(cmd_output), output) == NULL)
+		pg_fatal("Could not get dbid using %s: %m\n",
+				 cmd);
+
+	pclose(output);
+
+	/* Remove trailing newline */
+	if (strchr(cmd_output, '\n') != NULL)
+		*strchr(cmd_output, '\n') = '\0';
+
+	errno = 0;
+	parsed_dbid = strtol(cmd_output, NULL, 10);
+	if (errno)
+		pg_fatal("could not parse valid dbid from %s\n with cmd_output %s\n", cmd, cmd_output);
+	if(parsed_dbid > INT16_MAX || parsed_dbid <= -1)
+		pg_fatal("parsed dbid (%ld) is out of valid range: [1, INT16_MAX]", parsed_dbid);
+	dbid = (int32) parsed_dbid;
+
+	return dbid;
+}
+
+static void
+disconnect_atexit(void)
+{
+	if (conn != NULL)
+		PQfinish(conn);
 }

@@ -1,6 +1,7 @@
 --
 -- WINDOW FUNCTIONS
 --
+SET optimizer_trace_fallback=on;
 CREATE TEMPORARY TABLE empsalary (
     depname varchar,
     empno bigint,
@@ -78,30 +79,30 @@ GROUP BY four, ten ORDER BY four, ten;
 SELECT depname, empno, salary, sum(salary) OVER w FROM empsalary WINDOW w AS (PARTITION BY depname);
   depname  | empno | salary |  sum  
 -----------+-------+--------+-------
- develop   |    11 |   5200 | 25100
+ personnel |     5 |   3500 |  7400
+ personnel |     2 |   3900 |  7400
+ sales     |     1 |   5000 | 14600
+ sales     |     4 |   4800 | 14600
+ sales     |     3 |   4800 | 14600
+ develop   |    10 |   5200 | 25100
  develop   |     7 |   4200 | 25100
  develop   |     9 |   4500 | 25100
  develop   |     8 |   6000 | 25100
- develop   |    10 |   5200 | 25100
- personnel |     5 |   3500 |  7400
- personnel |     2 |   3900 |  7400
- sales     |     3 |   4800 | 14600
- sales     |     1 |   5000 | 14600
- sales     |     4 |   4800 | 14600
+ develop   |    11 |   5200 | 25100
 (10 rows)
 
 SELECT depname, empno, salary, rank() OVER w FROM empsalary WINDOW w AS (PARTITION BY depname ORDER BY salary) ORDER BY rank() OVER w;
   depname  | empno | salary | rank 
 -----------+-------+--------+------
  develop   |     7 |   4200 |    1
- personnel |     5 |   3500 |    1
- sales     |     3 |   4800 |    1
  sales     |     4 |   4800 |    1
+ sales     |     3 |   4800 |    1
+ personnel |     5 |   3500 |    1
  personnel |     2 |   3900 |    2
  develop   |     9 |   4500 |    2
- sales     |     1 |   5000 |    3
- develop   |    11 |   5200 |    3
  develop   |    10 |   5200 |    3
+ develop   |    11 |   5200 |    3
+ sales     |     1 |   5000 |    3
  develop   |     8 |   6000 |    5
 (10 rows)
 
@@ -146,6 +147,7 @@ SELECT four FROM tenk1 WHERE FALSE WINDOW w AS (PARTITION BY ten);
 SELECT sum(four) OVER (PARTITION BY ten ORDER BY unique2) AS sum_1, ten, four FROM tenk1 WHERE unique2 < 10;
  sum_1 | ten | four 
 -------+-----+------
+     1 |   9 |    1
      0 |   0 |    0
      0 |   0 |    0
      2 |   0 |    2
@@ -155,7 +157,6 @@ SELECT sum(four) OVER (PARTITION BY ten ORDER BY unique2) AS sum_1, ten, four FR
      3 |   3 |    3
      0 |   4 |    0
      1 |   7 |    1
-     1 |   9 |    1
 (10 rows)
 
 SELECT row_number() OVER (ORDER BY unique2) FROM tenk1 WHERE unique2 < 10;
@@ -191,6 +192,8 @@ SELECT rank() OVER (PARTITION BY four ORDER BY ten) AS rank_1, ten, four FROM te
 SELECT dense_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  dense_rank | ten | four 
 ------------+-----+------
+          1 |   1 |    3
+          2 |   3 |    3
           1 |   0 |    0
           1 |   0 |    0
           2 |   4 |    0
@@ -199,8 +202,6 @@ SELECT dense_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 
           2 |   7 |    1
           3 |   9 |    1
           1 |   0 |    2
-          1 |   1 |    3
-          2 |   3 |    3
 (10 rows)
 
 SELECT percent_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
@@ -258,6 +259,8 @@ SELECT ntile(NULL) OVER (ORDER BY ten, four), ten, four FROM tenk1 LIMIT 2;
 SELECT lag(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  lag | ten | four 
 -----+-----+------
+     |   1 |    3
+   1 |   3 |    3
      |   0 |    0
    0 |   0 |    0
    0 |   4 |    0
@@ -266,13 +269,13 @@ SELECT lag(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHER
    1 |   7 |    1
    7 |   9 |    1
      |   0 |    2
-     |   1 |    3
-   1 |   3 |    3
 (10 rows)
 
 SELECT lag(ten, four) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  lag | ten | four 
 -----+-----+------
+     |   1 |    3
+     |   3 |    3
    0 |   0 |    0
    0 |   0 |    0
    4 |   4 |    0
@@ -281,8 +284,6 @@ SELECT lag(ten, four) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk
    1 |   7 |    1
    7 |   9 |    1
      |   0 |    2
-     |   1 |    3
-     |   3 |    3
 (10 rows)
 
 SELECT lag(ten, four, 0) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
@@ -303,6 +304,8 @@ SELECT lag(ten, four, 0) OVER (PARTITION BY four ORDER BY ten), ten, four FROM t
 SELECT lead(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  lead | ten | four 
 ------+-----+------
+    3 |   1 |    3
+      |   3 |    3
     0 |   0 |    0
     4 |   0 |    0
       |   4 |    0
@@ -311,13 +314,13 @@ SELECT lead(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHE
     9 |   7 |    1
       |   9 |    1
       |   0 |    2
-    3 |   1 |    3
-      |   3 |    3
 (10 rows)
 
 SELECT lead(ten * 2, 1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  lead | ten | four 
 ------+-----+------
+    6 |   1 |    3
+      |   3 |    3
     0 |   0 |    0
     8 |   0 |    0
       |   4 |    0
@@ -326,13 +329,13 @@ SELECT lead(ten * 2, 1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM te
    18 |   7 |    1
       |   9 |    1
       |   0 |    2
-    6 |   1 |    3
-      |   3 |    3
 (10 rows)
 
 SELECT lead(ten * 2, 1, -1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  lead | ten | four 
 ------+-----+------
+    6 |   1 |    3
+   -1 |   3 |    3
     0 |   0 |    0
     8 |   0 |    0
    -1 |   4 |    0
@@ -341,13 +344,13 @@ SELECT lead(ten * 2, 1, -1) OVER (PARTITION BY four ORDER BY ten), ten, four FRO
    18 |   7 |    1
    -1 |   9 |    1
    -1 |   0 |    2
-    6 |   1 |    3
-   -1 |   3 |    3
 (10 rows)
 
 SELECT first_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  first_value | ten | four 
 -------------+-----+------
+           1 |   1 |    3
+           1 |   3 |    3
            0 |   0 |    0
            0 |   0 |    0
            0 |   4 |    0
@@ -356,45 +359,47 @@ SELECT first_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM te
            1 |   7 |    1
            1 |   9 |    1
            0 |   0 |    2
-           1 |   1 |    3
-           1 |   3 |    3
 (10 rows)
 
 -- last_value returns the last row of the frame, which is CURRENT ROW in ORDER BY window.
-SELECT last_value(four) OVER (ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+-- the column `ten` is ordered, so we should call last_value on this
+-- column. Using other cols the result is flaky because there are
+-- tuples with the same `ten` while different other col values.
+SELECT last_value(ten) OVER (ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  last_value | ten | four 
 ------------+-----+------
-          0 |   0 |    0
           0 |   0 |    2
+          0 |   0 |    0
           0 |   0 |    0
           1 |   1 |    1
           1 |   1 |    3
           1 |   1 |    1
           3 |   3 |    3
-          0 |   4 |    0
-          1 |   7 |    1
-          1 |   9 |    1
+          4 |   4 |    0
+          7 |   7 |    1
+          9 |   9 |    1
 (10 rows)
 
-SELECT last_value(ten) OVER (PARTITION BY four), ten, four FROM
+set search_path=singleseg, public;
+SELECT last_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM
 	(SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s
 	ORDER BY four, ten;
  last_value | ten | four 
 ------------+-----+------
-          4 |   0 |    0
-          4 |   0 |    0
+          0 |   0 |    0
+          0 |   0 |    0
           4 |   4 |    0
-          9 |   1 |    1
-          9 |   1 |    1
-          9 |   7 |    1
+          1 |   1 |    1
+          1 |   1 |    1
+          7 |   7 |    1
           9 |   9 |    1
           0 |   0 |    2
-          3 |   1 |    3
+          1 |   1 |    3
           3 |   3 |    3
 (10 rows)
 
-SELECT nth_value(ten, four + 1) OVER (PARTITION BY four), ten, four
-	FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s;
+SELECT nth_value(ten, four + 1) OVER (PARTITION BY four ORDER BY ten), ten, four
+	FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s order by four,ten;
  nth_value | ten | four 
 -----------+-----+------
          0 |   0 |    0
@@ -409,6 +414,7 @@ SELECT nth_value(ten, four + 1) OVER (PARTITION BY four), ten, four
            |   3 |    3
 (10 rows)
 
+reset search_path;
 SELECT ten, two, sum(hundred) AS gsum, sum(sum(hundred)) OVER (PARTITION BY two ORDER BY ten) AS wsum
 FROM tenk1 GROUP BY ten, two;
  ten | two | gsum  |  wsum  
@@ -428,12 +434,12 @@ FROM tenk1 GROUP BY ten, two;
 SELECT count(*) OVER (PARTITION BY four), four FROM (SELECT * FROM tenk1 WHERE two = 1)s WHERE unique2 < 10;
  count | four 
 -------+------
-     4 |    1
-     4 |    1
-     4 |    1
-     4 |    1
      2 |    3
      2 |    3
+     4 |    1
+     4 |    1
+     4 |    1
+     4 |    1
 (6 rows)
 
 SELECT (count(*) OVER (PARTITION BY four ORDER BY ten) +
@@ -441,6 +447,8 @@ SELECT (count(*) OVER (PARTITION BY four ORDER BY ten) +
   FROM tenk1 WHERE unique2 < 10;
  cntsum 
 --------
+ 92
+ 136
  22
  22
  87
@@ -449,8 +457,6 @@ SELECT (count(*) OVER (PARTITION BY four ORDER BY ten) +
  82
  92
  51
- 92
- 136
 (10 rows)
 
 -- opexpr with different windows evaluation.
@@ -476,9 +482,9 @@ SELECT avg(four) OVER (PARTITION BY four ORDER BY thousand / 100) FROM tenk1 WHE
  1.00000000000000000000
  1.00000000000000000000
  1.00000000000000000000
+     3.0000000000000000
+     3.0000000000000000
      2.0000000000000000
-     3.0000000000000000
-     3.0000000000000000
 (10 rows)
 
 SELECT ten, two, sum(hundred) AS gsum, sum(sum(hundred)) OVER win AS wsum
@@ -531,6 +537,8 @@ SELECT lead(ten, (SELECT two FROM tenk1 WHERE s.unique2 = unique2)) OVER (PARTIT
 FROM tenk1 s WHERE unique2 < 10;
  lead 
 ------
+    3
+     
     0
     0
     4
@@ -539,8 +547,6 @@ FROM tenk1 s WHERE unique2 < 10;
     9
      
     0
-    3
-     
 (10 rows)
 
 -- empty table
@@ -619,13 +625,19 @@ explain (costs off)
 select first_value(max(x)) over (), y
   from (select unique1 as x, ten+four as y from tenk1) ss
   group by y;
-                 QUERY PLAN                  
----------------------------------------------
+                            QUERY PLAN                            
+------------------------------------------------------------------
  WindowAgg
-   ->  HashAggregate
-         Group Key: (tenk1.ten + tenk1.four)
-         ->  Seq Scan on tenk1
-(4 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Finalize HashAggregate
+               Group Key: ((tenk1.ten + tenk1.four))
+               ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                     Hash Key: ((tenk1.ten + tenk1.four))
+                     ->  Partial HashAggregate
+                           Group Key: (tenk1.ten + tenk1.four)
+                           ->  Seq Scan on tenk1
+ Optimizer: Postgres query optimizer
+(10 rows)
 
 -- test non-default frame specifications
 SELECT four, ten,
@@ -634,6 +646,11 @@ SELECT four, ten,
 FROM (select distinct ten, four from tenk1) ss;
  four | ten | sum | last_value 
 ------+-----+-----+------------
+    3 |   1 |   1 |          1
+    3 |   3 |   4 |          3
+    3 |   5 |   9 |          5
+    3 |   7 |  16 |          7
+    3 |   9 |  25 |          9
     0 |   0 |   0 |          0
     0 |   2 |   2 |          2
     0 |   4 |   6 |          4
@@ -649,11 +666,6 @@ FROM (select distinct ten, four from tenk1) ss;
     2 |   4 |   6 |          4
     2 |   6 |  12 |          6
     2 |   8 |  20 |          8
-    3 |   1 |   1 |          1
-    3 |   3 |   4 |          3
-    3 |   5 |   9 |          5
-    3 |   7 |  16 |          7
-    3 |   9 |  25 |          9
 (20 rows)
 
 SELECT four, ten,
@@ -690,6 +702,11 @@ SELECT four, ten,
 FROM (select distinct ten, four from tenk1) ss;
  four | ten | sum | last_value 
 ------+-----+-----+------------
+    3 |   1 |  25 |          9
+    3 |   3 |  25 |          9
+    3 |   5 |  25 |          9
+    3 |   7 |  25 |          9
+    3 |   9 |  25 |          9
     0 |   0 |  20 |          8
     0 |   2 |  20 |          8
     0 |   4 |  20 |          8
@@ -705,11 +722,6 @@ FROM (select distinct ten, four from tenk1) ss;
     2 |   4 |  20 |          8
     2 |   6 |  20 |          8
     2 |   8 |  20 |          8
-    3 |   1 |  25 |          9
-    3 |   3 |  25 |          9
-    3 |   5 |  25 |          9
-    3 |   7 |  25 |          9
-    3 |   9 |  25 |          9
 (20 rows)
 
 SELECT four, ten/4 as two,
@@ -718,6 +730,11 @@ SELECT four, ten/4 as two,
 FROM (select distinct ten, four from tenk1) ss;
  four | two | sum | last_value 
 ------+-----+-----+------------
+    3 |   0 |   0 |          0
+    3 |   0 |   0 |          0
+    3 |   1 |   2 |          1
+    3 |   1 |   2 |          1
+    3 |   2 |   4 |          2
     0 |   0 |   0 |          0
     0 |   0 |   0 |          0
     0 |   1 |   2 |          1
@@ -733,11 +750,6 @@ FROM (select distinct ten, four from tenk1) ss;
     2 |   1 |   2 |          1
     2 |   1 |   2 |          1
     2 |   2 |   4 |          2
-    3 |   0 |   0 |          0
-    3 |   0 |   0 |          0
-    3 |   1 |   2 |          1
-    3 |   1 |   2 |          1
-    3 |   2 |   4 |          2
 (20 rows)
 
 SELECT four, ten/4 as two,
@@ -746,6 +758,11 @@ SELECT four, ten/4 as two,
 FROM (select distinct ten, four from tenk1) ss;
  four | two | sum | last_value 
 ------+-----+-----+------------
+    3 |   0 |   0 |          0
+    3 |   0 |   0 |          0
+    3 |   1 |   1 |          1
+    3 |   1 |   2 |          1
+    3 |   2 |   4 |          2
     0 |   0 |   0 |          0
     0 |   0 |   0 |          0
     0 |   1 |   1 |          1
@@ -761,11 +778,6 @@ FROM (select distinct ten, four from tenk1) ss;
     2 |   1 |   1 |          1
     2 |   1 |   2 |          1
     2 |   2 |   4 |          2
-    3 |   0 |   0 |          0
-    3 |   0 |   0 |          0
-    3 |   1 |   1 |          1
-    3 |   1 |   2 |          1
-    3 |   2 |   4 |          2
 (20 rows)
 
 SELECT sum(unique1) over (order by four range between current row and unbounded following),
@@ -777,14 +789,15 @@ FROM tenk1 WHERE unique1 < 10;
   45 |       8 |    0
   45 |       4 |    0
   33 |       5 |    1
-  33 |       9 |    1
   33 |       1 |    1
-  18 |       6 |    2
+  33 |       9 |    1
   18 |       2 |    2
-  10 |       3 |    3
+  18 |       6 |    2
   10 |       7 |    3
+  10 |       3 |    3
 (10 rows)
 
+set search_path=singleseg, public;
 SELECT sum(unique1) over (rows between current row and unbounded following),
 	unique1, four
 FROM tenk1 WHERE unique1 < 10;
@@ -1051,10 +1064,10 @@ FROM tenk1 WHERE unique1 < 10 WINDOW w AS (order by four);
   33 |       5 |    1
   33 |       9 |    1
   33 |       1 |    1
-  18 |       6 |    2
   18 |       2 |    2
-  10 |       3 |    3
+  18 |       6 |    2
   10 |       7 |    3
+  10 |       3 |    3
 (10 rows)
 
 SELECT sum(unique1) over (w range between unbounded preceding and current row exclude current row),
@@ -1172,6 +1185,7 @@ SELECT pg_get_viewdef('v_window');
     FROM generate_series(1, 10) i(i);
 (1 row)
 
+reset search_path;
 CREATE OR REPLACE TEMP VIEW v_window AS
 	SELECT i, sum(i) over (order by i rows between 1 preceding and 1 following
 	exclude current row) as sum_rows FROM generate_series(1, 10) i;
@@ -2096,10 +2110,10 @@ window w as (order by f_time desc range between
  10 | 20:00:00 |          10 |          8
   9 | 19:00:00 |          10 |          7
   8 | 18:00:00 |           9 |          7
-  7 | 17:00:00 |           8 |          5
-  6 | 15:00:00 |           6 |          3
-  5 | 15:00:00 |           6 |          3
-  4 | 14:00:00 |           6 |          2
+  7 | 17:00:00 |           8 |          6
+  5 | 15:00:00 |           5 |          3
+  6 | 15:00:00 |           5 |          3
+  4 | 14:00:00 |           5 |          2
   3 | 13:00:00 |           4 |          1
   2 | 12:00:00 |           3 |          1
   1 | 11:00:00 |           2 |          1
@@ -2132,10 +2146,10 @@ window w as (order by f_timetz desc range between
  10 | 20:00:00+01 |          10 |          8
   9 | 19:00:00+01 |          10 |          7
   8 | 18:00:00+01 |           9 |          7
-  7 | 17:00:00+01 |           8 |          5
-  6 | 15:00:00+01 |           6 |          3
-  5 | 15:00:00+01 |           6 |          3
-  4 | 14:00:00+01 |           6 |          2
+  7 | 17:00:00+01 |           8 |          6
+  6 | 15:00:00+01 |           5 |          3
+  5 | 15:00:00+01 |           5 |          3
+  4 | 14:00:00+01 |           5 |          2
   3 | 13:00:00+01 |           4 |          1
   2 | 12:00:00+01 |           3 |          1
   1 | 11:00:00+01 |           2 |          1
@@ -2169,9 +2183,9 @@ window w as (order by f_interval desc range between
   9 | @ 9 years  |          10 |          8
   8 | @ 8 years  |           9 |          7
   7 | @ 7 years  |           8 |          7
-  6 | @ 5 years  |           6 |          4
-  5 | @ 5 years  |           6 |          4
-  4 | @ 4 years  |           6 |          3
+  6 | @ 5 years  |           5 |          4
+  5 | @ 5 years  |           5 |          4
+  4 | @ 4 years  |           5 |          3
   3 | @ 3 years  |           4 |          2
   2 | @ 2 years  |           3 |          1
   1 | @ 1 year   |           2 |          1
@@ -2207,10 +2221,10 @@ window w as (order by f_timestamptz desc range between
   7 | Wed Oct 19 02:23:54 2005 PDT |           8 |          6
   6 | Tue Oct 19 02:23:54 2004 PDT |           7 |          5
   5 | Sun Oct 19 02:23:54 2003 PDT |           6 |          4
-  4 | Sat Oct 19 02:23:54 2002 PDT |           5 |          2
+  4 | Sat Oct 19 02:23:54 2002 PDT |           5 |          3
   3 | Fri Oct 19 02:23:54 2001 PDT |           4 |          1
   2 | Fri Oct 19 02:23:54 2001 PDT |           4 |          1
-  1 | Thu Oct 19 02:23:54 2000 PDT |           3 |          1
+  1 | Thu Oct 19 02:23:54 2000 PDT |           2 |          1
 (10 rows)
 
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
@@ -2243,10 +2257,10 @@ window w as (order by f_timestamp desc range between
   7 | Wed Oct 19 10:23:54 2005 |           8 |          6
   6 | Tue Oct 19 10:23:54 2004 |           7 |          5
   5 | Sun Oct 19 10:23:54 2003 |           6 |          4
-  4 | Sat Oct 19 10:23:54 2002 |           5 |          2
+  4 | Sat Oct 19 10:23:54 2002 |           5 |          3
   3 | Fri Oct 19 10:23:54 2001 |           4 |          1
   2 | Fri Oct 19 10:23:54 2001 |           4 |          1
-  1 | Thu Oct 19 10:23:54 2000 |           3 |          1
+  1 | Thu Oct 19 10:23:54 2000 |           2 |          1
 (10 rows)
 
 -- RANGE offset PRECEDING/FOLLOWING error cases
@@ -2847,14 +2861,18 @@ explain (costs off)
 select f1, sum(f1) over (partition by f1 order by f2
                          range between 1 preceding and 1 following)
 from t1 where f1 = f2;
-           QUERY PLAN            
----------------------------------
- WindowAgg
-   ->  Sort
-         Sort Key: f1
-         ->  Seq Scan on t1
-               Filter: (f1 = f2)
-(5 rows)
+                QUERY PLAN                
+------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  WindowAgg
+         Partition By: f1
+         Order By: f2
+         ->  Sort
+               Sort Key: f1
+               ->  Seq Scan on t1
+                     Filter: (f1 = f2)
+ Optimizer: Postgres query optimizer
+(9 rows)
 
 select f1, sum(f1) over (partition by f1 order by f2
                          range between 1 preceding and 1 following)
@@ -2893,14 +2911,18 @@ explain (costs off)
 select f1, sum(f1) over (partition by f1 order by f2
                          groups between 1 preceding and 1 following)
 from t1 where f1 = f2;
-           QUERY PLAN            
----------------------------------
- WindowAgg
-   ->  Sort
-         Sort Key: f1
-         ->  Seq Scan on t1
-               Filter: (f1 = f2)
-(5 rows)
+                QUERY PLAN                
+------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  WindowAgg
+         Partition By: f1
+         Order By: f2
+         ->  Sort
+               Sort Key: f1
+               ->  Seq Scan on t1
+                     Filter: (f1 = f2)
+ Optimizer: Postgres query optimizer
+(9 rows)
 
 select f1, sum(f1) over (partition by f1 order by f2
                          groups between 1 preceding and 1 following)
@@ -2974,10 +2996,18 @@ SELECT rank() OVER (PARTITION BY four, ORDER BY ten) FROM tenk1;
 ERROR:  syntax error at or near "ORDER"
 LINE 1: SELECT rank() OVER (PARTITION BY four, ORDER BY ten) FROM te...
                                                ^
-SELECT count() OVER () FROM tenk1;
-ERROR:  count(*) must be used to call a parameterless aggregate function
-LINE 1: SELECT count() OVER () FROM tenk1;
-               ^
+-- Not allowed in PostgreSQL, but is allowed in GPDB for backwards-compatibility.
+-- Added LIMIT to reduce the size of the output.
+SELECT count() OVER () FROM tenk1 limit 5;
+ count 
+-------
+ 10000
+ 10000
+ 10000
+ 10000
+ 10000
+(5 rows)
+
 SELECT generate_series(1, 100) OVER () FROM empsalary;
 ERROR:  OVER specified, but generate_series is not a window function nor an aggregate function
 LINE 1: SELECT generate_series(1, 100) OVER () FROM empsalary;
@@ -3008,16 +3038,21 @@ SELECT * FROM
           min(salary) OVER (PARTITION BY depname || 'A', depname) depminsalary
    FROM empsalary) emp
 WHERE depname = 'sales';
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
  Subquery Scan on emp
-   ->  WindowAgg
+   ->  Gather Motion 1:1  (slice1; segments: 1)
+         Merge Key: (((empsalary.depname)::text || 'A'::text))
          ->  WindowAgg
-               ->  Sort
-                     Sort Key: (((empsalary.depname)::text || 'A'::text))
-                     ->  Seq Scan on empsalary
-                           Filter: ((depname)::text = 'sales'::text)
-(7 rows)
+               Partition By: empsalary.depname
+               ->  WindowAgg
+                     Partition By: (((empsalary.depname)::text || 'A'::text)), empsalary.depname
+                     ->  Sort
+                           Sort Key: (((empsalary.depname)::text || 'A'::text))
+                           ->  Seq Scan on empsalary
+                                 Filter: ((depname)::text = 'sales'::text)
+ Optimizer: Postgres query optimizer
+(12 rows)
 
 -- pushdown is unsafe because there's a PARTITION BY clause without depname:
 EXPLAIN (COSTS OFF)
@@ -3027,18 +3062,51 @@ SELECT * FROM
           min(salary) OVER (PARTITION BY depname) depminsalary
    FROM empsalary) emp
 WHERE depname = 'sales';
-                      QUERY PLAN                       
--------------------------------------------------------
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Subquery Scan on emp
    Filter: ((emp.depname)::text = 'sales'::text)
-   ->  WindowAgg
-         ->  Sort
-               Sort Key: empsalary.enroll_date
-               ->  WindowAgg
-                     ->  Sort
-                           Sort Key: empsalary.depname
-                           ->  Seq Scan on empsalary
-(9 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: empsalary.enroll_date
+         ->  WindowAgg
+               Partition By: empsalary.enroll_date
+               ->  Sort
+                     Sort Key: empsalary.enroll_date
+                     ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                           Hash Key: empsalary.enroll_date
+                           ->  WindowAgg
+                                 Partition By: empsalary.depname
+                                 ->  Sort
+                                       Sort Key: empsalary.depname
+                                       ->  Seq Scan on empsalary
+ Optimizer: Postgres query optimizer
+(16 rows)
+
+-- pushdown is unsafe because the subquery contains window functions and the qual is volatile:
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT depname,
+          sum(salary) OVER (PARTITION BY depname) depsalary,
+          min(salary) OVER (PARTITION BY depname || 'A', depname) depminsalary
+   FROM empsalary) emp
+WHERE depname = 'sales' OR RANDOM() > 0.5;
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (((emp.depname)::text = 'sales'::text) OR (random() > '0.5'::double precision))
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: empsalary.depname
+         ->  WindowAgg
+               Partition By: empsalary.depname
+               ->  Sort
+                     Sort Key: empsalary.depname
+                     ->  WindowAgg
+                           Partition By: (((empsalary.depname)::text || 'A'::text)), empsalary.depname
+                           ->  Sort
+                                 Sort Key: (((empsalary.depname)::text || 'A'::text)), empsalary.depname
+                                 ->  Seq Scan on empsalary
+ Optimizer: Postgres query optimizer
+(14 rows)
 
 -- Test Sort node collapsing
 EXPLAIN (COSTS OFF)
@@ -3048,16 +3116,23 @@ SELECT * FROM
           min(salary) OVER (PARTITION BY depname, empno order by enroll_date) depminsalary
    FROM empsalary) emp
 WHERE depname = 'sales';
-                              QUERY PLAN                              
-----------------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Subquery Scan on emp
-   ->  WindowAgg
+   ->  Gather Motion 1:1  (slice1; segments: 1)
+         Merge Key: empsalary.empno, empsalary.enroll_date
          ->  WindowAgg
-               ->  Sort
-                     Sort Key: empsalary.empno, empsalary.enroll_date
-                     ->  Seq Scan on empsalary
-                           Filter: ((depname)::text = 'sales'::text)
-(7 rows)
+               Partition By: empsalary.depname
+               Order By: empsalary.empno
+               ->  WindowAgg
+                     Partition By: empsalary.depname, empsalary.empno
+                     Order By: empsalary.enroll_date
+                     ->  Sort
+                           Sort Key: empsalary.empno, empsalary.enroll_date
+                           ->  Seq Scan on empsalary
+                                 Filter: ((depname)::text = 'sales'::text)
+ Optimizer: Postgres query optimizer
+(14 rows)
 
 -- Test Sort node reordering
 EXPLAIN (COSTS OFF)
@@ -3065,22 +3140,30 @@ SELECT
   lead(1) OVER (PARTITION BY depname ORDER BY salary, enroll_date),
   lag(1) OVER (PARTITION BY depname ORDER BY salary,enroll_date,empno)
 FROM empsalary;
-                         QUERY PLAN                          
--------------------------------------------------------------
- WindowAgg
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
    ->  WindowAgg
-         ->  Sort
-               Sort Key: depname, salary, enroll_date, empno
-               ->  Seq Scan on empsalary
-(5 rows)
+         Partition By: depname
+         Order By: salary, enroll_date
+         ->  WindowAgg
+               Partition By: depname
+               Order By: salary, enroll_date, empno
+               ->  Sort
+                     Sort Key: depname, salary, enroll_date, empno
+                     ->  Seq Scan on empsalary
+ Optimizer: Postgres query optimizer
+(11 rows)
 
 -- cleanup
 DROP TABLE empsalary;
 -- test user-defined window function with named args and default args
 CREATE FUNCTION nth_value_def(val anyelement, n integer = 1) RETURNS anyelement
   LANGUAGE internal WINDOW IMMUTABLE STRICT AS 'window_nth_value';
+-- GPDB: LIMIT 100 added, to force the result of the subquery to be ordered
+-- across all segments.
 SELECT nth_value_def(n := 2, val := ten) OVER (PARTITION BY four), ten, four
-  FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten) s;
+  FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten LIMIT 100) s;
  nth_value_def | ten | four 
 ---------------+-----+------
              0 |   0 |    0
@@ -3096,7 +3179,7 @@ SELECT nth_value_def(n := 2, val := ten) OVER (PARTITION BY four), ten, four
 (10 rows)
 
 SELECT nth_value_def(ten) OVER (PARTITION BY four), ten, four
-  FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten) s;
+  FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten LIMIT 100) s;
  nth_value_def | ten | four 
 ---------------+-----+------
              0 |   0 |    0
@@ -3310,10 +3393,117 @@ CREATE AGGREGATE sum_int_randomrestart (int4)
 	msfunc = int4pl,
 	minvfunc = sum_int_randrestart_minvfunc
 );
+-- In PostgreSQL, the 'vs' CTE is constructed using random() and
+-- generate_series(), but GPDB inlines CTEs even when they contain volatile
+-- expressions, causing incorrect results. That's a bug in GPDB, of course,
+-- but for the purposes of this test, we work around that by using a
+-- non-volatile WITH clause. The list of values below was created by running
+-- the original subquery using random() once, and copying the result here.
+--
+-- See https://github.com/greenplum-db/gpdb/issues/1349
 WITH
-vs AS (
-	SELECT i, (random() * 100)::int4 AS v
-	FROM generate_series(1, 100) AS i
+vs (i, v) AS (
+VALUES
+ ( 1, 18),
+ ( 2, 91),
+ ( 3, 62),
+ ( 4, 34),
+ ( 5, 12),
+ ( 6, 99),
+ ( 7,  4),
+ ( 8, 32),
+ ( 9, 75),
+ (10, 38),
+ (11,  0),
+ (12, 43),
+ (13, 95),
+ (14, 83),
+ (15, 99),
+ (16, 44),
+ (17, 27),
+ (18, 11),
+ (19, 27),
+ (20, 19),
+ (21, 71),
+ (22, 52),
+ (23, 49),
+ (24, 58),
+ (25, 35),
+ (26, 66),
+ (27, 12),
+ (28, 49),
+ (29,  9),
+ (30, 89),
+ (31,  7),
+ (32, 27),
+ (33, 80),
+ (34, 69),
+ (35, 61),
+ (36, 92),
+ (37, 68),
+ (38, 65),
+ (39, 23),
+ (40, 43),
+ (41,  3),
+ (42, 24),
+ (43, 86),
+ (44, 98),
+ (45,  6),
+ (46, 85),
+ (47, 42),
+ (48, 33),
+ (49, 96),
+ (50, 68),
+ (51, 52),
+ (52, 67),
+ (53, 20),
+ (54,  1),
+ (55, 25),
+ (56, 55),
+ (57, 67),
+ (58, 37),
+ (59,  4),
+ (60, 76),
+ (61, 26),
+ (62, 11),
+ (63,  3),
+ (64,  6),
+ (65, 80),
+ (66, 64),
+ (67, 98),
+ (68, 48),
+ (69, 29),
+ (70, 21),
+ (71, 91),
+ (72, 31),
+ (73, 45),
+ (74, 77),
+ (75, 29),
+ (76, 51),
+ (77, 63),
+ (78, 71),
+ (79, 84),
+ (80, 59),
+ (81, 39),
+ (82, 36),
+ (83, 26),
+ (84, 60),
+ (85, 37),
+ (86, 51),
+ (87, 15),
+ (88,  4),
+ (89, 88),
+ (90, 19),
+ (91, 80),
+ (92, 14),
+ (93, 30),
+ (94, 83),
+ (95, 20),
+ (96, 10),
+ (97, 47),
+ (98, 18),
+ (99, 58),
+(100, 75)
 ),
 sum_following AS (
 	SELECT i, SUM(v) OVER
@@ -3821,3 +4011,4 @@ SELECT i, b, bool_and(b) OVER w, bool_or(b) OVER w
  5 | t | t        | t
 (5 rows)
 
+RESET optimizer_trace_fallback;

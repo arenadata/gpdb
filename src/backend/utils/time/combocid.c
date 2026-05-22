@@ -29,6 +29,10 @@
  * The array and hash table are kept in TopTransactionContext, and are
  * destroyed at the end of each transaction.
  *
+ * GPDB: In addition to the local array and hash table, the QE writer process
+ * also maintains a copy of the array in shared memory, in a DSM segment. QE
+ * reader processes can access the writer's shared array to look up combo
+ * CIDs.
  *
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -49,6 +53,10 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
+#include "cdb/cdbvars.h"
+#include "storage/proc.h"
+#include "storage/dsm.h"
+#include "utils/resowner.h"
 
 /* Hash table to lookup combo cids by cmin and cmax */
 static HTAB *comboHash = NULL;
@@ -85,12 +93,28 @@ static int	sizeComboCids = 0;	/* allocated size of array */
 /* Initial size of the array */
 #define CCID_ARRAY_SIZE			100
 
-
 /* prototypes for internal functions */
 static CommandId GetComboCommandId(CommandId cmin, CommandId cmax);
 static CommandId GetRealCmin(CommandId combocid);
 static CommandId GetRealCmax(CommandId combocid);
 
+/*
+ * To shared the combocids array from QE writer to QE readers, we keep a
+ * copy of the 'comboCids' array in a DSM segment. The DSM segment has
+ * the same serialized format as used by Serialize/RestoreComboCIDState
+ * functions: the segment begins with the number of elements as an 'int',
+ * followed by the array of ComboCidKeys.
+ *
+ * The dumpSharedComboCommandIds() function updates shared memory copy with
+ * any new entries in local 'comboCids' array, and loadSharedComboCommandIds()
+ * loads the local array from the shared copy.
+ */
+static dsm_segment *shared_comboCids = NULL;
+static int shared_usedComboCids = 0;
+static int shared_sizeComboCids = 0;
+
+static void dumpSharedComboCommandIds(void);
+static void loadSharedComboCommandIds(void);
 
 /**** External API ****/
 
@@ -129,7 +153,7 @@ HeapTupleHeaderGetCmax(HeapTupleHeader tup)
 	 * things too much.
 	 */
 	Assert(CritSectionCount > 0 ||
-		   TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetUpdateXid(tup)));
+	  TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetUpdateXid(tup)));
 
 	if (tup->t_infomask & HEAP_COMBOCID)
 		return GetRealCmax(cid);
@@ -209,6 +233,16 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 	ComboCidEntry entry;
 	bool		found;
 
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+	{
+		if (IS_QUERY_DISPATCHER())
+			elog(ERROR, "EntryReader qExec tried to allocate a Combo Command Id");
+		else
+			elog(ERROR, "Reader qExec tried to allocate a Combo Command Id");
+	}
+
+	/* We're either GP_ROLE_DISPATCH, GP_ROLE_UTILITY, or a QE-writer */
+
 	/*
 	 * Create the hash table and array the first time we need to use combo
 	 * cids in the transaction.
@@ -274,20 +308,43 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 
 	entry->combocid = combocid;
 
+	/*
+	 * If we're the QE writer or the dispatcher, share the new combo CID with
+	 * readers. (In utility mode, no need to share.)
+	 */
+	if (Gp_role != GP_ROLE_UTILITY)
+		dumpSharedComboCommandIds();
+
 	return combocid;
 }
 
 static CommandId
 GetRealCmin(CommandId combocid)
 {
-	Assert(combocid < usedComboCids);
+	/*
+	 * If we are a reader process, check if we need to update our private copy
+	 * of the shared comboCids first.
+	 */
+	if (combocid >= usedComboCids && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+		loadSharedComboCommandIds();
+
+	if (combocid >= usedComboCids)
+		elog(ERROR, "GetRealCmin: no combocid entry found for combo cid %u/%u", combocid, usedComboCids);
 	return comboCids[combocid].cmin;
 }
 
 static CommandId
 GetRealCmax(CommandId combocid)
 {
-	Assert(combocid < usedComboCids);
+	/*
+	 * If we are a reader process, check if we need to update our private copy
+	 * of the shared comboCids first.
+	 */
+	if (combocid >= usedComboCids && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+		loadSharedComboCommandIds();
+
+	if (combocid >= usedComboCids)
+		elog(ERROR, "GetRealCmax: no combocid entry found for combo cid %u/%u", combocid, usedComboCids);
 	return comboCids[combocid].cmax;
 }
 
@@ -362,5 +419,219 @@ RestoreComboCIDState(char *comboCIDstate)
 		/* Verify that we got the expected answer. */
 		if (cid != i)
 			elog(ERROR, "unexpected command ID while restoring combo CIDs");
+	}
+}
+
+/*
+ * Copy the local comboCids array into shared memory, so that it can be
+ * accessed by QE reader processes.
+ *
+ * In any given segment, there are many readers, but only one writer. The
+ * writer process maintains an array of combo CIDs like in PostgreSQL,
+ * but in addition to the local array, it maintains a copy of it in shared
+ * memory, as a DSM segment. The handle of the DSM segment is made available
+ * to reader processes in MyProc->comboCidsHandle.
+ *
+ * This function copies the local comboCids array to the DSM segment,
+ * reallocating a larger DSM segment if needed. Since combo cid entries are
+ * always appended to the end of a combo cid dsm segment, and because there is
+ * only one writer, it is not necessary to lock the combo cid DSM segment
+ * during reading or writing. A new combo cid will not become visible to the
+ * reader until we have incremented the count stored in the beginning of the
+ * DSM segment. We have to be careful with memory ordering, though, to make
+ * sure the new entry becomes visible to readers before the counter is
+ * incremented!
+ *
+ * The reader processes can find the current DSM segment via lockHolderProcPtr.
+ */
+void
+dumpSharedComboCommandIds(void)
+{
+	char	   *shared_ptr;
+	int		   *num_elements_ptr;
+	ComboCidKey keydata;
+	dsm_segment *oldsegment = shared_comboCids;
+
+	Assert(Gp_role != GP_ROLE_EXECUTE || Gp_is_writer);
+
+	/*
+	 * Allocate/extend the shared array, if the new elements don't fit in the
+	 * old one.
+	 */
+	if (usedComboCids > shared_sizeComboCids)
+	{
+		ResourceOwner oldowner;
+		dsm_segment *newsegment;
+
+		oldowner = CurrentResourceOwner;
+		CurrentResourceOwner = TopTransactionResourceOwner;
+
+		/*
+		 * DSM segments cannot be resized, so we have to allocate a whole new
+		 * segment.
+		 * Create a new DSM segment for the combocids array. If we had an
+		 * old one, we'll copy it over to the new array. (DSM segments
+		 * cannot be resized.)
+		 */
+		newsegment = dsm_create(sizeof(int) + sizeof(ComboCidKeyData) * sizeComboCids,
+								DSM_CREATE_NULL_IF_MAXSEGMENTS);
+		if (newsegment == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("could not create DSM segment for %d combo CIDs",
+							sizeComboCids)));
+		/*
+		 * let current ResourceOwner forget this dsm
+		 * and manage the lifecycle by ourselves
+		 */
+		dsm_pin_mapping(newsegment);
+
+		shared_comboCids = newsegment;
+
+		/* update dsm size */
+		shared_sizeComboCids = sizeComboCids;
+
+		/* reset current usage amount */
+		shared_usedComboCids = 0;
+		shared_ptr = dsm_segment_address(shared_comboCids);
+		num_elements_ptr = (int *) shared_ptr;
+		*num_elements_ptr = 0;
+
+		CurrentResourceOwner = oldowner;
+	}
+
+	/*
+	 * Copy all new entries to the shared array. (This function is called
+	 * after each combocid assignment, so in practice there should always
+	 * be exactly one new one).
+	 */
+	shared_ptr = dsm_segment_address(shared_comboCids);
+	num_elements_ptr = (int *) shared_ptr;
+	Assert(*num_elements_ptr == shared_usedComboCids);
+	keydata = (ComboCidKeyData *) (shared_ptr + sizeof(int));
+
+	for (int i = shared_usedComboCids; i < usedComboCids; i++)
+		keydata[i] = comboCids[i];
+
+	/*
+	 * Finally, advertise the new count. We need a memory barrier to make sure
+	 * that the array contents become visible to other backends before the
+	 * count!
+	 */
+	pg_write_barrier();
+	*num_elements_ptr = usedComboCids;
+	shared_usedComboCids = usedComboCids;
+
+	/*
+	 * If we had to allocate a new segment, we swap it in place and release the
+	 * old one now.
+	 */
+	if (oldsegment != shared_comboCids)
+	{
+		MyProc->comboCidsHandle = dsm_segment_handle(shared_comboCids);
+		if (oldsegment)
+			dsm_detach(oldsegment);
+	}
+}
+
+/*
+ * Load the comboCids array from shared memory.
+ */
+static void
+loadSharedComboCommandIds(void)
+{
+	dsm_segment *attached_comboCids;
+	char	   *shared_ptr;
+	ComboCidKey keydata;
+	int			num_elements;
+	dsm_handle	handle;
+
+	Assert(Gp_role == GP_ROLE_EXECUTE);
+	Assert(!Gp_is_writer);
+
+	if (lockHolderProcPtr == NULL)
+	{
+		/* get lockholder! */
+		elog(ERROR, "loadSharedComboCommandId: NO LOCK HOLDER POINTER.");
+	}
+
+	/*
+	 * Attach to the DSM segment shared by the QE writer process.
+	 *
+	 * It's possible that the QE write process destroys and reallocates
+	 * the array just when we're about to attach to it. Cope with that by
+	 * retrying if dsm_attach() fails.
+	 */
+	for (;;)
+	{
+		handle = lockHolderProcPtr->comboCidsHandle;
+
+		attached_comboCids = dsm_attach(handle);
+		if (attached_comboCids != NULL)
+			break;		/* attached successfully */
+
+		/*
+		 * Could not attach. Did the QE writer just reallocate a new array?
+		 * If so, retry with the new handle. Other errors are not expected.
+		 */
+		if (handle == lockHolderProcPtr->comboCidsHandle)
+			elog(ERROR, "could not attach to shared combo CIDs array");
+	}
+
+	/*
+	 * Copy the array into local memory.
+	 *
+	 * Note: we don't use RestoreComboCIDState(), because we don't care about
+	 * loading the hash table, just the array. Furthermore,
+	 * RestoreComboCIDState assumes that we're starting from a clean slate,
+	 * but we might already have old combocids loaded.
+	 */
+	shared_ptr = dsm_segment_address(attached_comboCids);
+	num_elements = *(int *) shared_ptr;
+	keydata = (ComboCidKeyData *) (shared_ptr + sizeof(int));
+
+	/* make sure we read the 'num_elements' first */
+	pg_read_barrier();
+
+	if (num_elements > sizeComboCids)
+	{
+		int			newsize = Max(sizeComboCids * 2, num_elements);
+
+		if (comboCids == NULL)
+		{
+			comboCids = (ComboCidKeyData *)
+				MemoryContextAlloc(TopTransactionContext,
+								   sizeof(ComboCidKeyData) * newsize);
+		}
+		else
+			comboCids = (ComboCidKeyData *)
+				repalloc(comboCids, sizeof(ComboCidKeyData) * newsize);
+		sizeComboCids = newsize;
+	}
+
+	memcpy(comboCids, keydata, num_elements * sizeof(ComboCidKeyData));
+	usedComboCids = num_elements;
+
+	/*
+	 * All done, detach from the array.
+	 *
+	 * XXX: Or would it be better to stay attached, in case we need to load it
+	 * again soon?
+	 */
+	dsm_detach(attached_comboCids);
+	attached_comboCids = NULL;
+}
+
+void
+AtEOXact_ComboCid_Dsm_Detach(void)
+{
+	if (shared_comboCids != NULL)
+	{
+		MyProc->comboCidsHandle = 0;
+		dsm_detach(shared_comboCids);
+		shared_comboCids = NULL;
+
+		shared_usedComboCids = 0;
+		shared_sizeComboCids = 0;
 	}
 }

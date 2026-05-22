@@ -238,7 +238,7 @@ SELECT dblink_close('rmt_foo_cursor',false);
 (1 row)
 
 -- open the cursor again
-SELECT dblink_open('rmt_foo_cursor','SELECT * FROM foo');
+SELECT dblink_open('rmt_foo_cursor','SELECT * FROM foo ORDER BY f1');
  dblink_open 
 -------------
  OK
@@ -587,7 +587,7 @@ SELECT dblink_exec('myconn','ABORT');
 (1 row)
 
 -- open a cursor
-SELECT dblink_open('myconn','rmt_foo_cursor','SELECT * FROM foo');
+SELECT dblink_open('myconn','rmt_foo_cursor','SELECT * FROM foo ORDER BY f1');
  dblink_open 
 -------------
  OK
@@ -741,6 +741,8 @@ SELECT dblink_connect('dtest1', connection_parameters());
  OK
 (1 row)
 
+-- start_ignore
+-- Async more not supported in GPDB
 SELECT * from
  dblink_send_query('dtest1', 'select * from foo where f1 < 3') as t1;
  t1 
@@ -748,12 +750,15 @@ SELECT * from
   1
 (1 row)
 
+-- end_ignore
 SELECT dblink_connect('dtest2', connection_parameters());
  dblink_connect 
 ----------------
  OK
 (1 row)
 
+-- start_ignore
+-- Async more not supported in GPDB
 SELECT * from
  dblink_send_query('dtest2', 'select * from foo where f1 > 2 and f1 < 7') as t1;
  t1 
@@ -761,12 +766,15 @@ SELECT * from
   1
 (1 row)
 
+-- end_ignore
 SELECT dblink_connect('dtest3', connection_parameters());
  dblink_connect 
 ----------------
  OK
 (1 row)
 
+-- start_ignore
+-- Async more not supported in GPDB
 SELECT * from
  dblink_send_query('dtest3', 'select * from foo where f1 > 6') as t1;
  t1 
@@ -774,13 +782,62 @@ SELECT * from
   1
 (1 row)
 
+-- end_ignore
+-- test nested query for GPDB
 CREATE TEMPORARY TABLE result AS
-(SELECT * from dblink_get_result('dtest1') as t1(f1 int, f2 text, f3 text[]))
+(SELECT * from dblink('dbname=contrib_regression','select * from foo where f1 > 2 and f1 < 7') as t1(f1 int, f2 text, f3 text[]))
 UNION
-(SELECT * from dblink_get_result('dtest2') as t2(f1 int, f2 text, f3 text[]))
+(SELECT * from dblink('dbname=contrib_regression','select * from foo where f1 < 3') as t2(f1 int, f2 text, f3 text[]))
 UNION
-(SELECT * from dblink_get_result('dtest3') as t3(f1 int, f2 text, f3 text[]))
+(SELECT * from dblink('dbname=contrib_regression','select * from foo where f1 > 2 and f1 < 7') as t3(f1 int, f2 text, f3 text[]))
 ORDER by f1;
+SELECT * FROM result;
+ f1 | f2 |     f3     
+----+----+------------
+  0 | a  | {a0,b0,c0}
+  1 | b  | {a1,b1,c1}
+  2 | c  | {a2,b2,c2}
+  3 | d  | {a3,b3,c3}
+  4 | e  | {a4,b4,c4}
+  5 | f  | {a5,b5,c5}
+  6 | g  | {a6,b6,c6}
+(7 rows)
+
+DROP TABLE result;
+CREATE TEMPORARY TABLE result (f1 int, f2 text, f3 text[]);
+INSERT INTO result SELECT * FROM dblink ('dbname=contrib_regression','select * from foo') AS t(f1 int, f2 text, f3 text[]);
+SELECT * FROM result;
+ f1 | f2 |      f3       
+----+----+---------------
+  0 | a  | {a0,b0,c0}
+  1 | b  | {a1,b1,c1}
+  2 | c  | {a2,b2,c2}
+  3 | d  | {a3,b3,c3}
+  4 | e  | {a4,b4,c4}
+  5 | f  | {a5,b5,c5}
+  6 | g  | {a6,b6,c6}
+  7 | h  | {a7,b7,c7}
+  8 | i  | {a8,b8,c8}
+  9 | j  | {a9,b9,c9}
+ 10 | k  | {a10,b10,c10}
+(11 rows)
+
+SELECT * FROM (SELECT * FROM dblink('dbname=contrib_regression','select * from foo') AS t(f1 int, f2 text, f3 text[])) AS t1;
+ f1 | f2 |      f3       
+----+----+---------------
+  0 | a  | {a0,b0,c0}
+  1 | b  | {a1,b1,c1}
+  2 | c  | {a2,b2,c2}
+  3 | d  | {a3,b3,c3}
+  4 | e  | {a4,b4,c4}
+  5 | f  | {a5,b5,c5}
+  6 | g  | {a6,b6,c6}
+  7 | h  | {a7,b7,c7}
+  8 | i  | {a8,b8,c8}
+  9 | j  | {a9,b9,c9}
+ 10 | k  | {a10,b10,c10}
+(11 rows)
+
 -- dblink_get_connections returns an array with elements in a machine-dependent
 -- ordering, so we must resort to unnesting and sorting for a stable result
 create function unnest(anyarray) returns setof anyelement
@@ -795,12 +852,15 @@ SELECT * FROM unnest(dblink_get_connections()) ORDER BY 1;
  dtest3
 (3 rows)
 
+-- start_ignore
+-- GPDB: dblink_is_busy() is not supported
 SELECT dblink_is_busy('dtest1');
  dblink_is_busy 
 ----------------
               0
 (1 row)
 
+-- end_ignore
 SELECT dblink_disconnect('dtest1');
  dblink_disconnect 
 -------------------
@@ -841,6 +901,8 @@ SELECT dblink_connect('dtest1', connection_parameters());
  OK
 (1 row)
 
+-- start_ignore
+-- Async more not supported in GPDB
 SELECT * from
  dblink_send_query('dtest1', 'select * from foo where f1 < 3') as t1;
  t1 
@@ -848,6 +910,7 @@ SELECT * from
   1
 (1 row)
 
+-- end_ignore
 SELECT dblink_cancel_query('dtest1');
  dblink_cancel_query 
 ---------------------
@@ -885,9 +948,10 @@ GRANT USAGE ON FOREIGN SERVER fdtest TO regress_dblink_user;
 GRANT EXECUTE ON FUNCTION dblink_connect_u(text, text) TO regress_dblink_user;
 SET SESSION AUTHORIZATION regress_dblink_user;
 -- should fail
+-- GPDB: We also check for hostname in connection string which is checked first
 SELECT dblink_connect('myconn', 'fdtest');
-ERROR:  password is required
-DETAIL:  Non-superusers must provide a password in the connection string.
+DETAIL:  Non-superusers must provide a host in the connection string.
+ERROR:  host is required
 -- should succeed
 SELECT dblink_connect_u('myconn', 'fdtest');
  dblink_connect_u 
@@ -1043,6 +1107,8 @@ FROM dblink('myconn',
 (2 rows)
 
 -- single-row asynchronous case
+-- start_ignore
+-- Async more not supported in GPDB
 SELECT *
 FROM dblink_send_query('myconn',
     'SELECT * FROM
@@ -1063,7 +1129,10 @@ SELECT * FROM result;
 (1 row)
 
 DROP TABLE result;
+-- end_ignore
 -- multi-row asynchronous case
+-- start_ignore
+-- Async more not supported in GPDB
 SELECT *
 FROM dblink_send_query('myconn',
     'SELECT * FROM
@@ -1088,6 +1157,7 @@ SELECT * FROM result;
 (2 rows)
 
 DROP TABLE result;
+-- end_ignore
 -- Try an ambiguous interval
 SELECT dblink_exec('myconn', 'SET intervalstyle = sql_standard;');
  dblink_exec 
@@ -1107,6 +1177,10 @@ FROM dblink('myconn',
 -- Try swapping to another format to ensure the GUCs are tracked
 -- properly through a change.
 CREATE TEMPORARY TABLE result (t timestamptz);
+-- These don't work correctly in GPDB. The first dblink_exec() is executed
+-- in the QE node, while the second, in the INSERT statement, is executed
+-- in an entrydb worker process. The 'myconn' connection established earlier
+-- is only visible in the QE process.
 SELECT dblink_exec('myconn', 'SET datestyle = ISO, MDY;');
  dblink_exec 
 -------------
@@ -1118,6 +1192,8 @@ INSERT INTO result
   FROM dblink('myconn',
               'SELECT * FROM (VALUES (''03.12.2013 00:00:00+00'')) t')
     AS t(a timestamptz);
+ERROR:  could not establish connection  (entry db 127.0.0.1:5432 pid=7556)
+DETAIL:  missing "=" after "myconn" in connection info string
 SELECT dblink_exec('myconn', 'SET datestyle = GERMAN, DMY;');
  dblink_exec 
 -------------
@@ -1129,12 +1205,12 @@ INSERT INTO result
   FROM dblink('myconn',
               'SELECT * FROM (VALUES (''12.03.2013 00:00:00+00'')) t')
     AS t(a timestamptz);
+ERROR:  could not establish connection  (entry db 127.0.0.1:5432 pid=7556)
+DETAIL:  missing "=" after "myconn" in connection info string
 SELECT * FROM result;
-           t            
-------------------------
- 2013-03-12 00:00:00+00
- 2013-03-12 00:00:00+00
-(2 rows)
+ t 
+---
+(0 rows)
 
 DROP TABLE result;
 -- Check error throwing in dblink_fetch

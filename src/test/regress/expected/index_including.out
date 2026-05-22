@@ -127,15 +127,18 @@ INSERT INTO tbl SELECT 1, NULL, 3*x, box('4,4,4,4') FROM generate_series(1,10) A
 ERROR:  null value in column "c2" violates not-null constraint
 DETAIL:  Failing row contains (1, null, 3, (4,4),(4,4)).
 INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,300) AS x;
+-- GPDB: Dial down random_page_cost to get the same plan as in upstream.
+set random_page_cost=1.0;
 explain (costs off)
 select * from tbl where (c1,c2,c3) < (2,5,1);
-                   QUERY PLAN                   
-------------------------------------------------
- Bitmap Heap Scan on tbl
-   Filter: (ROW(c1, c2, c3) < ROW(2, 5, 1))
-   ->  Bitmap Index Scan on covering
+                    QUERY PLAN                    
+--------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Index Only Scan using covering on tbl
          Index Cond: (ROW(c1, c2) <= ROW(2, 5))
-(4 rows)
+         Filter: (ROW(c1, c2, c3) < ROW(2, 5, 1))
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 select * from tbl where (c1,c2,c3) < (2,5,1);
  c1 | c2 | c3 | c4 
@@ -144,19 +147,24 @@ select * from tbl where (c1,c2,c3) < (2,5,1);
   2 |  4 |    | 
 (2 rows)
 
+reset random_page_cost;
 -- row comparison that compares high key at page boundary
 SET enable_seqscan = off;
 explain (costs off)
-select * from tbl where (c1,c2,c3) < (262,1,1) limit 1;
-                     QUERY PLAN                     
-----------------------------------------------------
+select * from tbl where (c1,c2,c3) < (262,1,1) order by 1 limit 1;
+                           QUERY PLAN                           
+----------------------------------------------------------------
  Limit
-   ->  Index Only Scan using covering on tbl
-         Index Cond: (ROW(c1, c2) <= ROW(262, 1))
-         Filter: (ROW(c1, c2, c3) < ROW(262, 1, 1))
-(4 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: c1
+         ->  Limit
+               ->  Index Only Scan using covering on tbl
+                     Index Cond: (ROW(c1, c2) <= ROW(262, 1))
+                     Filter: (ROW(c1, c2, c3) < ROW(262, 1, 1))
+ Optimizer: Postgres query optimizer
+(8 rows)
 
-select * from tbl where (c1,c2,c3) < (262,1,1) limit 1;
+select * from tbl where (c1,c2,c3) < (262,1,1) order by 1 limit 1;
  c1 | c2 | c3 | c4 
 ----+----+----+----
   1 |  2 |    | 
@@ -310,12 +318,12 @@ DROP TABLE tbl;
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
 INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,1000) AS x;
 CREATE UNIQUE INDEX CONCURRENTLY on tbl (c1, c2) INCLUDE (c3, c4);
+ERROR:  CREATE INDEX CONCURRENTLY is not supported
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
                                           indexdef                                           
 ---------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_idx ON public.tbl USING btree (c1, c2) INCLUDE (c3, c4)
  CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING btree (c1, c2) INCLUDE (c3, c4)
-(2 rows)
+(1 row)
 
 DROP TABLE tbl;
 /*
@@ -386,14 +394,18 @@ DROP TABLE tbl;
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
 INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 ALTER TABLE tbl ALTER c1 TYPE bigint;
+ERROR:  cannot alter column with primary key or unique constraint
+HINT:  DROP the constraint first, and recreate it after the ALTER
 ALTER TABLE tbl ALTER c3 TYPE bigint;
+ERROR:  cannot alter column with primary key or unique constraint
+HINT:  DROP the constraint first, and recreate it after the ALTER
 \d tbl
                 Table "public.tbl"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- c1     | bigint  |           |          | 
+ c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | bigint  |           |          | 
+ c3     | integer |           |          | 
  c4     | box     |           |          | 
 Indexes:
     "tbl_c1_c2_c3_c4_key" UNIQUE CONSTRAINT, btree (c1, c2) INCLUDE (c3, c4)

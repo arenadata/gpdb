@@ -1,6 +1,7 @@
 --
 -- WINDOW FUNCTIONS
 --
+SET optimizer_trace_fallback=on;
 
 CREATE TEMPORARY TABLE empsalary (
     depname varchar,
@@ -73,14 +74,20 @@ SELECT lead(ten * 2, 1, -1) OVER (PARTITION BY four ORDER BY ten), ten, four FRO
 SELECT first_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
 
 -- last_value returns the last row of the frame, which is CURRENT ROW in ORDER BY window.
-SELECT last_value(four) OVER (ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+-- the column `ten` is ordered, so we should call last_value on this
+-- column. Using other cols the result is flaky because there are
+-- tuples with the same `ten` while different other col values.
+SELECT last_value(ten) OVER (ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
 
-SELECT last_value(ten) OVER (PARTITION BY four), ten, four FROM
+set search_path=singleseg, public;
+SELECT last_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM
 	(SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s
 	ORDER BY four, ten;
 
-SELECT nth_value(ten, four + 1) OVER (PARTITION BY four), ten, four
-	FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s;
+SELECT nth_value(ten, four + 1) OVER (PARTITION BY four ORDER BY ten), ten, four
+	FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s order by four,ten;
+
+reset search_path;
 
 SELECT ten, two, sum(hundred) AS gsum, sum(sum(hundred)) OVER (PARTITION BY two ORDER BY ten) AS wsum
 FROM tenk1 GROUP BY ten, two;
@@ -181,6 +188,7 @@ SELECT sum(unique1) over (order by four range between current row and unbounded 
 	unique1, four
 FROM tenk1 WHERE unique1 < 10;
 
+set search_path=singleseg, public;
 SELECT sum(unique1) over (rows between current row and unbounded following),
 	unique1, four
 FROM tenk1 WHERE unique1 < 10;
@@ -276,6 +284,8 @@ CREATE TEMP VIEW v_window AS
 SELECT * FROM v_window;
 
 SELECT pg_get_viewdef('v_window');
+
+reset search_path;
 
 CREATE OR REPLACE TEMP VIEW v_window AS
 	SELECT i, sum(i) over (order by i rows between 1 preceding and 1 following
@@ -856,7 +866,9 @@ SELECT count(*) OVER w FROM tenk1 WINDOW w AS (ORDER BY unique1), w AS (ORDER BY
 
 SELECT rank() OVER (PARTITION BY four, ORDER BY ten) FROM tenk1;
 
-SELECT count() OVER () FROM tenk1;
+-- Not allowed in PostgreSQL, but is allowed in GPDB for backwards-compatibility.
+-- Added LIMIT to reduce the size of the output.
+SELECT count() OVER () FROM tenk1 limit 5;
 
 SELECT generate_series(1, 100) OVER () FROM empsalary;
 
@@ -892,6 +904,15 @@ SELECT * FROM
    FROM empsalary) emp
 WHERE depname = 'sales';
 
+-- pushdown is unsafe because the subquery contains window functions and the qual is volatile:
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT depname,
+          sum(salary) OVER (PARTITION BY depname) depsalary,
+          min(salary) OVER (PARTITION BY depname || 'A', depname) depminsalary
+   FROM empsalary) emp
+WHERE depname = 'sales' OR RANDOM() > 0.5;
+
 -- Test Sort node collapsing
 EXPLAIN (COSTS OFF)
 SELECT * FROM
@@ -915,11 +936,13 @@ DROP TABLE empsalary;
 CREATE FUNCTION nth_value_def(val anyelement, n integer = 1) RETURNS anyelement
   LANGUAGE internal WINDOW IMMUTABLE STRICT AS 'window_nth_value';
 
+-- GPDB: LIMIT 100 added, to force the result of the subquery to be ordered
+-- across all segments.
 SELECT nth_value_def(n := 2, val := ten) OVER (PARTITION BY four), ten, four
-  FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten) s;
+  FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten LIMIT 100) s;
 
 SELECT nth_value_def(ten) OVER (PARTITION BY four), ten, four
-  FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten) s;
+  FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten LIMIT 100) s;
 
 --
 -- Test the basic moving-aggregate machinery
@@ -1093,10 +1116,117 @@ CREATE AGGREGATE sum_int_randomrestart (int4)
 	minvfunc = sum_int_randrestart_minvfunc
 );
 
+-- In PostgreSQL, the 'vs' CTE is constructed using random() and
+-- generate_series(), but GPDB inlines CTEs even when they contain volatile
+-- expressions, causing incorrect results. That's a bug in GPDB, of course,
+-- but for the purposes of this test, we work around that by using a
+-- non-volatile WITH clause. The list of values below was created by running
+-- the original subquery using random() once, and copying the result here.
+--
+-- See https://github.com/greenplum-db/gpdb/issues/1349
 WITH
-vs AS (
-	SELECT i, (random() * 100)::int4 AS v
-	FROM generate_series(1, 100) AS i
+vs (i, v) AS (
+VALUES
+ ( 1, 18),
+ ( 2, 91),
+ ( 3, 62),
+ ( 4, 34),
+ ( 5, 12),
+ ( 6, 99),
+ ( 7,  4),
+ ( 8, 32),
+ ( 9, 75),
+ (10, 38),
+ (11,  0),
+ (12, 43),
+ (13, 95),
+ (14, 83),
+ (15, 99),
+ (16, 44),
+ (17, 27),
+ (18, 11),
+ (19, 27),
+ (20, 19),
+ (21, 71),
+ (22, 52),
+ (23, 49),
+ (24, 58),
+ (25, 35),
+ (26, 66),
+ (27, 12),
+ (28, 49),
+ (29,  9),
+ (30, 89),
+ (31,  7),
+ (32, 27),
+ (33, 80),
+ (34, 69),
+ (35, 61),
+ (36, 92),
+ (37, 68),
+ (38, 65),
+ (39, 23),
+ (40, 43),
+ (41,  3),
+ (42, 24),
+ (43, 86),
+ (44, 98),
+ (45,  6),
+ (46, 85),
+ (47, 42),
+ (48, 33),
+ (49, 96),
+ (50, 68),
+ (51, 52),
+ (52, 67),
+ (53, 20),
+ (54,  1),
+ (55, 25),
+ (56, 55),
+ (57, 67),
+ (58, 37),
+ (59,  4),
+ (60, 76),
+ (61, 26),
+ (62, 11),
+ (63,  3),
+ (64,  6),
+ (65, 80),
+ (66, 64),
+ (67, 98),
+ (68, 48),
+ (69, 29),
+ (70, 21),
+ (71, 91),
+ (72, 31),
+ (73, 45),
+ (74, 77),
+ (75, 29),
+ (76, 51),
+ (77, 63),
+ (78, 71),
+ (79, 84),
+ (80, 59),
+ (81, 39),
+ (82, 36),
+ (83, 26),
+ (84, 60),
+ (85, 37),
+ (86, 51),
+ (87, 15),
+ (88,  4),
+ (89, 88),
+ (90, 19),
+ (91, 80),
+ (92, 14),
+ (93, 30),
+ (94, 83),
+ (95, 20),
+ (96, 10),
+ (97, 47),
+ (98, 18),
+ (99, 58),
+(100, 75)
 ),
 sum_following AS (
 	SELECT i, SUM(v) OVER
@@ -1257,3 +1387,5 @@ SELECT to_char(SUM(n::float8) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND 1 FO
 SELECT i, b, bool_and(b) OVER w, bool_or(b) OVER w
   FROM (VALUES (1,true), (2,true), (3,false), (4,false), (5,true)) v(i,b)
   WINDOW w AS (ORDER BY i ROWS BETWEEN CURRENT ROW AND 1 FOLLOWING);
+
+RESET optimizer_trace_fallback;

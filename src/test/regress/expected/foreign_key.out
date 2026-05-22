@@ -1098,9 +1098,9 @@ DROP TABLE pktable, fktable;
 -- where the index cannot be used because of type incompatibilities.
 CREATE TEMP TABLE pktable (
         id1     INT4 PRIMARY KEY,
-        id2     VARCHAR(4) UNIQUE,
-        id3     REAL UNIQUE,
-        UNIQUE(id1, id2, id3)
+        id2     VARCHAR(4) /*UNIQUE*/,
+        id3     REAL /*UNIQUE,*/
+        /*UNIQUE(id1, id2, id3)*/
 );
 CREATE TEMP TABLE fktable (
         x1      INT4 REFERENCES pktable(id1),
@@ -1109,6 +1109,7 @@ CREATE TEMP TABLE fktable (
         x4      TEXT,
         x5      INT2
 );
+ERROR:  there is no unique constraint matching given keys for referenced table "pktable"
 -- check individual constraints with alter table.
 -- should fail
 -- varchar does not promote to real
@@ -1135,18 +1136,22 @@ DETAIL:  Key columns "x1" and "id2" are of incompatible types: integer and chara
 -- int4 promotes to real
 ALTER TABLE fktable ADD CONSTRAINT fk_1_3
 FOREIGN KEY (x1) REFERENCES pktable(id3);
+ERROR:  relation "fktable" does not exist
 -- text is compatible with varchar
 ALTER TABLE fktable ADD CONSTRAINT fk_4_2
 FOREIGN KEY (x4) REFERENCES pktable(id2);
 -- int2 is part of integer opfamily as of 8.0
 ALTER TABLE fktable ADD CONSTRAINT fk_5_1
 FOREIGN KEY (x5) REFERENCES pktable(id1);
+ERROR:  relation "fktable" does not exist
 -- check multikey cases, especially out-of-order column lists
 -- these should work
 ALTER TABLE fktable ADD CONSTRAINT fk_123_123
 FOREIGN KEY (x1,x2,x3) REFERENCES pktable(id1,id2,id3);
+ERROR:  relation "fktable" does not exist
 ALTER TABLE fktable ADD CONSTRAINT fk_213_213
 FOREIGN KEY (x2,x1,x3) REFERENCES pktable(id2,id1,id3);
+ERROR:  relation "fktable" does not exist
 ALTER TABLE fktable ADD CONSTRAINT fk_253_213
 FOREIGN KEY (x2,x5,x3) REFERENCES pktable(id2,id1,id3);
 -- these should fail
@@ -1169,6 +1174,7 @@ CREATE TEMP TABLE pktable (
     id int primary key,
     other int
 );
+ERROR:  relation "pktable" already exists
 CREATE TEMP TABLE fktable (
     id int primary key,
     fk int references pktable deferrable initially deferred

@@ -77,6 +77,8 @@ main(int argc, char **argv)
 	static int	no_subscriptions = 0;
 	static int	strict_names = 0;
 
+	static int	binary_upgrade = 0;
+
 	struct option cmdopts[] = {
 		{"clean", 0, NULL, 'c'},
 		{"create", 0, NULL, 'C'},
@@ -125,6 +127,9 @@ main(int argc, char **argv)
 		{"no-security-labels", no_argument, &no_security_labels, 1},
 		{"no-subscriptions", no_argument, &no_subscriptions, 1},
 
+		/* GPDB */
+		{"binary-upgrade", no_argument, &binary_upgrade, 1},
+
 		{NULL, 0, NULL, 0}
 	};
 
@@ -147,7 +152,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_restore (PostgreSQL) " PG_VERSION);
+			puts("pg_restore (Greenplum Database) " PG_VERSION);
 			exit_nicely(0);
 		}
 	}
@@ -381,6 +386,8 @@ main(int argc, char **argv)
 	opts->no_security_labels = no_security_labels;
 	opts->no_subscriptions = no_subscriptions;
 
+	opts->binary_upgrade = binary_upgrade;
+
 	if (if_exists && !opts->dropSchema)
 	{
 		pg_log_error("option --if-exists requires option -c/--clean");
@@ -487,7 +494,9 @@ usage(const char *progname)
 	printf(_("  -n, --schema=NAME            restore only objects in this schema\n"));
 	printf(_("  -N, --exclude-schema=NAME    do not restore objects in this schema\n"));
 	printf(_("  -O, --no-owner               skip restoration of object ownership\n"));
-	printf(_("  -P, --function=NAME(args)    restore named function\n"));
+	printf(_("  -P, --function='NAME(args)'\n"
+			 "                               restore named function. name must be exactly\n"
+			 "                               as appears in the TOC, and inside single quotes\n"));
 	printf(_("  -s, --schema-only            restore only the schema, no data\n"));
 	printf(_("  -S, --superuser=NAME         superuser user name to use for disabling triggers\n"));
 	printf(_("  -t, --table=NAME             restore named relation (table, view, etc.)\n"));
@@ -523,5 +532,5 @@ usage(const char *progname)
 			 "The options -I, -n, -N, -P, -t, -T, and --section can be combined and specified\n"
 			 "multiple times to select multiple objects.\n"));
 	printf(_("\nIf no input file name is supplied, then standard input is used.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@lists.postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }

@@ -18,6 +18,8 @@
  * everything that should be freed.  See utils/mmgr/README for more info.
  *
  *
+ * Portions Copyright (c) 2007-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -27,6 +29,58 @@
  */
 #ifndef PALLOC_H
 #define PALLOC_H
+
+/*
+ * Optional #defines for debugging...
+ *
+ * If CDB_PALLOC_CALLER_ID is defined, MemoryContext error and warning
+ * messages (such as "out of memory" and "invalid memory alloc request
+ * size") will include the caller's source file name and line number.
+ * This can be useful in optimized builds where the error handler's
+ * stack trace doesn't accurately identify the call site.  Overhead
+ * is minimal: two extra parameters to memory allocation functions,
+ * and 8 to 16 bytes per context.
+ *
+ * If CDB_PALLOC_TAGS is defined, every allocation from a standard
+ * memory context (aset.c) is tagged with an extra 16 to 32 bytes of
+ * debugging info preceding the first byte of the area.  The added
+ * header fields identify the allocation call site (source file name
+ * and line number).  Also each context keeps a linked list of all
+ * of its allocated areas.
+ */
+
+/*
+#define CDB_PALLOC_CALLER_ID
+*/
+
+/*
+ * GPDB_93_MERGE_FIXME: This mechanism got broken. If this is resurrected and
+ * and made working the --enable-testutils invocations should be readded to
+ * gpAux/Makefile. For reference to where, the commit adding this comment has
+ * the removal so reverting this will get us back where we were before the
+ * merge.
+ */
+#ifdef USE_ASSERT_CHECKING
+//#define CDB_PALLOC_TAGS
+#endif
+
+/* CDB_PALLOC_TAGS implies CDB_PALLOC_CALLER_ID */
+#if defined(CDB_PALLOC_TAGS) && !defined(CDB_PALLOC_CALLER_ID)
+#define CDB_PALLOC_CALLER_ID
+#endif
+
+/*
+ * We track last OOM time to identify culprit processes that
+ * consume too much memory. For 64-bit platform we have high
+ * precision time variable based on TimeStampTz. However, on
+ * 32-bit platform we only have "per-second" precision.
+ * OOMTimeType abstracts this different types.
+ */
+#if defined(__x86_64__)
+typedef int64 OOMTimeType;
+#else
+typedef uint32 OOMTimeType;
+#endif
 
 /*
  * Type MemoryContextData is declared in nodes/memnodes.h.  Most users
@@ -57,6 +111,11 @@ typedef struct MemoryContextCallback
  * to change the setting.
  */
 extern PGDLLIMPORT MemoryContext CurrentMemoryContext;
+
+extern bool gp_mp_inited;
+extern volatile OOMTimeType* segmentOOMTime;
+extern volatile OOMTimeType oomTrackerStartTime;
+extern volatile OOMTimeType alreadyReportedOOMTime;
 
 /*
  * Flags for MemoryContextAllocExtended.
@@ -132,5 +191,49 @@ extern char *pchomp(const char *in);
 /* sprintf into a palloc'd buffer --- these are in psprintf.c */
 extern char *psprintf(const char *fmt,...) pg_attribute_printf(1, 2);
 extern size_t pvsnprintf(char *buf, size_t len, const char *fmt, va_list args) pg_attribute_printf(3, 0);
+
+#if defined(WIN32) || defined(__CYGWIN__)
+extern void *pgport_palloc(Size sz);
+extern char *pgport_pstrdup(const char *str);
+extern void pgport_pfree(void *pointer);
+#endif
+
+
+/* Mem Protection */
+extern int max_chunks_per_query;
+
+extern PGDLLIMPORT MemoryContext TopMemoryContext;
+
+extern bool MemoryProtection_IsOwnerThread(void);
+extern void InitPerProcessOOMTracking(void);
+extern void GPMemoryProtect_ShmemInit(void);
+extern void GPMemoryProtect_Init(void);
+extern void GPMemoryProtect_Shutdown(void);
+extern void GPMemoryProtect_TrackStartupMemory(void);
+extern void UpdateTimeAtomically(volatile OOMTimeType* time_var);
+
+/*
+ * moved here from memutils.h, so that it can be used in the ReportOOMConsumption()
+ * macro below
+ */
+extern void MemoryContextStats(MemoryContext context);
+
+/*
+ * ReportOOMConsumption
+ *
+ * Checks if there was any new OOM event in this segment.
+ * In case of a new OOM, it reports the memory consumption
+ * of the current process.
+ */
+#define ReportOOMConsumption()\
+{\
+	if (gp_mp_inited && *segmentOOMTime >= oomTrackerStartTime && *segmentOOMTime > alreadyReportedOOMTime)\
+	{\
+		Assert(MemoryProtection_IsOwnerThread());\
+		UpdateTimeAtomically(&alreadyReportedOOMTime);\
+		write_stderr("One or more query execution processes ran out of memory on this segment. Logging memory usage.");\
+		MemoryContextStats(TopMemoryContext);\
+	}\
+}
 
 #endif							/* PALLOC_H */

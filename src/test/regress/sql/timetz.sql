@@ -40,3 +40,18 @@ SELECT f1 AS "Ten" FROM TIMETZ_TBL WHERE f1 >= '00:00-07';
 -- where we do mixed-type arithmetic. - thomas 2000-12-02
 
 SELECT f1 + time with time zone '00:01' AS "Illegal" FROM TIMETZ_TBL;
+
+-- basic sanity of sample timezones
+set timezone = 'America/New_York';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as NYC;
+set timezone = 'America/Los_Angeles';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as LA;
+set timezone = 'Asia/Tokyo';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Tokyo;
+set timezone = 'Asia/Kolkata';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Kolkata;
+set timezone = 'Asia/Shanghai';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Shanghai;
+-- Casablanca time has changed in new timezone db lets verify it
+set timezone = 'Africa/Casablanca';
+SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Casablanca;

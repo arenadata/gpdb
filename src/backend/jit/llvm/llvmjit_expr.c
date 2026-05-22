@@ -88,6 +88,7 @@ llvm_compile_expr(ExprState *state)
 	/* state itself */
 	LLVMValueRef v_state;
 	LLVMValueRef v_econtext;
+	LLVMValueRef v_parent;
 
 	/* returnvalue */
 	LLVMValueRef v_isnullp;
@@ -151,7 +152,7 @@ llvm_compile_expr(ExprState *state)
 
 		param_types[0] = l_ptr(StructExprState);	/* state */
 		param_types[1] = l_ptr(StructExprContext);	/* econtext */
-		param_types[2] = l_ptr(TypeParamBool);	/* isnull */
+		param_types[2] = l_ptr(TypeStorageBool);	/* isnull */
 
 		eval_sig = LLVMFunctionType(TypeSizeT,
 									param_types, lengthof(param_types),
@@ -177,6 +178,9 @@ llvm_compile_expr(ExprState *state)
 	v_tmpisnullp = LLVMBuildStructGEP(b, v_state,
 									  FIELDNO_EXPRSTATE_RESNULL,
 									  "v.state.resnull");
+	v_parent = l_load_struct_gep(b, v_state,
+								 FIELDNO_EXPRSTATE_PARENT,
+								 "v.state.parent");
 
 	/* build global slots */
 	v_scanslot = l_load_struct_gep(b, v_econtext,
@@ -258,8 +262,6 @@ llvm_compile_expr(ExprState *state)
 
 					v_tmpvalue = LLVMBuildLoad(b, v_tmpvaluep, "");
 					v_tmpisnull = LLVMBuildLoad(b, v_tmpisnullp, "");
-					v_tmpisnull =
-						LLVMBuildTrunc(b, v_tmpisnull, TypeParamBool, "");
 
 					LLVMBuildStore(b, v_tmpisnull, v_isnullp);
 
@@ -1876,6 +1878,18 @@ llvm_compile_expr(ExprState *state)
 				LLVMBuildBr(b, opblocks[i + 1]);
 				break;
 
+			case EEOP_SCALARARRAYOP_FAST_INT:
+				build_EvalXFunc(b, mod, "ExecEvalScalarArrayOpFastInt",
+								v_state, v_econtext, op);
+				LLVMBuildBr(b, opblocks[i + 1]);
+				break;
+
+			case EEOP_SCALARARRAYOP_FAST_STR:
+				build_EvalXFunc(b, mod, "ExecEvalScalarArrayOpFastStr",
+								v_state, v_econtext, op);
+				LLVMBuildBr(b, opblocks[i + 1]);
+				break;
+
 			case EEOP_XMLEXPR:
 				build_EvalXFunc(b, mod, "ExecEvalXmlExpr",
 								v_state, v_econtext, op);
@@ -1916,6 +1930,87 @@ llvm_compile_expr(ExprState *state)
 								v_state, v_econtext, op);
 				LLVMBuildBr(b, opblocks[i + 1]);
 				break;
+
+			case EEOP_GROUP_ID:
+				{
+					AggState *aggstate = op->d.group_id.parent;
+					LLVMValueRef v_group_id_p;
+					LLVMValueRef v_group_id;
+
+					/* Copy aggstate->group_id to the result */
+					v_group_id_p = l_ptr_const(&aggstate->group_id,
+											  l_ptr(LLVMInt32Type()));
+					v_group_id = LLVMBuildLoad(b, v_group_id_p, "v_group_id");
+
+					/* and store result */
+					LLVMBuildStore(b, v_group_id, v_resvaluep);
+					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
+
+					LLVMBuildBr(b, opblocks[i + 1]);
+					break;
+				}
+
+			case EEOP_GROUPING_SET_ID:
+				{
+					AggState *aggstate = op->d.grouping_set_id.parent;
+					LLVMValueRef v_gset_id_p;
+					LLVMValueRef v_gset_id;
+
+					/* Copy aggstate->gset_id to the result */
+					v_gset_id_p = l_ptr_const(&aggstate->gset_id,
+											  l_ptr(LLVMInt32Type()));
+					v_gset_id = LLVMBuildLoad(b, v_gset_id_p, "v_gset_id");
+
+					/* and store result */
+					LLVMBuildStore(b, v_gset_id, v_resvaluep);
+					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
+
+					LLVMBuildBr(b, opblocks[i + 1]);
+					break;
+				}
+
+			case EEOP_AGGEXPR_ID:
+				{
+					TupleSplitState *tsstate = op->d.agg_expr_id.parent;
+					LLVMValueRef v_currentExprId_p;
+					LLVMValueRef v_currentExprId;
+
+					/* Copy tsstate->currentExprId to the result */
+					v_currentExprId_p = l_ptr_const(&tsstate->currentExprId,
+											  l_ptr(LLVMInt32Type()));
+					v_currentExprId = LLVMBuildLoad(b, v_currentExprId_p, "v_currentExprId");
+
+					/* and store result */
+					LLVMBuildStore(b, v_currentExprId, v_resvaluep);
+					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
+
+					LLVMBuildBr(b, opblocks[i + 1]);
+					break;
+				}
+
+			case EEOP_ROWIDEXPR:
+				{
+					int64		*rowcounter_p = &op->d.rowidexpr.rowcounter;
+					LLVMValueRef v_rowcounter_p;
+					LLVMValueRef v_rowcounter;
+					LLVMValueRef v_rowcounter_new;
+
+					/* Fetch and increment rowcounter */
+					v_rowcounter_p = l_ptr_const(rowcounter_p,
+												 l_ptr(LLVMInt64Type()));
+					v_rowcounter = LLVMBuildLoad(b, v_rowcounter_p, "v_rowcounter");
+					v_rowcounter_new = LLVMBuildAdd(b, v_rowcounter, l_int64_const(1), "v_rowcounter_new");
+
+					/* Store the new value back */
+					LLVMBuildStore(b, v_rowcounter_new, v_rowcounter_p);
+
+					/* and store result */
+					LLVMBuildStore(b, v_rowcounter_new, v_resvaluep);
+					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
+
+					LLVMBuildBr(b, opblocks[i + 1]);
+					break;
+				}
 
 			case EEOP_WINDOW_FUNC:
 				{
@@ -2227,6 +2322,45 @@ llvm_compile_expr(ExprState *state)
 									opblocks[jumpnull],
 									opblocks[i + 1]);
 
+					break;
+				}
+
+			case EEOP_AGG_PLAIN_PERGROUP_NULLCHECK:
+				{
+					int				 jumpnull;
+					LLVMValueRef	 v_aggstatep;
+					LLVMValueRef	 v_allpergroupsp;
+					LLVMValueRef	 v_pergroup_allaggs;
+					LLVMValueRef	 v_setoff;
+
+					jumpnull = op->d.agg_plain_pergroup_nullcheck.jumpnull;
+
+					/*
+					 * pergroup_allaggs = aggstate->all_pergroups
+					 * [op->d.agg_plain_pergroup_nullcheck.setoff];
+					 */
+					v_aggstatep = LLVMBuildBitCast(
+						b, v_parent, l_ptr(StructAggState), "");
+
+					v_allpergroupsp = l_load_struct_gep(
+						b, v_aggstatep,
+						FIELDNO_AGGSTATE_ALL_PERGROUPS,
+						"aggstate.all_pergroups");
+
+					v_setoff = l_int32_const(
+						op->d.agg_plain_pergroup_nullcheck.setoff);
+
+					v_pergroup_allaggs = l_load_gep1(
+						b, v_allpergroupsp, v_setoff, "");
+
+					LLVMBuildCondBr(
+						b,
+						LLVMBuildICmp(b, LLVMIntEQ,
+									  LLVMBuildPtrToInt(
+										  b, v_pergroup_allaggs, TypeSizeT, ""),
+									  l_sizet_const(0), ""),
+						opblocks[jumpnull],
+						opblocks[i + 1]);
 					break;
 				}
 

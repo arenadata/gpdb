@@ -714,7 +714,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 		{
 			case '\0':
 			case '+':
-			case 'S':
+			case 'S':  /* GPDB:  This is a change from old behavior: We used to show just system tables */
 				if (pattern)
 					success = describeTableDetails(pattern, show_verbose, show_system);
 				else
@@ -810,7 +810,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 			case 'm':
 			case 'i':
 			case 's':
-			case 'E':
+			case 'E':  /* PostgreSQL use dx for extension, change to dE for foreign table */
 				success = listTables(&cmd[1], pattern, show_verbose, show_system);
 				break;
 			case 'r':

@@ -140,10 +140,10 @@ die "found $found duplicate OID(s) in catalog data\n" if $found;
 # Oids not specified in the input files are automatically assigned,
 # starting at FirstGenbkiObjectId, extending up to FirstBootstrapObjectId.
 my $FirstGenbkiObjectId =
-  Catalog::FindDefinedSymbol('access/transam.h', $include_path,
+  Catalog::FindDefinedSymbol('catalog/pg_magic_oid.h', $include_path,
 	'FirstGenbkiObjectId');
 my $FirstBootstrapObjectId =
-  Catalog::FindDefinedSymbol('access/transam.h', $include_path,
+  Catalog::FindDefinedSymbol('catalog/pg_magic_oid.h', $include_path,
 	'FirstBootstrapObjectId');
 my $GenbkiNextOid = $FirstGenbkiObjectId;
 
@@ -223,6 +223,17 @@ foreach my $row (@{ $catalog_data{pg_opfamily} })
 	# There is no unique name, so we need to combine access method
 	# and opfamily name.
 	my $key = sprintf "%s/%s", $row->{opfmethod}, $row->{opfname};
+
+	# GPDB: Normally, we assign OIDs only later, and we don't put
+	# auto-assigned OIDs in the lookup tables, but auto-generated bitmap
+	# opfamilies, with no hard-coded OIDs are referenced by name from the
+	# other (auto-generated) entries in pg_class, pg_amop and pg_amproc.
+	if (!($row->{oid}))
+	{
+		$row->{oid} = $GenbkiNextOid;
+		$GenbkiNextOid++;
+	}
+
 	$opfoids{$key} = $row->{oid};
 }
 
@@ -746,7 +757,8 @@ sub gen_pg_attribute
 				{ name => 'cmin',     type => 'cid' },
 				{ name => 'xmax',     type => 'xid' },
 				{ name => 'cmax',     type => 'cid' },
-				{ name => 'tableoid', type => 'oid' });
+				{ name => 'tableoid', type => 'oid' },
+				{ name => 'gp_segment_id', type => 'int4' });
 			foreach my $attr (@SYS_ATTRS)
 			{
 				$attnum--;

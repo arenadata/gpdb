@@ -1,0 +1,37 @@
+--
+-- Test foreign-data wrapper and server management. Greenplum MPP specific
+--
+CREATE FOREIGN DATA WRAPPER dummy;
+COMMENT ON FOREIGN DATA WRAPPER dummy IS 'useless';
+-- CREATE FOREIGN TABLE
+CREATE SERVER s0 FOREIGN DATA WRAPPER dummy;
+CREATE FOREIGN TABLE ft2 (
+	c1 int
+) SERVER s0 OPTIONS (delimiter ',', mpp_execute 'a');           -- ERROR
+ERROR:  "a" is not a valid mpp_execute value
+CREATE FOREIGN TABLE ft2 (
+	c1 int
+) SERVER s0 OPTIONS (delimiter ',', mpp_execute 'any');
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+-------------+---------+--------------+-------------
+ c1     | integer |           |          |         |             | plain   |              | 
+Server: s0
+FDW options: (delimiter ',', mpp_execute 'any')
+
+CREATE FOREIGN TABLE ft3 (
+	c1 int
+) SERVER s0 OPTIONS (delimiter ',', mpp_execute 'master');
+CREATE FOREIGN TABLE ft4 (
+	c1 int
+) SERVER s0 OPTIONS (delimiter ',', mpp_execute 'all segments');
+-- CREATE FOREIGN SERVER WITH num_segments
+CREATE SERVER s1 FOREIGN DATA WRAPPER dummy OPTIONS (num_segments '5');
+-- CHECK FOREIGN SERVER's OPTIONS
+SELECT srvoptions FROM pg_foreign_server WHERE srvname = 's1';
+    srvoptions    
+------------------
+ {num_segments=5}
+(1 row)
+

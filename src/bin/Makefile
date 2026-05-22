@@ -13,6 +13,9 @@ subdir = src/bin
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
+unittest-check:
+	$(MAKE) -C pg_dump/test check
+
 SUBDIRS = \
 	initdb \
 	pg_archivecleanup \
@@ -37,6 +40,12 @@ SUBDIRS += pgevent
 else
 ALWAYS_SUBDIRS += pgevent
 endif
+ifeq ($(enable_gpfdist), yes)
+SUBDIRS+=gpfdist
+endif
+
+# Greenplum additions
+SUBDIRS += gpnetbench
 
 $(recurse)
 $(recurse_always)

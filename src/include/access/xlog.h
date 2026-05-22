@@ -16,9 +16,15 @@
 #include "access/xloginsert.h"
 #include "access/xlogreader.h"
 #include "datatype/timestamp.h"
+#include "access/xlog_internal.h"
+#include "catalog/pg_control.h"
 #include "lib/stringinfo.h"
-#include "nodes/pg_list.h"
+#include "storage/buf.h"
 #include "storage/fd.h"
+#include "utils/pg_crc.h"
+#include "utils/relcache.h"
+#include "cdb/cdbpublic.h"
+#include "nodes/pg_list.h"
 
 
 /* Sync methods */
@@ -113,6 +119,7 @@ extern int	XLogArchiveTimeout;
 extern int	wal_retrieve_retry_interval;
 extern char *XLogArchiveCommand;
 extern bool EnableHotStandby;
+
 extern bool fullPageWrites;
 extern bool wal_log_hints;
 extern bool wal_compression;
@@ -273,6 +280,7 @@ extern void XLogSetReplicationSlotMinimumLSN(XLogRecPtr lsn);
 extern void xlog_redo(XLogReaderState *record);
 extern void xlog_desc(StringInfo buf, XLogReaderState *record);
 extern const char *xlog_identify(uint8 info);
+extern void UnpackCheckPointRecord(struct XLogReaderState *record, CheckpointExtendedRecord *ckptExtended);
 
 extern void issue_xlog_fsync(int fd, XLogSegNo segno);
 
@@ -305,6 +313,8 @@ extern void InitXLOGAccess(void);
 extern void CreateCheckPoint(int flags);
 extern bool CreateRestartPoint(int flags);
 extern void XLogPutNextOid(Oid nextOid);
+extern void XLogPutNextRelfilenode(Oid nextRelfilenode);
+extern void XLogPutNextGxid(DistributedTransactionId nextGxid);
 extern XLogRecPtr XLogRestorePoint(const char *rpName);
 extern void UpdateFullPageWrites(void);
 extern void GetFullPageWriteInfo(XLogRecPtr *RedoRecPtr_p, bool *doPageWrites_p);
@@ -314,6 +324,8 @@ extern XLogRecPtr GetFlushRecPtr(void);
 extern XLogRecPtr GetLastImportantRecPtr(void);
 extern void RemovePromoteSignalFiles(void);
 
+extern void HandleStartupProcInterrupts(void);
+extern void StartupProcessMain(void);
 extern bool CheckPromoteSignal(void);
 extern void WakeupRecovery(void);
 extern void SetWalWriterSleeping(bool sleeping);
@@ -322,7 +334,6 @@ extern void XLogRequestWalReceiverReply(void);
 
 extern void assign_max_wal_size(int newval, void *extra);
 extern void assign_checkpoint_completion_target(double newval, void *extra);
-
 /*
  * Routines to start, stop, and get status of a base backup.
  */
@@ -365,5 +376,16 @@ extern SessionBackupState get_backup_status(void);
 /* files to signal promotion to primary */
 #define PROMOTE_SIGNAL_FILE		"promote"
 #define FALLBACK_PROMOTE_SIGNAL_FILE  "fallback_promote"
+
+/* Greenplum additions */
+extern bool IsCrashRecoveryOnly(void);
+extern DBState GetCurrentDBState(void);
+extern XLogRecPtr last_xlog_replay_location(void);
+extern void wait_for_mirror(void);
+extern void wait_to_avoid_large_repl_lag(void);
+extern bool IsRoleMirror(void);
+extern void SignalPromote(void);
+extern XLogRecPtr XLogLastInsertBeginLoc(void);
+extern void initialize_wal_bytes_written(void);
 
 #endif							/* XLOG_H */

@@ -4,6 +4,8 @@
  *	  Declarations for operations on built-in types.
  *
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -52,9 +54,14 @@ extern char *pg_ltostr_zeropad(char *str, int32 value, int32 minwidth);
 extern char *pg_ltostr(char *str, int32 value);
 extern uint64 pg_strtouint64(const char *str, char **endptr, int base);
 
+/* dbsize.c */
+extern int64 get_size_from_segDBs(const char *cmd);
+
 /* oid.c */
 extern oidvector *buildoidvector(const Oid *oids, int n);
 extern Oid	oidparse(Node *node);
+
+/* pseudotypes.c */
 extern int	oid_cmp(const void *p1, const void *p2);
 
 /* regexp.c */
@@ -63,6 +70,15 @@ extern char *regexp_fixed_prefix(text *text_re, bool case_insensitive,
 
 /* ruleutils.c */
 extern bool quote_all_identifiers;
+extern char *pg_get_constraintexpr_string(Oid constraintId);
+extern const char *quote_identifier(const char *ident);
+extern char *quote_qualified_identifier(const char *qualifier,
+						   const char *ident);
+extern void generate_operator_clause(fmStringInfo buf,
+						 const char *leftop, Oid leftoptype,
+						 Oid opoid,
+						 const char *rightop, Oid rightoptype);
+
 extern const char *quote_identifier(const char *ident);
 extern char *quote_qualified_identifier(const char *qualifier,
 										const char *ident);
@@ -119,5 +135,17 @@ extern int32 type_maximum_size(Oid type_oid, int32 typemod);
 
 /* quote.c */
 extern char *quote_literal_cstr(const char *rawstr);
+
+/* query_metrics.c */
+extern Datum gp_instrument_shmem_summary(PG_FUNCTION_ARGS);
+
+/* utils/gp/segadmin.c */
+extern bool gp_activate_standby(void);
+
+/* utils/adt/genfile.c */
+extern Datum pg_file_write(PG_FUNCTION_ARGS);
+extern Datum pg_file_rename(PG_FUNCTION_ARGS);
+extern Datum pg_file_unlink(PG_FUNCTION_ARGS);
+extern Datum pg_logdir_ls(PG_FUNCTION_ARGS);
 
 #endif							/* BUILTINS_H */

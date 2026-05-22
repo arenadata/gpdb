@@ -15,6 +15,21 @@ OBJS =  specparse.o isolationtester.o $(WIN32RES)
 
 all: isolationtester$(X) pg_isolation_regress$(X)
 
+gpstringsubs.pl:
+	rm -f $@ && $(LN_S) $(top_builddir)/src/test/regress/gpstringsubs.pl
+
+gpdiff.pl: atmsort.pm explain.pm GPTest.pm
+	rm -f $@ && $(LN_S) $(top_builddir)/src/test/regress/gpdiff.pl
+
+GPTest.pm:
+	rm -f $@ && $(LN_S) $(top_builddir)/src/test/regress/GPTest.pm
+
+atmsort.pm:
+	rm -f $@ && $(LN_S) $(top_builddir)/src/test/regress/atmsort.pm
+
+explain.pm:
+	rm -f $@ && $(LN_S) $(top_builddir)/src/test/regress/explain.pm
+
 # Though we don't install these binaries, build them during installation
 # (including temp-install).  Otherwise, "make -j check-world" and "make -j
 # installcheck-world" would spawn multiple, concurrent builds in this
@@ -44,13 +59,22 @@ specparse.o: specscanner.c
 clean distclean:
 	rm -f isolationtester$(X) pg_isolation_regress$(X) $(OBJS) isolation_main.o
 	rm -f pg_regress.o
+	rm -f gpstringsubs.pl gpdiff.pl atmsort.pm explain.pm GPTest.pm
 	rm -rf $(pg_regress_clean_files)
 
 maintainer-clean: distclean
 	rm -f specparse.c specscanner.c
 
-installcheck: all
-	$(pg_isolation_regress_installcheck) --schedule=$(srcdir)/isolation_schedule
+# GPDB: pageinspect module is needed by some tests.
+install-tests:
+	$(MAKE) -C $(top_builddir)/contrib/pageinspect install
+
+# Unlike in most 'installcheck' tests, drop the database on success. The tests
+# are run in utility mode, so the database is inconsistent between QD and the
+# segments, and we don't want to leave that behind to confuse other tests.
+installcheck: all gpdiff.pl gpstringsubs.pl install-tests
+	$(pg_isolation_regress_installcheck) --init-file=$(srcdir)/init_file --load-extension=pageinspect --schedule=$(srcdir)/isolation_schedule
+	$(bindir)/dropdb --if-exists isolation_regression
 
 check: all
 	$(pg_isolation_regress_check) --schedule=$(srcdir)/isolation_schedule

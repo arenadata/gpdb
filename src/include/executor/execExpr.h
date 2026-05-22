@@ -213,9 +213,15 @@ typedef enum ExprEvalOp
 	/* evaluate assorted special-purpose expression types */
 	EEOP_CONVERT_ROWTYPE,
 	EEOP_SCALARARRAYOP,
+	EEOP_SCALARARRAYOP_FAST_INT, 	/* fast path x in (123, 456, 789) */
+	EEOP_SCALARARRAYOP_FAST_STR, 	/* fast path x in ('a', 'b', 'c') */
 	EEOP_XMLEXPR,
 	EEOP_AGGREF,
 	EEOP_GROUPING_FUNC,
+	EEOP_GROUP_ID,
+	EEOP_GROUPING_SET_ID,
+	EEOP_AGGEXPR_ID,
+	EEOP_ROWIDEXPR,
 	EEOP_WINDOW_FUNC,
 	EEOP_SUBPLAN,
 	EEOP_ALTERNATIVE_SUBPLAN,
@@ -227,6 +233,7 @@ typedef enum ExprEvalOp
 	EEOP_AGG_STRICT_INPUT_CHECK_NULLS,
 	EEOP_AGG_INIT_TRANS,
 	EEOP_AGG_STRICT_TRANS_CHECK,
+	EEOP_AGG_PLAIN_PERGROUP_NULLCHECK,
 	EEOP_AGG_PLAIN_TRANS_BYVAL,
 	EEOP_AGG_PLAIN_TRANS,
 	EEOP_AGG_ORDERED_TRANS_DATUM,
@@ -404,6 +411,13 @@ typedef struct ExprEvalStep
 			Oid			seqtypid;
 		}			nextvalueexpr;
 
+		/* for EEOP_PARTSELECTEDEXPR */
+		struct
+		{
+			int			dynamicScanId;
+			Oid			partOid;
+		}			partselectedexpr;
+
 		/* for EEOP_ARRAYEXPR */
 		struct
 		{
@@ -547,6 +561,20 @@ typedef struct ExprEvalStep
 			PGFunction	fn_addr;	/* actual call address */
 		}			scalararrayop;
 
+		/* for EEOP_SCALARARRAYOP_FAST_INT / SCALARARRAYOP_FAST_STR */
+		struct
+		{
+			/* useOr missing because OR semantics have not been implemented in the fast path */
+			Oid			opfuncid;
+
+			Datum		scalarval;		/* holds the scalar arg during evaluation */
+			bool		scalarisnull;
+
+			int			fp_n;
+			int		   *fp_len;
+			Datum	   *fp_datum;
+		}			scalararrayop_fast;
+
 		/* for EEOP_XMLEXPR */
 		struct
 		{
@@ -572,6 +600,30 @@ typedef struct ExprEvalStep
 			AggState   *parent; /* parent Agg */
 			List	   *clauses;	/* integer list of column numbers */
 		}			grouping_func;
+
+		/* for EEOP_GROUP_ID */
+		struct
+		{
+			AggState   *parent; /* parent Agg */
+		}			group_id;
+
+		/* for EEOP_GROUPING_SET_ID */
+		struct
+		{
+			AggState   *parent; /* parent Agg */
+		}			grouping_set_id;
+
+		/* for EEOP_AGGEXPR_ID */
+		struct
+		{
+			TupleSplitState *parent; /* parent TupleSplit */
+		}			agg_expr_id;
+
+		/* for EEOP_ROWIDEXPR */
+		struct
+		{
+			int64		rowcounter;
+		}			rowidexpr;
 
 		/* for EEOP_WINDOW_FUNC */
 		struct
@@ -633,6 +685,13 @@ typedef struct ExprEvalStep
 			int			setoff;
 			int			jumpnull;
 		}			agg_init_trans;
+
+		/* for EEOP_AGG_PLAIN_PERGROUP_NULLCHECK */
+		struct
+		{
+			int			setoff;
+			int			jumpnull;
+		}			agg_plain_pergroup_nullcheck;
 
 		/* for EEOP_AGG_STRICT_TRANS_CHECK */
 		struct
@@ -718,7 +777,8 @@ extern void ExecEvalParamExec(ExprState *state, ExprEvalStep *op,
 extern void ExecEvalParamExtern(ExprState *state, ExprEvalStep *op,
 								ExprContext *econtext);
 extern void ExecEvalSQLValueFunction(ExprState *state, ExprEvalStep *op);
-extern void ExecEvalCurrentOfExpr(ExprState *state, ExprEvalStep *op);
+extern void ExecEvalCurrentOfExpr(ExprState *state, ExprEvalStep *op,
+								  ExprContext *econtext);
 extern void ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalRowNull(ExprState *state, ExprEvalStep *op,
 							ExprContext *econtext);
@@ -742,6 +802,8 @@ extern void ExecEvalSubscriptingRefAssign(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConvertRowtype(ExprState *state, ExprEvalStep *op,
 								   ExprContext *econtext);
 extern void ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op);
+extern void ExecEvalScalarArrayOpFastInt(ExprState *state, ExprEvalStep *op);
+extern void ExecEvalScalarArrayOpFastStr(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintNotNull(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintCheck(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op);

@@ -7,6 +7,8 @@
  * the nature and use of path keys.
  *
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -17,6 +19,7 @@
  */
 #include "postgres.h"
 
+#include "access/hash.h"
 #include "access/stratnum.h"
 #include "catalog/pg_opfamily.h"
 #include "nodes/makefuncs.h"
@@ -28,6 +31,13 @@
 #include "partitioning/partbounds.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbhash.h"
+#include "cdb/cdbpullup.h"		/* cdbpullup_expr(), cdbpullup_make_var() */
+#include "optimizer/clauses.h"
+#include "optimizer/cost.h"
+#include "optimizer/planmain.h"
+#include "optimizer/restrictinfo.h"
+#include "parser/parsetree.h"
 
 static bool pathkey_is_redundant(PathKey *new_pathkey, List *pathkeys);
 static bool matches_boolean_partition_clause(RestrictInfo *rinfo,
@@ -36,10 +46,328 @@ static bool matches_boolean_partition_clause(RestrictInfo *rinfo,
 static Var *find_var_for_subquery_tle(RelOptInfo *rel, TargetEntry *tle);
 static bool right_merge_direction(PlannerInfo *root, PathKey *pathkey);
 
+static bool op_in_eclass_opfamily(Oid opno, EquivalenceClass *eclass);
+
 
 /****************************************************************************
  *		PATHKEY CONSTRUCTION AND REDUNDANCY TESTING
  ****************************************************************************/
+
+/**
+ * replace_expression_mutator
+ *
+ * Copy an expression tree, but replace all occurrences of one node with
+ *	 another.
+ *
+ * The replacement is passed in the context as a pointer to
+ *	  ReplaceExpressionMutatorReplacement
+ *
+ * context should be ReplaceExpressionMutatorReplacement*
+ */
+Node *
+replace_expression_mutator(Node *node, void *context)
+{
+	ReplaceExpressionMutatorReplacement *repl;
+
+	if (node == NULL)
+		return NULL;
+
+	if (IsA(node, RestrictInfo))
+	{
+		RestrictInfo *info = (RestrictInfo *) node;
+
+		return replace_expression_mutator((Node *) info->clause, context);
+	}
+
+	repl = (ReplaceExpressionMutatorReplacement *) context;
+	if (equal(node, repl->replaceThis))
+	{
+		repl->numReplacementsDone++;
+		return copyObject(repl->withThis);
+	}
+	return expression_tree_mutator(node, replace_expression_mutator, (void *) context);
+}
+
+/*
+ * op_in_eclass_opfamily
+ *
+ *		Return t iff operator 'opno' is in eclass's operator family.
+ *
+ * This function only considers search operators, not ordering operators.
+ */
+static bool
+op_in_eclass_opfamily(Oid opno, EquivalenceClass *eclass)
+{
+	ListCell	*lc;
+
+	foreach(lc, eclass->ec_opfamilies)
+	{
+		Oid		opfamily = lfirst_oid(lc);
+
+		if (op_in_opfamily(opno, opfamily))
+			return true;
+	}
+	return false;
+}
+
+/**
+ * Generate implied qual
+ * Input:
+ *	root - planner information
+ *	old_rinfo - old clause to infer from
+ *	old_expr - the expression to be replaced
+ *	new_expr - new expression replacing it
+ */
+static void
+gen_implied_qual(PlannerInfo *root,
+				 RestrictInfo *old_rinfo,
+				 Node *old_expr,
+				 Node *new_expr)
+{
+	Node	   *new_clause;
+	ReplaceExpressionMutatorReplacement ctx;
+	Relids		new_qualscope;
+	ListCell   *lc;
+	RestrictInfo *new_rinfo;
+
+	/* Expression types must match */
+	Assert(exprType(old_expr) == exprType(new_expr)
+		   && exprTypmod(old_expr) == exprTypmod(new_expr));
+
+	/*
+	 * Clone the clause, replacing first node with the second.
+	 */
+	ctx.replaceThis = old_expr;
+	ctx.withThis = new_expr;
+	ctx.numReplacementsDone = 0;
+	new_clause = (Node *) replace_expression_mutator((Node *) old_rinfo->clause, &ctx);
+
+	if (ctx.numReplacementsDone == 0)
+		return;
+
+	new_qualscope = pull_varnos(new_clause);
+	if (new_qualscope == NULL)
+		return;
+
+	if (subexpression_match((Expr *) new_expr, old_rinfo->clause))
+		return;
+
+	/*
+	 * Have we seen this clause before? This is needed to avoid infinite
+	 * recursion.
+	 */
+	foreach(lc, root->non_eq_clauses)
+	{
+		RestrictInfo *r = (RestrictInfo *) lfirst(lc);
+
+		if (equal(r->clause, new_clause))
+			return;
+	}
+
+	/*
+	 * Ok, we're good to go. Construct a new RestrictInfo, and pass it to
+	 * distribute_to_rels(). This is a cut-down version of
+	 * distribute_qual_to_rels(): We know the qual is not useful for the
+	 * equivalence class machinery, because it's derived from a clause that
+	 * wasn't either.
+	 */
+	new_rinfo = make_restrictinfo((Expr *) new_clause,
+								  old_rinfo->is_pushed_down,
+								  old_rinfo->outerjoin_delayed,
+								  old_rinfo->pseudoconstant,
+								  old_rinfo->security_level,
+								  new_qualscope,
+								  old_rinfo->outer_relids,
+								  old_rinfo->nullable_relids);
+	check_mergejoinable(new_rinfo);
+	check_hashjoinable(new_rinfo);
+
+	/*
+	 * If it's a join clause (either naturally, or because delayed by
+	 * outer-join rules), add vars used in the clause to targetlists of their
+	 * relations, so that they will be emitted by the plan nodes that scan
+	 * those relations (else they won't be available at the join node!).
+	 */
+	if (bms_membership(new_qualscope) == BMS_MULTIPLE)
+	{
+		List	   *vars = pull_var_clause(new_clause,
+										   PVC_RECURSE_AGGREGATES |
+										   PVC_INCLUDE_PLACEHOLDERS);
+
+		add_vars_to_targetlist(root, vars, new_qualscope, false);
+		list_free(vars);
+	}
+
+	/*
+	 * If the clause has a mergejoinable operator, set the EquivalenceClass
+	 * links. Otherwise, a mergejoinable operator with NULL left_ec/right_ec
+	 * will cause update_mergeclause_eclasses fails at assertion.
+	 */
+	if (new_rinfo->mergeopfamilies)
+		initialize_mergeclause_eclasses(root, new_rinfo);
+
+	distribute_restrictinfo_to_rels(root, new_rinfo);
+}
+
+/**
+ * Generate all qualifications that are implied by the given RestrictInfo and
+ * the equivalence classes.
+
+ * Input:
+ * - root: planner info structure
+ * - rinfo: clause to derive more quals from.
+ */
+static void
+gen_implied_quals(PlannerInfo *root, RestrictInfo *rinfo)
+{
+	Expr	   *clause = rinfo->clause;
+	Oid			opno,
+				collation,
+				item1_type,
+				item2_type;
+	Expr	   *item1;
+	Expr	   *item2;
+	ListCell   *lcec;
+
+	/* No inferences may be performed across an outer join */
+	Assert(rinfo->outer_relids == NULL);
+
+	if (rinfo->pseudoconstant)
+		return;
+	if (contain_volatile_functions((Node *) clause) ||
+		contain_subplans((Node *) clause))
+		return;
+
+	if (is_opclause(clause))
+	{
+		if (list_length(((OpExpr *) clause)->args) != 2)
+			return;
+		opno = ((OpExpr *) clause)->opno;
+		collation = ((OpExpr *) clause)->inputcollid;
+		item1 = (Expr *) get_leftop(clause);
+		item2 = (Expr *) get_rightop(clause);
+	}
+	else if (clause && IsA(clause, ScalarArrayOpExpr))
+	{
+		if (list_length(((ScalarArrayOpExpr *) clause)->args) != 2)
+			return;
+		opno = ((ScalarArrayOpExpr *) clause)->opno;
+		collation = ((ScalarArrayOpExpr *) clause)->inputcollid;
+		item1 = (Expr *) get_leftscalararrayop(clause);
+		item2 = (Expr *) get_rightscalararrayop(clause);
+	}
+	else
+		return;
+
+	item1 = canonicalize_ec_expression(item1,
+									   exprType((Node *) item1),
+									   collation);
+	item2 = canonicalize_ec_expression(item2,
+									   exprType((Node *) item2),
+									   collation);
+	op_input_types(opno, &item1_type, &item2_type);
+
+	/*
+	 * Find every equivalence class that's relevant for this RestrictInfo.
+	 *
+	 * Relevant means that some member of the equivalence class appears in the
+	 * clause, that we can replace it with another member.
+	 */
+	foreach(lcec, root->eq_classes)
+	{
+		EquivalenceClass *eclass = (EquivalenceClass *) lfirst(lcec);
+		ListCell   *lcem1;
+
+		/*
+		 * Only generate derived clauses using operators from the same operator
+		 * family.
+		 */
+		if (!op_in_eclass_opfamily(opno, eclass))
+			continue;
+
+		/* Single-member ECs won't generate any deductions */
+		if (list_length(eclass->ec_members) <= 1)
+			continue;
+
+		if (!bms_overlap(eclass->ec_relids, rinfo->clause_relids))
+			continue;
+
+		foreach(lcem1, eclass->ec_members)
+		{
+			EquivalenceMember *em1 = (EquivalenceMember *) lfirst(lcem1);
+			ListCell   *lcem2;
+
+			if (!bms_overlap(em1->em_relids, rinfo->clause_relids))
+				continue;
+
+			/*
+			 * Skip duplicating subplans clauses as multiple subplan node referring
+			 * to the same plan node fails the assertion made by the code which adds
+			 * motion to the plan
+			 */
+			if (contain_subplans((Node *) em1->em_expr))
+				continue;
+
+			/*
+			 * Skip if this EquivalenceMember does not match neither left expr
+			 * nor right expr.
+			 */
+			if (!((item1_type == em1->em_datatype && equal(item1, em1->em_expr)) ||
+					(item2_type == em1->em_datatype && equal(item2, em1->em_expr))))
+				continue;
+
+			/* now try to apply to others in the equivalence class */
+			foreach(lcem2, eclass->ec_members)
+			{
+				EquivalenceMember *em2 = (EquivalenceMember *) lfirst(lcem2);
+
+				if (em2 == em1)
+					continue;
+
+				if (exprType((Node *) em1->em_expr) == exprType((Node *) em2->em_expr)
+					&& exprTypmod((Node *) em1->em_expr) == exprTypmod((Node *) em2->em_expr))
+				{
+					/* Skip SubPlans */
+					if (contain_subplans((Node *) em2->em_expr))
+						continue;
+					gen_implied_qual(root,
+									 rinfo,
+									 (Node *) em1->em_expr,
+									 (Node *) em2->em_expr);
+				}
+			}
+		}
+	}
+}
+
+/* TODO:
+ *
+ * note that we require types to be the same.  We could try converting them
+ * (introducing relabel nodes) as long as the conversion is a widening
+ * conversion (clause on int4 can be applied to int2 type by widening the
+ * int2 to an int4 when creating the replicated clause)
+ * likewise, is varchar(10) vs varchar(50) an issue at this point?
+ */
+void
+generate_implied_quals(PlannerInfo *root)
+{
+	ListCell   *lc;
+
+	if (!gp_enable_predicate_propagation)
+		return;
+
+	foreach(lc, root->non_eq_clauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		gen_implied_quals(root, rinfo);
+
+		/*
+		 * NOTE: gen_implied_quals() can append more quals to the list! We
+		 * will process those as well, as we iterate.
+		 */
+	}
+}
 
 /*
  * make_canonical_pathkey
@@ -232,7 +560,7 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
  * This should eventually go away, but we need to restructure SortGroupClause
  * first.
  */
-static PathKey *
+PathKey *
 make_pathkey_from_sortop(PlannerInfo *root,
 						 Expr *expr,
 						 Relids nullable_relids,
@@ -922,7 +1250,7 @@ convert_subquery_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 														sub_expr_coll,
 														0,
 														rel->relids,
-														false);
+														false); /* create_it */
 
 					/*
 					 * If we don't find a matching EC, this sub-pathkey isn't
@@ -1045,6 +1373,192 @@ build_join_pathkeys(PlannerInfo *root,
 	return truncate_useless_pathkeys(root, joinrel, outer_pathkeys);
 }
 
+
+/****************************************************************************
+ *		PATHKEYS FOR DISTRIBUTED QUERIES
+ ****************************************************************************/
+
+/*
+ * cdb_make_distkey_for_expr
+ *	  Returns a DistributionKey which represents an equivalence class of
+ *	  expressions that must be equal to the given expression.
+ *
+ *	  The 'opfamily' argument specifies a hash operator family, which
+ *	  determines the hash function used. The = operator for the expression's
+ *	  datatype is used to look up a compatible btree operator family, which
+ *	  is recorded in the EquivalenceClass that becomes part of the
+ *	  distribution key.
+ */
+DistributionKey *
+cdb_make_distkey_for_expr(PlannerInfo *root,
+						  RelOptInfo *rel,
+						  Node *expr,
+						  Oid opfamily /* hash opfamily */,
+						  int sortref)
+{
+	Oid			typeoid;
+	Oid			eqopoid;
+	DistributionKey *dk;
+	List	   *mergeopfamilies;
+	EquivalenceClass *eclass;
+	Oid			lefttype;
+	Oid			righttype;
+
+	Assert(OidIsValid(opfamily));
+
+	/* Get the expr's data type. */
+	typeoid = exprType(expr);
+
+	/* If it's a domain, look at the base type instead */
+	typeoid = getBaseType(typeoid);
+
+	eqopoid = cdb_eqop_in_hash_opfamily(opfamily, typeoid);
+
+	/*
+	 * Get Oid of the sort operator that would be used for a sort-merge
+	 * equijoin on a pair of exprs of the same type.
+	 */
+	if (!op_mergejoinable(eqopoid, typeoid))
+		elog(ERROR, "could not find mergejoinable = operator for type %u", typeoid);
+
+	mergeopfamilies = get_mergejoin_opfamilies(eqopoid);
+
+	/*
+	 * Get the equality operator's operand type. It might be different from the
+	 * original datatype, if the datatype itself doesn't have an equivalence
+	 * operator, but relies on casts. For example with two varchars, "a = b" uses
+	 * the text equals operator, i.e. "a::text = b::text".
+	 */
+	op_input_types(eqopoid, &lefttype, &righttype);
+	Assert(lefttype == righttype);
+
+	/* If this type is a domain type, get its base type. */
+	if (get_typtype(lefttype) == 'd')
+		lefttype = getBaseType(lefttype);
+
+	/*
+	 * It should be OK to set nullable_relids = NULL, since this eclass is only
+	 * used for DistributionKey, so it would not participate in qual deduction.
+	 */
+	eclass = get_eclass_for_sort_expr(root, (Expr *) expr,
+									  NULL,
+									  mergeopfamilies,
+									  lefttype,
+									  exprCollation(expr),
+									  sortref,
+									  rel->relids,
+									  true);
+
+	dk = makeNode(DistributionKey);
+	dk->dk_eclasses = list_make1(eclass);
+	dk->dk_opfamily = opfamily;
+
+	return dk;
+}
+
+/*
+ * cdb_pull_up_eclass
+ *
+ * Given an argument EquivalenceClass, finds an EquivalenceClass whose
+ * expr can be projected thru a given targetlist.  If found, builds the
+ * transformed key expr and returns an equivalence class containing it.
+ *
+ * Returns NULL if the given EC does not have any member that  can be
+ * rewritten in terms of the projected output columns.
+ *
+ * Note that this function does not unite the pre- and post-projection
+ * equivalence classes.  Equivalences known on one side of the projection
+ * are not made known on the other side.  Although that might be useful,
+ * it would have to be done at an earlier point in the planner.
+ *
+ * At present this function doesn't support pull-up from a subquery into a
+ * containing query: there is no provision for adjusting the varlevelsup
+ * field in Var nodes for outer references.  This could be added if needed.
+ *
+ * 'eclass' is an EquivalenceClass.
+ * 'relids' is the set of relids that may occur in the targetlist exprs.
+ * 'targetlist' specifies the projection.  It is a List of TargetEntry
+ *		or merely a List of Expr.
+ * 'newvarlist' is an optional List of Expr, in 1-1 correspondence with
+ *		'targetlist'.  If specified, instead of creating a Var node to
+ *		reference a targetlist item, we plug in a copy of the corresponding
+ *		newvarlist item.
+ * 'newrelid' is the RTE index of the projected result, for finding or
+ *		building Var nodes that reference the projected columns.
+ *		Ignored if 'newvarlist' is specified.
+ *
+ * NB: We ignore the presence or absence of a RelabelType node atop either
+ * expr in determining whether an EC member expr matches a targetlist expr.
+ */
+EquivalenceClass *
+cdb_pull_up_eclass(PlannerInfo *root,
+				   EquivalenceClass *eclass,
+				   Relids relids,
+				   List *targetlist,
+				   List *newvarlist,
+				   Index newrelid)
+{
+	Expr	   *sub_distkeyexpr;
+	EquivalenceClass *outer_ec;
+	Expr	   *newexpr = NULL;
+
+	Assert(eclass);
+	Assert(!newvarlist ||
+		   list_length(newvarlist) == list_length(targetlist));
+
+	/* Find an expr that we can rewrite to use the projected columns. */
+	sub_distkeyexpr = cdbpullup_findEclassInTargetList(eclass, targetlist, InvalidOid);
+
+	/* Replace expr's Var nodes with new ones referencing the targetlist. */
+	if (sub_distkeyexpr)
+	{
+		newexpr = cdbpullup_expr(sub_distkeyexpr,
+								 targetlist,
+								 newvarlist,
+								 newrelid);
+	}
+	/* If not found, see if the equiv class contains a constant expr. */
+	else if (CdbEquivClassIsConstant(eclass))
+	{
+		ListCell   *lc;
+
+		foreach(lc, eclass->ec_members)
+		{
+			EquivalenceMember *em = lfirst(lc);
+
+			if (em->em_is_const)
+			{
+				newexpr = (Expr *) copyObject(em->em_expr);
+				break;
+			}
+		}
+	}
+	/* Fail if no usable expr. */
+	else
+		return NULL;
+
+	if (!newexpr)
+		elog(ERROR, "could not pull up equivalence class using projected target list");
+
+	/*
+	 * It should be OK to set nullable_relids = NULL, since this eclass is only
+	 * used for DistributionKey, so it would not participate in qual deduction.
+	 */
+	outer_ec = get_eclass_for_sort_expr(root,
+										newexpr,
+										NULL,
+										eclass->ec_opfamilies,
+										exprType((Node *) newexpr),
+										exprCollation((Node *) newexpr),
+										0,
+										relids,
+										true);
+
+	return outer_ec;
+}
+
+
+
 /****************************************************************************
  *		PATHKEYS AND SORT CLAUSES
  ****************************************************************************/
@@ -1096,6 +1610,79 @@ make_pathkeys_for_sortclauses(PlannerInfo *root,
 			pathkeys = lappend(pathkeys, pathkey);
 	}
 	return pathkeys;
+}
+
+/****************************************************************************
+ *		DISTRIBUTION KEYS
+ ****************************************************************************/
+
+/*
+ * Make a list of PathKeys, and a list of plain expressions, to represent a
+ * distribution key that is suitable for implementing grouping on the given
+ * grouping clause. Only expressions that are GPDB-hashable are included,
+ * so the resulting lists can be shorter than 'groupclause', or even empty.
+ *
+ * The result is stored in *partition_dist_pathkeys and *partition_dist_exprs.
+ * *partition_dist_pathkeys is set to a list of PathKeys, and
+ * *partition_dist_exprs to a corresponding list of plain expressions.
+ */
+void
+make_distribution_exprs_for_groupclause(PlannerInfo *root, List *groupclause, List *tlist,
+										List **partition_dist_pathkeys,
+										List **partition_dist_exprs,
+										List **partition_dist_opfamilies,
+										List **partition_dist_sortrefs)
+{
+	List	   *pathkeys = NIL;
+	List	   *exprs = NIL;
+	List	   *opfamilies = NIL;
+	List	   *sortrefs = NIL;
+	ListCell   *l;
+
+	foreach(l, groupclause)
+	{
+		SortGroupClause *sortcl = (SortGroupClause *) lfirst(l);
+		PathKey	   *pathkey;
+		Expr	   *expr;
+		Oid			opfamily;
+
+		if (!sortcl->hashable)
+			continue;
+
+		/*
+		 * If this expression is not sortable, we cannot construct a PathKey
+		 * to represent it. Give up.
+		 *
+		 * In principle, we could still use it as distribution key, but we'd
+		 * need a different representation for it. For now, though, we don't
+		 * bother. A datatype without ordering operators is a rare thing in
+		 * practice.
+		 */
+		if (sortcl->sortop == InvalidOid)
+			continue;
+
+		expr = (Expr *) get_sortgroupclause_expr(sortcl, tlist);
+
+		pathkey = make_pathkey_from_sortop(root,
+										   expr,
+										   root->nullable_baserels,
+										   sortcl->sortop,
+										   sortcl->nulls_first,
+										   sortcl->tleSortGroupRef,
+										   true);
+
+		opfamily = get_compatible_hash_opfamily(sortcl->eqop);
+
+		pathkeys = lappend(pathkeys, pathkey);
+		exprs = lappend(exprs, expr);
+		opfamilies = lappend_oid(opfamilies, opfamily);
+		sortrefs = lappend_int(sortrefs, sortcl->tleSortGroupRef);
+	}
+
+	*partition_dist_pathkeys = pathkeys;
+	*partition_dist_exprs = exprs;
+	*partition_dist_opfamilies = opfamilies;
+	*partition_dist_sortrefs = sortrefs;
 }
 
 /****************************************************************************

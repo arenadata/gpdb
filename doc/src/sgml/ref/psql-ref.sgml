@@ -702,6 +702,20 @@ $ <userinput>psql postgresql://dbmaster:5433/mydb?sslmode=require</userinput>
     </para>
 
     <para>
+     An alternative way to specify connection parameters is in a
+     <parameter>conninfo</parameter> string, which is used instead of a
+     database name. This mechanism give you very wide control over the
+     connection. For example:
+<programlisting>
+$ <userinput>psql "service=myservice sslmode=require"</userinput>
+</programlisting>
+     This way you can also use LDAP for connection parameter lookup as
+     described in <xref linkend="libpq-ldap">.
+     See <xref linkend="libpq-connect"> for more information on all the
+     available connection options.
+    </para>
+
+    <para>
     If the connection could not be made for any reason (e.g., insufficient
     privileges, server is not running on the targeted host, etc.),
     <application>psql</application> will return an error and terminate.
@@ -1351,6 +1365,7 @@ testdb=&gt;
       <varlistentry>
         <term><literal>\dE[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\di[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
+        <term><literal>\dP[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\dm[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\ds[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <term><literal>\dt[S+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
@@ -1360,9 +1375,9 @@ testdb=&gt;
         <para>
         In this group of commands, the letters <literal>E</literal>,
         <literal>i</literal>, <literal>m</literal>, <literal>s</literal>,
-        <literal>t</literal>, and <literal>v</literal>
+        <literal>t</literal>, <literal>P</literal>, and <literal>v</literal>
         stand for foreign table, index, materialized view,
-        sequence, table, and view,
+        sequence, table, parent table, and view,
         respectively.
         You can specify any or all of
         these letters, in any order, to obtain a listing of objects

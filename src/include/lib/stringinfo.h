@@ -3,9 +3,10 @@
  * stringinfo.h
  *	  Declarations/definitions for "StringInfo" functions.
  *
- * StringInfo provides an indefinitely-extensible string data type.
- * It can be used to buffer either ordinary C strings (null-terminated text)
- * or arbitrary binary data.  All storage is allocated with palloc().
+ * StringInfo provides an extensible string data type (currently limited to a
+ * length of 1GB).  It can be used to buffer either ordinary C strings
+ * (null-terminated text) or arbitrary binary data.  All storage is allocated
+ * with palloc() (falling back to malloc in frontend code).
  *
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -78,6 +79,8 @@ extern StringInfo makeStringInfo(void);
  */
 extern void initStringInfo(StringInfo str);
 
+extern void initStringInfoOfSize(StringInfo str, int bufsize);
+
 /*------------------------
  * resetStringInfo
  * Clears the current content of the StringInfo, if any. The
@@ -144,6 +147,16 @@ extern void appendBinaryStringInfo(StringInfo str,
 								   const char *data, int datalen);
 
 /*------------------------
+ * appendStringInfoLiteral
+ * Wrap a string literal and send to appendBinaryStringInfo, sort of
+ * the way appendStringInfoString() would do, except without having
+ * to call strlen() on something for which we already know the length 
+ *
+ * NOTE: sizeof() returns full size, including NULL.
+ */
+#define appendStringInfoLiteral(str, lit) (appendBinaryStringInfo(str, (lit), sizeof((lit)) - 1))
+
+/*------------------------
  * appendBinaryStringInfoNT
  * Append arbitrary binary data to a StringInfo, allocating more space
  * if necessary. Does not ensure a trailing null-byte exists.
@@ -156,5 +169,12 @@ extern void appendBinaryStringInfoNT(StringInfo str,
  * Make sure a StringInfo's buffer can hold at least 'needed' more bytes.
  */
 extern void enlargeStringInfo(StringInfo str, int needed);
+
+/*------------------------
+ * replaceStringInfoString
+ * Replace all occurrences of a string in a StringInfo with a different string.
+ */
+
+extern void replaceStringInfoString(StringInfo str, char *replace, char *replacement);
 
 #endif							/* STRINGINFO_H */

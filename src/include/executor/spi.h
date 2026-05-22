@@ -84,24 +84,24 @@ extern PGDLLIMPORT int SPI_result;
 extern int	SPI_connect(void);
 extern int	SPI_connect_ext(int options);
 extern int	SPI_finish(void);
-extern int	SPI_execute(const char *src, bool read_only, long tcount);
-extern int	SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
-							 bool read_only, long tcount);
-extern int	SPI_execute_plan_with_paramlist(SPIPlanPtr plan,
-											ParamListInfo params,
-											bool read_only, long tcount);
-extern int	SPI_exec(const char *src, long tcount);
-extern int	SPI_execp(SPIPlanPtr plan, Datum *Values, const char *Nulls,
-					  long tcount);
-extern int	SPI_execute_snapshot(SPIPlanPtr plan,
+extern int	SPI_execute(const char *src, bool read_only, int64 tcount);
+extern int SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
+							bool read_only, int64 tcount);
+extern int SPI_execute_plan_with_paramlist(SPIPlanPtr plan,
+										   ParamListInfo params,
+										   bool read_only, long tcount);
+extern int	SPI_exec(const char *src, int64 tcount);
+extern int SPI_execp(SPIPlanPtr plan, Datum *Values, const char *Nulls,
+					 int64 tcount);
+extern int SPI_execute_snapshot(SPIPlanPtr plan,
+								Datum *Values, const char *Nulls,
+								Snapshot snapshot,
+								Snapshot crosscheck_snapshot,
+								bool read_only, bool fire_triggers, int64 tcount);
+extern int SPI_execute_with_args(const char *src,
+								 int nargs, Oid *argtypes,
 								 Datum *Values, const char *Nulls,
-								 Snapshot snapshot,
-								 Snapshot crosscheck_snapshot,
-								 bool read_only, bool fire_triggers, long tcount);
-extern int	SPI_execute_with_args(const char *src,
-								  int nargs, Oid *argtypes,
-								  Datum *Values, const char *Nulls,
-								  bool read_only, long tcount);
+								 bool read_only, int64 tcount);
 extern SPIPlanPtr SPI_prepare(const char *src, int nargs, Oid *argtypes);
 extern SPIPlanPtr SPI_prepare_cursor(const char *src, int nargs, Oid *argtypes,
 									 int cursorOptions);
@@ -171,5 +171,14 @@ extern void SPICleanup(void);
 extern void AtEOXact_SPI(bool isCommit);
 extern void AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid);
 extern bool SPI_inside_nonatomic_context(void);
+extern bool SPI_context(void);
+
+/**
+ * Memory reservation related routines.
+ */
+extern void SPI_InitMemoryReservation(void);
+extern uint64 SPI_GetMemoryReservation(void);
+extern void SPI_ReserveMemory(uint64 mem_reserved);
+extern bool SPI_IsMemoryReserved(void);
 
 #endif							/* SPI_H */

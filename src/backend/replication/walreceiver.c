@@ -69,6 +69,8 @@
 #include "utils/ps_status.h"
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
+#include "utils/faultinjector.h"
+#include "storage/fd.h"
 
 
 /* GUC variables */
@@ -226,6 +228,10 @@ WalReceiverMain(void)
 	walrcv->pid = MyProcPid;
 	walrcv->walRcvState = WALRCV_STREAMING;
 
+	elogif(debug_walrepl_rcv, LOG,
+			"WAL receiver state is set to '%s'",
+			WalRcvGetStateString(walrcv->walRcvState));
+
 	/* Fetch information required to start streaming */
 	walrcv->ready_to_display = false;
 	strlcpy(conninfo, (char *) walrcv->conninfo, MAXCONNINFO);
@@ -262,7 +268,7 @@ WalReceiverMain(void)
 	sigdelset(&BlockSig, SIGQUIT);
 
 	/* Load the libpq-specific functions */
-	load_file("libpqwalreceiver", false);
+	libpqwalreceiver_PG_init();
 	if (WalReceiverFunctions == NULL)
 		elog(ERROR, "libpqwalreceiver didn't initialize correctly");
 
@@ -987,6 +993,15 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr)
 		buf += byteswritten;
 
 		LogstreamResult.Write = recptr;
+
+		elogif(debug_walrepl_rcv, LOG,
+			   "walrcv write -- Wrote %d bytes in file %s, offset %d."
+			   "Latest write location is %X/%X.",
+			   byteswritten,
+			   XLogFileNameP(recvFileTLI, recvSegNo),
+			   startoff,
+			   (uint32) (LogstreamResult.Write >> 32),
+			   (uint32) LogstreamResult.Write);
 	}
 }
 
@@ -1001,6 +1016,12 @@ XLogWalRcvFlush(bool dying)
 {
 	if (LogstreamResult.Flush < LogstreamResult.Write)
 	{
+#ifdef FAULT_INJECTOR
+		/* Simulate the case that the standby / mirror is lagging behind. */
+		if (SIMPLE_FAULT_INJECTOR("walrecv_skip_flush") == FaultInjectorTypeSkip)
+			return;
+#endif
+
 		WalRcvData *walrcv = WalRcv;
 
 		issue_xlog_fsync(recvFile, recvSegNo);
@@ -1311,7 +1332,7 @@ WalRcvForceReply(void)
  * Return a string constant representing the state. This is used
  * in system functions and views, and should *not* be translated.
  */
-static const char *
+const char *
 WalRcvGetStateString(WalRcvState state)
 {
 	switch (state)

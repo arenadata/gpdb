@@ -29,6 +29,11 @@
 #include "storage/standby.h"
 #include "utils/relmapper.h"
 
+#include "access/bitmap_xlog.h"
+#include "access/distributedlog.h"
+#include "cdb/cdbappendonlyxlog.h"
+
+
 /* must be kept in sync with RmgrData definition in xlog_internal.h */
 #define PG_RMGR(symname,name,redo,desc,identify,startup,cleanup,mask) \
 	{ name, redo, desc, identify, startup, cleanup, mask },

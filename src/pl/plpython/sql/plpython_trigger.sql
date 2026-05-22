@@ -123,7 +123,10 @@ AFTER INSERT OR UPDATE OR DELETE ON trigger_test_generated
 FOR EACH ROW EXECUTE PROCEDURE trigger_data();
 
 insert into trigger_test_generated (i) values (1);
+-- GPDB: Fails, updating the distribution key with triggers is not allowed.
 update trigger_test_generated set i = 11 where i = 1;
+-- try this instead:
+update trigger_test_generated set j = default where i = 1;
 delete from trigger_test_generated;
 
 DROP TRIGGER show_trigger_data_trig_before ON trigger_test_generated;
@@ -132,6 +135,8 @@ DROP TRIGGER show_trigger_data_trig_after ON trigger_test_generated;
 insert into trigger_test values(1,'insert');
 CREATE VIEW trigger_test_view AS SELECT * FROM trigger_test;
 
+--start_ignore
+-- INSTEAD OF triggers are not yet supported in Greenplum
 CREATE TRIGGER show_trigger_data_trig
 INSTEAD OF INSERT OR UPDATE OR DELETE ON trigger_test_view
 FOR EACH ROW EXECUTE PROCEDURE trigger_data(24,'skidoo view');
@@ -141,6 +146,7 @@ update trigger_test_view set v = 'update' where i = 1;
 delete from trigger_test_view;
 
 DROP FUNCTION trigger_data() CASCADE;
+--end_ignore
 DROP VIEW trigger_test_view;
 delete from trigger_test;
 
@@ -343,7 +349,8 @@ CREATE FUNCTION set_modif_time() RETURNS trigger AS $$
     return 'MODIFY'
 $$ LANGUAGE plpythonu;
 
-CREATE TABLE pb (a TEXT, modif_time TIMESTAMP(0) WITHOUT TIME ZONE);
+-- Add 'DISTRIBUTED RANDOMLY' to avoid "ERROR:  Cannot parallelize an UPDATE statement that updates the distribution columns"
+CREATE TABLE pb (a TEXT, modif_time TIMESTAMP(0) WITHOUT TIME ZONE) DISTRIBUTED RANDOMLY;
 
 CREATE TRIGGER set_modif_time BEFORE UPDATE ON pb
   FOR EACH ROW EXECUTE PROCEDURE set_modif_time();
@@ -443,6 +450,8 @@ $$
     return None
 $$;
 
+-- GPDB: this test doesn't work properly on GPDB, because statement triggers
+-- are not fired.
 CREATE TRIGGER a_t AFTER UPDATE ON transition_table_test
   REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
   FOR EACH STATEMENT EXECUTE PROCEDURE transition_table_test_f();

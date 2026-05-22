@@ -44,7 +44,7 @@ COMMENT ON AGGREGATE newcnt ("any") IS 'an agg(any) comment';
 
 -- multi-argument aggregate
 create function sum3(int8,int8,int8) returns int8 as
-'select $1 + $2 + $3' language sql strict immutable;
+'select $1 + $2 + $3' language sql CONTAINS SQL strict immutable;
 
 create aggregate sum2(int8,int8) (
    sfunc = sum3, stype = int8,
@@ -296,3 +296,31 @@ CREATE AGGREGATE case_agg(float8)
 	"Finalfunc_modify" = read_write,
 	"Parallel" = safe
 );
+
+
+-- Negative test: "ordered aggregate prefunc is not supported"
+create ordered aggregate should_error(integer,integer,text) (
+   stype = aggtype[],
+   sfunc = aggfns_trans, 
+   combinefunc = array_cat,
+   initcond = '{}'
+);
+
+-- MPP-2863: ensure that aggregate declarations with an initial value == ''
+-- do not get converted to an initial value == NULL
+create function str_concat(t1 text, t2 text) returns text as
+$$
+    select $1 || $2;
+$$ language sql CONTAINS SQL;
+
+CREATE AGGREGATE string_concat (sfunc = str_concat, combinefunc=str_concat, basetype = 'text', stype = text,initcond = '');
+
+create table aggtest2(i int, t text) DISTRIBUTED BY (i);
+insert into aggtest2 values(1, 'hello');
+insert into aggtest2 values(2, 'hello');
+select string_concat(t) from aggtest2;
+select string_concat(t) from (select * from aggtest2 limit 2000) tmp;
+drop table aggtest2;
+drop aggregate string_concat(text);
+drop function str_concat(text, text);
+

@@ -19,7 +19,7 @@ use Test::More;
 
 if ($ENV{with_gssapi} eq 'yes')
 {
-	plan tests => 12;
+	plan tests => 19;
 }
 else
 {
@@ -166,15 +166,15 @@ $node->safe_psql('postgres', 'CREATE USER test1;');
 
 note "running tests";
 
+# Test connection success or failure, and if success, that query returns true.
 sub test_access
 {
-	my ($node, $role, $server_check, $expected_res, $gssencmode, $test_name)
-	  = @_;
+	my ($node, $role, $query, $expected_res, $gssencmode, $test_name) = @_;
 
 	# need to connect over TCP/IP for Kerberos
 	my ($res, $stdoutres, $stderrres) = $node->psql(
 		'postgres',
-		"$server_check",
+		"$query",
 		extra_params => [
 			'-XAtd',
 			$node->connstr('postgres')
@@ -192,6 +192,29 @@ sub test_access
 	{
 		is($res, $expected_res, $test_name);
 	}
+	return;
+}
+
+# As above, but test for an arbitrary query result.
+sub test_query
+{
+	my ($node, $role, $query, $expected, $gssencmode, $test_name) = @_;
+
+	# need to connect over TCP/IP for Kerberos
+	my ($res, $stdoutres, $stderrres) = $node->psql(
+		'postgres',
+		"$query",
+		extra_params => [
+			'-XAtd',
+			$node->connstr('postgres')
+			  . " host=$host hostaddr=$hostaddr $gssencmode",
+			'-U',
+			$role
+		]);
+
+	is($res, 0, $test_name);
+	like($stdoutres, $expected, $test_name);
+	is($stderrres, "", $test_name);
 	return;
 }
 
@@ -230,6 +253,27 @@ test_access(
 	0,
 	"gssencmode=require",
 	"succeeds with GSS-encrypted access required with host hba");
+
+# Test that we can transport a reasonable amount of data.
+test_query(
+	$node,
+	"test1",
+	'SELECT * FROM generate_series(1, 100000);',
+	qr/^1\n.*\n1024\n.*\n9999\n.*\n100000$/s,
+	"gssencmode=require",
+	"receiving 100K lines works");
+
+test_query(
+	$node,
+	"test1",
+	"CREATE TABLE mytab (f1 int primary key);\n"
+	  . "COPY mytab FROM STDIN;\n"
+	  . join("\n", (1 .. 100000))
+	  . "\n\\.\n"
+	  . "SELECT COUNT(*) FROM mytab;",
+	qr/^100000$/s,
+	"gssencmode=require",
+	"sending 100K lines works");
 
 unlink($node->data_dir . '/pg_hba.conf');
 $node->append_conf('pg_hba.conf',
@@ -275,6 +319,36 @@ test_access(
 	0,
 	"gssencmode=disable",
 	"succeeds with GSS encryption disabled and hostnogssenc hba");
+
+# Greenplum tests for expiration, remove if upstream adds the similar tests
+# Rewrite the pg_hba.conf to allow us doing the "ALTER USER" commands
+unlink($node->data_dir . '/pg_hba.conf');
+$node->append_conf('pg_hba.conf', qq{local all all trust});
+$node->append_conf('pg_hba.conf', qq{host all all all trust});
+$node->restart;
+
+$node->safe_psql('postgres', q{ALTER USER test1 VALID UNTIL '2001-01-01 01:00:00-00'});
+
+unlink($node->data_dir . '/pg_hba.conf');
+$node->append_conf('pg_hba.conf',
+	qq{hostgssenc all all $hostaddr/32 gss map=mymap});
+$node->restart;
+
+test_access(
+	$node,
+	"test1",
+	'SELECT true',
+	2,
+	"gssencmode=prefer",
+	"fails with user expired");
+
+unlink($node->data_dir . '/pg_hba.conf');
+$node->append_conf('pg_hba.conf', qq{local all all trust});
+$node->append_conf('pg_hba.conf', qq{host all all all trust});
+$node->restart;
+
+$node->safe_psql('postgres', q{ALTER USER test1 VALID UNTIL '2099-12-31 23:00:00-00'});
+# Following tests should succeed with user not expired
 
 truncate($node->data_dir . '/pg_ident.conf', 0);
 unlink($node->data_dir . '/pg_hba.conf');

@@ -298,6 +298,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
 #define DatumGetTextPSlice(X,m,n)	((text *) PG_DETOAST_DATUM_SLICE(X,m,n))
 #define DatumGetBpCharPSlice(X,m,n) ((BpChar *) PG_DETOAST_DATUM_SLICE(X,m,n))
 #define DatumGetVarCharPSlice(X,m,n) ((VarChar *) PG_DETOAST_DATUM_SLICE(X,m,n))
+
 /* GETARG macros for varlena types will typically look like this: */
 #define PG_GETARG_BYTEA_PP(n)		DatumGetByteaPP(PG_GETARG_DATUM(n))
 #define PG_GETARG_TEXT_PP(n)		DatumGetTextPP(PG_GETARG_DATUM(n))
@@ -310,6 +311,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
 #define PG_GETARG_BPCHAR_P_COPY(n)	DatumGetBpCharPCopy(PG_GETARG_DATUM(n))
 #define PG_GETARG_VARCHAR_P_COPY(n) DatumGetVarCharPCopy(PG_GETARG_DATUM(n))
 #define PG_GETARG_HEAPTUPLEHEADER_COPY(n)	DatumGetHeapTupleHeaderCopy(PG_GETARG_DATUM(n))
+
 /* And a b-byte slice from position a -also OK to write */
 #define PG_GETARG_BYTEA_P_SLICE(n,a,b) DatumGetByteaPSlice(PG_GETARG_DATUM(n),a,b)
 #define PG_GETARG_TEXT_P_SLICE(n,a,b)  DatumGetTextPSlice(PG_GETARG_DATUM(n),a,b)
@@ -362,6 +364,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
 #define PG_RETURN_BPCHAR_P(x)  PG_RETURN_POINTER(x)
 #define PG_RETURN_VARCHAR_P(x) PG_RETURN_POINTER(x)
 #define PG_RETURN_HEAPTUPLEHEADER(x)  return HeapTupleHeaderGetDatum(x)
+#define PG_RETURN_XID(x)	 return TransactionIdGetDatum(x)
 
 
 /*-------------------------------------------------------------------------
@@ -442,26 +445,48 @@ extern int no_such_variable
 typedef struct
 {
 	int			len;			/* sizeof(this struct) */
-	int			version;		/* PostgreSQL major version */
+	int			version;		/* product major version */
 	int			funcmaxargs;	/* FUNC_MAX_ARGS */
 	int			indexmaxkeys;	/* INDEX_MAX_KEYS */
 	int			namedatalen;	/* NAMEDATALEN */
 	int			float4byval;	/* FLOAT4PASSBYVAL */
 	int			float8byval;	/* FLOAT8PASSBYVAL */
+	int         product;        /* magic product code */
 } Pg_magic_struct;
+
+/*
+ * List of product codes for products that support some level of compatability
+ * with the postgres contrib module format. 
+ *
+ * GPDB: A patch for this has been supplied to Postgres in the hope of improved
+ * cross product compatibility.  It is currently unknown if they will accept
+ * the patch.
+ */
+typedef enum {
+	PgMagicProductNone		   = 0,
+	PgMagicProductPostgres	   = 1,
+	PgMagicProductGreenplum	   = 2180,     /* 'GPDB' cast to an integer */
+} Pg_magic_product_code;
 
 /* The actual data block contents */
 #define PG_MODULE_MAGIC_DATA \
 { \
 	sizeof(Pg_magic_struct), \
-	PG_VERSION_NUM / 100, \
+	GP_VERSION_NUM / 100, \
 	FUNC_MAX_ARGS, \
 	INDEX_MAX_KEYS, \
 	NAMEDATALEN, \
 	FLOAT4PASSBYVAL, \
-	FLOAT8PASSBYVAL \
+	FLOAT8PASSBYVAL, \
+	PgMagicProductGreenplum \
 }
 
+#ifndef FLOAT4PASSBYVAL
+#define FLOAT4PASSBYVAL 1
+#endif
+#ifndef FLOAT8PASSBYVAL
+#define FLOAT8PASSBYVAL 1
+#endif
 /*
  * Declare the module magic function.  It needs to be a function as the dlsym
  * in the backend is only guaranteed to work on functions, not data

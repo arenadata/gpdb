@@ -59,6 +59,53 @@
  *
  *-------------------------------------------------------------------------
  */
+
+/*-------------------------------------------------------------------------
+ * GPDB:
+ *
+ * Distributed auto vacuum means to trigger auto vacuum on QD, and QD
+ * manages to dispatch the vacuum request to QEs as distributed transaction.
+ *
+ * In GPDB there is no distributed auto vacuum yet. For now, all auto vaccums
+ * happen on segments locally and do not interact with other auto vaccums.
+ *
+ * GPDB team had a detailed discussion about distributed auto vacuum. We have
+ * no plan for GPDB7, and will determine the approach in future based on
+ * feedback from customer.
+ *
+ * More tech details about distributed auto vacuum for future reference:
+ *
+ * What's the benefits of the distributed auto vacuum? It might be better global
+ * consistency because local auto vacuum happens in different times and different
+ * transactions. We can also expect relieving performance jitter theoretically if
+ * we can control cluster-size auto vacuum. In addition, we may be able to clean
+ * some code because the code of local auto vacuum and distributed user-invoked
+ * vacuum are inter-laying for now.
+ *
+ * Furthermore, we are still not certain about benefit of the consistency produced
+ * by distributed auto vacuum. Theoretically, we can get more precise statis info
+ * accordingly, but we need more feedback to evaluate the benefit for customer.
+ *
+ * What's the disadvantages? There might be possible troubles to align to upstream
+ * vacuum codes since PG vacuum always happens locally. Importing more complexity
+ * is another concern.
+ *
+ * In MPP setting it's kind of expected all nodes will have a similar activity or
+ * bloat on the table (especially catalog tables should have the same effect on all
+ * segments), though that's not really true for OLTP user tables. Hence making the
+ * global decision to vacuum a table or not, instead of local can become
+ * disadvantageous. For example, only one segment has heavy bloat on a table and
+ * the rest of the segments are not. Global/distributed vacuum unnecessarily will
+ * trigger on all segments even if not required.
+ *
+ * A possible solution is a kind of unbalanced strategy: when a distributed auto
+ * vacuum is triggered, we don't need to perform actual vacuum on all segments. A
+ * segment can determine not to perform actual vacuum if it has heavy bloat. Since
+ * auto vacuum is repeated, the vacuum is supposed to be finished at sometime with
+ * light workload in future. There might also be space for more complex scheduling
+ * strategy of distributed auto vacuum based on performance monitoring.
+ */
+
 #include "postgres.h"
 
 #include <signal.h>
@@ -72,6 +119,7 @@
 #include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
@@ -106,6 +154,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
+#include "cdb/cdbvars.h"
+#include "utils/faultinjector.h"
+
 
 /*
  * GUC parameters
@@ -124,7 +175,7 @@ int			autovacuum_multixact_freeze_max_age;
 double		autovacuum_vac_cost_delay;
 int			autovacuum_vac_cost_limit;
 
-int			Log_autovacuum_min_duration = -1;
+int			Log_autovacuum_min_duration = 0;
 
 /* how long to keep pgstat data in the launcher, in milliseconds */
 #define STATS_READ_DELAY 1000
@@ -168,6 +219,7 @@ typedef struct avl_dbase
 typedef struct avw_dbase
 {
 	Oid			adw_datid;
+	bool		adw_allowconn;
 	char	   *adw_name;
 	TransactionId adw_frozenxid;
 	MultiXactId adw_minmulti;
@@ -599,6 +651,18 @@ AutoVacLauncherMain(int argc, char *argv[])
 	SetConfigOption("default_transaction_isolation", "read committed",
 					PGC_SUSET, PGC_S_OVERRIDE);
 
+/*
+ * In GPDB, we only want an autovacuum worker to start once we know
+ * there is a database to vacuum. Therefore, we never want emergency mode
+ * to start a worker immediately.
+ *
+ * Note: when the emergency mode is running it is possible to continuously
+ * start an autovacuum worker. Within the worker, the PMSIGNAL_START_AUTOVAC_LAUNCHER
+ * signal is sent when a database is found that is old enough to be vacuumed. If
+ * the database chosen is connectable, the launcher will never select it and the
+ * worker will continue to signal for a new launcher.
+ */
+#if 0
 	/*
 	 * In emergency mode, just start a worker (unless shutdown was requested)
 	 * and go away.
@@ -609,6 +673,7 @@ AutoVacLauncherMain(int argc, char *argv[])
 			do_start_worker();
 		proc_exit(0);			/* done */
 	}
+#endif
 
 	AutoVacuumShmem->av_launcherpid = MyProcPid;
 
@@ -1511,8 +1576,21 @@ AutoVacWorkerMain(int argc, char *argv[])
 
 	am_autovacuum_worker = true;
 
+	/* MPP-4990: Autovacuum always runs as utility-mode */
+	if (IS_QUERY_DISPATCHER())
+		Gp_role = GP_ROLE_DISPATCH;
+	else
+		Gp_role = GP_ROLE_UTILITY;
+
 	/* Identify myself via ps */
 	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_WORKER), "", "", "");
+
+	/* 
+	 * PreAuthDelay is a debugging aid for investigating problems in the 
+	 * authentication cycle. 
+	 */
+	if (PreAuthDelay > 0)
+		pg_usleep(PreAuthDelay * 1000000L);
 
 	SetProcessingMode(InitProcessing);
 
@@ -1683,8 +1761,14 @@ AutoVacWorkerMain(int argc, char *argv[])
 		InitPostgres(NULL, dbid, NULL, InvalidOid, dbname, false);
 		SetProcessingMode(NormalProcessing);
 		set_ps_display(dbname, false);
-		ereport(DEBUG1,
+		ereport(LOG,
 				(errmsg("autovacuum: processing database \"%s\"", dbname)));
+
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+			"auto_vac_worker_before_do_autovacuum", DDLNotSpecified,
+			dbname, "");
+#endif
 
 		if (PostAuthDelay)
 			pg_usleep(PostAuthDelay * 1000000L);
@@ -1692,6 +1776,7 @@ AutoVacWorkerMain(int argc, char *argv[])
 		/* And do an appropriate amount of work */
 		recentXid = ReadNewTransactionId();
 		recentMulti = ReadNextMultiXactId();
+
 		do_autovacuum();
 	}
 
@@ -1905,6 +1990,7 @@ get_database_list(void)
 		avdb->adw_name = pstrdup(NameStr(pgdatabase->datname));
 		avdb->adw_frozenxid = pgdatabase->datfrozenxid;
 		avdb->adw_minmulti = pgdatabase->datminmxid;
+		avdb->adw_allowconn = pgdatabase->datallowconn;
 		/* this gets set later: */
 		avdb->adw_entry = NULL;
 
@@ -2060,7 +2146,10 @@ do_autovacuum(void)
 		bool		wraparound;
 
 		if (classForm->relkind != RELKIND_RELATION &&
-			classForm->relkind != RELKIND_MATVIEW)
+			classForm->relkind != RELKIND_MATVIEW &&
+			classForm->relkind != RELKIND_AOSEGMENTS &&
+			classForm->relkind != RELKIND_AOBLOCKDIR &&
+			classForm->relkind != RELKIND_AOVISIMAP)
 			continue;
 
 		relid = classForm->oid;
@@ -2071,6 +2160,13 @@ do_autovacuum(void)
 		 */
 		if (classForm->relpersistence == RELPERSISTENCE_TEMP)
 		{
+			/*
+			 * GPDB: Skip process temp tables since the temp namespace for QD and QE
+			 * is using gp_session_id as suffix instead of backendID.
+			 * And performDeletion() only execute delete on current node.
+			 */
+			continue;
+
 			/*
 			 * We just ignore it if the owning backend is still active and
 			 * using the temporary schema.
@@ -2494,6 +2590,12 @@ do_autovacuum(void)
 			FlushErrorState();
 			MemoryContextResetAndDeleteChildren(PortalContext);
 
+#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+				"auto_vac_worker_abort", DDLNotSpecified,
+				"", tab->at_relname);
+#endif
+
 			/* restart our transaction for the following operations */
 			StartTransactionCommand();
 			RESUME_INTERRUPTS();
@@ -2653,7 +2755,7 @@ perform_work_item(AutoVacuumWorkItem *workitem)
 		switch (workitem->avw_type)
 		{
 			case AVW_BRINSummarizeRange:
-				DirectFunctionCall2(brin_summarize_range,
+				DirectFunctionCall2(brin_summarize_range_internal,
 									ObjectIdGetDatum(workitem->avw_relation),
 									Int64GetDatum((int64) workitem->avw_blockNumber));
 				break;
@@ -2722,7 +2824,11 @@ extract_autovac_opts(HeapTuple tup, TupleDesc pg_class_desc)
 
 	Assert(((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_RELATION ||
 		   ((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_MATVIEW ||
-		   ((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_TOASTVALUE);
+		   ((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_TOASTVALUE ||
+		   ((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_AOSEGMENTS ||
+		   ((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_AOBLOCKDIR ||
+		   ((Form_pg_class) GETSTRUCT(tup))->relkind ==  RELKIND_AOVISIMAP);
+
 
 	relopts = extractRelOptions(tup, pg_class_desc, NULL);
 	if (relopts == NULL)
@@ -2894,6 +3000,7 @@ table_recheck_autovac(Oid relid, HTAB *table_toast_map,
 		tab->at_params.multixact_freeze_table_age = multixact_freeze_table_age;
 		tab->at_params.is_wraparound = wraparound;
 		tab->at_params.log_min_duration = log_min_duration;
+		tab->at_params.auto_stats = false;
 		tab->at_vacuum_cost_limit = vac_cost_limit;
 		tab->at_vacuum_cost_delay = vac_cost_delay;
 		tab->at_relname = NULL;
@@ -2985,6 +3092,12 @@ relation_needs_vacanalyze(Oid relid,
 	int			multixact_freeze_max_age;
 	TransactionId xidForceLimit;
 	MultiXactId multiForceLimit;
+
+	/*
+	 * We don't need to hold AutovacuumLock here, since it should be read-only in the worker itself
+	 * once the MyWorkerInfo gets set, all the workers only care about its own value.
+	 */
+	Assert(MyWorkerInfo);
 
 	AssertArg(classForm != NULL);
 	AssertArg(OidIsValid(relid));
@@ -3090,6 +3203,28 @@ relation_needs_vacanalyze(Oid relid,
 	/* ANALYZE refuses to work with pg_statistic */
 	if (relid == StatisticRelationId)
 		*doanalyze = false;
+
+	/* Only wish to trigger auto-analyze from coordinator */
+	if (Gp_role != GP_ROLE_DISPATCH)
+		*doanalyze = false;
+
+	/*
+	 * There are a lot of things to do to enable auto-ANALYZE for partition tables,
+	 * see PR10515 for details.
+	 * Currently, we just disable auto-ANALYZE for partition tables.
+	 */
+	if (*doanalyze)
+	{
+		if (get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
+			*doanalyze = false;
+	}
+
+	/*
+	 * GPDB: Autovacuum VACUUM is only enabled for catalog tables. (But ignore
+	 * if at risk of wrap around and proceed to vacuum)
+	 */
+	if (!IsSystemClass(relid, classForm) && !force_vacuum)
+		*dovacuum = false;
 }
 
 /*
@@ -3110,6 +3245,12 @@ autovacuum_do_vac_analyze(autovac_table *tab, BufferAccessStrategy bstrategy)
 	rangevar = makeRangeVar(tab->at_nspname, tab->at_relname, -1);
 	rel = makeVacuumRelation(rangevar, tab->at_relid, NIL);
 	rel_list = list_make1(rel);
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+		"auto_vac_worker_after_report_activity", DDLNotSpecified,
+		"", tab->at_relname);
+#endif
 
 	vacuum(rel_list, &tab->at_params, bstrategy, true);
 }

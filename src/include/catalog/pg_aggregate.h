@@ -101,6 +101,20 @@ CATALOG(pg_aggregate,2600,AggregateRelationId)
 #endif
 } FormData_pg_aggregate;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(aggfnoid REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggtransfn REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggcombinefn REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggfinalfn REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggserialfn REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggdeserialfn REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggmtransfn REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggminvtransfn REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggmfinalfn REFERENCES pg_proc(oid));
+FOREIGN_KEY(aggsortop REFERENCES pg_operator(oid));
+FOREIGN_KEY(aggtranstype REFERENCES pg_type(oid));
+FOREIGN_KEY(aggmtranstype REFERENCES pg_type(oid));
+
 /* ----------------
  *		Form_pg_aggregate corresponds to a pointer to a tuple with
  *		the format of pg_aggregate relation.

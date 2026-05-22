@@ -1975,7 +1975,7 @@ _bt_end_vacuum(Relation rel)
  * _bt_end_vacuum wrapped as an on_shmem_exit callback function
  */
 void
-_bt_end_vacuum_callback(int code, Datum arg)
+_bt_end_vacuum_callback(int code pg_attribute_unused(), Datum arg)
 {
 	_bt_end_vacuum((Relation) DatumGetPointer(arg));
 }

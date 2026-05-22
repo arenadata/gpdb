@@ -71,6 +71,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "cdb/cdbvars.h"
 
 
 /* The main type cache hashtable searched by lookup_type_cache */
@@ -221,7 +222,7 @@ shared_record_table_compare(const void *a, const void *b, size_t size,
 	else
 		t2 = k2->u.local_tupdesc;
 
-	return equalTupleDescs(t1, t2) ? 0 : 1;
+	return equalTupleDescs(t1, t2, true) ? 0 : 1;
 }
 
 /*
@@ -267,7 +268,7 @@ static HTAB *RecordCacheHash = NULL;
 static TupleDesc *RecordCacheArray = NULL;
 static uint64 *RecordIdentifierArray = NULL;
 static int32 RecordCacheArrayLen = 0;	/* allocated length of above arrays */
-static int32 NextRecordTypmod = 0;	/* number of entries used */
+int32 NextRecordTypmod = 0;	/* number of entries used */
 
 /*
  * Process-wide counter for generating unique tupledesc identifiers.
@@ -1758,7 +1759,7 @@ record_type_typmod_compare(const void *a, const void *b, size_t size)
 	RecordCacheEntry *left = (RecordCacheEntry *) a;
 	RecordCacheEntry *right = (RecordCacheEntry *) b;
 
-	return equalTupleDescs(left->tupdesc, right->tupdesc) ? 0 : 1;
+	return equalTupleDescs(left->tupdesc, right->tupdesc, true) ? 0 : 1;
 }
 
 /*
@@ -2012,7 +2013,13 @@ SharedRecordTypmodRegistryAttach(SharedRecordTypmodRegistry *registry)
 	dshash_table *record_table;
 	dshash_table *typmod_table;
 
+	/*
+	 * gpdb: comment this line out since we use this function for parallel
+	 * retrieve cursor also while upstream uses this for parallel work only.
+	 */
+#if 0
 	Assert(IsParallelWorker());
+#endif
 
 	/* We can't already be attached to a shared registry. */
 	Assert(CurrentSession != NULL);
@@ -2200,6 +2207,34 @@ TypeCacheConstrCallback(Datum arg, int cacheid, uint32 hashvalue)
 	}
 }
 
+
+/*
+ * build_tuple_node_list
+ *
+ * Wrap TupleDesc with TupleDescNode. Return all record type in record cache.
+ */
+List *
+build_tuple_node_list(int start)
+{
+	List *transientTypeList = NIL;
+	int i = start;
+
+	if (NextRecordTypmod == 0)
+		return transientTypeList;
+
+	for (; i < NextRecordTypmod; i++)
+	{
+		TupleDesc tmp = RecordCacheArray[i];
+
+		TupleDescNode *node = palloc0(sizeof(TupleDescNode));
+		node->type = T_TupleDescNode;
+		node->natts = tmp->natts;
+		node->tuple = CreateTupleDescCopy(tmp);
+		transientTypeList = lappend(transientTypeList, node);
+	}
+
+	return transientTypeList;
+}
 
 /*
  * Check if given OID is part of the subset that's sortable by comparisons

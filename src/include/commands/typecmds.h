@@ -14,6 +14,7 @@
 #ifndef TYPECMDS_H
 #define TYPECMDS_H
 
+#include "catalog/dependency.h"
 #include "access/htup.h"
 #include "catalog/dependency.h"
 #include "nodes/parsenodes.h"
@@ -28,7 +29,7 @@ extern ObjectAddress DefineEnum(CreateEnumStmt *stmt);
 extern ObjectAddress DefineRange(CreateRangeStmt *stmt);
 extern ObjectAddress AlterEnum(AlterEnumStmt *stmt);
 extern ObjectAddress DefineCompositeType(RangeVar *typevar, List *coldeflist);
-extern Oid	AssignTypeArrayOid(void);
+extern Oid AssignTypeArrayOid(char *arrayTypeName, Oid typeNamespace);
 
 extern ObjectAddress AlterDomainDefault(List *names, Node *defaultRaw);
 extern ObjectAddress AlterDomainNotNull(List *names, bool notNull);
@@ -48,10 +49,12 @@ extern void AlterTypeOwnerInternal(Oid typeOid, Oid newOwnerId);
 
 extern ObjectAddress AlterTypeNamespace(List *names, const char *newschema,
 										ObjectType objecttype, Oid *oldschema);
+
 extern Oid	AlterTypeNamespace_oid(Oid typeOid, Oid nspOid, ObjectAddresses *objsMoved);
-extern Oid	AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
-									   bool isImplicitArray,
-									   bool errorOnTableType,
-									   ObjectAddresses *objsMoved);
+extern Oid AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
+									  bool isImplicitArray,
+									  bool errorOnTableType,
+									  ObjectAddresses *objsMoved);
+extern void AlterType(AlterTypeStmt *stmt);
 
 #endif							/* TYPECMDS_H */

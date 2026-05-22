@@ -102,7 +102,8 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 							ExprContext *econtext,
 							MemoryContext argContext,
 							TupleDesc expectedDesc,
-							bool randomAccess)
+							bool randomAccess,
+							uint64 operatorMemKB)
 {
 	Tuplestorestate *tupstore = NULL;
 	TupleDesc	tupdesc = NULL;
@@ -216,6 +217,9 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 
 		CHECK_FOR_INTERRUPTS();
 
+		if (QueryFinishPending)
+			break;
+
 		/*
 		 * reset per-tuple memory context before each call of the function or
 		 * expression. This cleans up any local memory the function may leak
@@ -258,7 +262,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			if (first_time)
 			{
 				oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-				tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
+				tupstore = tuplestore_begin_heap(randomAccess, false, operatorMemKB);
 				rsinfo.setResult = tupstore;
 				if (!returnsTuple)
 				{

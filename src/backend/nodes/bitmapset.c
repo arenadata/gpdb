@@ -20,10 +20,10 @@
  */
 #include "postgres.h"
 
+#include "common/hashfn.h"
 #include "nodes/bitmapset.h"
 #include "nodes/pg_list.h"
 #include "port/pg_bitutils.h"
-#include "utils/hashutils.h"
 
 
 #define WORDNUM(x)	((x) / BITS_PER_BITMAPWORD)
@@ -762,6 +762,43 @@ bms_add_member(Bitmapset *a, int x)
 	return a;
 }
 
+bool
+bms_covers_member(const Bitmapset *a, int x)
+{
+	int			wordnum;
+
+	if (x < 0)
+		elog(ERROR, "negative bitmapset member not allowed");
+	if (a == NULL)
+		return false;
+	wordnum = WORDNUM(x);
+	return (wordnum < a->nwords);
+}
+
+Bitmapset *
+bms_resize(Bitmapset *a, int wc)
+{
+	Bitmapset  *result;
+
+	if (a && a->nwords >= wc)
+		return a;
+
+	if (a)
+	{
+		result = (Bitmapset *) repalloc(a, BITMAPSET_SIZE(wc));
+		/* do not access a again */
+		MemSet(result->words + result->nwords, 0,
+			   (wc - result->nwords) * sizeof(bitmapword));
+		result->nwords = wc;
+	}
+	else
+	{
+		result = palloc0(BITMAPSET_SIZE(wc));
+		result->nwords = wc;
+	}
+	return result;
+}
+
 /*
  * bms_del_member - remove a specified member from set
  *
@@ -1166,4 +1203,27 @@ bms_hash_value(const Bitmapset *a)
 		return 0;				/* All empty sets hash to 0 */
 	return DatumGetUInt32(hash_any((const unsigned char *) a->words,
 								   (lastword + 1) * sizeof(bitmapword)));
+}
+
+/*
+ * bitmap_hash - hash function for keys that are (pointers to) Bitmapsets
+ *
+ * Note: don't forget to specify bitmap_match as the match function!
+ */
+uint32
+bitmap_hash(const void *key, Size keysize)
+{
+	Assert(keysize == sizeof(Bitmapset *));
+	return bms_hash_value(*((const Bitmapset *const *) key));
+}
+
+/*
+ * bitmap_match - match function to use with bitmap_hash
+ */
+int
+bitmap_match(const void *key1, const void *key2, Size keysize)
+{
+	Assert(keysize == sizeof(Bitmapset *));
+	return !bms_equal(*((const Bitmapset *const *) key1),
+					  *((const Bitmapset *const *) key2));
 }

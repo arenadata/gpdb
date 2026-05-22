@@ -855,9 +855,28 @@ storeBitmap(SpGistScanOpaque so, ItemPointer heapPtr,
 }
 
 int64
-spggetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
+spggetbitmap(IndexScanDesc scan, Node **bmNodeP)
 {
+	TIDBitmap *tbm;
+
 	SpGistScanOpaque so = (SpGistScanOpaque) scan->opaque;
+
+	/*
+	 * GPDB specific code. Since GPDB also support StreamBitmap
+	 * in bitmap index. So normally we need to create specific bitmap
+	 * node in the amgetbitmap AM.
+	 */
+	Assert(bmNodeP);
+	if (*bmNodeP == NULL)
+	{
+		/* XXX should we use less than work_mem for this? */
+		tbm = tbm_create(work_mem * 1024L, NULL);
+		*bmNodeP = (Node *) tbm;
+	}
+	else if (!IsA(*bmNodeP, TIDBitmap))
+		elog(ERROR, "non spgist bitmap");
+	else
+		tbm = (TIDBitmap *)*bmNodeP;
 
 	/* Copy want_itup to *so so we don't need to pass it around separately */
 	so->want_itup = false;
@@ -929,6 +948,7 @@ spggettuple(IndexScanDesc scan, ScanDirection dir)
 			if (so->numberOfOrderBys > 0)
 				index_store_float8_orderby_distances(scan, so->orderByTypes,
 													 so->distances[so->iPtr],
+													 NULL,
 													 so->recheckDistances[so->iPtr]);
 			so->iPtr++;
 			return true;

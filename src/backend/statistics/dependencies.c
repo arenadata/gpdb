@@ -24,6 +24,7 @@
 #include "optimizer/optimizer.h"
 #include "nodes/nodes.h"
 #include "nodes/pathnodes.h"
+#include "parser/parsetree.h"
 #include "statistics/extended_stats_internal.h"
 #include "statistics/statistics.h"
 #include "utils/bytea.h"
@@ -953,6 +954,17 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 	MVDependencies *dependencies;
 	AttrNumber *list_attnums;
 	int			listidx;
+	RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
+
+	/*
+	 * When dealing with regular inheritance trees, ignore extended stats
+	 * (which were built without data from child rels, and thus do not
+	 * represent them). For partitioned tables data there's no data in the
+	 * non-leaf relations, so we build stats only for the inheritance tree.
+	 * So for partitioned tables we do consider extended stats.
+	 */
+	if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
+		return 1.0;
 
 	/* check if there's any stats that might be useful for us. */
 	if (!has_stats_of_kind(rel->statlist, STATS_EXT_DEPENDENCIES))
@@ -1067,7 +1079,8 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 				clause = (Node *) lfirst(l);
 
 				s2 = clause_selectivity(root, clause, varRelid, jointype,
-										sjinfo);
+										sjinfo,
+										false); /* no damping */
 
 				/* mark this one as done, so we don't touch it again. */
 				*estimatedclauses = bms_add_member(*estimatedclauses, listidx);

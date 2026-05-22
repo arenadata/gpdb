@@ -300,6 +300,8 @@ walrcv_clear_result(WalRcvExecResult *walres)
 	pfree(walres);
 }
 
+void		libpqwalreceiver_PG_init(void);
+
 /* prototypes for functions in walreceiver.c */
 extern void WalReceiverMain(void) pg_attribute_noreturn();
 extern void ProcessWalRcvInterrupts(void);
@@ -315,6 +317,7 @@ extern void RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr,
 extern XLogRecPtr GetWalRcvWriteRecPtr(XLogRecPtr *latestChunkStart, TimeLineID *receiveTLI);
 extern int	GetReplicationApplyDelay(void);
 extern int	GetReplicationTransferLatency(void);
+extern const char *WalRcvGetStateString(WalRcvState state);
 extern void WalRcvForceReply(void);
 
 #endif							/* _WALRECEIVER_H */

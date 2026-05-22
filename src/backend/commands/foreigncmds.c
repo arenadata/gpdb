@@ -21,12 +21,16 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbvars.h"
 #include "commands/defrem.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
@@ -38,6 +42,8 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+
+#include "catalog/oid_dispatch.h"
 
 
 typedef struct
@@ -178,9 +184,18 @@ transformGenericOptions(Oid catalogId,
 
 	result = optionListToArray(resultOptions);
 
+	/*
+	 * Check and separate out the extra options, fdwvalidator doesn't have
+	 * to handle it. USER MAPPING doesn't have the mpp_execute option.
+	 */
+	if (catalogId != UserMappingRelationId)
+	{
+		SeparateOutMppExecute(&resultOptions);
+	}
+
 	if (OidIsValid(fdwvalidator))
 	{
-		Datum		valarg = result;
+		Datum valarg = optionListToArray(resultOptions);
 
 		/*
 		 * Pass a null options list as an empty array, so that validators
@@ -475,13 +490,12 @@ static Oid
 lookup_fdw_handler_func(DefElem *handler)
 {
 	Oid			handlerOid;
-	Oid			funcargtypes[1];	/* dummy */
 
 	if (handler == NULL || handler->arg == NULL)
 		return InvalidOid;
 
 	/* handlers have no arguments */
-	handlerOid = LookupFuncName((List *) handler->arg, 0, funcargtypes, false);
+	handlerOid = LookupFuncName((List *) handler->arg, 0, NULL, false);
 
 	/* check that handler has correct return type */
 	if (get_func_rettype(handlerOid) != FDW_HANDLEROID)
@@ -604,8 +618,9 @@ CreateForeignDataWrapper(CreateFdwStmt *stmt)
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	fdwId = GetNewOidWithIndex(rel, ForeignDataWrapperOidIndexId,
-							   Anum_pg_foreign_data_wrapper_oid);
+	fdwId = GetNewOidForForeignDataWrapper(rel, ForeignDataWrapperOidIndexId,
+										   Anum_pg_foreign_data_wrapper_oid,
+										   stmt->fdwname);
 	values[Anum_pg_foreign_data_wrapper_oid - 1] = ObjectIdGetDatum(fdwId);
 	values[Anum_pg_foreign_data_wrapper_fdwname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->fdwname));
@@ -665,6 +680,14 @@ CreateForeignDataWrapper(CreateFdwStmt *stmt)
 
 	/* Post creation hook for new foreign data wrapper */
 	InvokeObjectPostCreateHook(ForeignDataWrapperRelationId, fdwId, 0);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	table_close(rel, RowExclusiveLock);
 
@@ -828,6 +851,13 @@ AlterForeignDataWrapper(AlterFdwStmt *stmt)
 		}
 	}
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 	InvokeObjectPostAlterHook(ForeignDataWrapperRelationId, fdwId, 0);
 
 	table_close(rel, RowExclusiveLock);
@@ -884,13 +914,22 @@ CreateForeignServer(CreateForeignServerStmt *stmt)
 	ownerId = GetUserId();
 
 	/*
-	 * Check that there is no other foreign server by this name. Do nothing if
-	 * IF NOT EXISTS was enforced.
+	 * Check that there is no other foreign server by this name.  If there is
+	 * one, do nothing if IF NOT EXISTS was specified.
 	 */
-	if (GetForeignServerByName(stmt->servername, true) != NULL)
+	srvId = get_foreign_server_oid(stmt->servername, true);
+	if (OidIsValid(srvId))
 	{
 		if (stmt->if_not_exists)
 		{
+			/*
+			 * If we are in an extension script, insist that the pre-existing
+			 * object be a member of the extension, to avoid security risks.
+			 */
+			ObjectAddressSet(myself, ForeignServerRelationId, srvId);
+			checkMembershipInCurrentExtension(&myself);
+
+			/* OK to skip */
 			ereport(NOTICE,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("server \"%s\" already exists, skipping",
@@ -921,8 +960,9 @@ CreateForeignServer(CreateForeignServerStmt *stmt)
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	srvId = GetNewOidWithIndex(rel, ForeignServerOidIndexId,
-							   Anum_pg_foreign_server_oid);
+	srvId = GetNewOidForForeignServer(rel, ForeignServerOidIndexId,
+									  Anum_pg_foreign_server_oid,
+									  stmt->servername);
 	values[Anum_pg_foreign_server_oid - 1] = ObjectIdGetDatum(srvId);
 	values[Anum_pg_foreign_server_srvname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->servername));
@@ -980,6 +1020,14 @@ CreateForeignServer(CreateForeignServerStmt *stmt)
 
 	/* Post creation hook for new foreign server */
 	InvokeObjectPostCreateHook(ForeignServerRelationId, srvId, 0);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	table_close(rel, RowExclusiveLock);
 
@@ -1080,6 +1128,14 @@ AlterForeignServer(AlterForeignServerStmt *stmt)
 
 	heap_freetuple(tp);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
 	table_close(rel, RowExclusiveLock);
 
 	return address;
@@ -1179,6 +1235,10 @@ CreateUserMapping(CreateUserMappingStmt *stmt)
 	{
 		if (stmt->if_not_exists)
 		{
+			/*
+			 * Since user mappings aren't members of extensions (see comments
+			 * below), no need for checkMembershipInCurrentExtension here.
+			 */
 			ereport(NOTICE,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("user mapping for \"%s\" already exists for server \"%s\", skipping",
@@ -1204,8 +1264,9 @@ CreateUserMapping(CreateUserMappingStmt *stmt)
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	umId = GetNewOidWithIndex(rel, UserMappingOidIndexId,
-							  Anum_pg_user_mapping_oid);
+	umId = GetNewOidForUserMapping(rel, UserMappingOidIndexId,
+								   Anum_pg_user_mapping_oid,
+								   useId, srv->serverid);
 	values[Anum_pg_user_mapping_oid - 1] = ObjectIdGetDatum(umId);
 	values[Anum_pg_user_mapping_umuser - 1] = ObjectIdGetDatum(useId);
 	values[Anum_pg_user_mapping_umserver - 1] = ObjectIdGetDatum(srv->serverid);
@@ -1252,6 +1313,14 @@ CreateUserMapping(CreateUserMappingStmt *stmt)
 
 	/* Post creation hook for new user mapping */
 	InvokeObjectPostCreateHook(UserMappingRelationId, umId, 0);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	table_close(rel, RowExclusiveLock);
 
@@ -1348,6 +1417,14 @@ AlterUserMapping(AlterUserMappingStmt *stmt)
 
 	heap_freetuple(tp);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
 	table_close(rel, RowExclusiveLock);
 
 	return address;
@@ -1429,6 +1506,13 @@ RemoveUserMapping(DropUserMappingStmt *stmt)
 
 	performDeletion(&object, DROP_CASCADE, 0);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 	return umId;
 }
 
@@ -1461,7 +1545,7 @@ RemoveUserMappingById(Oid umId)
  * call after DefineRelation().
  */
 void
-CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid)
+CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission_check)
 {
 	Relation	ftrel;
 	Datum		ftoptions;
@@ -1493,9 +1577,12 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid)
 	 * get the actual FDW for option validation etc.
 	 */
 	server = GetForeignServerByName(stmt->servername, false);
-	aclresult = pg_foreign_server_aclcheck(server->serverid, ownerId, ACL_USAGE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, OBJECT_FOREIGN_SERVER, server->servername);
+	if (!skip_permission_check)
+	{
+		aclresult = pg_foreign_server_aclcheck(server->serverid, ownerId, ACL_USAGE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_FOREIGN_SERVER, server->servername);
+	}
 
 	fdw = GetForeignDataWrapper(server->fdwid);
 

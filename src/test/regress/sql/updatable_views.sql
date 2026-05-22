@@ -5,11 +5,16 @@
 -- avoid bit-exact output here because operations may not be bit-exact.
 SET extra_float_digits = 0;
 
+-- GPDB: to get similar plans as upstream.
+set enable_mergejoin=on;
+set enable_nestloop=on;
+
 -- check that non-updatable views and columns are rejected with useful error
 -- messages
 
 CREATE TABLE base_tbl (a int PRIMARY KEY, b text DEFAULT 'Unspecified');
 INSERT INTO base_tbl SELECT i, 'Row ' || i FROM generate_series(-2, 2) g(i);
+ANALYZE base_tbl;
 
 CREATE VIEW ro_view1 AS SELECT DISTINCT a, b FROM base_tbl; -- DISTINCT not supported
 CREATE VIEW ro_view2 AS SELECT a, b FROM base_tbl GROUP BY a, b; -- GROUP BY not supported
@@ -29,7 +34,7 @@ CREATE VIEW rw_view15 AS SELECT a, upper(b) FROM base_tbl; -- Expression/functio
 CREATE VIEW rw_view16 AS SELECT a, b, a AS aa FROM base_tbl; -- Repeated column may be part of an updatable view
 CREATE VIEW ro_view17 AS SELECT * FROM ro_view1; -- Base relation not updatable
 CREATE VIEW ro_view18 AS SELECT * FROM (VALUES(1)) AS tmp(a); -- VALUES in rangetable
-CREATE SEQUENCE uv_seq;
+CREATE SEQUENCE uv_seq CACHE 1;
 CREATE VIEW ro_view19 AS SELECT * FROM uv_seq; -- View based on a sequence
 CREATE VIEW ro_view20 AS SELECT a, b, generate_series(1, a) g FROM base_tbl; -- SRF in targetlist not supported
 
@@ -109,6 +114,7 @@ DROP SEQUENCE uv_seq CASCADE;
 
 CREATE TABLE base_tbl (a int PRIMARY KEY, b text DEFAULT 'Unspecified');
 INSERT INTO base_tbl SELECT i, 'Row ' || i FROM generate_series(-2, 2) g(i);
+ANALYZE base_tbl;
 
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WHERE a>0;
 
@@ -140,6 +146,7 @@ DROP TABLE base_tbl CASCADE;
 
 CREATE TABLE base_tbl (a int PRIMARY KEY, b text DEFAULT 'Unspecified');
 INSERT INTO base_tbl SELECT i, 'Row ' || i FROM generate_series(-2, 2) g(i);
+ANALYZE base_tbl;
 
 CREATE VIEW rw_view1 AS SELECT b AS bb, a AS aa FROM base_tbl WHERE a>0;
 CREATE VIEW rw_view2 AS SELECT aa AS aaa, bb AS bbb FROM rw_view1 WHERE aa<10;
@@ -173,6 +180,7 @@ DROP TABLE base_tbl CASCADE;
 
 CREATE TABLE base_tbl (a int PRIMARY KEY, b text DEFAULT 'Unspecified');
 INSERT INTO base_tbl SELECT i, 'Row ' || i FROM generate_series(-2, 2) g(i);
+ANALYZE base_tbl;
 
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WHERE a>0 OFFSET 0; -- not updatable without rules/triggers
 CREATE VIEW rw_view2 AS SELECT * FROM rw_view1 WHERE a<10;
@@ -261,6 +269,7 @@ DROP TABLE base_tbl CASCADE;
 
 CREATE TABLE base_tbl (a int PRIMARY KEY, b text DEFAULT 'Unspecified');
 INSERT INTO base_tbl SELECT i, 'Row ' || i FROM generate_series(-2, 2) g(i);
+ANALYZE base_tbl;
 
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WHERE a>0 OFFSET 0; -- not updatable without rules/triggers
 CREATE VIEW rw_view2 AS SELECT * FROM rw_view1 WHERE a<10;
@@ -376,6 +385,7 @@ DROP FUNCTION rw_view1_trig_fn();
 
 CREATE TABLE base_tbl (a int PRIMARY KEY, b text DEFAULT 'Unspecified');
 INSERT INTO base_tbl SELECT i, 'Row ' || i FROM generate_series(-2, 2) g(i);
+ANALYZE base_tbl;
 
 CREATE VIEW rw_view1 AS SELECT b AS bb, a AS aa FROM base_tbl;
 
@@ -594,6 +604,7 @@ DROP TABLE base_tbl;
 
 CREATE TABLE base_tbl (a int, b int);
 INSERT INTO base_tbl VALUES (1,2), (4,5), (3,-3);
+ANALYZE base_tbl;
 
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl ORDER BY a+b;
 
@@ -689,6 +700,8 @@ CREATE TABLE base_tbl_parent (a int);
 CREATE TABLE base_tbl_child (CHECK (a > 0)) INHERITS (base_tbl_parent);
 INSERT INTO base_tbl_parent SELECT * FROM generate_series(-8, -1);
 INSERT INTO base_tbl_child SELECT * FROM generate_series(1, 8);
+ANALYZE base_tbl_parent;
+ANALYZE base_tbl_child;
 
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl_parent;
 CREATE VIEW rw_view2 AS SELECT * FROM ONLY base_tbl_parent;
@@ -717,6 +730,8 @@ CREATE TABLE other_tbl_parent (id int);
 CREATE TABLE other_tbl_child () INHERITS (other_tbl_parent);
 INSERT INTO other_tbl_parent VALUES (7),(200);
 INSERT INTO other_tbl_child VALUES (8),(100);
+ANALYZE other_tbl_parent;
+ANALYZE other_tbl_child;
 
 EXPLAIN (costs off)
 UPDATE rw_view1 SET a = a + 1000 FROM other_tbl_parent WHERE a = id;
@@ -832,6 +847,7 @@ DROP TABLE base_tbl CASCADE;
 CREATE TABLE base_tbl (a int);
 CREATE TABLE ref_tbl (a int PRIMARY KEY);
 INSERT INTO ref_tbl SELECT * FROM generate_series(1,10);
+ANALYZE ref_tbl;
 
 CREATE VIEW rw_view1 AS
   SELECT * FROM base_tbl b
@@ -845,6 +861,7 @@ UPDATE rw_view1 SET a = a + 5; -- ok
 UPDATE rw_view1 SET a = a + 5; -- should fail
 
 EXPLAIN (costs off) INSERT INTO rw_view1 VALUES (5);
+ANALYZE base_tbl;
 EXPLAIN (costs off) UPDATE rw_view1 SET a = a + 5;
 
 DROP TABLE base_tbl, ref_tbl CASCADE;
@@ -910,6 +927,8 @@ INSERT INTO rw_view2 VALUES (-5); -- should fail
 INSERT INTO rw_view2 VALUES (5); -- ok
 INSERT INTO rw_view2 VALUES (50); -- ok, but not in view
 UPDATE rw_view2 SET a = a - 10; -- should fail
+-- Greenplum doesn't fail because nothing was inserted into view, which is
+-- because Greenplum doesn't support INSTEAD OF triggers.
 SELECT * FROM base_tbl;
 
 -- Check option won't cascade down to base view with INSTEAD OF triggers
@@ -922,6 +941,13 @@ SELECT * FROM base_tbl;
 -- Neither local nor cascaded check options work with INSTEAD rules
 
 DROP TRIGGER rw_view1_trig ON rw_view1;
+
+-- GPDB: The previous tests don't work the same as in upstream. Reset the
+-- contents of the table to be the same as in upstream after this test, so
+-- that the tests that follow return the same results.
+delete from base_tbl;
+insert into base_tbl values (50, 10), (100, 10), (200, 10);
+
 CREATE RULE rw_view1_ins_rule AS ON INSERT TO rw_view1
   DO INSTEAD INSERT INTO base_tbl VALUES (NEW.a, 10);
 CREATE RULE rw_view1_upd_rule AS ON UPDATE TO rw_view1
@@ -949,6 +975,14 @@ DROP TABLE base_tbl CASCADE;
 -- security barrier view
 
 CREATE TABLE base_tbl (person text, visibility text);
+
+-- GPDB: The tests below which throw NOTICEs, throw them in indeterminate
+-- order, if the rows are hashed to different segments. Force all the rows
+-- to the same segment, by adding a dummy column and using it as the
+-- distribution key.
+alter table base_tbl add column distkey int;
+alter table base_tbl set distributed by (distkey);
+
 INSERT INTO base_tbl VALUES ('Tom', 'public'),
                             ('Dick', 'private'),
                             ('Harry', 'public');
@@ -1034,6 +1068,7 @@ DROP TABLE base_tbl CASCADE;
 
 CREATE TABLE base_tbl(id int PRIMARY KEY, data text, deleted boolean);
 INSERT INTO base_tbl VALUES (1, 'Row 1', false), (2, 'Row 2', true);
+ANALYZE base_tbl;
 
 CREATE RULE base_tbl_ins_rule AS ON INSERT TO base_tbl
   WHERE EXISTS (SELECT 1 FROM base_tbl t WHERE t.id = new.id)
@@ -1049,8 +1084,10 @@ CREATE VIEW rw_view1 WITH (security_barrier=true) AS
 
 SELECT * FROM rw_view1;
 
+set enable_seqscan=off; -- To get the same plan in GPDB as in upstream
 EXPLAIN (costs off) DELETE FROM rw_view1 WHERE id = 1 AND snoop(data);
 DELETE FROM rw_view1 WHERE id = 1 AND snoop(data);
+reset enable_seqscan;
 
 EXPLAIN (costs off) INSERT INTO rw_view1 VALUES (2, 'New row 2');
 INSERT INTO rw_view1 VALUES (2, 'New row 2');
@@ -1105,7 +1142,28 @@ UPDATE v1 SET a=a+1 WHERE snoop(a) AND leakproof(a) AND a = 8;
 
 SELECT * FROM v1 WHERE b=8;
 
-DELETE FROM v1 WHERE snoop(a) AND leakproof(a); -- should not delete everything, just where a>5
+-- Like snoop() function, but doesn't print the actual value, as long
+-- as it's >= 5. This is used in GPDB in lieu of the snoop() function,
+-- because the order the NOTICEs for different rows arrive from the
+-- segments is not deterministic in GPDB. By omitting the value, we
+-- make the output the same regardless of the row order, as long as
+-- all the values are > 5, as they should if the security barrier view
+-- works correctly.
+CREATE FUNCTION snoop_five(int4)
+RETURNS boolean AS
+$$
+BEGIN
+  IF $1 <= 5 THEN
+    RAISE NOTICE 'snooped value: %', $1;
+  ELSE
+    RAISE NOTICE 'snooped a value that''s above 5';
+  END IF;
+  RETURN true;
+END;
+$$
+LANGUAGE plpgsql COST 0.000001;
+
+DELETE FROM v1 WHERE snoop_five(a) AND leakproof(a); -- should not delete everything, just where a>5
 
 TABLE t1; -- verify all a<=5 are intact
 
@@ -1207,6 +1265,7 @@ DROP TABLE t1;
 
 -- check that an auto-updatable view on a partitioned table works correctly
 create table uv_pt (a int, b int, v varchar) partition by range (a, b);
+alter table uv_pt set distributed by (b);
 create table uv_pt1 (b int not null, v varchar, a int not null) partition by range (b);
 create table uv_pt11 (like uv_pt1);
 alter table uv_pt11 drop a;
@@ -1244,6 +1303,10 @@ insert into wcowrtest_v values (1);
 alter table wcowrtest add b text;
 create table wcowrtest2 (b text, c int, a int);
 alter table wcowrtest2 drop c;
+
+-- GPDB: distribution policy must match the parent table.
+alter table wcowrtest2 set distributed by (a);
+
 alter table wcowrtest attach partition wcowrtest2 for values in (2);
 
 create table sometable (a int, b text);

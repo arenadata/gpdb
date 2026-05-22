@@ -371,10 +371,12 @@ select (select (a.*)::text) from view_a a;
 -- Check that whole-row Vars reading the result of a subselect don't include
 -- any junk columns therein
 --
-
-select q from (select max(f1) from int4_tbl group by f1 order by f1) q;
+-- In GPDB, the ORDER BY in the subquery or CTE doesn't force an ordering
+-- for the whole query. Mark these with the "order none" gpdiff directive,
+-- so that differences in result order are ignored.
+select q from (select max(f1) from int4_tbl group by f1 order by f1) q;  -- order none
 with q as (select max(f1) from int4_tbl group by f1 order by f1)
-  select q from q;
+  select q from q;  -- order none
 
 --
 -- Test case for sublinks pulled up into joinaliasvars lists in an
@@ -397,6 +399,10 @@ rollback;
 --
 -- Test case for sublinks pushed down into subselects via join alias expansion
 --
+-- Greenplum note: This query will only work with ORCA. This type of query
+-- was not supported in postgres versions prior to 8.4, and thus was never
+-- supported in the planner. After 8.4 versions, the planner works, but
+-- the plan it creates is not currently parallel safe.
 
 select
   (select sq1) as qq1
@@ -411,7 +417,7 @@ from
 --
 create temp table upsert(key int4 primary key, val text);
 insert into upsert values(1, 'val') on conflict (key) do update set val = 'not seen';
-insert into upsert values(1, 'val') on conflict (key) do update set val = 'seen with subselect ' || (select f1 from int4_tbl where f1 != 0 limit 1)::text;
+insert into upsert values(1, 'val') on conflict (key) do update set val = 'seen with subselect ' || (select f1 from int4_tbl where f1 != 0 order by f1 limit 1)::text;
 
 select * from upsert;
 
@@ -461,24 +467,29 @@ select '1'::text in (select '1'::name union all select '1'::name);
 --
 -- Test case for planner bug with nested EXISTS handling
 --
+-- GPDB_92_MERGE_FIXME: ORCA cannot decorrelate this query, and generates
+-- correct-but-slow plan that takes 45 minutes. Revisit this when ORCA can
+-- reorder anti-joins
+set optimizer to off;
 select a.thousand from tenk1 a, tenk1 b
 where a.thousand = b.thousand
   and exists ( select 1 from tenk1 c where b.hundred = c.hundred
                    and not exists ( select 1 from tenk1 d
                                     where a.thousand = d.thousand ) );
+reset optimizer;
 
 --
 -- Check that nested sub-selects are not pulled up if they contain volatiles
 --
 explain (verbose, costs off)
   select x, x from
-    (select (select now()) as x from (values(1),(2)) v(y)) ss;
+    (select (select current_database()) as x from (values(1),(2)) v(y)) ss;
 explain (verbose, costs off)
   select x, x from
     (select (select random()) as x from (values(1),(2)) v(y)) ss;
 explain (verbose, costs off)
   select x, x from
-    (select (select now() where y=y) as x from (values(1),(2)) v(y)) ss;
+    (select (select current_database() where y=y) as x from (values(1),(2)) v(y)) ss;
 explain (verbose, costs off)
   select x, x from
     (select (select random() where y=y) as x from (values(1),(2)) v(y)) ss;
@@ -510,6 +521,7 @@ where s.i < 10 and (select val.x) < 110;
 
 --
 -- Check sane behavior with nested IN SubLinks
+-- GPDB_94_MERGE_FIXME: ORCA plan is correct but very pricy. Should we fallback to planner?
 --
 explain (verbose, costs off)
 select * from int4_tbl where
@@ -542,7 +554,7 @@ from int4_tbl;
 -- Check that volatile quals aren't pushed down past a DISTINCT:
 -- nextval() should not be called more than the nominal number of times
 --
-create temp sequence ts1;
+create temp sequence ts1 cache 1;
 
 select * from
   (select distinct ten from tenk1) ss
@@ -595,13 +607,15 @@ select * from
 
 drop function tattle(x int, y int);
 
+set optimizer to off;
 --
 -- Test that LIMIT can be pushed to SORT through a subquery that just projects
 -- columns.  We check for that having happened by looking to see if EXPLAIN
 -- ANALYZE shows that a top-N sort was used.  We must suppress or filter away
--- all the non-invariant parts of the EXPLAIN ANALYZE output.
+-- all the non-invariant parts of the EXPLAIN ANALYZE output. Use a replicated
+-- table to genarate a plan like: Limit -> Subquery -> Sort
 --
-create table sq_limit (pk int primary key, c1 int, c2 int);
+create table sq_limit (pk int primary key, c1 int, c2 int) distributed replicated;
 insert into sq_limit values
     (1, 1, 1),
     (2, 2, 2),
@@ -623,6 +637,7 @@ begin
         ln := regexp_replace(ln, 'Memory: \S*',  'Memory: xxx');
         -- this case might occur if force_parallel_mode is on:
         ln := regexp_replace(ln, 'Worker 0:  Sort Method',  'Sort Method');
+        ln := regexp_replace(ln, 'Segments: \S*  Max: \S*kB \(segment \S*\)',  'Segments: x  Max: xxkB (segment x)');
         return next ln;
     end loop;
 end;
@@ -630,7 +645,14 @@ $$;
 
 select * from explain_sq_limit();
 
+-- a subpath is sorted under a subqueryscan. however, the subqueryscan is not.
+-- whether the order of subpath can applied to the subqueryscan is up-to-implement.
+-- now we do not guarantee the order of subpath can apply to the subqueryscan.
+-- so the results of bellow is not stable, so we ignore the results
+--start_ignore
 select * from (select pk,c2 from sq_limit order by c1,pk) as x limit 3;
+--end_ignore
+reset optimizer;
 
 drop function explain_sq_limit();
 
@@ -641,6 +663,7 @@ drop table sq_limit;
 -- expression subqueries (bug #15336)
 --
 
+--start_ignore
 begin;
 
 declare c1 scroll cursor for
@@ -651,10 +674,13 @@ move forward all in c1;
 fetch backward all in c1;
 
 commit;
+--end_ignore
 
 --
 -- Tests for CTE inlining behavior
 --
+
+set gp_cte_sharing to on;
 
 -- Basic subquery that can be inlined
 explain (verbose, costs off)
@@ -668,26 +694,41 @@ select * from x where f1 = 1;
 
 -- Stable functions are safe to inline
 explain (verbose, costs off)
-with x as (select * from (select f1, now() from subselect_tbl) ss)
+with x as (select * from (select f1, current_database() from subselect_tbl) ss)
 select * from x where f1 = 1;
 
+
 -- Volatile functions prevent inlining
+-- Prevent inlining happens on GPDB, inlining may cause wrong results.
+-- For example, nextval() function.
 explain (verbose, costs off)
 with x as (select * from (select f1, random() from subselect_tbl) ss)
 select * from x where f1 = 1;
 
+create temporary sequence ts;
+create table vol_test(a int, b int);
+explain (verbose, costs off)
+with x as (select * from (select a, nextval('ts') from vol_test) ss)
+select * from x where a = 1;
+drop sequence ts;
+drop table vol_test;
+
 -- SELECT FOR UPDATE cannot be inlined
+-- GPDB: select statement with locking clause is not easy to fully supported
+-- in greenplum. The following case even with GDD enabled greenplum will still
+-- lock the table in Exclusive Lock and not generate LockRows plan node.
+-- For detail, please refer to checkCanOptSelectLockingClause.
 explain (verbose, costs off)
 with x as (select * from (select f1 from subselect_tbl for update) ss)
 select * from x where f1 = 1;
 
 -- Multiply-referenced CTEs are inlined only when requested
 explain (verbose, costs off)
-with x as (select * from (select f1, now() as n from subselect_tbl) ss)
+with x as (select * from (select f1, current_database() as n from subselect_tbl) ss)
 select * from x, x x2 where x.n = x2.n;
 
 explain (verbose, costs off)
-with x as not materialized (select * from (select f1, now() as n from subselect_tbl) ss)
+with x as not materialized (select * from (select f1, current_database() as n from subselect_tbl) ss)
 select * from x, x x2 where x.n = x2.n;
 
 -- Multiply-referenced CTEs can't be inlined if they contain outer self-refs
@@ -744,3 +785,5 @@ select * from (with x as (select 2 as y) select * from x) ss;
 explain (verbose, costs off)
 with x as (select * from subselect_tbl)
 select * from x for update;
+
+set gp_cte_sharing to off;

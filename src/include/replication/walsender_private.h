@@ -43,6 +43,7 @@ typedef struct WalSnd
 
 	WalSndState state;			/* this walsender's state */
 	XLogRecPtr	sentPtr;		/* WAL has been sent up to this point */
+	bool		sendKeepalive;	/* do we send keepalives on this connection? */
 	bool		needreload;		/* does currently-open file need to be
 								 * reloaded? */
 
@@ -54,6 +55,25 @@ typedef struct WalSnd
 	XLogRecPtr	write;
 	XLogRecPtr	flush;
 	XLogRecPtr	apply;
+
+	/*
+	 * This boolean indicates if this WAL sender has caught up within the
+	 * range defined by user (guc). This helps the backends to decide if they
+	 * should wait in the sync rep queue, should they see a live WAL sender
+	 * but that is not yet in streaming state.
+	 */
+	bool		caughtup_within_range;
+
+	/*
+	 * xlog location up to which xlog seg file cleanup for this walsender
+	 * is allowed.
+	 * In case of backup mode, it is the starting xlog ptr and
+	 * in case of actual xlog replication to a standby it is the
+	 * either the write/flush xlog ptr
+	 *
+	 * Note:- Valid only when this walsender is alive
+	 */
+	XLogRecPtr	xlogCleanUpTo;
 
 	/* Measured lag times, or -1 for unknown/none. */
 	TimeOffset	writeLag;
@@ -80,9 +100,21 @@ typedef struct WalSnd
 	 * Timestamp of the last message received from standby.
 	 */
 	TimestampTz replyTime;
+
+	/*
+	 * Indicates whether the WalSnd represents a connection with a Greenplum
+	 * mirror in streaming mode
+	 */
+	bool 		is_for_gp_walreceiver;
 } WalSnd;
 
 extern WalSnd *MyWalSnd;
+
+typedef enum
+{
+	WALSNDERROR_NONE = 0,
+	WALSNDERROR_WALREAD
+} WalSndError;
 
 /* There is one WalSndCtl struct for the whole database cluster */
 typedef struct
@@ -106,6 +138,33 @@ typedef struct
 	 */
 	bool		sync_standbys_defined;
 
+	/*
+	 * xlog location up to which xlog seg file cleanup is allowed.
+	 * Checkpoint creation cleans old non-required xlog files. We have to
+	 * preserve old files in case where the backup dump is large and the
+	 * old xlog seg files are not yet dumped out OR in case the walsender
+	 * has just commenced but hasn't replicated all the old xlog seg file contents.
+	 *
+	 * This location is obtained by comparing 'xlogCleanUpTo'
+	 * set by each active walsender.
+	 *
+	 * Note:- Valid only when atleast one walsender is alive
+	 */
+	XLogRecPtr	walsnd_xlogCleanUpTo;
+
+	/*
+	 * Indicate error state of WalSender, for example, missing XLOG for mirror
+	 * to stream.
+	 *
+	 * Note: If we want to support multiple mirrors, this data structure
+	 * need to be redesigned (e.g. using WalSndError[]). We cannot store this
+	 * field in the walsnds[] array below, because the walsnds[] only
+	 * tracks the live wal senders. Hence, if the wal sender goes away
+	 * with certain error, the error state will go away with it.
+	 *
+	 */
+	WalSndError error;
+
 	WalSnd		walsnds[FLEXIBLE_ARRAY_MEMBER];
 } WalSndCtlData;
 
@@ -125,5 +184,7 @@ extern void replication_scanner_init(const char *query_string);
 extern void replication_scanner_finish(void);
 
 extern Node *replication_parse_result;
+
+#define GP_WALRECEIVER_APPNAME "gp_walreceiver"
 
 #endif							/* _WALSENDER_PRIVATE_H */

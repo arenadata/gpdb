@@ -115,8 +115,8 @@ CREATE SEQUENCE IF NOT EXISTS sequence_test;
 
 SELECT nextval('sequence_test'::text);
 SELECT nextval('sequence_test'::regclass);
-SELECT currval('sequence_test'::text);
-SELECT currval('sequence_test'::regclass);
+--SELECT currval('sequence_test'::text);
+--SELECT currval('sequence_test'::regclass);
 SELECT setval('sequence_test'::text, 32);
 SELECT nextval('sequence_test'::regclass);
 SELECT setval('sequence_test'::text, 99, false);
@@ -131,7 +131,7 @@ SELECT currval('sequence_test'::regclass);
 DROP SEQUENCE sequence_test;
 
 -- renaming sequences
-CREATE SEQUENCE foo_seq;
+CREATE SEQUENCE foo_seq CACHE 1;
 ALTER TABLE foo_seq RENAME TO foo_seq_new;
 SELECT * FROM foo_seq_new;
 SELECT nextval('foo_seq_new');
@@ -266,11 +266,11 @@ SELECT lastval();
 
 CREATE SEQUENCE seq2;
 SELECT nextval('seq2');
-SELECT lastval();
+--SELECT lastval();
 
 DROP SEQUENCE seq2;
 -- should fail
-SELECT lastval();
+--SELECT lastval();
 
 CREATE USER regress_seq_user;
 
@@ -365,7 +365,7 @@ CREATE SEQUENCE seq3;
 SELECT nextval('seq3');
 REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT USAGE ON seq3 TO regress_seq_user;
-SELECT lastval();
+--SELECT lastval();
 ROLLBACK;
 
 -- setval

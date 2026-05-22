@@ -21,8 +21,13 @@
 #include "port/pg_crc32c.h"
 
 
-/* Version identifier for this pg_control format */
-#define PG_CONTROL_VERSION	1201
+/*
+ * Version identifier for this pg_control format.
+ *
+ * The first four digits is the PostgreSQL version number. The last
+ * four digits indicates the GPDB version.
+ */
+#define PG_CONTROL_VERSION	12010700
 
 /* Nonce key length, see below */
 #define MOCK_AUTH_NONCE_LEN		32
@@ -41,7 +46,9 @@ typedef struct CheckPoint
 								 * timeline (equals ThisTimeLineID otherwise) */
 	bool		fullPageWrites; /* current full_page_writes */
 	FullTransactionId nextFullXid;	/* next free full transaction ID */
+	DistributedTransactionId nextGxid;	/* next free gxid */
 	Oid			nextOid;		/* next free OID */
+	Oid			nextRelfilenode;	/* next free Relfilenode */
 	MultiXactId nextMulti;		/* next free MultiXactId */
 	MultiXactOffset nextMultiOffset;	/* next free MultiXact offset */
 	TransactionId oldestXid;	/* cluster-wide minimum datfrozenxid */
@@ -61,6 +68,8 @@ typedef struct CheckPoint
 	 * set to InvalidTransactionId.
 	 */
 	TransactionId oldestActiveXid;
+
+	/* IN XLOG RECORD, MORE DATA FOLLOWS AT END OF STRUCT FOR DTM CHECKPOINT */
 } CheckPoint;
 
 /* XLOG info values for XLOG rmgr */
@@ -76,6 +85,9 @@ typedef struct CheckPoint
 #define XLOG_END_OF_RECOVERY			0x90
 #define XLOG_FPI_FOR_HINT				0xA0
 #define XLOG_FPI						0xB0
+#define XLOG_NEXTRELFILENODE			0xC0
+#define XLOG_NEXTGXID					0xD0
+#define XLOG_OVERWRITE_CONTRECORD		0xE0
 
 
 /*
@@ -133,15 +145,14 @@ typedef struct ControlFileData
 	XLogRecPtr	unloggedLSN;	/* current fake LSN value, for unlogged rels */
 
 	/*
-	 * These two values determine the minimum point we must recover up to
+	 * These values determine the minimum point we must recover up to
 	 * before starting up:
 	 *
-	 * minRecoveryPoint is updated to the latest replayed LSN whenever we
-	 * flush a data change during archive recovery. That guards against
-	 * starting archive recovery, aborting it, and restarting with an earlier
-	 * stop location. If we've already flushed data changes from WAL record X
-	 * to disk, we mustn't start up until we reach X again. Zero when not
-	 * doing archive recovery.
+	 * minRecoveryPoint use in GPDB is very limited. Currently, it is used
+	 * to simply to store the location of end of backup in standby mode
+	 * That guards against starting standby, aborting it, and restarting with
+	 * an earlier stop location. We can't get promoted unless we've at-least
+	 * replayed up to minRecoveryPoint
 	 *
 	 * backupStartPoint is the redo pointer of the backup start checkpoint, if
 	 * we are recovering from an online backup and haven't reached the end of

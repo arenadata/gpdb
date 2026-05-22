@@ -22,6 +22,7 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
@@ -29,13 +30,11 @@
 #include "catalog/toasting.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "storage/lmgr.h"
 #include "storage/lock.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-
-/* Potentially set by pg_upgrade_support functions */
-Oid			binary_upgrade_next_toast_pg_type_oid = InvalidOid;
 
 static void CheckAndCreateToastTable(Oid relOid, Datum reloptions,
 									 LOCKMODE lockmode, bool check);
@@ -135,6 +134,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	Relation	toast_rel;
 	Relation	class_rel;
 	Oid			toast_relid;
+	Oid			toast_idxid;
 	Oid			toast_typid = InvalidOid;
 	Oid			namespaceid;
 	char		toast_relname[NAMEDATALEN];
@@ -151,6 +151,20 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	 */
 	if (rel->rd_rel->reltoastrelid != InvalidOid)
 		return false;
+
+	/*
+	 * Toast tables for regular relations go in pg_toast; those for temp
+	 * relations go into the per-backend temp-toast-table namespace.
+	 */
+	if (isTempOrTempToastNamespace(rel->rd_rel->relnamespace))
+		namespaceid = GetTempToastNamespace();
+	else
+		namespaceid = PG_TOAST_NAMESPACE;
+
+	snprintf(toast_relname, sizeof(toast_relname),
+			 "pg_toast_%u", relOid);
+	snprintf(toast_idxname, sizeof(toast_idxname),
+			 "pg_toast_%u_index", relOid);
 
 	/*
 	 * Check to see whether the table actually needs a TOAST table.
@@ -175,15 +189,22 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 		 * should be able to get along without one even if the new version's
 		 * needs_toast_table rules suggest we should have one.  There is a lot
 		 * of daylight between where we will create a TOAST table and where
-		 * one is really necessary to avoid failures, so small cross-version
+		 *		 * one is really necessary to avoid failures, so small cross-version
 		 * differences in the when-to-create heuristic shouldn't be a problem.
 		 * If we tried to create a TOAST table anyway, we would have the
 		 * problem that it might take up an OID that will conflict with some
 		 * old-cluster table we haven't seen yet.
 		 */
-		if (!OidIsValid(binary_upgrade_next_toast_pg_class_oid) ||
-			!OidIsValid(binary_upgrade_next_toast_pg_type_oid))
-			return false;
+		if (IsBinaryUpgrade)
+		{
+			Assert(toastOid == InvalidOid);
+			toastOid = GetPreassignedOidForRelation(namespaceid, toast_relname);
+			if (!OidIsValid(toastOid))
+				return false;
+			toast_typid = GetPreassignedOidForType(namespaceid, toast_relname);
+			if (!OidIsValid(toast_typid))
+				return false;
+		}
 	}
 
 	/*
@@ -196,10 +217,6 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	/*
 	 * Create the toast table and its index
 	 */
-	snprintf(toast_relname, sizeof(toast_relname),
-			 "pg_toast_%u", relOid);
-	snprintf(toast_idxname, sizeof(toast_idxname),
-			 "pg_toast_%u_index", relOid);
 
 	/* this is pretty painful...  need a tuple descriptor */
 	tupdesc = CreateTemplateTupleDesc(3);
@@ -226,24 +243,12 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	TupleDescAttr(tupdesc, 2)->attstorage = 'p';
 
 	/*
-	 * Toast tables for regular relations go in pg_toast; those for temp
-	 * relations go into the per-backend temp-toast-table namespace.
-	 */
-	if (isTempOrTempToastNamespace(rel->rd_rel->relnamespace))
-		namespaceid = GetTempToastNamespace();
-	else
-		namespaceid = PG_TOAST_NAMESPACE;
-
-	/*
 	 * Use binary-upgrade override for pg_type.oid, if supplied.  We might be
 	 * in the post-schema-restore phase where we are doing ALTER TABLE to
 	 * create TOAST tables that didn't exist in the old cluster.
+	 *
+	 * GPDB: already got the OIDs above
 	 */
-	if (IsBinaryUpgrade && OidIsValid(binary_upgrade_next_toast_pg_type_oid))
-	{
-		toast_typid = binary_upgrade_next_toast_pg_type_oid;
-		binary_upgrade_next_toast_pg_type_oid = InvalidOid;
-	}
 
 	/* Toast table is shared if and only if its parent is. */
 	shared_relation = rel->rd_rel->relisshared;
@@ -258,7 +263,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   toast_typid,
 										   InvalidOid,
 										   rel->rd_rel->relowner,
-										   rel->rd_rel->relam,
+										   RelationIsAoRows(rel) ?
+										   HEAP_TABLE_AM_OID :rel->rd_rel->relam,
 										   tupdesc,
 										   NIL,
 										   RELKIND_TOASTVALUE,
@@ -266,12 +272,14 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   shared_relation,
 										   mapped_relation,
 										   ONCOMMIT_NOOP,
+										   NULL, /* CDB POLICY */
 										   reloptions,
 										   false,
 										   true,
 										   true,
 										   InvalidOid,
-										   NULL);
+										   NULL,
+										   /* valid_opts */ false);
 	Assert(toast_relid != InvalidOid);
 
 	/* make the toast relation visible, else table_open will fail */
@@ -322,7 +330,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	coloptions[0] = 0;
 	coloptions[1] = 0;
 
-	index_create(toast_rel, toast_idxname, toastIndexOid, InvalidOid,
+	toast_idxid = index_create(toast_rel, toast_idxname, toastIndexOid, InvalidOid,
 				 InvalidOid, InvalidOid,
 				 indexInfo,
 				 list_make2("chunk_id", "chunk_seq"),

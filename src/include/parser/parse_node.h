@@ -18,6 +18,7 @@
 #include "utils/queryenvironment.h"
 #include "utils/relcache.h"
 
+struct HTAB;  /* utils/hsearch.h */
 
 /*
  * Expression kinds distinguished by transformExpr().  Many of these are not
@@ -73,6 +74,9 @@ typedef enum ParseExprKind
 	EXPR_KIND_CALL_ARGUMENT,	/* procedure argument in CALL */
 	EXPR_KIND_COPY_WHERE,		/* WHERE condition in COPY FROM */
 	EXPR_KIND_GENERATED_COLUMN, /* generation expression for a column */
+
+	/* GPDB additions */
+	EXPR_KIND_SCATTER_BY		/* SCATTER BY expression */
 } ParseExprKind;
 
 
@@ -205,8 +209,17 @@ struct ParseState
 	bool		p_hasTargetSRFs;
 	bool		p_hasSubLinks;
 	bool		p_hasModifyingCTE;
-
 	Node	   *p_last_srf;		/* most recent set-returning func/op found */
+	bool        p_is_on_conflict_update;
+	bool        p_canOptSelectLockingClause; /* Whether can do some optimization on select with locking clause */
+	LockingClause *p_lockclause_from_parent;
+
+	struct HTAB *p_namecache;  /* parse state object name cache */
+	bool        p_hasTblValueExpr;
+	bool        p_hasDynamicFunction; /* function w/unstable return type */
+	bool		p_hasFuncsWithExecRestrictions; /* function with EXECUTE ON MASTER / ALL SEGMENTS */
+
+	List	   *p_grp_tles;
 
 	/*
 	 * Optional hook functions for parser callbacks.  These are null unless
@@ -266,7 +279,8 @@ typedef struct ParseCallbackState
 
 extern ParseState *make_parsestate(ParseState *parentParseState);
 extern void free_parsestate(ParseState *pstate);
-extern int	parser_errposition(ParseState *pstate, int location);
+extern struct HTAB *parser_get_namecache(ParseState *pstate);
+extern void	parser_errposition(ParseState *pstate, int location);
 
 extern void setup_parser_errposition_callback(ParseCallbackState *pcbstate,
 											  ParseState *pstate, int location);

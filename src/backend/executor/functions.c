@@ -16,8 +16,10 @@
 
 #include "access/htup_details.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "executor/executor.h"          /* ExecutorStart, ExecutorRun, etc */
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -33,6 +35,15 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "utils/typcache.h"
+#include "utils/metrics_utils.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_namespace.h"
+#include "cdb/cdbvars.h"
+#include "optimizer/clauses.h"
+#include "executor/spi.h"
+#include "cdb/memquota.h"
+#include "postmaster/autostats.h"
 
 
 /*
@@ -166,11 +177,92 @@ static Datum postquel_get_single_result(TupleTableSlot *slot,
 										MemoryContext resultcontext);
 static void sql_exec_error_callback(void *arg);
 static void ShutdownSQLFunction(Datum arg);
+static bool querytree_safe_for_qe_walker(Node *expr, void *context);
 static void sqlfunction_startup(DestReceiver *self, int operation, TupleDesc typeinfo);
 static bool sqlfunction_receive(TupleTableSlot *slot, DestReceiver *self);
 static void sqlfunction_shutdown(DestReceiver *self);
 static void sqlfunction_destroy(DestReceiver *self);
 
+static bool
+querytree_safe_for_qe_walker(Node *expr, void *context)
+{
+	Assert(context == NULL);
+	
+	if (!expr)
+	{
+		/**
+		 * Do not end recursion just because we have reached one leaf node.
+		 */
+		return false;
+	}
+
+	switch(nodeTag(expr))
+	{
+		case T_Query:
+			{
+				Query *q = (Query *) expr;
+				
+				if (!allow_segment_DML &&
+					(q->commandType != CMD_SELECT
+					 || (q->utilityStmt != NULL &&
+					     IsA(q->utilityStmt, CreateTableAsStmt))
+					 || q->resultRelation > 0))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("function cannot execute on a QE slice because it issues a non-SELECT statement")));
+				}
+				
+				ListCell * f = NULL;
+				foreach(f,q->rtable)
+				{
+					RangeTblEntry *rte = (RangeTblEntry *) lfirst(f);
+
+					if (rte->rtekind == RTE_RELATION)
+					{
+						Assert(rte->relid != InvalidOid);
+						
+						Oid namespaceId = get_rel_namespace(rte->relid);
+
+						Assert(namespaceId != InvalidOid);
+						
+						if (!(IsCatalogNamespace(namespaceId) ||
+									IsToastNamespace(namespaceId) ||
+									IsAoSegmentNamespace(namespaceId) ||
+									IsReplicatedTable(rte->relid)))
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("function cannot execute on a QE slice because it accesses relation \"%s.%s\"",
+											quote_identifier(get_namespace_name(namespaceId)),
+											quote_identifier(get_rel_name(rte->relid)))));
+						}
+					}
+				}
+				query_tree_walker(q, querytree_safe_for_qe_walker, context, 0);
+				break;
+			}
+		default:
+			break;
+	}
+	
+	return expression_tree_walker(expr, querytree_safe_for_qe_walker, context);
+}
+
+
+/**
+ * This function determines if the query tree is safe to be planned and
+ * executed on a QE. The checks it performs are:
+ * 1. The query cannot access any non-catalog relation except it's a replicated table.
+ * 2. The query must be select only.
+ * In case of a problem, the method spits out an error.
+ */
+void
+querytree_safe_for_qe(Node *node)
+{
+	Assert(node);
+	querytree_safe_for_qe_walker(node, NULL);
+}
 
 /*
  * Prepare the SQLFunctionParseInfo struct for parsing a SQL function body
@@ -508,6 +600,9 @@ init_execution_state(List *queryTree_list,
 									 CURSOR_OPT_PARALLEL_OK,
 									 NULL);
 
+			if (IsA(stmt, PlannedStmt))
+				((PlannedStmt*)stmt)->metricsQueryType = FUNCTION_INNER_QUERY;
+
 			/*
 			 * Precheck all commands for validity in a function.  This should
 			 * generally match the restrictions spi.c applies.
@@ -726,6 +821,26 @@ init_sql_fcache(FmgrInfo *finfo, Oid collation, bool lazyEvalOK)
 	check_sql_fn_statements(flat_query_list);
 
 	/*
+	 * If we have only SELECT statements with no FROM clauses, we should
+	 * be able to execute them locally, even on the QE.  Most often, this is something 
+	 * like   SELECT $1
+	 * Functions use that type of SELECT to evaluate expressions, so without those,
+	 * no functions would be useful.
+	 * 
+	 * We also need to execute certain catalog queries locally.  The
+	 * Fault-Tolerance system does queries of gp_segment_configuration, and
+	 * some DDL and Utility commands do selects from the catalog table, etc.
+	 * So, if the FROM clause consists only of catalog tables, we will run the
+	 * query locally.
+	 * 
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		/* This will error out if there is a problem with the query tree */
+		querytree_safe_for_qe((Node *) queryTree_list);
+	}
+
+	/*
 	 * Check that the function returns the type it claims to.  Although in
 	 * simple cases this was already done when the function was defined, we
 	 * have to recheck because database objects used in the function's queries
@@ -819,9 +934,21 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 							 es->qd ? es->qd->queryEnv : NULL,
 							 0);
 
+	/* GPDB hook for collecting query info */
+	if (query_info_collect_hook)
+		(*query_info_collect_hook)(METRICS_QUERY_SUBMIT, es->qd);
+
 	/* Utility commands don't need Executor. */
 	if (es->qd->operation != CMD_UTILITY)
 	{
+		int			eflags;
+
+		if (!IsResManagerMemoryPolicyNone()
+			&& SPI_IsMemoryReserved())
+		{
+			es->qd->plannedstmt->query_mem = SPI_GetMemoryReservation();
+		}
+
 		/*
 		 * In lazyEval mode, do not let the executor set up an AfterTrigger
 		 * context.  This is necessary not just an optimization, because we
@@ -829,8 +956,6 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		 * AfterTrigger level still active.  We are careful not to select
 		 * lazyEval mode for any statement that could possibly queue triggers.
 		 */
-		int			eflags;
-
 		if (es->lazyEval)
 			eflags = EXEC_FLAG_SKIP_TRIGGERS;
 		else
@@ -886,8 +1011,18 @@ postquel_end(execution_state *es)
 	/* Utility commands don't need Executor. */
 	if (es->qd->operation != CMD_UTILITY)
 	{
+		Oid			relationOid = InvalidOid; 	/* relation that is modified */
+		AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
+
+		if (Gp_role == GP_ROLE_DISPATCH)
+			autostats_get_cmdtype(es->qd, &cmdType, &relationOid);
+
 		ExecutorFinish(es->qd);
 		ExecutorEnd(es->qd);
+
+		/* MPP-14001: Running auto_stats */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			auto_stats(cmdType, relationOid, es->qd->es_processed, true /* inFunction */);
 	}
 
 	es->qd->dest->rDestroy(es->qd->dest);
@@ -1098,6 +1233,8 @@ fmgr_sql(PG_FUNCTION_ARGS)
 	if (!fcache->tstore)
 		fcache->tstore = tuplestore_begin_heap(randomAccess, false, work_mem);
 
+PG_TRY();
+{
 	/*
 	 * Execute each command in the function one after another until we either
 	 * run out of commands or get a result row from a lazily-evaluated SELECT.
@@ -1200,6 +1337,12 @@ fmgr_sql(PG_FUNCTION_ARGS)
 			}
 		}
 	}
+}
+PG_CATCH();
+{
+	PG_RE_THROW();
+}
+PG_END_TRY();
 
 	/*
 	 * The tuplestore now contains whatever row(s) we are supposed to return.

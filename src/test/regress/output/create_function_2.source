@@ -4,25 +4,27 @@
 CREATE FUNCTION hobbies(person)
    RETURNS setof hobbies_r
    AS 'select * from hobbies_r where person = $1.name'
-   LANGUAGE SQL;
+   LANGUAGE SQL READS SQL DATA;
 CREATE FUNCTION hobby_construct(text, text)
    RETURNS hobbies_r
    AS 'select $1 as name, $2 as hobby'
-   LANGUAGE SQL;
+   LANGUAGE SQL READS SQL DATA;
 CREATE FUNCTION hobby_construct_named(name text, hobby text)
    RETURNS hobbies_r
    AS 'select name, hobby'
    LANGUAGE SQL;
 CREATE FUNCTION hobbies_by_name(hobbies_r.name%TYPE)
    RETURNS hobbies_r.person%TYPE
-   AS 'select person from hobbies_r where name = $1'
-   LANGUAGE SQL;
+   -- GPDB: use an order by to force the later test in 'misc' to return
+   -- a particular person, when multiple persons have the same hobby.
+   AS 'select person from hobbies_r where name = $1 order by person'
+   LANGUAGE SQL READS SQL DATA;
 NOTICE:  type reference hobbies_r.name%TYPE converted to text
 NOTICE:  type reference hobbies_r.person%TYPE converted to text
 CREATE FUNCTION equipment(hobbies_r)
    RETURNS setof equipment_r
    AS 'select * from equipment_r where hobby = $1.name'
-   LANGUAGE SQL;
+   LANGUAGE SQL READS SQL DATA;
 CREATE FUNCTION equipment_named(hobby hobbies_r)
    RETURNS setof equipment_r
    AS 'select * from equipment_r where equipment_r.hobby = equipment_named.hobby.name'

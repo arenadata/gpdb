@@ -60,6 +60,12 @@ CATALOG(pg_amproc,2603,AccessMethodProcedureRelationId)
 	regproc		amproc BKI_LOOKUP(pg_proc);
 } FormData_pg_amproc;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(amprocfamily REFERENCES pg_opfamily(oid));
+FOREIGN_KEY(amproclefttype REFERENCES pg_type(oid));
+FOREIGN_KEY(amprocrighttype REFERENCES pg_type(oid));
+FOREIGN_KEY(amproc REFERENCES pg_proc(oid));
+
 /* ----------------
  *		Form_pg_amproc corresponds to a pointer to a tuple with
  *		the format of pg_amproc relation.

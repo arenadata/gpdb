@@ -10,16 +10,25 @@
  */
 
 #include "postgres.h"
-
+#include "fmgr.h"
+#include "access/transam.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
+#include "catalog/oid_dispatch.h"
+#include "catalog/pg_authid.h"
+#include "catalog/pg_class.h"
+#include "catalog/pg_enum.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "commands/extension.h"
 #include "miscadmin.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 
+
+#define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
 #define CHECK_IS_BINARY_UPGRADE									\
 do {															\
@@ -33,9 +42,12 @@ Datum
 binary_upgrade_set_next_pg_type_oid(PG_FUNCTION_ARGS)
 {
 	Oid			typoid = PG_GETARG_OID(0);
+	Oid			typnamespaceoid = PG_GETARG_OID(1);
+	char	   *typname = GET_STR(PG_GETARG_TEXT_P(2));
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_pg_type_oid = typoid;
+	AddPreassignedOidFromBinaryUpgrade(typoid, TypeRelationId, typname,
+						typnamespaceoid, InvalidOid, InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -44,9 +56,12 @@ Datum
 binary_upgrade_set_next_array_pg_type_oid(PG_FUNCTION_ARGS)
 {
 	Oid			typoid = PG_GETARG_OID(0);
+	Oid			typnamespaceoid = PG_GETARG_OID(1);
+	char	   *typname = GET_STR(PG_GETARG_TEXT_P(2));
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_array_pg_type_oid = typoid;
+	AddPreassignedOidFromBinaryUpgrade(typoid, TypeRelationId, typname,
+						typnamespaceoid, InvalidOid, InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -55,9 +70,12 @@ Datum
 binary_upgrade_set_next_toast_pg_type_oid(PG_FUNCTION_ARGS)
 {
 	Oid			typoid = PG_GETARG_OID(0);
+	Oid			typnamespaceoid = PG_GETARG_OID(1);
+	char	   *typname = GET_STR(PG_GETARG_TEXT_P(2));
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_toast_pg_type_oid = typoid;
+	AddPreassignedOidFromBinaryUpgrade(typoid, TypeRelationId, typname,
+						typnamespaceoid, InvalidOid, InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -66,9 +84,12 @@ Datum
 binary_upgrade_set_next_heap_pg_class_oid(PG_FUNCTION_ARGS)
 {
 	Oid			reloid = PG_GETARG_OID(0);
+	Oid			relnamespace = PG_GETARG_OID(1);
+	char	   *relname = GET_STR(PG_GETARG_TEXT_P(2));
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_heap_pg_class_oid = reloid;
+	AddPreassignedOidFromBinaryUpgrade(reloid, RelationRelationId, relname,
+									   relnamespace, InvalidOid, InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -77,9 +98,12 @@ Datum
 binary_upgrade_set_next_index_pg_class_oid(PG_FUNCTION_ARGS)
 {
 	Oid			reloid = PG_GETARG_OID(0);
+	Oid			relnamespace = PG_GETARG_OID(1);
+	char	   *relname = GET_STR(PG_GETARG_TEXT_P(2));
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_index_pg_class_oid = reloid;
+	AddPreassignedOidFromBinaryUpgrade(reloid, RelationRelationId, relname,
+									   relnamespace, InvalidOid, InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -88,9 +112,12 @@ Datum
 binary_upgrade_set_next_toast_pg_class_oid(PG_FUNCTION_ARGS)
 {
 	Oid			reloid = PG_GETARG_OID(0);
+	Oid			relnamespace = PG_GETARG_OID(1);
+	char		*relname = GET_STR(PG_GETARG_TEXT_P(2));
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_toast_pg_class_oid = reloid;
+	AddPreassignedOidFromBinaryUpgrade(reloid, RelationRelationId, relname,
+									   relnamespace, InvalidOid, InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -99,9 +126,12 @@ Datum
 binary_upgrade_set_next_pg_enum_oid(PG_FUNCTION_ARGS)
 {
 	Oid			enumoid = PG_GETARG_OID(0);
+	Oid			typeoid = PG_GETARG_OID(1);
+	char	   *enumlabel = GET_STR(PG_GETARG_TEXT_P(2));
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_pg_enum_oid = enumoid;
+	AddPreassignedOidFromBinaryUpgrade(enumoid, EnumRelationId, enumlabel,
+									   InvalidOid, typeoid, InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -110,9 +140,15 @@ Datum
 binary_upgrade_set_next_pg_authid_oid(PG_FUNCTION_ARGS)
 {
 	Oid			authoid = PG_GETARG_OID(0);
+	char	   *rolename = GET_STR(PG_GETARG_TEXT_P(1));
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_pg_authid_oid = authoid;
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		AddPreassignedOidFromBinaryUpgrade(authoid, AuthIdRelationId, rolename,
+										   InvalidOid, InvalidOid, InvalidOid);
+	}
+
 	PG_RETURN_VOID();
 }
 
@@ -190,6 +226,46 @@ binary_upgrade_set_record_init_privs(PG_FUNCTION_ARGS)
 
 	CHECK_IS_BINARY_UPGRADE;
 	binary_upgrade_record_init_privs = record_init_privs;
+
+	PG_RETURN_VOID();
+}
+
+Datum
+binary_upgrade_set_next_pg_namespace_oid(PG_FUNCTION_ARGS)
+{
+	Oid			nspid = PG_GETARG_OID(0);
+	char	   *nspname = GET_STR(PG_GETARG_TEXT_P(1));
+
+	CHECK_IS_BINARY_UPGRADE;
+
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		AddPreassignedOidFromBinaryUpgrade(nspid, NamespaceRelationId, nspname,
+										   InvalidOid, InvalidOid, InvalidOid);
+	}
+
+	PG_RETURN_VOID();
+}
+
+Datum
+binary_upgrade_set_preassigned_oids(PG_FUNCTION_ARGS)
+{
+	ArrayType  *array = PG_GETARG_ARRAYTYPE_P(0);
+	Datum	   *oids;
+	int			nelems;
+	int			i;
+
+	CHECK_IS_BINARY_UPGRADE;
+
+	deconstruct_array(array, OIDOID, sizeof(Oid), true, 'i',
+					  &oids, NULL, &nelems);
+
+	for (i = 0; i < nelems; i++)
+	{
+		Datum		oid = DatumGetObjectId(oids[i]);
+
+		MarkOidPreassignedFromBinaryUpgrade(oid);
+	}
 
 	PG_RETURN_VOID();
 }

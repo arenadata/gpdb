@@ -28,6 +28,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY alterPolicy        SYSTEM "alter_policy.sgml">
 <!ENTITY alterProcedure     SYSTEM "alter_procedure.sgml">
 <!ENTITY alterPublication   SYSTEM "alter_publication.sgml">
+<!ENTITY alterResQueue      SYSTEM "alter_resource_queue.sgml">
 <!ENTITY alterRole          SYSTEM "alter_role.sgml">
 <!ENTITY alterRoutine       SYSTEM "alter_routine.sgml">
 <!ENTITY alterRule          SYSTEM "alter_rule.sgml">
@@ -80,6 +81,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY createPolicy       SYSTEM "create_policy.sgml">
 <!ENTITY createProcedure    SYSTEM "create_procedure.sgml">
 <!ENTITY createPublication  SYSTEM "create_publication.sgml">
+<!ENTITY createResQueue     SYSTEM "create_resource_queue.sgml">
 <!ENTITY createRole         SYSTEM "create_role.sgml">
 <!ENTITY createRule         SYSTEM "create_rule.sgml">
 <!ENTITY createSchema       SYSTEM "create_schema.sgml">
@@ -128,6 +130,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY dropPolicy         SYSTEM "drop_policy.sgml">
 <!ENTITY dropProcedure      SYSTEM "drop_procedure.sgml">
 <!ENTITY dropPublication    SYSTEM "drop_publication.sgml">
+<!ENTITY dropResQueue       SYSTEM "drop_resource_queue.sgml">
 <!ENTITY dropRole           SYSTEM "drop_role.sgml">
 <!ENTITY dropRoutine        SYSTEM "drop_routine.sgml">
 <!ENTITY dropRule           SYSTEM "drop_rule.sgml">
@@ -167,6 +170,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY reindex            SYSTEM "reindex.sgml">
 <!ENTITY releaseSavepoint   SYSTEM "release_savepoint.sgml">
 <!ENTITY reset              SYSTEM "reset.sgml">
+<!ENTITY retrieve           SYSTEM "retrieve.sgml">
 <!ENTITY revoke             SYSTEM "revoke.sgml">
 <!ENTITY rollback           SYSTEM "rollback.sgml">
 <!ENTITY rollbackPrepared   SYSTEM "rollback_prepared.sgml">

@@ -22,7 +22,7 @@
 #include "storage/buf.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
-
+#include "utils/snapshot.h"
 
 /*----------
  * ANALYZE builds one of these structs for each attribute (column) that is
@@ -88,6 +88,7 @@ typedef struct VacAttrStats
 	Form_pg_type attrtype;		/* copy of pg_type row for attrtypid */
 	Oid			attrcollid;		/* collation of data being analyzed */
 	MemoryContext anl_context;	/* where to save long-lived data */
+	int16		elevel;			/* set to LOG for ANALYZE VERBOSE */
 
 	/*
 	 * These fields must be filled in by the typanalyze routine, unless it
@@ -96,6 +97,10 @@ typedef struct VacAttrStats
 	AnalyzeAttrComputeStatsFunc compute_stats;	/* function pointer */
 	int			minrows;		/* Minimum # of rows wanted for stats */
 	void	   *extra_data;		/* for extra type-specific data */
+
+	/* These fields are used to compute stawidth during the compute_stats routine. */
+	double                  totalwidelength;/* total length of toowide row */
+	int                     widerow_num;    /* # of toowide row */
 
 	/*
 	 * These fields are to be filled in by the compute_stats routine. (They
@@ -113,6 +118,8 @@ typedef struct VacAttrStats
 	int			numvalues[STATISTIC_NUM_SLOTS];
 	Datum	   *stavalues[STATISTIC_NUM_SLOTS];
 
+	bytea *stahll;			/* storing hyperloglog counter for sampled data */
+	bytea *stahll_full;			/* storing hyperloglog counter for entire table scan */
 	/*
 	 * These fields describe the stavalues[n] element types. They will be
 	 * initialized to match attrtypid, but a custom typanalyze function might
@@ -134,6 +141,7 @@ typedef struct VacAttrStats
 	Datum	   *exprvals;		/* access info for index fetch function */
 	bool	   *exprnulls;
 	int			rowstride;
+	bool		merge_stats;
 } VacAttrStats;
 
 typedef enum VacuumOption
@@ -146,7 +154,21 @@ typedef enum VacuumOption
 	VACOPT_SKIP_LOCKED = 1 << 5,	/* skip if cannot get lock */
 	VACOPT_SKIPTOAST = 1 << 6,	/* don't process the TOAST table, if any */
 	VACOPT_DISABLE_PAGE_SKIPPING = 1 << 7	/* don't skip any pages */
+
+	/* Extra GPDB options */
+	,
+	VACOPT_ROOTONLY = 1 << 10,
+	VACOPT_FULLSCAN = 1 << 11,
+
+	/* AO vacuum phases. Mutually exclusive */
+	VACOPT_AO_PRE_CLEANUP_PHASE = 1 << 12,
+	VACOPT_AO_COMPACT_PHASE = 1 << 13,
+	VACOPT_AO_POST_CLEANUP_PHASE = 1 << 14
 } VacuumOption;
+
+#define VACUUM_AO_PHASE_MASK (VACOPT_AO_PRE_CLEANUP_PHASE | \
+							  VACOPT_AO_COMPACT_PHASE | \
+							  VACOPT_AO_POST_CLEANUP_PHASE)
 
 /*
  * A ternary value used by vacuum parameters.
@@ -160,6 +182,43 @@ typedef enum VacOptTernaryValue
 	VACOPT_TERNARY_DISABLED,
 	VACOPT_TERNARY_ENABLED,
 } VacOptTernaryValue;
+
+/*
+ * To avoid consuming too much memory during analysis and/or too much space
+ * in the resulting pg_statistic rows, ANALYZE ignores varlena datums that are wider
+ * than WIDTH_THRESHOLD (after detoasting!).  This is legitimate for MCV
+ * and distinct-value calculations since a wide value is unlikely to be
+ * duplicated at all, much less be a most-common value.  For the same reason,
+ * ignoring wide values will not affect our estimates of histogram bin
+ * boundaries very much.
+ *
+ * NOTE: In upstream, this is private to analyze.c, but GPDB needs it in
+ * analyzefuncs.c
+ */
+#define WIDTH_THRESHOLD  1024
+
+/*
+ * VPgClassStats is used to hold the stats information that are stored in
+ * pg_class. It is sent from QE to QD in a special libpq message , when a
+ * QE runs VACUUM on a table.
+ */
+typedef struct VPgClassStats
+{
+	Oid			relid;
+	BlockNumber rel_pages;
+	double		rel_tuples;
+	BlockNumber relallvisible;
+} VPgClassStats;
+
+typedef struct VPgClassStatsCombo
+{
+	Oid			relid;
+	BlockNumber rel_pages;
+	double		rel_tuples;
+	BlockNumber relallvisible;
+
+	int			count; /* expect to equal to the number of dispatched segments */
+} VPgClassStatsCombo;
 
 /*
  * Parameters customizing behavior of VACUUM and ANALYZE.
@@ -184,7 +243,36 @@ typedef struct VacuumParams
 										 * default value depends on reloptions */
 	VacOptTernaryValue truncate;	/* Truncate empty pages at the end,
 									 * default value depends on reloptions */
+	bool auto_stats;      /* invoked via automatic statistic collection */
 } VacuumParams;
+
+typedef struct
+{
+	/* Table being sampled */
+	Relation	onerel;
+	int32		targrows;
+
+	/* whether acquire inherited sample rows */
+	bool        inherited;
+
+	/* Sampled rows and estimated total number of rows in the table. */
+	HeapTuple  *sample_rows;
+	int			num_sample_rows;
+	double		totalrows;
+	double		totaldeadrows;
+
+	/*
+	 * Result tuple descriptor. Each returned row consists of three "fixed"
+	 * columns, plus all the columns of the sampled table (excluding dropped
+	 * columns).
+	 */
+	TupleDesc	outDesc;
+#define NUM_SAMPLE_FIXED_COLS 3
+
+	/* SRF state, to track which rows have already been returned. */
+	int			index;
+	bool		summary_sent;
+} gp_acquire_sample_rows_context;
 
 /* GUC parameters */
 extern PGDLLIMPORT int default_statistics_target;	/* PGDLLIMPORT for PostGIS */
@@ -195,7 +283,7 @@ extern int	vacuum_multixact_freeze_table_age;
 
 
 /* in commands/vacuum.c */
-extern void ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel);
+extern void ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_stats);
 extern void vacuum(List *relations, VacuumParams *params,
 				   BufferAccessStrategy bstrategy, bool isTopLevel);
 extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
@@ -205,6 +293,10 @@ extern double vac_estimate_reltuples(Relation relation,
 									 BlockNumber total_pages,
 									 BlockNumber scanned_pages,
 									 double scanned_tuples);
+extern void vac_send_relstats_to_qd(Relation relation,
+						BlockNumber num_pages,
+						double num_tuples,
+						BlockNumber num_all_visible_pages);
 extern void vac_update_relstats(Relation relation,
 								BlockNumber num_pages,
 								double num_tuples,
@@ -212,7 +304,8 @@ extern void vac_update_relstats(Relation relation,
 								bool hasindex,
 								TransactionId frozenxid,
 								MultiXactId minmulti,
-								bool in_outer_xact);
+								bool in_outer_xact,
+								bool isvacuum);
 extern void vacuum_set_xid_limits(Relation rel,
 								  int freeze_min_age, int freeze_table_age,
 								  int multixact_freeze_min_age,
@@ -229,15 +322,39 @@ extern bool vacuum_is_relation_owner(Oid relid, Form_pg_class reltuple,
 extern Relation vacuum_open_relation(Oid relid, RangeVar *relation,
 									 int options, bool verbose, LOCKMODE lmode);
 
+extern bool vacuumStatement_IsTemporary(Relation onerel);
+
 /* in commands/analyze.c */
 extern void analyze_rel(Oid relid, RangeVar *relation,
 						VacuumParams *params, List *va_cols, bool in_outer_xact,
-						BufferAccessStrategy bstrategy);
+						BufferAccessStrategy bstrategy, gp_acquire_sample_rows_context *ctx);
+
+/* in commands/vacuumlazy.c */
+extern void lazy_vacuum_rel_heap(Relation onerel,
+							VacuumParams *params, BufferAccessStrategy bstrategy);
+extern void scan_index(Relation indrel, Relation aorel, int elevel, BufferAccessStrategy bstrategy);
+
+/* in commands/vacuum_ao.c */
+extern void ao_vacuum_rel(Relation rel, VacuumParams *params, BufferAccessStrategy bstrategy);
+
 extern bool std_typanalyze(VacAttrStats *stats);
 
 /* in utils/misc/sampling.c --- duplicate of declarations in utils/sampling.h */
 extern double anl_random_fract(void);
 extern double anl_init_selection_state(int n);
 extern double anl_get_next_S(double t, int n, double *stateptr);
+
+extern int acquire_sample_rows(Relation onerel, int elevel,
+							   HeapTuple *rows, int targrows,
+							   double *totalrows, double *totaldeadrows);
+extern int acquire_inherited_sample_rows(Relation onerel, int elevel,
+							  HeapTuple *rows, int targrows,
+							  double *totalrows, double *totaldeadrows);
+
+/* in commands/analyzefuncs.c */
+extern Datum gp_acquire_sample_rows(PG_FUNCTION_ARGS);
+extern Oid gp_acquire_sample_rows_col_type(Oid typid);
+
+extern bool gp_vacuum_needs_update_stats(void);
 
 #endif							/* VACUUM_H */

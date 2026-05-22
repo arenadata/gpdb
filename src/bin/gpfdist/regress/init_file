@@ -1,0 +1,10 @@
+-- start_matchignore
+m/^DETAIL:.*/
+
+m/^(?:HINT|NOTICE):\s+.+\'DISTRIBUTED BY\' clause.*/
+-- end_matchignore
+
+-- start_matchsubs
+m/"\/.*root\.crt"/
+s/"\/.*root\.crt"/root.crt/
+-- end_matchsubs

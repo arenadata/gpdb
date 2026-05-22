@@ -10,6 +10,7 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := \
 	'-I$(top_builddir)/src/port' \
 	'-I$(top_srcdir)/src/test/regress' \
+	-Wno-error \
 	'-DHOST_TUPLE="$(host_tuple)"' \
 	'-DSHELLPROG="$(SHELL)"' \
 	'-DDLSUFFIX="$(DLSUFFIX)"' \

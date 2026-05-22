@@ -11,6 +11,8 @@
  *
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  *
  *
  * IDENTIFICATION
@@ -20,12 +22,15 @@
  */
 #include "postgres.h"
 
+#include "access/htup.h"
 #include "access/sysattr.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/prep.h"
+#include "optimizer/walkers.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
+#include "utils/lsyscache.h"
 
 
 typedef struct
@@ -82,6 +87,91 @@ static Relids alias_relid_set(Query *query, Relids relids);
 
 
 /*
+ * cdb_walk_vars
+ *	  Invoke callback function on each Var and/or Aggref node in an expression.
+ *    If a callback returns true, no further nodes are visited, and true is
+ *    returned.  Otherwise after visiting all nodes, false is returned.
+ *
+ * Will recurse into sublinks.	Also, may be invoked directly on a Query.
+ */
+typedef bool (*Cdb_walk_vars_callback_Aggref)(Aggref *aggref, void *context, int sublevelsup);
+typedef bool (*Cdb_walk_vars_callback_Var)(Var *var, void *context, int sublevelsup);
+typedef bool (*Cdb_walk_vars_callback_CurrentOf)(CurrentOfExpr *expr, void *context, int sublevelsup);
+typedef bool (*Cdb_walk_vars_callback_placeholdervar)(PlaceHolderVar *expr, void *context, int sublevelsup);
+
+typedef struct Cdb_walk_vars_context
+{
+    Cdb_walk_vars_callback_Var      	callback_var;
+    Cdb_walk_vars_callback_Aggref   	callback_aggref;
+    Cdb_walk_vars_callback_CurrentOf    callback_currentof;
+    Cdb_walk_vars_callback_placeholdervar callback_placeholdervar;
+    void                           	   *context;
+    int                             	sublevelsup;
+} Cdb_walk_vars_context;
+
+static bool
+cdb_walk_vars_walker(Node *node, void *wvwcontext)
+{
+    Cdb_walk_vars_context  *ctx = (Cdb_walk_vars_context *)wvwcontext;
+
+	if (node == NULL)
+		return false;
+
+    if (IsA(node, Var) &&
+        ctx->callback_var != NULL)
+		return ctx->callback_var((Var *)node, ctx->context, ctx->sublevelsup);
+
+    if (IsA(node, Aggref) &&
+        ctx->callback_aggref != NULL)
+        return ctx->callback_aggref((Aggref *)node, ctx->context, ctx->sublevelsup);
+
+    if (IsA(node, CurrentOfExpr) &&
+        ctx->callback_currentof != NULL)
+        return ctx->callback_currentof((CurrentOfExpr *)node, ctx->context, ctx->sublevelsup);
+	
+    if (IsA(node, PlaceHolderVar) &&
+        ctx->callback_placeholdervar != NULL)
+        return ctx->callback_placeholdervar((PlaceHolderVar *)node, ctx->context, ctx->sublevelsup);
+	
+    if (IsA(node, Query))
+	{
+		bool    b;
+
+		/* Recurse into subselects */
+		ctx->sublevelsup++;
+		b = query_tree_walker((Query *)node, cdb_walk_vars_walker, ctx, 0);
+		ctx->sublevelsup--;
+		return b;
+	}
+	return expression_tree_walker(node, cdb_walk_vars_walker, ctx);
+}                               /* cdb_walk_vars_walker */
+
+static bool
+cdb_walk_vars(Node                         *node,
+              Cdb_walk_vars_callback_Var    callback_var,
+              Cdb_walk_vars_callback_Aggref callback_aggref,
+              Cdb_walk_vars_callback_CurrentOf callback_currentof,
+              Cdb_walk_vars_callback_placeholdervar callback_placeholdervar,
+              void                         *context,
+              int                           levelsup)
+{
+	Cdb_walk_vars_context   ctx;
+
+    ctx.callback_var = callback_var;
+    ctx.callback_aggref = callback_aggref;
+    ctx.callback_currentof = callback_currentof;
+    ctx.callback_placeholdervar = callback_placeholdervar;
+    ctx.context = context;
+    ctx.sublevelsup = levelsup;
+
+	/*
+	 * Must be prepared to start with a Query or a bare expression tree; if
+	 * it's a Query, we don't want to increment levelsdown.
+	 */
+	return query_or_expression_tree_walker(node, cdb_walk_vars_walker, &ctx, 0);
+}                               /* cdb_walk_vars */
+
+/*
  * pull_varnos
  *		Create a set of all the distinct varnos present in a parsetree.
  *		Only varnos that reference level-zero rtable entries are considered.
@@ -91,24 +181,11 @@ static Relids alias_relid_set(Query *query, Relids relids);
  * references to the desired rtable level!	But when we find a completed
  * SubPlan, we only need to look at the parameters passed to the subplan.
  */
+
 Relids
 pull_varnos(Node *node)
 {
-	pull_varnos_context context;
-
-	context.varnos = NULL;
-	context.sublevels_up = 0;
-
-	/*
-	 * Must be prepared to start with a Query or a bare expression tree; if
-	 * it's a Query, we don't want to increment sublevels_up.
-	 */
-	query_or_expression_tree_walker(node,
-									pull_varnos_walker,
-									(void *) &context,
-									0);
-
-	return context.varnos;
+	return pull_varnos_of_level(node, 0);
 }
 
 /*
@@ -250,7 +327,6 @@ pull_varattnos_walker(Node *node, pull_varattnos_context *context)
 	return expression_tree_walker(node, pull_varattnos_walker,
 								  (void *) context);
 }
-
 
 /*
  * pull_vars_of_level
@@ -491,6 +567,67 @@ locate_var_of_level_walker(Node *node,
 								  (void *) context);
 }
 
+/*
+ * contain_vars_of_level_or_above
+ *	  Recursively scan a clause to discover whether it contains any Var or
+ *    Aggref nodes of the specified query level or above.  For example,
+ *    pass 1 to detect all nonlocal Vars.
+ *
+ *	  Returns true if any such Var found.
+ *
+ * Will recurse into sublinks.	Also, may be invoked directly on a Query.
+ */
+static bool
+contain_vars_of_level_or_above_cbVar(Var *var, void *unused, int sublevelsup)
+{
+	if ((int)var->varlevelsup >= sublevelsup)
+		return true;		    /* abort tree traversal and return true */
+    return false;
+}
+
+static bool
+contain_vars_of_level_or_above_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
+{
+	if ((int)aggref->agglevelsup >= sublevelsup)
+        return true;
+
+    /* visit aggregate's args */
+	return cdb_walk_vars((Node *)aggref->args,
+                         contain_vars_of_level_or_above_cbVar,
+                         contain_vars_of_level_or_above_cbAggref,
+						 NULL,
+                         NULL,
+                         NULL, // GPDB_84_MERGE_FIXME: Can arguments of Aggref contain PlaceHolderVars ?
+                         sublevelsup);
+}
+
+static bool
+contain_vars_of_level_or_above_cbPlaceHolderVar(PlaceHolderVar *placeholdervar, void *unused, int sublevelsup)
+{
+	if(placeholdervar->phlevelsup >= sublevelsup)
+		return true;
+
+	/* visit placeholder's contained expression */
+	return cdb_walk_vars((Node*)placeholdervar->phexpr,
+						 contain_vars_of_level_or_above_cbVar,
+						 contain_vars_of_level_or_above_cbAggref,
+						 NULL,
+						 contain_vars_of_level_or_above_cbPlaceHolderVar,
+						 NULL,
+						 sublevelsup);
+}
+
+bool
+contain_vars_of_level_or_above(Node *node, int levelsup)
+{
+	return cdb_walk_vars(node,
+                         contain_vars_of_level_or_above_cbVar,
+                         contain_vars_of_level_or_above_cbAggref,
+						 NULL,
+                         contain_vars_of_level_or_above_cbPlaceHolderVar,
+                         NULL,
+                         levelsup);
+}
 
 /*
  * pull_var_clause
@@ -618,6 +755,29 @@ pull_var_clause_walker(Node *node, pull_var_clause_context *context)
 		}
 		else
 			elog(ERROR, "WindowFunc found where not expected");
+	}
+	else if (IsA(node, GroupId))
+	{
+		if (((GroupId *) node)->agglevelsup != 0)
+			elog(ERROR, "Upper-level GROUP_ID found where not expected");
+		if (context->flags & PVC_INCLUDE_AGGREGATES)
+		{
+			context->varlist = lappend(context->varlist, node);
+			/* we do NOT descend into the contained expression */
+			return false;
+		} else if (context->flags & PVC_RECURSE_AGGREGATES)
+		{
+			/*
+			 * we do NOT descend into the contained expression,
+			 * even if the caller asked for it, because we never
+			 * actually evaluate it - the result is driven entirely
+			 * off the associated GROUP BY clause, so we never need
+			 * to extract the actual Vars here.
+			 */
+			return false;
+		}
+		else
+			elog(ERROR, "GROUP_ID found where not expected");
 	}
 	else if (IsA(node, PlaceHolderVar))
 	{

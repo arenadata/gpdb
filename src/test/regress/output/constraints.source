@@ -7,6 +7,10 @@
 --  - UNIQUE clauses
 --  - EXCLUDE clauses
 --
+-- start_matchsubs
+-- m/DETAIL:  Failing row contains \(.*\)/
+-- s/DETAIL:  Failing row contains \(.*\)/DETAIL:  Failing row contains (#####)/
+-- end_matchsubs
 --
 -- DEFAULT syntax
 --
@@ -27,7 +31,7 @@ SELECT '' AS five, * FROM DEFAULT_TBL;
       |   3 |        |       1
 (5 rows)
 
-CREATE SEQUENCE DEFAULT_SEQ;
+CREATE SEQUENCE DEFAULT_SEQ CACHE 1;
 CREATE TABLE DEFAULTEXPR_TBL (i1 int DEFAULT 100 + (200-199) * 2,
 	i2 int DEFAULT nextval('default_seq'));
 INSERT INTO DEFAULTEXPR_TBL VALUES (-1, -2);
@@ -84,7 +88,7 @@ SELECT '' AS three, * FROM CHECK_TBL;
        | 6
 (3 rows)
 
-CREATE SEQUENCE CHECK_SEQ;
+CREATE SEQUENCE CHECK_SEQ CACHE 1;
 CREATE TABLE CHECK2_TBL (x int, y text, z int,
 	CONSTRAINT SEQUENCE_CON
 	CHECK (x > 3 and y <> 'check failed' and z < 8));
@@ -112,12 +116,12 @@ SELECT '' AS two, * from CHECK2_TBL;
 --
 -- Check constraints on INSERT
 --
-CREATE SEQUENCE INSERT_SEQ;
+CREATE SEQUENCE INSERT_SEQ CACHE 1;
 CREATE TABLE INSERT_TBL (x INT DEFAULT nextval('insert_seq'),
 	y TEXT DEFAULT '-NULL-',
-	z INT DEFAULT -1 * currval('insert_seq'),
+	z INT DEFAULT -1 * (nextval('insert_seq')-1),
 	CONSTRAINT INSERT_TBL_CON CHECK (x >= 3 AND y <> 'check failed' AND x < 8),
-	CHECK (x + z = 0));
+	CHECK (x + z = 0)) DISTRIBUTED BY(y);
 INSERT INTO INSERT_TBL(x,z) VALUES (2, -2);
 ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_con"
 DETAIL:  Failing row contains (2, -NULL-, -2).
@@ -148,20 +152,37 @@ INSERT INTO INSERT_TBL(y) VALUES ('-!NULL-');
 SELECT '' AS four, * FROM INSERT_TBL;
  four | x |       y       | z  
 ------+---+---------------+----
-      | 3 | Y             | -3
+      | 4 | Y             | -4
       | 7 | -NULL-        | -7
       | 7 | !check failed | -7
-      | 4 | -!NULL-       | -4
+      | 6 | -!NULL-       | -6
 (4 rows)
 
+-- GPDB: reset the table contents to match upstream.
+delete from insert_tbl;
+insert into insert_tbl values
+  (3, 'Y', -3),
+  (7, '-NULL-', -7),
+  (7, '!check failed', -7),
+  (4, '-!NULL-', -4);
 INSERT INTO INSERT_TBL(y,z) VALUES ('check failed', 4);
 ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
-DETAIL:  Failing row contains (5, check failed, 4).
+DETAIL:  Failing row contains (8, check failed, 4).
 INSERT INTO INSERT_TBL(x,y) VALUES (5, 'check failed');
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_con"
-DETAIL:  Failing row contains (5, check failed, -5).
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+DETAIL:  Failing row contains (5, check failed, -8).
+-- these fail on GPDB, because we cannot use currval in the z columns' DEFAULT like in upstream.
 INSERT INTO INSERT_TBL(x,y) VALUES (5, '!check failed');
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+DETAIL:  Failing row contains (5, !check failed, -9).
 INSERT INTO INSERT_TBL(y) VALUES ('-!NULL-');
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_con"
+DETAIL:  Failing row contains (11, -!NULL-, -11).
+-- GPDB: fix the table contents to match upstream again, so that the subsequent
+-- tests start with the same state as in upstream.
+insert into insert_tbl values
+  (5, '!check failed', -5),
+  (6, '-!NULL-', -6);
 SELECT '' AS six, * FROM INSERT_TBL;
  six | x |       y       | z  
 -----+---+---------------+----
@@ -176,16 +197,16 @@ SELECT '' AS six, * FROM INSERT_TBL;
 SELECT 'seven' AS one, nextval('insert_seq');
   one  | nextval 
 -------+---------
- seven |       7
+ seven |      13
 (1 row)
 
 INSERT INTO INSERT_TBL(y) VALUES ('Y');
 ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_con"
-DETAIL:  Failing row contains (8, Y, -8).
-SELECT 'eight' AS one, currval('insert_seq');
-  one  | currval 
+DETAIL:  Failing row contains (14, Y, -14).
+SELECT 'eight' AS one, nextval('insert_seq');
+  one  | nextval 
 -------+---------
- eight |       8
+ eight |      16
 (1 row)
 
 -- According to SQL, it is OK to insert a record that gives rise to NULL
@@ -295,7 +316,14 @@ CREATE TEMP TABLE tmp (xd INT, yd TEXT, zd INT);
 INSERT INTO tmp VALUES (null, 'Y', null);
 INSERT INTO tmp VALUES (5, '!check failed', null);
 INSERT INTO tmp VALUES (null, 'try again', null);
-INSERT INTO INSERT_TBL(y) select yd from tmp;
+-- GPDB: This INSERT  doesn't work in GPDB, because the default is
+-- different. Fix the table contents again for the next test.
+--
+--INSERT INTO INSERT_TBL(y) select yd from tmp;
+INSERT INTO INSERT_TBL VALUES
+  (4, 'Y', -4),
+  (5, '!check failed', -5),
+  (6, 'try again', -6);
 SELECT '' AS three, * FROM INSERT_TBL;
  three | x |       y       | z  
 -------+---+---------------+----
@@ -306,9 +334,13 @@ SELECT '' AS three, * FROM INSERT_TBL;
 
 INSERT INTO INSERT_TBL SELECT * FROM tmp WHERE yd = 'try again';
 INSERT INTO INSERT_TBL(y,z) SELECT yd, -7 FROM tmp WHERE yd = 'try again';
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+DETAIL:  Failing row contains (4, try again, -7).
 INSERT INTO INSERT_TBL(y,z) SELECT yd, -8 FROM tmp WHERE yd = 'try again';
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_con"
-DETAIL:  Failing row contains (8, try again, -8).
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+DETAIL:  Failing row contains (5, try again, -8).
+-- GPDB: Fixup
+INSERT INTO INSERT_TBL VALUES (7, 'try again', -7);
 SELECT '' AS four, * FROM INSERT_TBL;
  four | x |       y       | z  
 ------+---+---------------+----
@@ -327,7 +359,7 @@ UPDATE INSERT_TBL SET x = NULL WHERE x = 5;
 UPDATE INSERT_TBL SET x = 6 WHERE x = 6;
 UPDATE INSERT_TBL SET x = -z, z = -x;
 UPDATE INSERT_TBL SET x = z, z = x;
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_con"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_con"  (seg0 172.17.0.2:25432 pid=308523)
 DETAIL:  Failing row contains (-4, Y, 4).
 SELECT * FROM INSERT_TBL;
  x |       y       | z  
@@ -475,21 +507,25 @@ INSERT INTO unique_tbl VALUES (4, 'five');
 BEGIN;
 -- default is immediate so this should fail right away
 UPDATE unique_tbl SET i = 1 WHERE i = 0;
-ERROR:  duplicate key value violates unique constraint "unique_tbl_i_key"
-DETAIL:  Key (i)=(1) already exists.
+ERROR:  UPDATE on distributed key column not allowed on relation with update triggers
 ROLLBACK;
 -- check is done at end of statement, so this should succeed
 UPDATE unique_tbl SET i = i+1;
+ERROR:  UPDATE on distributed key column not allowed on relation with update triggers
 SELECT * FROM unique_tbl;
  i |  t   
 ---+------
- 1 | one
- 2 | two
- 3 | tree
- 4 | four
- 5 | five
+ 0 | one
+ 1 | two
+ 2 | tree
+ 3 | four
+ 4 | five
 (5 rows)
 
+-- GPDB: the above fails, because distribution columns cannot be UPDATEd (without ORCA).
+-- Reset the table to the state the rest of the test expects
+TRUNCATE unique_tbl;
+INSERT INTO unique_tbl VALUES (1, 'one'), (2, 'two'), (3, 'tree'), (4, 'four'), (5, 'five');
 -- explicitly defer the constraint
 BEGIN;
 SET CONSTRAINTS unique_tbl_i_key DEFERRED;
@@ -514,20 +550,27 @@ BEGIN;
 INSERT INTO unique_tbl VALUES (1, 'five');
 INSERT INTO unique_tbl VALUES (5, 'one');
 UPDATE unique_tbl SET i = 4 WHERE i = 2;
+ERROR:  UPDATE on distributed key column not allowed on relation with update triggers
 UPDATE unique_tbl SET i = 2 WHERE i = 4 AND t = 'four';
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DELETE FROM unique_tbl WHERE i = 1 AND t = 'one';
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DELETE FROM unique_tbl WHERE i = 5 AND t = 'five';
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
 SELECT * FROM unique_tbl;
  i |   t   
 ---+-------
+ 1 | one
+ 2 | two
+ 4 | four
+ 5 | five
  3 | three
- 1 | five
- 5 | one
- 4 | two
- 2 | four
 (5 rows)
 
+-- GPDB: Reset the table to the state the rest of the test expects, again.
+TRUNCATE unique_tbl;
+INSERT INTO unique_tbl VALUES (3, 'three'), (1, 'five'), (5, 'one'), (4, 'two'), (2, 'four');
 -- should fail at commit-time
 BEGIN;
 INSERT INTO unique_tbl VALUES (3, 'Three'); -- should succeed for now
@@ -630,7 +673,7 @@ CREATE TABLE circles (
   EXCLUDE USING gist
     (c1 WITH &&, (c2::circle) WITH &&)
     WHERE (circle_center(c1) <> '(0,0)')
-);
+) DISTRIBUTED REPLICATED;
 -- these should succeed because they don't match the index predicate
 INSERT INTO circles VALUES('<(0,0), 5>', '<(0,0), 5>');
 INSERT INTO circles VALUES('<(0,0), 5>', '<(0,0), 4>');

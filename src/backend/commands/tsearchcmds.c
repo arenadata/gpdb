@@ -25,6 +25,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_ts_config.h"
@@ -47,6 +48,8 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp_query.h"
 
 static void MakeConfigurationMapping(AlterTSConfigurationStmt *stmt,
 									 HeapTuple tup, Relation relMap);
@@ -200,8 +203,9 @@ DefineTSParser(List *names, List *parameters)
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	prsOid = GetNewOidWithIndex(prsRel, TSParserOidIndexId,
-								Anum_pg_ts_parser_oid);
+	prsOid = GetNewOidForTSParser(prsRel, TSParserOidIndexId,
+								  Anum_pg_ts_parser_oid,
+								  prsname, namespaceoid);
 	values[Anum_pg_ts_parser_oid - 1] = ObjectIdGetDatum(prsOid);
 	namestrcpy(&pname, prsname);
 	values[Anum_pg_ts_parser_prsname - 1] = NameGetDatum(&pname);
@@ -284,6 +288,24 @@ DefineTSParser(List *names, List *parameters)
 	heap_freetuple(tup);
 
 	table_close(prsRel, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		DefineStmt *stmt = makeNode(DefineStmt);
+
+		stmt->kind = OBJECT_TSPARSER;
+		stmt->oldstyle = false;
+		stmt->defnames = names;
+		stmt->args = NIL;
+		stmt->definition = parameters;
+
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR |
+									DF_NEED_TWO_PHASE |
+									DF_WITH_SNAPSHOT,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	return address;
 }
@@ -471,8 +493,9 @@ DefineTSDictionary(List *names, List *parameters)
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	dictOid = GetNewOidWithIndex(dictRel, TSDictionaryOidIndexId,
-								 Anum_pg_ts_dict_oid);
+	dictOid = GetNewOidForTSDictionary(dictRel, TSDictionaryOidIndexId,
+									   Anum_pg_ts_dict_oid,
+									   dictname, namespaceoid);
 	values[Anum_pg_ts_dict_oid - 1] = ObjectIdGetDatum(dictOid);
 	namestrcpy(&dname, dictname);
 	values[Anum_pg_ts_dict_dictname - 1] = NameGetDatum(&dname);
@@ -497,6 +520,22 @@ DefineTSDictionary(List *names, List *parameters)
 	heap_freetuple(tup);
 
 	table_close(dictRel, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		DefineStmt *stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_TSDICTIONARY;
+		stmt->oldstyle = false;
+		stmt->defnames = names;
+		stmt->args = NIL;
+		stmt->definition = parameters;
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR |
+									DF_NEED_TWO_PHASE |
+									DF_WITH_SNAPSHOT,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	return address;
 }
@@ -634,6 +673,14 @@ AlterTSDictionary(AlterTSDictionaryStmt *stmt)
 
 	table_close(rel, RowExclusiveLock);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR |
+									DF_NEED_TWO_PHASE |
+									DF_WITH_SNAPSHOT,
+									NIL,
+									NULL);
+
 	return address;
 }
 
@@ -757,8 +804,9 @@ DefineTSTemplate(List *names, List *parameters)
 		values[i] = ObjectIdGetDatum(InvalidOid);
 	}
 
-	tmplOid = GetNewOidWithIndex(tmplRel, TSTemplateOidIndexId,
-								 Anum_pg_ts_dict_oid);
+	tmplOid = GetNewOidForTSTemplate(tmplRel, TSTemplateOidIndexId,
+									 Anum_pg_ts_dict_oid,
+									 tmplname, namespaceoid);
 	values[Anum_pg_ts_template_oid - 1] = ObjectIdGetDatum(tmplOid);
 	namestrcpy(&dname, tmplname);
 	values[Anum_pg_ts_template_tmplname - 1] = NameGetDatum(&dname);
@@ -813,6 +861,22 @@ DefineTSTemplate(List *names, List *parameters)
 	heap_freetuple(tup);
 
 	table_close(tmplRel, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		DefineStmt *stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_TSTEMPLATE;
+		stmt->oldstyle = false;
+		stmt->defnames = names;
+		stmt->args = NIL;
+		stmt->definition = parameters;
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR |
+									DF_NEED_TWO_PHASE |
+									DF_WITH_SNAPSHOT,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	return address;
 }
@@ -1053,8 +1117,9 @@ DefineTSConfiguration(List *names, List *parameters, ObjectAddress *copied)
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	cfgOid = GetNewOidWithIndex(cfgRel, TSConfigOidIndexId,
-								Anum_pg_ts_config_oid);
+	cfgOid = GetNewOidForTSConfig(cfgRel, TSConfigOidIndexId,
+								  Anum_pg_ts_config_oid,
+								  cfgname, namespaceoid);
 	values[Anum_pg_ts_config_oid - 1] = ObjectIdGetDatum(cfgOid);
 	namestrcpy(&cname, cfgname);
 	values[Anum_pg_ts_config_cfgname - 1] = NameGetDatum(&cname);
@@ -1120,6 +1185,22 @@ DefineTSConfiguration(List *names, List *parameters, ObjectAddress *copied)
 	if (mapRel)
 		table_close(mapRel, RowExclusiveLock);
 	table_close(cfgRel, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		DefineStmt *stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_TSCONFIGURATION;
+		stmt->oldstyle = false;
+		stmt->defnames = names;
+		stmt->args = NIL;
+		stmt->definition = parameters;
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR |
+									DF_NEED_TWO_PHASE |
+									DF_WITH_SNAPSHOT,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	return address;
 }
@@ -1216,6 +1297,14 @@ AlterTSConfiguration(AlterTSConfigurationStmt *stmt)
 	table_close(relMap, RowExclusiveLock);
 
 	ReleaseSysCache(tup);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR |
+									DF_NEED_TWO_PHASE |
+									DF_WITH_SNAPSHOT,
+									NIL,
+									NULL);
 
 	return address;
 }

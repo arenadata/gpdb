@@ -162,6 +162,7 @@ extern TypeFuncClass get_expr_result_type(Node *expr,
 extern TypeFuncClass get_func_result_type(Oid functionId,
 										  Oid *resultTypeId,
 										  TupleDesc *resultTupleDesc);
+extern void  assign_func_result_transient_type(Oid functionId);
 
 extern TupleDesc get_expr_result_tupdesc(Node *expr, bool noError);
 

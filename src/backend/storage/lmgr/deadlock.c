@@ -31,6 +31,8 @@
 #include "storage/lmgr.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
+#include "executor/execdesc.h"
+#include "utils/resscheduler.h"
 
 
 /*
@@ -271,8 +273,11 @@ DeadLockCheck(PGPROC *proc)
 		PrintLockQueue(lock, "rearranged to:");
 #endif
 
-		/* See if any waiters for the lock can be woken up now */
-		ProcLockWakeup(GetLocksMethodTable(lock), lock);
+		/* See if any waiters for the lock can be woken up now.
+		 * Except for resource queue because without release resource
+		 * no one can procced. */
+		if (lock->tag.locktag_type != LOCKTAG_RESOURCE_QUEUE)
+			ProcLockWakeup(GetLocksMethodTable(lock), lock);
 	}
 
 	/* Return code tells caller if we had to escape a deadlock or not */

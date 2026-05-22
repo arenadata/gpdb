@@ -105,6 +105,8 @@ select spi_prepared_plan_test_nested('smith');
  there are 1 smiths
 (1 row)
 
+-- start_ignore
+-- Greenplum doesn't support functions that execute SQL from segments
 SELECT join_sequences(sequences) FROM sequences;
  join_sequences 
 ----------------
@@ -134,6 +136,7 @@ SELECT join_sequences(sequences) FROM sequences
 ----------------
 (0 rows)
 
+-- end_ignore
 SELECT spi_recursive_sum(10);
  spi_recursive_sum 
 -------------------

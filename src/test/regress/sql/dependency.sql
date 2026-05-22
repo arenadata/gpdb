@@ -7,7 +7,7 @@ CREATE USER regress_dep_user2;
 CREATE USER regress_dep_user3;
 CREATE GROUP regress_dep_group;
 
-CREATE TABLE deptest (f1 serial primary key, f2 text);
+CREATE TABLE deptest (f1 serial primary key, f2 text) DISTRIBUTED BY (f1);
 
 GRANT SELECT ON TABLE deptest TO GROUP regress_dep_group;
 GRANT ALL ON TABLE deptest TO regress_dep_user, regress_dep_user2;
@@ -57,11 +57,11 @@ REASSIGN OWNED BY regress_dep_user1 TO regress_dep_user0;
 -- this one is allowed
 DROP OWNED BY regress_dep_user0;
 
-CREATE TABLE deptest1 (f1 int unique);
+CREATE TABLE deptest1 (f1 int unique) DISTRIBUTED BY (f1);
 GRANT ALL ON deptest1 TO regress_dep_user1 WITH GRANT OPTION;
 
 SET SESSION AUTHORIZATION regress_dep_user1;
-CREATE TABLE deptest (a serial primary key, b text);
+CREATE TABLE deptest (a serial primary key, b text) DISTRIBUTED BY (a);
 GRANT ALL ON deptest1 TO regress_dep_user2;
 RESET SESSION AUTHORIZATION;
 \z deptest1

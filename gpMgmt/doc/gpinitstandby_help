@@ -1,0 +1,185 @@
+COMMAND NAME: gpinitstandby
+
+Adds and/or initializes a standby coordinator host for a Greenplum Database system.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpinitstandby { -s <standby_hostname> [-P <port>] | -r | -n } 
+
+[-a] [-q] [-D] [-S <standby data directory>] [-l <logfile_directory>]
+
+gpinitstandby -? | -v
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpinitstandby utility adds a backup, standby coordinator host to your 
+Greenplum Database system. If your system has an existing standby coordinator 
+host configured, use the -r option to remove it before adding the new 
+standby coordinator host. 
+
+Before running this utility, make sure that the Greenplum Database 
+software is installed on the standby coordinator host and that you have 
+exchanged SSH keys between the hosts. It is recommended that the coordinator 
+port is set to the same port number on the coordinator host and the backup 
+coordinator host. 
+
+See the Greenplum Database Installation Guide for instructions. This 
+utility should be run on the currently active primary coordinator host. 
+
+The utility performs the following steps: 
+
+* Updates the Greenplum Database system catalog to remove the existing 
+  standby coordinator host information (if the -r option is supplied) 
+
+* Updates the Greenplum Database system catalog to add the new standby 
+  coordinator host information 
+
+* Edits the pg_hba.conf file of the Greenplum Database coordinator to allow 
+  access from the newly added standby coordinator. 
+
+* Sets up the standby coordinator instance on the alternate coordinator host 
+
+* Starts the synchronization process 
+
+A backup, standby coordinator host serves as a 'warm standby' in the 
+event of the primary coordinator host becoming non-operational. The standby 
+coordinator is kept up to date by transaction log replication processes (the 
+walsender and walreceiver), which run on the primary coordinator and standby 
+coordinator hosts and keep the data between the primary and standby coordinator 
+hosts synchronized. If the primary coordinator fails, the log replication 
+process is shut down, and the standby coordinator can be activated in its 
+place by using the gpactivatestandby utility. Upon activation of the 
+standby coordinator, the replicated logs are used to reconstruct the state of 
+the coordinator host at the time of the last successfully committed 
+transaction. 
+
+The activated standby coordinator effectively becomes the Greenplum Database 
+coordinator, accepting client connections on the coordinator port and performing 
+normal coordinator operations such as SQL command processing and workload 
+management. 
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-a
+
+ Do not prompt the user for confirmation. 
+
+
+-D
+
+ Sets logging level to debug. 
+
+
+-l <logfile_directory> 
+
+ The directory to write the log file. Defaults to ~/gpAdminLogs. 
+
+
+-n
+
+ Specify this option to start a Greenplum Database standby coordinator that 
+ has been configured but has stopped for some reason. 
+
+
+-P <port> 
+
+ This option specifies the port that is used by the Greenplum Database 
+ standby coordinator. The default is the same port used by the active 
+ Greenplum Database coordinator. 
+
+ If the Greenplum Database standby coordinator is on the same host as the 
+ active coordinator, the ports must be different. If the ports are the same 
+ for the active and standby coordinator and the host is the same, the utility 
+ returns an error. (See also -S.)
+
+
+-S <standby data directory>
+
+ The data directory to use for a new standby coordinator. The default is the same
+ directory used by the active coordinator.
+
+ If the standby coordinator is on the same host as the active coordinator, a different
+ directory must be provided using this option. (See also -P.)
+
+
+-q
+
+ Run in quiet mode. Command output is not displayed on the screen, but is 
+ still written to the log file. 
+
+
+-r
+
+ Removes the currently configured standby coordinator host from your Greenplum 
+ Database system. 
+
+
+-s <standby_hostname> 
+
+ The host name of the standby coordinator host. 
+
+--hba-hostnames
+
+ Optional. use hostnames instead of CIDR in pg_hba.conf
+
+-v
+
+ Displays the version, status, last updated date, and check sum of this 
+ utility. 
+
+
+-?
+
+ Displays the online help. 
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Add a standby coordinator host to your Greenplum Database system and start 
+the synchronization process: 
+
+gpinitstandby -s host09 
+
+Start an existing standby coordinator host and synchronize the data with the 
+current primary coordinator host: 
+
+gpinitstandby -n 
+
+NOTE: Do not specify the -n and -s options in the same command. 
+
+
+Add a standby coordinator host to your Greenplum Database system specifying a 
+different port: 
+
+gpinitstandby -s myhost -P 2222 
+
+If you specify the same host name as the active Greenplum Database 
+coordinator, the installed Greenplum Database software that is used as a 
+standby coordinator must be in a separate location from the active Greenplum 
+Database coordinator.
+
+
+Remove the existing standby coordinator from your Greenplum system 
+configuration: 
+
+gpinitstandby -r 
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpinitsystem, gpaddmirrors, gpactivatestandby 
+
+

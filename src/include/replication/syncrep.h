@@ -79,6 +79,9 @@ extern List *SyncRepGetSyncStandbys(bool *am_sync);
 /* called by checkpointer */
 extern void SyncRepUpdateSyncStandbysDefined(void);
 
+/* called by various procs */
+extern int  SyncRepWakeQueue(bool all, int mode);
+
 /* GUC infrastructure */
 extern bool check_synchronous_standby_names(char **newval, void **extra, GucSource source);
 extern void assign_synchronous_standby_names(const char *newval, void *extra);

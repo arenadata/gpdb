@@ -18,6 +18,7 @@
 #include "access/tupdesc.h"
 #include "lib/ilist.h"
 #include "nodes/params.h"
+#include "nodes/primnodes.h"
 #include "utils/queryenvironment.h"
 
 /* Forward declaration, to avoid including parsenodes.h here */
@@ -96,6 +97,7 @@ typedef struct CachedPlanSource
 	struct RawStmt *raw_parse_tree; /* output of raw_parser(), or NULL */
 	const char *query_string;	/* source text of query */
 	const char *commandTag;		/* command tag (a constant!), or NULL */
+	NodeTag		sourceTag;		/* GPDB: Original statement NodeTag */
 	Oid		   *param_types;	/* array of parameter type OIDs, or NULL */
 	int			num_params;		/* length of param_types array */
 	ParserSetupHook parserSetup;	/* alternative parameter spec method */
@@ -193,6 +195,7 @@ extern CachedPlanSource *CreateOneShotCachedPlan(struct RawStmt *raw_parse_tree,
 extern void CompleteCachedPlan(CachedPlanSource *plansource,
 							   List *querytree_list,
 							   MemoryContext querytree_context,
+							   NodeTag sourceTag,
 							   Oid *param_types,
 							   int num_params,
 							   ParserSetupHook parserSetup,
@@ -216,7 +219,8 @@ extern List *CachedPlanGetTargetList(CachedPlanSource *plansource,
 extern CachedPlan *GetCachedPlan(CachedPlanSource *plansource,
 								 ParamListInfo boundParams,
 								 bool useResOwner,
-								 QueryEnvironment *queryEnv);
+								 QueryEnvironment *queryEnv,
+								 IntoClause *intoClause);
 extern void ReleaseCachedPlan(CachedPlan *plan, bool useResOwner);
 
 extern CachedExpression *GetCachedExpression(Node *expr);

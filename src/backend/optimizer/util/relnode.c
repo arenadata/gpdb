@@ -3,6 +3,8 @@
  * relnode.c
  *	  Relation-node lookup/construction routines
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -30,6 +32,8 @@
 #include "partitioning/partbounds.h"
 #include "utils/hsearch.h"
 
+#include "access/sysattr.h"
+#include "cdb/cdbutil.h"
 
 typedef struct JoinHashEntry
 {
@@ -38,7 +42,7 @@ typedef struct JoinHashEntry
 } JoinHashEntry;
 
 static void build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
-								RelOptInfo *input_rel);
+					RelOptInfo *input_rel);
 static List *build_joinrel_restrictlist(PlannerInfo *root,
 										RelOptInfo *joinrel,
 										RelOptInfo *outer_rel,
@@ -225,6 +229,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	rel->serverid = InvalidOid;
 	rel->userid = rte->checkAsUser;
 	rel->useridiscurrent = false;
+	rel->exec_location = FTEXECLOCATION_NOT_DEFINED;
 	rel->fdwroutine = NULL;
 	rel->fdw_private = NULL;
 	rel->unique_for_rels = NIL;
@@ -290,10 +295,34 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	{
 		case RTE_RELATION:
 			/* Table --- retrieve statistics from the system catalogs */
+
 			get_relation_info(root, rte->relid, rte->inh, rel);
+
+			/* if we've been asked to, force the dist-policy to be partitioned-randomly. */
+			if (rte->forceDistRandom)
+			{
+				GpPolicy   *origpolicy = GpPolicyFetch(rte->relid);
+				int			numsegments;
+
+				if (origpolicy->ptype != POLICYTYPE_ENTRY)
+					numsegments = origpolicy->numsegments;
+				else
+					numsegments = getgpsegmentCount();
+
+				rel->cdbpolicy = createRandomPartitionedPolicy(numsegments);
+			}
+
+			if ((root->parse->commandType == CMD_UPDATE ||
+				 root->parse->commandType == CMD_DELETE) &&
+				root->parse->resultRelation == relid &&
+				GpPolicyIsReplicated(rel->cdbpolicy))
+			{
+				root->upd_del_replicated_table = relid;
+			}
 			break;
 		case RTE_SUBQUERY:
 		case RTE_FUNCTION:
+		case RTE_TABLEFUNCTION:
 		case RTE_TABLEFUNC:
 		case RTE_VALUES:
 		case RTE_CTE:
@@ -305,7 +334,8 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 			 *
 			 * Note: 0 is included in range to support whole-row Vars
 			 */
-			rel->min_attr = 0;
+            /* CDB: Allow internal use of sysattrs (<0) for subquery dedup. */
+        	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;     /*CDB*/
 			rel->max_attr = list_length(rte->eref->colnames);
 			rel->attr_needed = (Relids *)
 				palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(Relids));
@@ -342,7 +372,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 			 * Some restriction clause reduced to constant FALSE or NULL after
 			 * substitution, so this child need not be scanned.
 			 */
-			mark_dummy_rel(rel);
+			mark_dummy_rel(root, rel);
 		}
 	}
 
@@ -483,13 +513,16 @@ find_join_rel(PlannerInfo *root, Relids relids)
  * Otherwise these fields are left invalid, so GetForeignJoinPaths will not be
  * called for the join relation.
  *
+ * GPDB: Also, EXECUTE ON must match. (Perhaps we shouldn't allow EXECUTE
+ * ON on individual tables? Then it would be enough to compare server id)
  */
 static void
 set_foreign_rel_properties(RelOptInfo *joinrel, RelOptInfo *outer_rel,
 						   RelOptInfo *inner_rel)
 {
 	if (OidIsValid(outer_rel->serverid) &&
-		inner_rel->serverid == outer_rel->serverid)
+		inner_rel->serverid == outer_rel->serverid &&
+		inner_rel->exec_location == outer_rel->exec_location)
 	{
 		if (inner_rel->userid == outer_rel->userid)
 		{
@@ -497,6 +530,7 @@ set_foreign_rel_properties(RelOptInfo *joinrel, RelOptInfo *outer_rel,
 			joinrel->userid = outer_rel->userid;
 			joinrel->useridiscurrent = outer_rel->useridiscurrent || inner_rel->useridiscurrent;
 			joinrel->fdwroutine = outer_rel->fdwroutine;
+			joinrel->exec_location = outer_rel->exec_location;
 		}
 		else if (!OidIsValid(inner_rel->userid) &&
 				 outer_rel->userid == GetUserId())
@@ -505,6 +539,7 @@ set_foreign_rel_properties(RelOptInfo *joinrel, RelOptInfo *outer_rel,
 			joinrel->userid = outer_rel->userid;
 			joinrel->useridiscurrent = true;
 			joinrel->fdwroutine = outer_rel->fdwroutine;
+			joinrel->exec_location = outer_rel->exec_location;
 		}
 		else if (!OidIsValid(outer_rel->userid) &&
 				 inner_rel->userid == GetUserId())
@@ -513,6 +548,7 @@ set_foreign_rel_properties(RelOptInfo *joinrel, RelOptInfo *outer_rel,
 			joinrel->userid = inner_rel->userid;
 			joinrel->useridiscurrent = true;
 			joinrel->fdwroutine = outer_rel->fdwroutine;
+			joinrel->exec_location = outer_rel->exec_location;
 		}
 	}
 }
@@ -589,6 +625,7 @@ build_join_rel(PlannerInfo *root,
 														   joinrel,
 														   outer_rel,
 														   inner_rel);
+
 		return joinrel;
 	}
 
@@ -637,6 +674,7 @@ build_join_rel(PlannerInfo *root,
 	joinrel->serverid = InvalidOid;
 	joinrel->userid = InvalidOid;
 	joinrel->useridiscurrent = false;
+	joinrel->exec_location = FTEXECLOCATION_NOT_DEFINED;
 	joinrel->fdwroutine = NULL;
 	joinrel->fdw_private = NULL;
 	joinrel->unique_for_rels = NIL;
@@ -684,6 +722,13 @@ build_join_rel(PlannerInfo *root,
 		bms_del_members(joinrel->direct_lateral_relids, joinrel->relids);
 	if (bms_is_empty(joinrel->direct_lateral_relids))
 		joinrel->direct_lateral_relids = NULL;
+
+	/* GPDB_96_MERGE_FIXME: The 'width' is now in joinrel->reltarget. But I
+	 * don't think this is the right place to set it. Do we actually care
+	 * about doing this? PostgreSQL doesn't bother..
+	 */
+	/* cap width of output row by sum of its inputs */
+	//joinrel->width = Min(joinrel->width, outer_rel->width + inner_rel->width);
 
 	/*
 	 * Construct restrict and join clause lists for the new joinrel. (The
@@ -971,6 +1016,10 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 
 		/* Get the Var's original base rel */
 		baserel = find_base_rel(root, var->varno);
+
+        /* System-defined attribute, whole row, or user-defined attribute */
+        Assert(var->varattno >= baserel->min_attr &&
+               var->varattno <= baserel->max_attr);
 
 		/* Is it still needed above this joinrel? */
 		ndx = var->varattno - baserel->min_attr;

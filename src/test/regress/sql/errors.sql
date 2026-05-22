@@ -241,6 +241,20 @@ drop tuple rule nonesuch;
 drop instance rule nonesuch on noplace;
 drop rewrite rule nonesuch;
 
+
+-- start_matchsubs
+--
+-- # SPARC diff for divide by zero:
+-- # ignore the floating point error
+-- m/ERROR\:.*floating\-point exception/
+-- s/(.*)/GP_IGNORE: $1/
+--
+-- # change the detail to the "correct" error
+-- m/DETAIL\:\s+An invalid floating\-point operation was signaled.*division by zer/
+-- s/(.*)/ERROR:  division by zero/
+--
+-- end_matchsubs
+
 --
 -- Check that division-by-zero is properly caught.
 --
@@ -368,6 +382,16 @@ NULL);
 -- Check that stack depth detection mechanism works and
 -- max_stack_depth is not set too high
 create function infinite_recurse() returns int as
-'select infinite_recurse()' language sql;
+'select infinite_recurse()' language sql CONTAINS SQL;
 \set VERBOSITY terse
+-- start_matchsubs
+-- # mpp-2756
+-- m/(ERROR|WARNING|CONTEXT|NOTICE):.*stack depth limit exceeded\s+at\s+character/
+-- s/\s+at\s+character.*//
+-- m/ERROR:.*GPDB exception. Aborting Pivotal Optimizer \(GPORCA\).*/
+-- s/ERROR:.*GPDB exception. Aborting Pivotal Optimizer \(GPORCA\).*//
+-- end_matchsubs
+-- start_ignore
 select infinite_recurse();
+-- end_ignore
+select 1; -- test that this works

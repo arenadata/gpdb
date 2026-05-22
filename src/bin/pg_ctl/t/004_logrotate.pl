@@ -27,7 +27,7 @@ note "current_logfiles = $current_logfiles";
 
 like(
 	$current_logfiles,
-	qr|^stderr log/postgresql-.*log$|,
+	qr|^stderr log/gpdb-.*csv$|,
 	'current_logfiles is sane');
 
 my $lfname = $current_logfiles;
@@ -66,7 +66,7 @@ note "now current_logfiles = $new_current_logfiles";
 
 like(
 	$new_current_logfiles,
-	qr|^stderr log/postgresql-.*log$|,
+	qr|^stderr log/gpdb-.*csv$|,
 	'new current_logfiles is sane');
 
 $lfname = $new_current_logfiles;

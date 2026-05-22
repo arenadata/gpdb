@@ -403,7 +403,7 @@ entryLocateLeafEntry(GinBtree btree, GinBtreeStack *stack)
 }
 
 static OffsetNumber
-entryFindChildPtr(GinBtree btree, Page page, BlockNumber blkno, OffsetNumber storedOff)
+entryFindChildPtr(GinBtree btree pg_attribute_unused(), Page page, BlockNumber blkno, OffsetNumber storedOff)
 {
 	OffsetNumber i,
 				maxoff = PageGetMaxOffsetNumber(page);
@@ -444,7 +444,7 @@ entryFindChildPtr(GinBtree btree, Page page, BlockNumber blkno, OffsetNumber sto
 }
 
 static BlockNumber
-entryGetLeftMostPage(GinBtree btree, Page page)
+entryGetLeftMostPage(GinBtree btree pg_attribute_unused(), Page page)
 {
 	IndexTuple	itup;
 

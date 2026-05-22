@@ -361,6 +361,28 @@ expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
 		childrel = table_open(childOID, lockmode);
 
 		/*
+		 * GPDB: Skip foreign tables, if requested.
+		 *
+		 * This hack is used to support COPY IGNORE EXTERNAL PARTITIONS
+		 */
+		if (childrel->rd_rel->relkind == RELKIND_FOREIGN_TABLE &&
+			root->glob->skip_foreign_partitions)
+		{
+			/* print a NOTICE on the first skipped partition */
+			if (!root->glob->foreign_partition_was_skipped)
+			{
+				ereport(NOTICE,
+						(errmsg("COPY ignores external partition(s)")));
+				root->glob->foreign_partition_was_skipped = true;
+			}
+
+			/* release the lock, since we're not scanning this partition */
+			table_close(childrel, lockmode);
+
+			continue;
+		}
+
+		/*
 		 * Temporary partitions belonging to other sessions should have been
 		 * disallowed at definition, but for paranoia's sake, let's double
 		 * check.

@@ -1,0 +1,7 @@
+CREATE WRITABLE EXTERNAL TABLE s3regress_create_invalid_wet (date text, time text, open float, high float,
+        low float, volume int) FORMAT 'csv';
+ERROR:  syntax error at or near "FORMAT"
+LINE 2:         low float, volume int) FORMAT 'csv';
+                                       ^
+DROP EXTERNAL TABLE s3regress_create_invalid_wet;
+ERROR:  foreign table "s3regress_create_invalid_wet" does not exist

@@ -154,10 +154,20 @@ LogicalDecodingProcessRecord(LogicalDecodingContext *ctx, XLogReaderState *recor
 		case RM_COMMIT_TS_ID:
 		case RM_REPLORIGIN_ID:
 		case RM_GENERIC_ID:
+		case RM_BITMAP_ID:
+		case RM_DISTRIBUTEDLOG_ID:
 			/* just deal with xid, and done */
 			ReorderBufferProcessXid(ctx->reorder, XLogRecGetXid(record),
 									buf.origptr);
 			break;
+
+		case RM_APPEND_ONLY_ID:
+			/*
+			 * GPDB_94_MERGE_FIXME: logical decoding hasn't been implemented for
+			 * append-only tables yet.
+			 */
+			break;
+
 		case RM_NEXT_ID:
 			elog(ERROR, "unexpected RM_NEXT_ID rmgr_id: %u", (RmgrIds) XLogRecGetRmid(buf.record));
 	}
@@ -192,6 +202,7 @@ DecodeXLogOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			break;
 		case XLOG_NOOP:
 		case XLOG_NEXTOID:
+		case XLOG_NEXTGXID:
 		case XLOG_SWITCH:
 		case XLOG_BACKUP_END:
 		case XLOG_PARAMETER_CHANGE:
@@ -199,6 +210,7 @@ DecodeXLogOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		case XLOG_FPW_CHANGE:
 		case XLOG_FPI_FOR_HINT:
 		case XLOG_FPI:
+		case XLOG_NEXTRELFILENODE:
 			break;
 		default:
 			elog(ERROR, "unexpected RM_XLOG_ID record type: %u", info);

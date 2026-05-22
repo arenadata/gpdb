@@ -1,6 +1,9 @@
+#ifndef PG_UPGRADE_H
+#define PG_UPGRADE_H
 /*
  *	pg_upgrade.h
  *
+ *	Portions Copyright (c) 2016-Present, VMware, Inc. or its affiliates
  *	Copyright (c) 2010-2019, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.h
  */
@@ -10,7 +13,9 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#include "postgres.h"
 #include "libpq-fe.h"
+#include "pqexpbuffer.h"
 
 /* Use port in the private/dynamic port number range */
 #define DEF_PGUPORT			50432
@@ -92,17 +97,24 @@ extern char *output_files[];
 #endif
 
 
-/*
- * postmaster/postgres -b (binary_upgrade) flag added during PG 9.1
- * development
- */
-#define BINARY_UPGRADE_SERVER_FLAG_CAT_VER 201104251
+#define atooid(x)  ((Oid) strtoul((x), NULL, 10))
+
+/* OID system catalog preservation added during PG 9.0 development */
+#define TABLE_SPACE_SUBDIRS_CAT_VER 201001111
+/* postmaster/postgres -b (binary_upgrade) flag added during PG 9.1 development */
+/* In GPDB, it was introduced during GPDB 5.0 development. */
+#define BINARY_UPGRADE_SERVER_FLAG_CAT_VER 301607301
 
 /*
  *	Visibility map changed with this 9.2 commit,
  *	8f9fe6edce358f7904e0db119416b4d1080a83aa; pick later catalog version.
  */
 #define VISIBILITY_MAP_CRASHSAFE_CAT_VER 201107031
+
+/*
+ * change in JSONB format during 9.4 beta
+ */
+#define JSONB_FORMAT_CHANGE_CAT_VER 201409291
 
 /*
  * The format of visibility map is changed with this 9.6 commit,
@@ -114,8 +126,74 @@ extern char *output_files[];
  * ("Improve concurrency of foreign key locking") which also updated catalog
  * version to this value.  pg_upgrade behavior depends on whether old and new
  * server versions are both newer than this, or only the new one is.
+ *
+ * In GPDB: that upstream change was merged into GPDB in the big 9.3 merge
+ * commit.
  */
-#define MULTIXACT_FORMATCHANGE_CAT_VER 201301231
+#define MULTIXACT_FORMATCHANGE_CAT_VER 301809211
+
+/*
+ * Extra information stored for each Append-only table.
+ * This is used to transfer the information from the auxiliary
+ * AO table to the new cluster.
+ */
+
+/* To hold contents of pg_visimap_<oid> */
+typedef struct
+{
+	int			segno;
+	int64		first_row_no;
+	char	   *visimap;		/* text representation of the "bit varying" field */
+} AOVisiMapInfo;
+
+typedef struct
+{
+	int			segno;
+	int			columngroup_no;
+	int64		first_row_no;
+	char	   *minipage;		/* text representation of the "bit varying" field */
+} AOBlkDir;
+
+/* To hold contents of pg_aoseg_<oid> */
+typedef struct
+{
+	int			segno;
+	int64		eof;
+	int64		tupcount;
+	int64		varblockcount;
+	int64		eofuncompressed;
+	int64		modcount;
+	int16		version;
+	int16		state;
+} AOSegInfo;
+
+/* To hold contents of pf_aocsseg_<oid> */
+typedef struct
+{
+	int         segno;
+	int64		tupcount;
+	int64		varblockcount;
+	char       *vpinfo;
+	int64		modcount;
+	int16		state;
+	int16		version;
+} AOCSSegInfo;
+
+typedef struct
+{
+	int16		attlen;
+	char		attalign;
+	bool		is_numeric;
+} AttInfo;
+
+typedef enum
+{
+	HEAP,
+	AO,
+	AOCS,
+	FSM
+} RelType;
+
 
 /*
  * large object chunk size added to pg_controldata,
@@ -137,13 +215,31 @@ typedef struct
 	/* Can't use NAMEDATALEN; not guaranteed to be same on client */
 	char	   *nspname;		/* namespace name */
 	char	   *relname;		/* relation name */
-	Oid			reloid;			/* relation OID */
+	Oid			reloid;			/* relation oid */
+	char		relstorage;
 	Oid			relfilenode;	/* relation relfile node */
 	Oid			indtable;		/* if index, OID of its table, else 0 */
 	Oid			toastheap;		/* if toast table, OID of base table, else 0 */
 	char	   *tablespace;		/* tablespace path; "" for cluster default */
 	bool		nsp_alloc;		/* should nspname be freed? */
 	bool		tblsp_alloc;	/* should tablespace be freed? */
+
+	RelType		reltype;
+
+	/* Extra information for append-only tables */
+	AOSegInfo  *aosegments;
+	AOCSSegInfo *aocssegments;
+	int			naosegments;
+	AOVisiMapInfo *aovisimaps;
+	int			naovisimaps;
+	AOBlkDir   *aoblkdirs;
+	int			naoblkdirs;
+
+	/* Extra information for heap tables */
+	bool		gpdb4_heap_conversion_needed;
+	bool		has_numerics;
+	AttInfo	   *atts;
+	int			natts;
 } RelInfo;
 
 typedef struct
@@ -173,6 +269,16 @@ typedef struct
 	/* the rest are used only for logging and error reporting */
 	char	   *nspname;		/* namespaces */
 	char	   *relname;
+
+	bool		missing_seg0_ok;
+
+	RelType		type;			/* Type of relation */
+
+	/* Extra information for heap tables */
+	bool		gpdb4_heap_conversion_needed;
+	bool		has_numerics;
+	AttInfo	   *atts;
+	int			natts;
 } FileNameMap;
 
 /*
@@ -208,10 +314,12 @@ typedef struct
 	char		nextxlogfile[25];
 	uint32		chkpnt_nxtxid;
 	uint32		chkpnt_nxtepoch;
+	uint64		chkpnt_nxtgxid;
 	uint32		chkpnt_nxtoid;
 	uint32		chkpnt_nxtmulti;
 	uint32		chkpnt_nxtmxoff;
 	uint32		chkpnt_oldstMulti;
+	uint32		chkpnt_oldstxid;
 	uint32		align;
 	uint32		blocksz;
 	uint32		largesz;
@@ -247,7 +355,6 @@ typedef enum
 	PG_WARNING,
 	PG_FATAL
 } eLogType;
-
 
 typedef long pgpid_t;
 
@@ -330,14 +437,13 @@ extern ClusterInfo old_cluster,
 			new_cluster;
 extern OSInfo os_info;
 
-
 /* check.c */
 
 void		output_check_banner(bool live_check);
-void		check_and_dump_old_cluster(bool live_check);
+void		check_and_dump_old_cluster(bool live_check, char **sequence_script_file_name);
 void		check_new_cluster(void);
 void		report_clusters_compatible(void);
-void		issue_warnings_and_set_wal_level(void);
+void		issue_warnings_and_set_wal_level(char *sequence_script_file_name);
 void		output_completion_banner(char *analyze_script_file_name,
 									 char *deletion_script_file_name);
 void		check_cluster_versions(void);
@@ -433,6 +539,9 @@ void		check_pghost_envvar(void);
 /* util.c */
 
 char	   *quote_identifier(const char *s);
+extern void appendShellString(PQExpBuffer buf, const char *str);
+extern void appendConnStrVal(PQExpBuffer buf, const char *str);
+extern void appendPsqlMetaConnect(PQExpBuffer buf, const char *dbname);
 int			get_user_info(char **user_name_p);
 void		check_ok(void);
 void		report_status(eLogType type, const char *fmt,...) pg_attribute_printf(2, 3);
@@ -442,7 +551,9 @@ void		end_progress_output(void);
 void		prep_status(const char *fmt,...) pg_attribute_printf(1, 2);
 void		check_ok(void);
 unsigned int str2uint(const char *str);
+uint64		str2uint64(const char *str);
 void		pg_putenv(const char *var, const char *val);
+void 		gp_fatal_log(const char *fmt,...) pg_attribute_printf(1, 2);
 
 
 /* version.c */
@@ -454,6 +565,17 @@ void		old_9_6_check_for_unknown_data_type_usage(ClusterInfo *cluster);
 void		old_9_6_invalidate_hash_indexes(ClusterInfo *cluster,
 											bool check_mode);
 
+/* version_old_8_3.c */
+
+void		old_8_3_check_for_name_data_type_usage(ClusterInfo *cluster);
+void		old_8_3_check_for_tsquery_usage(ClusterInfo *cluster);
+void		old_8_3_check_ltree_usage(ClusterInfo *cluster);
+void		old_8_3_rebuild_tsvector_tables(ClusterInfo *cluster, bool check_mode);
+void		old_8_3_invalidate_hash_gin_indexes(ClusterInfo *cluster, bool check_mode);
+void old_8_3_invalidate_bpchar_pattern_ops_indexes(ClusterInfo *cluster,
+											  bool check_mode);
+char	   *old_8_3_create_sequence_script(ClusterInfo *cluster);
+
 /* parallel.c */
 void		parallel_exec_prog(const char *log_file, const char *opt_log_file,
 							   const char *fmt,...) pg_attribute_printf(3, 4);
@@ -461,3 +583,17 @@ void		parallel_transfer_all_new_dbs(DbInfoArr *old_db_arr, DbInfoArr *new_db_arr
 										  char *old_pgdata, char *new_pgdata,
 										  char *old_tablespace);
 bool		reap_child(bool wait_for_child);
+
+/*
+ * Hack to make backend macros that check for assertions to work.
+ */
+#ifdef AssertMacro
+#undef AssertMacro
+#endif
+#define AssertMacro(condition) ((void) true)
+#ifdef Assert
+#undef Assert
+#endif
+#define Assert(condition) ((void) (true || (condition)))
+
+#endif /* PG_UPGRADE_H */

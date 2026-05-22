@@ -123,6 +123,7 @@
 #include "access/xact.h"
 #include "catalog/pg_database.h"
 #include "commands/async.h"
+#include "common/hashfn.h"
 #include "funcapi.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -1809,8 +1810,7 @@ asyncQueueReadAllNotifications(void)
 			 * possibly transmitting them to our frontend.  Copy only the part
 			 * of the page we will actually inspect.
 			 */
-			slotno = SimpleLruReadPage_ReadOnly(AsyncCtl, curpage,
-												InvalidTransactionId);
+			slotno = SimpleLruReadPage_ReadOnly(AsyncCtl, curpage, InvalidTransactionId);
 			if (curpage == QUEUE_POS_PAGE(head))
 			{
 				/* we only want to read as far as head */
@@ -1924,7 +1924,7 @@ asyncQueueProcessPageEntries(volatile QueuePosition *current,
 		/* Ignore messages destined for other databases */
 		if (qe->dboid == MyDatabaseId)
 		{
-			if (XidInMVCCSnapshot(qe->xid, snapshot))
+			if (XidInMVCCSnapshot_Local(qe->xid, snapshot))
 			{
 				/*
 				 * The source transaction is still in progress, so we can't
@@ -2038,6 +2038,7 @@ asyncQueueAdvanceTail(void)
 static void
 ProcessIncomingNotify(void)
 {
+
 	/* We *must* reset the flag */
 	notifyInterruptPending = false;
 
@@ -2069,10 +2070,15 @@ ProcessIncomingNotify(void)
 
 	if (Trace_notify)
 		elog(DEBUG1, "ProcessIncomingNotify: done");
+
 }
 
 /*
  * Send NOTIFY message to my front end.
+ *
+ * GPDB: We have exposed this function globally for our dispatch-notify
+ * mechanism. We overload the srcPid field to pass in the gp_session_id
+ * from GPDB specific callsites.
  */
 void
 NotifyMyFrontEnd(const char *channel, const char *payload, int32 srcPid)

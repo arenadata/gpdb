@@ -3,14 +3,14 @@
 --
 
 CREATE TABLE num_data (id int4, val numeric(210,10));
-CREATE TABLE num_exp_add (id1 int4, id2 int4, expected numeric(210,10));
-CREATE TABLE num_exp_sub (id1 int4, id2 int4, expected numeric(210,10));
-CREATE TABLE num_exp_div (id1 int4, id2 int4, expected numeric(210,10));
-CREATE TABLE num_exp_mul (id1 int4, id2 int4, expected numeric(210,10));
-CREATE TABLE num_exp_sqrt (id int4, expected numeric(210,10));
-CREATE TABLE num_exp_ln (id int4, expected numeric(210,10));
-CREATE TABLE num_exp_log10 (id int4, expected numeric(210,10));
-CREATE TABLE num_exp_power_10_ln (id int4, expected numeric(210,10));
+CREATE TABLE num_exp_add (id1 int4, id2 int4, expected numeric(210,10)) DISTRIBUTED BY (id1);
+CREATE TABLE num_exp_sub (id1 int4, id2 int4, expected numeric(210,10)) DISTRIBUTED BY (id1);
+CREATE TABLE num_exp_div (id1 int4, id2 int4, expected numeric(210,10)) DISTRIBUTED BY (id1);
+CREATE TABLE num_exp_mul (id1 int4, id2 int4, expected numeric(210,10)) DISTRIBUTED BY (id1);
+CREATE TABLE num_exp_sqrt (id int4, expected numeric(210,10)) DISTRIBUTED BY (id);
+CREATE TABLE num_exp_ln (id int4, expected numeric(210,10)) DISTRIBUTED BY (id);
+CREATE TABLE num_exp_log10 (id int4, expected numeric(210,10)) DISTRIBUTED BY (id);
+CREATE TABLE num_exp_power_10_ln (id int4, expected numeric(210,10)) DISTRIBUTED BY (id);
 
 CREATE TABLE num_result (id1 int4, id2 int4, result numeric(210,10));
 

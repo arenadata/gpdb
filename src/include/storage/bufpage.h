@@ -18,6 +18,7 @@
 #include "storage/block.h"
 #include "storage/item.h"
 #include "storage/off.h"
+#include "miscadmin.h"
 
 /*
  * A postgres disk page is an abstraction layered on top of a postgres
@@ -195,8 +196,14 @@ typedef PageHeaderData *PageHeader;
  *
  * As of Release 9.3, the checksum version must also be considered when
  * handling pages.
+ *
+ * GPDB 4 uses 4. However, it didn't have the pd_prune_xid field
+ * GPDB 5.0 uses 14. The layout is the same as PostgreSQL 8.3's, but
+ *		we couldn't use the same version number, because we had already
+ *		used 4 for the previous format.
  */
-#define PG_PAGE_LAYOUT_VERSION		4
+#define PG_PAGE_LAYOUT_VERSION		14
+
 #define PG_DATA_CHECKSUM_VERSION	1
 
 /* ----------------------------------------------------------------
@@ -245,6 +252,13 @@ typedef PageHeaderData *PageHeader;
  */
 #define PageGetContents(page) \
 	((char *) (page) + MAXALIGN(SizeOfPageHeaderData))
+
+/*
+ * PageGetContentsMaxAligned
+ *		Aligns PageGetContents for storing 8-byte data
+ */
+#define PageGetContentsMaxAligned(page) \
+	((char *) MAXALIGN(&((PageHeader) (page))->pd_linp[0]))
 
 /* ----------------
  *		macros to access page size info
@@ -360,11 +374,29 @@ PageValidateSpecialPointer(Page page)
 	  / sizeof(ItemIdData)))
 
 /*
+ * Retrieving LSN of a shared buffer is safe only if: (1) exclusive lock on the
+ * buffer's contents is held OR (2) shared lock on the buffer's contents and
+ * the buffer header spinlock is held.  The Assert() validates that a shared
+ * buffer's contents are locked.  That is not sufficient but there is no easy
+ * interface to determine if a spinlock is held or whether a LW lock is held in
+ * shared/exclusive mode.  The assert applies only to shared buffers because
+ * local buffers do not need to worry about concurrency.
+ *
+ */
+extern bool BufferLockHeldByMe(Page page);
+static inline XLogRecPtr
+PageGetLSN(Page page)
+{
+#if defined (USE_ASSERT_CHECKING) && !defined(FRONTEND)
+	Assert(BufferLockHeldByMe(page));
+#endif
+	return PageXLogRecPtrGet(((PageHeader) (page))->pd_lsn);
+}
+
+/*
  * Additional macros for access to page headers. (Beware multiple evaluation
  * of the arguments!)
  */
-#define PageGetLSN(page) \
-	PageXLogRecPtrGet(((PageHeader) (page))->pd_lsn)
 #define PageSetLSN(page, lsn) \
 	PageXLogRecPtrSet(((PageHeader) (page))->pd_lsn, lsn)
 
@@ -397,7 +429,7 @@ PageValidateSpecialPointer(Page page)
 )
 #define PageSetPrunable(page, xid) \
 do { \
-	Assert(TransactionIdIsNormal(xid)); \
+	Assert(TransactionIdIsNormal(xid) || xid == FrozenTransactionId); \
 	if (!TransactionIdIsValid(((PageHeader) (page))->pd_prune_xid) || \
 		TransactionIdPrecedes(xid, ((PageHeader) (page))->pd_prune_xid)) \
 		((PageHeader) (page))->pd_prune_xid = (xid); \
@@ -405,6 +437,13 @@ do { \
 #define PageClearPrunable(page) \
 	(((PageHeader) (page))->pd_prune_xid = InvalidTransactionId)
 
+
+#define PageHasFreeLinePointers(page) \
+	(((PageHeader) (page))->pd_flags & PD_HAS_FREE_LINES)
+#define PageSetHasFreeLinePointers(page) \
+	(((PageHeader) (page))->pd_flags |= PD_HAS_FREE_LINES)
+#define PageClearHasFreeLinePointers(page) \
+	(((PageHeader) (page))->pd_flags &= ~PD_HAS_FREE_LINES)
 
 /* ----------------------------------------------------------------
  *		extern declarations

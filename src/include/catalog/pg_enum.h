@@ -36,6 +36,9 @@ CATALOG(pg_enum,3501,EnumRelationId)
 	NameData	enumlabel;		/* text representation of enum value */
 } FormData_pg_enum;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(enumtypid REFERENCES pg_type(oid));
+
 /* ----------------
  *		Form_pg_enum corresponds to a pointer to a tuple with
  *		the format of pg_enum relation.

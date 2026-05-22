@@ -10,6 +10,10 @@ CREATE TABLE trigger_test_generated (
     i int,
     j int GENERATED ALWAYS AS (i * 2) STORED
 );
+-- GPDB: The UPDATEs below fail otherwise:
+-- ERROR:  UPDATE on distributed key column not allowed on relation with update triggers
+alter table trigger_test set distributed randomly;
+alter table trigger_test_generated set distributed randomly;
 CREATE OR REPLACE FUNCTION trigger_data() RETURNS trigger LANGUAGE plperl AS $$
 
   # make sure keys are sorted for consistent results - perl no longer
@@ -177,6 +181,8 @@ DROP TRIGGER show_trigger_data_trig_before ON trigger_test_generated;
 DROP TRIGGER show_trigger_data_trig_after ON trigger_test_generated;
 insert into trigger_test values(1,'insert', '("(1)")');
 CREATE VIEW trigger_test_view AS SELECT * FROM trigger_test;
+--start_ignore
+-- INSTEAD OF triggers are not yet supported in Greenplum
 CREATE TRIGGER show_trigger_data_trig
 INSTEAD OF INSERT OR UPDATE OR DELETE ON trigger_test_view
 FOR EACH ROW EXECUTE PROCEDURE trigger_data(24,'skidoo view');
@@ -217,6 +223,7 @@ NOTICE:  $_TD->{relname} = 'trigger_test_view'
 NOTICE:  $_TD->{table_name} = 'trigger_test_view'
 NOTICE:  $_TD->{table_schema} = 'public'
 NOTICE:  $_TD->{when} = 'INSTEAD OF'
+--end_ignore
 DROP VIEW trigger_test_view;
 delete from trigger_test;
 DROP FUNCTION trigger_data();
@@ -282,16 +289,16 @@ $$ LANGUAGE plperl;
 CREATE TRIGGER "test_trigger_recurse" BEFORE INSERT ON trigger_test
 FOR EACH ROW EXECUTE PROCEDURE "trigger_recurse"();
 INSERT INTO trigger_test (i, v) values (10000, 'top');
+ERROR:  function cannot execute on a QE slice because it issues a non-SELECT statement at line 6.
+CONTEXT:  PL/Perl function "trigger_recurse"
 SELECT * FROM trigger_test;
-   i   |                          v                           |   foo   
--------+------------------------------------------------------+---------
-     1 | first line(modified by trigger)                      | ("(2)")
-     2 | second line(modified by trigger)                     | ("(3)")
-     4 | immortal                                             | ("(4)")
-     5 | third line(modified by trigger)(modified by trigger) | ("(5)")
- 20000 | child                                                | 
- 10000 | top                                                  | 
-(6 rows)
+ i |                          v                           |   foo   
+---+------------------------------------------------------+---------
+ 1 | first line(modified by trigger)                      | ("(2)")
+ 2 | second line(modified by trigger)                     | ("(3)")
+ 4 | immortal                                             | ("(4)")
+ 5 | third line(modified by trigger)(modified by trigger) | ("(5)")
+(4 rows)
 
 CREATE OR REPLACE FUNCTION immortal() RETURNS trigger AS $$
     if ($_TD->{old}{v} eq $_TD->{args}[0])
@@ -339,12 +346,13 @@ $$
 
     return undef;
 $$;
+-- GPDB: this test doesn't work properly on GPDB, because statement triggers
+-- are not fired.
 CREATE TRIGGER a_t AFTER UPDATE ON transition_table_test
   REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
   FOR EACH STATEMENT EXECUTE PROCEDURE transition_table_test_f();
+ERROR:  Triggers for statements are not yet supported
 UPDATE transition_table_test SET name = 'b';
-INFO:  old: 1 -> a
-INFO:  new: 1 -> b
 DROP TABLE transition_table_test;
 DROP FUNCTION transition_table_test_f();
 -- test plperl command triggers
@@ -356,20 +364,20 @@ create event trigger perl_a_snitch on ddl_command_start
 create event trigger perl_b_snitch on ddl_command_end
    execute procedure perlsnitch();
 create or replace function foobar() returns int language sql as $$select 1;$$;
-NOTICE:  perlsnitch: ddl_command_start CREATE FUNCTION 
-NOTICE:  perlsnitch: ddl_command_end CREATE FUNCTION 
+NOTICE:  perlsnitch: ddl_command_start CREATE FUNCTION
+NOTICE:  perlsnitch: ddl_command_end CREATE FUNCTION
 alter function foobar() cost 77;
-NOTICE:  perlsnitch: ddl_command_start ALTER FUNCTION 
-NOTICE:  perlsnitch: ddl_command_end ALTER FUNCTION 
+NOTICE:  perlsnitch: ddl_command_start ALTER FUNCTION
+NOTICE:  perlsnitch: ddl_command_end ALTER FUNCTION
 drop function foobar();
-NOTICE:  perlsnitch: ddl_command_start DROP FUNCTION 
-NOTICE:  perlsnitch: ddl_command_end DROP FUNCTION 
+NOTICE:  perlsnitch: ddl_command_start DROP FUNCTION
+NOTICE:  perlsnitch: ddl_command_end DROP FUNCTION
 create table foo();
-NOTICE:  perlsnitch: ddl_command_start CREATE TABLE 
-NOTICE:  perlsnitch: ddl_command_end CREATE TABLE 
+NOTICE:  perlsnitch: ddl_command_start CREATE TABLE
+NOTICE:  perlsnitch: ddl_command_end CREATE TABLE
 drop table foo;
-NOTICE:  perlsnitch: ddl_command_start DROP TABLE 
-NOTICE:  perlsnitch: ddl_command_end DROP TABLE 
+NOTICE:  perlsnitch: ddl_command_start DROP TABLE
+NOTICE:  perlsnitch: ddl_command_end DROP TABLE
 drop event trigger perl_a_snitch;
 drop event trigger perl_b_snitch;
 -- dealing with generated columns

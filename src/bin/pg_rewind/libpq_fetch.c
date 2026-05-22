@@ -20,12 +20,13 @@
 #include "file_ops.h"
 #include "filemap.h"
 
-#include "libpq-fe.h"
 #include "catalog/pg_type_d.h"
 #include "fe_utils/connect.h"
 #include "port/pg_bswap.h"
 
-static PGconn *conn = NULL;
+#include "pqexpbuffer.h"
+
+PGconn *conn = NULL;
 
 /*
  * Files are fetched max CHUNKSIZE bytes at a time.
@@ -55,6 +56,13 @@ libpqConnect(const char *connstr)
 		pg_log_info("connected to server");
 
 	res = PQexec(conn, ALWAYS_SECURE_SEARCH_PATH_SQL);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		pg_fatal("could not clear search_path: %s",
+				 PQresultErrorMessage(res));
+	PQclear(res);
+
+	/* Secure connection by enforcing search_path */
+	res = PQexec(conn, "SELECT pg_catalog.set_config('search_path', '', false)");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		pg_fatal("could not clear search_path: %s",
 				 PQresultErrorMessage(res));
@@ -222,6 +230,7 @@ libpqProcessFileList(void)
 	}
 	PQclear(res);
 }
+
 
 /*----
  * Runs a query, which returns pieces of files from the remote source data
@@ -447,7 +456,7 @@ libpq_executeFileMap(filemap_t *map)
 		entry = map->array[i];
 
 		/* If this is a relation file, copy the modified blocks */
-		execute_pagemap(&entry->pagemap, entry->path);
+		execute_pagemap(&entry->target_pages_to_overwrite, entry->path);
 
 		switch (entry->action)
 		{
@@ -458,15 +467,15 @@ libpq_executeFileMap(filemap_t *map)
 			case FILE_ACTION_COPY:
 				/* Truncate the old file out of the way, if any */
 				open_target_file(entry->path, true);
-				fetch_file_range(entry->path, 0, entry->newsize);
+				fetch_file_range(entry->path, 0, entry->source_size);
 				break;
 
 			case FILE_ACTION_TRUNCATE:
-				truncate_target_file(entry->path, entry->newsize);
+				truncate_target_file(entry->path, entry->source_size);
 				break;
 
 			case FILE_ACTION_COPY_TAIL:
-				fetch_file_range(entry->path, entry->oldsize, entry->newsize);
+				fetch_file_range(entry->path, entry->target_size, entry->source_size);
 				break;
 
 			case FILE_ACTION_REMOVE:
@@ -475,6 +484,10 @@ libpq_executeFileMap(filemap_t *map)
 
 			case FILE_ACTION_CREATE:
 				create_target(entry);
+				break;
+
+			case FILE_ACTION_UNDECIDED:
+				pg_fatal("no action decided for \"%s\"", entry->path);
 				break;
 		}
 	}

@@ -190,6 +190,9 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 		appendstate->as_valid_subplans = validsubplans =
 			bms_add_range(NULL, 0, nplans - 1);
 		appendstate->as_prune_state = NULL;
+
+		if (node->join_prune_paramids)
+			appendstate->as_valid_subplans = NULL;
 	}
 
 	/*
@@ -326,8 +329,11 @@ ExecEndAppend(AppendState *node)
 	/*
 	 * shut down each of the subscans
 	 */
-	for (i = 0; i < nplans; i++)
-		ExecEndNode(appendplans[i]);
+	for (i = nplans-1; i >= 0; --i) 
+	{
+		if (appendplans[i])
+			ExecEndNode(appendplans[i]);
+	}
 }
 
 void
@@ -472,8 +478,15 @@ choose_next_subplan_locally(AppendState *node)
 	if (whichplan == INVALID_SUBPLAN_INDEX)
 	{
 		if (node->as_valid_subplans == NULL)
+		{
+			Append	   *plan = (Append *) node->ps.plan;
+
 			node->as_valid_subplans =
-				ExecFindMatchingSubPlans(node->as_prune_state);
+				ExecFindMatchingSubPlans(node->as_prune_state,
+										 node->ps.state,
+										 list_length(plan->appendplans),
+										 plan->join_prune_paramids);
+		}
 
 		whichplan = -1;
 	}
@@ -532,8 +545,13 @@ choose_next_subplan_for_leader(AppendState *node)
 		 */
 		if (node->as_valid_subplans == NULL)
 		{
+			Append	   *plan = (Append *) node->ps.plan;
+
 			node->as_valid_subplans =
-				ExecFindMatchingSubPlans(node->as_prune_state);
+				ExecFindMatchingSubPlans(node->as_prune_state,
+										 node->ps.state,
+										 list_length(plan->appendplans),
+										 plan->join_prune_paramids);
 
 			/*
 			 * Mark each invalid plan as finished to allow the loop below to
@@ -607,8 +625,13 @@ choose_next_subplan_for_worker(AppendState *node)
 	 */
 	else if (node->as_valid_subplans == NULL)
 	{
+		Append	   *plan = (Append *) node->ps.plan;
+
 		node->as_valid_subplans =
-			ExecFindMatchingSubPlans(node->as_prune_state);
+			ExecFindMatchingSubPlans(node->as_prune_state,
+									 node->ps.state,
+									 list_length(plan->appendplans),
+									 plan->join_prune_paramids);
 		mark_invalid_subplans_as_finished(node);
 	}
 
@@ -728,4 +751,13 @@ mark_invalid_subplans_as_finished(AppendState *node)
 		if (!bms_is_member(i, node->as_valid_subplans))
 			node->as_pstate->pa_finished[i] = true;
 	}
+}
+
+void
+ExecSquelchAppend(AppendState *node)
+{
+	int			i;
+
+	for (i = 0; i < node->as_nplans; i++)
+		ExecSquelchNode(node->appendplans[i]);
 }

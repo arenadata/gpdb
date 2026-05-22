@@ -9,6 +9,8 @@
  * shorn of features like subselects, inheritance, aggregates, grouping,
  * and so on.  (Those are the things planner.c deals with.)
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -29,6 +31,12 @@
 #include "optimizer/paths.h"
 #include "optimizer/placeholder.h"
 #include "optimizer/planmain.h"
+
+#include "catalog/pg_proc.h"
+#include "cdb/cdbpath.h"        /* cdbpath_rows() */
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
+#include "optimizer/cost.h"
 
 
 /*
@@ -131,10 +139,11 @@ query_planner(PlannerInfo *root,
 				 * SELECT is a kind of degenerate-grouping case, so it's not
 				 * that much of a cheat.)
 				 */
-				add_path(final_rel, (Path *)
+				Path *result_path = (Path *)
 						 create_group_result_path(root, final_rel,
 												  final_rel->reltarget,
-												  (List *) parse->jointree->quals));
+												  (List *) parse->jointree->quals);
+				add_path(final_rel, result_path);
 
 				/* Select cheapest path (pretty easy in this case...) */
 				set_cheapest(final_rel);
@@ -150,6 +159,21 @@ query_planner(PlannerInfo *root,
 				 * something like "SELECT 2+2 ORDER BY 1".
 				 */
 				(*qp_callback) (root, qp_extra);
+
+				if (Gp_role == GP_ROLE_DISPATCH)
+				{
+					char		exec_location;
+
+					exec_location = check_execute_on_functions((Node *) parse->targetList);
+
+					if (exec_location == PROEXECLOCATION_COORDINATOR || exec_location == PROEXECLOCATION_INITPLAN)
+						CdbPathLocus_MakeEntry(&result_path->locus);
+					else if (exec_location == PROEXECLOCATION_ALL_SEGMENTS)
+						CdbPathLocus_MakeStrewn(&result_path->locus,
+												getgpsegmentCount());
+				}
+				else
+					CdbPathLocus_MakeEntry(&result_path->locus);
 
 				return final_rel;
 			}
@@ -185,6 +209,8 @@ query_planner(PlannerInfo *root,
 	 */
 	build_base_rel_tlists(root, root->processed_tlist);
 
+	make_placeholders_for_subplans(root);
+
 	find_placeholders_in_jointree(root);
 
 	find_lateral_references(root);
@@ -197,6 +223,12 @@ query_planner(PlannerInfo *root,
 	 * mergings of classes.)
 	 */
 	reconsider_outer_join_clauses(root);
+
+	/**
+	 * Use the list of equijoined keys to transfer quals between relations.  For example,
+	 *   A=B AND f(A) implies A=B AND f(A) and f(B), under some restrictions on f.
+	 */
+	generate_implied_quals(root);
 
 	/*
 	 * If we formed any equivalence classes, generate additional restriction
@@ -280,6 +312,47 @@ query_planner(PlannerInfo *root,
 	if (!final_rel || !final_rel->cheapest_total_path ||
 		final_rel->cheapest_total_path->param_info != NULL)
 		elog(ERROR, "failed to construct the join relation");
+	Assert(final_rel->cheapest_startup_path);
 
 	return final_rel;
+}
+
+/**
+ * Planner configuration related
+ */
+
+/**
+ * Default configuration information
+ */
+PlannerConfig *DefaultPlannerConfig(void)
+{
+	PlannerConfig *c1 = (PlannerConfig *) palloc(sizeof(PlannerConfig));
+
+	c1->gp_enable_minmax_optimization = gp_enable_minmax_optimization;
+	c1->gp_enable_multiphase_agg = gp_enable_multiphase_agg;
+	c1->gp_enable_direct_dispatch = gp_enable_direct_dispatch;
+
+	c1->gp_cte_sharing = gp_cte_sharing;
+
+	c1->honor_order_by = true;
+
+	c1->is_under_subplan = false;
+
+	c1->force_singleQE = false;
+
+	c1->may_rescan = false;
+
+	return c1;
+}
+
+/*
+ * Copy configuration information
+ */
+PlannerConfig *
+CopyPlannerConfig(const PlannerConfig *c1)
+{
+	PlannerConfig *c2 = (PlannerConfig *) palloc(sizeof(PlannerConfig));
+
+	memcpy(c2, c1, sizeof(PlannerConfig));
+	return c2;
 }

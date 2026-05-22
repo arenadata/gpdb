@@ -74,6 +74,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbutil.h"
 
 /*
  * We must skip "overhead" operations that involve database access when the
@@ -98,18 +99,23 @@ static dlist_head cached_expression_list = DLIST_STATIC_INIT(cached_expression_l
 
 static void ReleaseGenericPlan(CachedPlanSource *plansource);
 static List *RevalidateCachedQuery(CachedPlanSource *plansource,
-								   QueryEnvironment *queryEnv);
+								   QueryEnvironment *queryEnv,
+								   IntoClause *intoClause);
 static bool CheckCachedPlan(CachedPlanSource *plansource);
 static CachedPlan *BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
-								   ParamListInfo boundParams, QueryEnvironment *queryEnv);
+								   ParamListInfo boundParams,
+								   QueryEnvironment *queryEnv,
+								   IntoClause *intoClause);
 static bool choose_custom_plan(CachedPlanSource *plansource,
-							   ParamListInfo boundParams);
+				   ParamListInfo boundParams,
+				   IntoClause *intoClause);
 static double cached_plan_cost(CachedPlan *plan, bool include_planner);
 static Query *QueryListGetPrimaryStmt(List *stmts);
 static void AcquireExecutorLocks(List *stmt_list, bool acquire);
 static void AcquirePlannerLocks(List *stmt_list, bool acquire);
 static void ScanQueryForLocks(Query *parsetree, bool acquire);
 static bool ScanQueryWalker(Node *node, bool *acquire);
+static bool plan_list_is_oneoff(List *stmt_list);
 static TupleDesc PlanCacheComputeResultDesc(List *stmt_list);
 static void PlanCacheRelCallback(Datum arg, Oid relid);
 static void PlanCacheObjectCallback(Datum arg, int cacheid, uint32 hashvalue);
@@ -159,6 +165,7 @@ InitPlanCache(void)
  * raw_parse_tree: output of raw_parser(), or NULL if empty query
  * query_string: original query text
  * commandTag: compile-time-constant tag for query, or NULL if empty query
+ * sourceTag: GPDB specific.
  */
 CachedPlanSource *
 CreateCachedPlan(RawStmt *raw_parse_tree,
@@ -192,6 +199,7 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	plansource->magic = CACHEDPLANSOURCE_MAGIC;
 	plansource->raw_parse_tree = copyObject(raw_parse_tree);
 	plansource->query_string = pstrdup(query_string);
+	/* sourceTag is filled in CompleteCachedPlan(). */
 	MemoryContextSetIdentifier(source_context, plansource->query_string);
 	plansource->commandTag = commandTag;
 	plansource->param_types = NULL;
@@ -336,6 +344,7 @@ void
 CompleteCachedPlan(CachedPlanSource *plansource,
 				   List *querytree_list,
 				   MemoryContext querytree_context,
+				   NodeTag sourceTag,
 				   Oid *param_types,
 				   int num_params,
 				   ParserSetupHook parserSetup,
@@ -420,6 +429,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	}
 	else
 		plansource->param_types = NULL;
+	plansource->sourceTag = sourceTag;
 	plansource->num_params = num_params;
 	plansource->parserSetup = parserSetup;
 	plansource->parserSetupArg = parserSetupArg;
@@ -548,10 +558,13 @@ ReleaseGenericPlan(CachedPlanSource *plansource)
  * The result value is the transient analyzed-and-rewritten query tree if we
  * had to do re-analysis, and NIL otherwise.  (This is returned just to save
  * a tree copying step in a subsequent BuildCachedPlan call.)
+ *
+ * GPDB: See GetCachedPlan() for why intoClause is added here.
  */
 static List *
 RevalidateCachedQuery(CachedPlanSource *plansource,
-					  QueryEnvironment *queryEnv)
+					  QueryEnvironment *queryEnv,
+					  IntoClause *intoClause)
 {
 	bool		snapshot_set;
 	RawStmt    *rawtree;
@@ -605,7 +618,7 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	 * objects; then check again.  We need to do it this way to cover the race
 	 * condition that an invalidation message arrives before we get the locks.
 	 */
-	if (plansource->is_valid)
+	if (plansource->is_valid && intoClause == NULL)
 	{
 		AcquirePlannerLocks(plansource->query_list, true);
 
@@ -613,7 +626,7 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 		 * By now, if any invalidation has happened, the inval callback
 		 * functions will have marked the query invalid.
 		 */
-		if (plansource->is_valid)
+		if (plansource->is_valid && intoClause == NULL)
 		{
 			/* Successfully revalidated and locked the query. */
 			return NIL;
@@ -692,6 +705,14 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 									   plansource->num_params,
 									   queryEnv);
 
+	/* GPDB: For CTAS query, set its isCTAS to be true */
+	if (intoClause)
+	{
+		Assert(list_length(tlist) == 1);
+		Query *query = (Query *) linitial(tlist);
+		query->parentStmtType = PARENTSTMTTYPE_CTAS;
+	}
+
 	/* Release snapshot if we got one */
 	if (snapshot_set)
 		PopActiveSnapshot();
@@ -708,14 +729,22 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	{
 		/* OK, doesn't return tuples */
 	}
+	else if (intoClause != NULL)
+	{
+		/* OK */
+	}
 	else if (resultDesc == NULL || plansource->resultDesc == NULL ||
-			 !equalTupleDescs(resultDesc, plansource->resultDesc))
+			 !equalTupleDescs(resultDesc, plansource->resultDesc, true))
 	{
 		/* can we give a better error message? */
 		if (plansource->fixed_result)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cached plan must not change result type")));
+					 errmsg("cached plan must not change result type"),
+					 errdetail("resultDesc is%s NULL. plansource->resulDesc is%s NULL.",
+							   resultDesc ? " not":"",
+							   plansource->resultDesc ? " not":"")));
+
 		oldcxt = MemoryContextSwitchTo(plansource->context);
 		if (resultDesc)
 			resultDesc = CreateTupleDescCopy(resultDesc);
@@ -872,10 +901,15 @@ CheckCachedPlan(CachedPlanSource *plansource)
  * Planning work is done in the caller's memory context.  The finished plan
  * is in a child memory context, which typically should get reparented
  * (unless this is a one-shot plan, in which case we don't copy the plan).
+ * is in a child memory context, which typically should get reparented.
+ *
+ * GPDB: See GetCachedPlan() for why intoClause is added here.
  */
 static CachedPlan *
 BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
-				ParamListInfo boundParams, QueryEnvironment *queryEnv)
+				ParamListInfo boundParams,
+				QueryEnvironment *queryEnv,
+				IntoClause *intoClause)
 {
 	CachedPlan *plan;
 	List	   *plist;
@@ -899,7 +933,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	 * safety, let's treat it as real and redo the RevalidateCachedQuery call.
 	 */
 	if (!plansource->is_valid)
-		qlist = RevalidateCachedQuery(plansource, queryEnv);
+		qlist = RevalidateCachedQuery(plansource, queryEnv, intoClause);
 
 	/*
 	 * If we don't already have a copy of the querytree list that can be
@@ -986,7 +1020,17 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 		if (plannedstmt->dependsOnRole)
 			plan->dependsOnRole = true;
 	}
-	if (is_transient)
+	/*
+	 * In GPDB, the planner is more aggressive, and e.g. eagerly evaluates
+	 * stable functions in the planner already. Such plans are marked as
+	 * 'one-off', and mustn't be reused. Likewise, plans for CTAS are not
+	 * reused, because the plan depends on the target data distribution.
+	 */
+	if (plan_list_is_oneoff(plist) || intoClause)
+	{
+		plan->saved_xmin = BootstrapTransactionId;
+	}
+	else if (is_transient)
 	{
 		Assert(TransactionIdIsNormal(TransactionXmin));
 		plan->saved_xmin = TransactionXmin;
@@ -1013,9 +1057,13 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
  * This defines the policy followed by GetCachedPlan.
  */
 static bool
-choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
+choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, IntoClause *intoClause)
 {
 	double		avg_custom_cost;
+
+	/* Force to replan for CTAS */
+	if (intoClause != NULL)
+		return true;
 
 	/* One-shot plans will always be considered custom */
 	if (plansource->is_oneshot)
@@ -1038,6 +1086,25 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	if (plansource->cursor_options & CURSOR_OPT_GENERIC_PLAN)
 		return false;
 	if (plansource->cursor_options & CURSOR_OPT_CUSTOM_PLAN)
+		return true;
+
+	/*
+	 * GPORCA doesn't support Params at all, so there's no hope of generating
+	 * a generic plan. We could generate a generic plan with the Postgres
+	 * planner, but the cost model between GPORCA and the Postgres planner is
+	 * is different, so comparing the costs between plans generated with
+	 * GPORCA and the Postgres planner would not be sensible. Therefore always
+	 * continue with custom plans if GPORCA is enabled.
+	 *
+	 * Arguably we should check if the custom plan was actually generated with
+	 * GPORCA or if GPORCA fell back to the Postgres planner. If the custom
+	 * plan was was generated with the Postgres planner, even though the
+	 * optimizer GUC was enabled, then it would be fair to compare it with a
+	 * generic plan also generated with the Postgres planner. But it seems
+	 * more straightforward that if "optimizer=on" and "plan_cache_mode=auto",
+	 * you always get custom plans.
+	 */
+	if (optimizer)
 		return true;
 
 	/* Generate custom plans until we have done at least 5 (arbitrary) */
@@ -1111,6 +1178,59 @@ cached_plan_cost(CachedPlan *plan, bool include_planner)
 
 			result += 1000.0 * cpu_operator_cost * (nrelations + 1);
 		}
+
+		/*
+		 * For generic plan, no params will be passed to planner, so the
+		 * planner usually cannot generate a direct dispatch plan.
+		 * Unfortunately, direct dispatch cost vs. full gang dispatch cost is
+		 * not included in plan's total cost. But this cost is significant.
+		 * If a query could leverage direct dispatch, dispatching it to full
+		 * gangs will result in unneccessary QEs. Even if the QEs will find
+		 * no rows matching search criteria, these QEs still need to go
+		 * through volcano model, do two phase commit and write xlog for
+		 * Prepare etc, which not only consumes CPU but also IO to disk.
+		 *
+		 * So using a direct dispatch plan, when it's possible, matters. To
+		 * nudge the decision to that direction, we add some cost to plans
+		 * that don't use direct dispatch. Since non direct dispatch
+		 * introduces additional IO, we use seq_page_cost as base unit to
+		 * measure non direct dispatch cost. The number of unneccessary QEs
+		 * also measures the amount of this cost. Considering clusters with
+		 * 100 segments vs. 10 segments, the non-direct dispatch cost of the
+		 * 100 segments cluster is definitely higher than 10 segments cluster.
+		 * We don't have a good cost model for this, so somewhat arbitrarily,
+		 * add 10 * seq_page_cost to the cost, for every segment that is
+		 * involved in the execution.
+		 *
+		 * Actually, we're not very accurate in counting the number of
+		 * segments; we use the highest number of segments involved in any
+		 * particular slice. But if a plan e.g. has two slices, and both are
+		 * directly dispatched to a single segment, we conder the number of
+		 * segments as 1, even if the slices are direct-dispatched to
+		 * different segments. But this is pretty crude anyway. Ideally,
+		 * we would factor direct dispatch into the cost estimates
+		 * throughout the planner, so that it could affect the shape of the
+		 * plan.
+		 */
+		int			maxsegments = 1;
+		for (int i = 0; i < plannedstmt->numSlices; i++)
+		{
+			PlanSlice *slice = &plannedstmt->slices[i];
+
+			if (slice->gangType == GANGTYPE_PRIMARY_READER ||
+				slice->gangType == GANGTYPE_PRIMARY_WRITER)
+			{
+				int			nsegments;
+
+				/* How many segments are involved in this slice? */
+				if (slice->directDispatch.isDirectDispatch)
+					nsegments = list_length(slice->directDispatch.contentIds);
+				else
+					nsegments = slice->numsegments;
+				maxsegments = Max(maxsegments, nsegments);
+			}
+		}
+		result += 10.0 * seq_page_cost * (maxsegments - 1);
 	}
 
 	return result;
@@ -1133,10 +1253,18 @@ cached_plan_cost(CachedPlan *plan, bool include_planner)
  *
  * Note: if any replanning activity is required, the caller's memory context
  * is used for that work.
+ *
+ * In GPDB, this function has one extra parameters: intoClause.
+ * If 'intoClause' is given, the plan is to be used as part of a
+ * CREATE TABLE AS statement. That affects the distribution of the output rows:
+ * we cannot reuse a generic plan that fetches all the output rows into master.
+ * They should be distributed to the correct segments according to the
+ * distribution policy of the target table, instead. A non-NULL intoClause
+ * therefore also forces the plan to be re-planned on next call.
  */
 CachedPlan *
 GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
-			  bool useResOwner, QueryEnvironment *queryEnv)
+			  bool useResOwner, QueryEnvironment *queryEnv, IntoClause *intoClause)
 {
 	CachedPlan *plan = NULL;
 	List	   *qlist;
@@ -1150,10 +1278,10 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		elog(ERROR, "cannot apply ResourceOwner to non-saved cached plan");
 
 	/* Make sure the querytree list is valid and we have parse-time locks */
-	qlist = RevalidateCachedQuery(plansource, queryEnv);
+	qlist = RevalidateCachedQuery(plansource, queryEnv, intoClause);
 
 	/* Decide whether to use a custom plan */
-	customplan = choose_custom_plan(plansource, boundParams);
+	customplan = choose_custom_plan(plansource, boundParams, intoClause);
 
 	if (!customplan)
 	{
@@ -1166,7 +1294,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		else
 		{
 			/* Build a new generic plan */
-			plan = BuildCachedPlan(plansource, qlist, NULL, queryEnv);
+			plan = BuildCachedPlan(plansource, qlist, NULL, queryEnv, NULL);
 			/* Just make real sure plansource->gplan is clear */
 			ReleaseGenericPlan(plansource);
 			/* Link the new generic plan into the plansource */
@@ -1197,7 +1325,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 			 * find it's a loser, but we don't want to actually execute that
 			 * plan.
 			 */
-			customplan = choose_custom_plan(plansource, boundParams);
+			customplan = choose_custom_plan(plansource, boundParams, intoClause);
 
 			/*
 			 * If we choose to plan again, we need to re-copy the query_list,
@@ -1211,7 +1339,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 	if (customplan)
 	{
 		/* Build a custom plan */
-		plan = BuildCachedPlan(plansource, qlist, boundParams, queryEnv);
+		plan = BuildCachedPlan(plansource, qlist, boundParams, queryEnv, intoClause);
 		/* Accumulate total costs of custom plans, but 'ware overflow */
 		if (plansource->num_custom_plans < INT_MAX)
 		{
@@ -1349,6 +1477,7 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	newsource->magic = CACHEDPLANSOURCE_MAGIC;
 	newsource->raw_parse_tree = copyObject(plansource->raw_parse_tree);
 	newsource->query_string = pstrdup(plansource->query_string);
+	newsource->sourceTag = plansource->sourceTag;
 	MemoryContextSetIdentifier(source_context, newsource->query_string);
 	newsource->commandTag = plansource->commandTag;
 	if (plansource->num_params > 0)
@@ -1442,7 +1571,7 @@ CachedPlanGetTargetList(CachedPlanSource *plansource,
 		return NIL;
 
 	/* Make sure the querytree list is valid and we have parse-time locks */
-	RevalidateCachedQuery(plansource, queryEnv);
+	RevalidateCachedQuery(plansource, queryEnv, NULL);
 
 	/* Get the primary statement and find out what it returns */
 	pstmt = QueryListGetPrimaryStmt(plansource->query_list);
@@ -1654,7 +1783,6 @@ ScanQueryForLocks(Query *parsetree, bool acquire)
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
-				/* Acquire or release the appropriate type of lock */
 				if (acquire)
 					LockRelationOid(rte->relid, rte->rellockmode);
 				else
@@ -1662,6 +1790,7 @@ ScanQueryForLocks(Query *parsetree, bool acquire)
 				break;
 
 			case RTE_SUBQUERY:
+			case RTE_TABLEFUNCTION:
 				/* Recurse into subquery-in-FROM */
 				ScanQueryForLocks(rte->subquery, acquire);
 				break;
@@ -1715,6 +1844,33 @@ ScanQueryWalker(Node *node, bool *acquire)
 	 */
 	return expression_tree_walker(node, ScanQueryWalker,
 								  (void *) acquire);
+}
+
+/*
+ * plan_list_is_oneoff: check if any of the plans in the list are one-off plans
+ *
+ *
+ * GPDB_96_MERGE_FIXME: This GPDB-specific function was inspired by upstream
+ * plan_list_is_transient() function. But that one was removed in PostgreSQL
+ * 9.6. Should we reconsider this one too?
+ */
+static bool
+plan_list_is_oneoff(List *stmt_list)
+{
+	ListCell   *lc;
+
+	foreach(lc, stmt_list)
+	{
+		PlannedStmt *plannedstmt = (PlannedStmt *) lfirst(lc);
+
+		if (!IsA(plannedstmt, PlannedStmt))
+			continue;			/* Ignore utility statements */
+
+		if (plannedstmt->oneoffPlan)
+			return true;
+	}
+
+	return false;
 }
 
 /*

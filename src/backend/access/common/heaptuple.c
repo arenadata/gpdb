@@ -45,6 +45,8 @@
  * and we'd like to still refer to them via C struct offsets.
  *
  *
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -63,6 +65,8 @@
 #include "executor/tuptable.h"
 #include "utils/expandeddatum.h"
 
+#include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"                /* GpIdentity.segindex */
 
 /* Does att's datatype allow packing into the 1-byte-header varlena format? */
 #define ATT_IS_PACKABLE(att) \
@@ -299,8 +303,12 @@ fill_val(Form_pg_attribute att,
  * that reflect the tuple's data contents.
  *
  * NOTE: it is now REQUIRED that the caller have pre-zeroed the data area.
+ *
+ *
+ * @param isnull will only be used if <code>bit</code> is non-NULL
+ * @param bit should be non-NULL (refer to td->t_bits) if isnull is set and contains non-null values
  */
-void
+Size
 heap_fill_tuple(TupleDesc tupleDesc,
 				Datum *values, bool *isnull,
 				char *data, Size data_size,
@@ -343,8 +351,9 @@ heap_fill_tuple(TupleDesc tupleDesc,
 	}
 
 	Assert((data - start) == data_size);
-}
 
+	return data_size;
+}
 
 /* ----------------------------------------------------------------
  *						heap tuple interface
@@ -386,6 +395,7 @@ heap_attisnull(HeapTuple tup, int attnum, TupleDesc tupleDesc)
 		case MinCommandIdAttributeNumber:
 		case MaxTransactionIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
+        case GpSegmentIdAttributeNumber:       /*CDB*/
 			/* these are never null */
 			break;
 
@@ -659,6 +669,9 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 		case TableOidAttributeNumber:
 			result = ObjectIdGetDatum(tup->t_tableOid);
 			break;
+		case GpSegmentIdAttributeNumber:                       /*CDB*/
+			result = Int32GetDatum(GpIdentity.segindex);
+			break;
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);
 			result = 0;			/* keep compiler quiet */
@@ -677,14 +690,29 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
  * ----------------
  */
 HeapTuple
-heap_copytuple(HeapTuple tuple)
+heaptuple_copy_to(HeapTuple tuple, HeapTuple dest, uint32 *destlen)
 {
 	HeapTuple	newTuple;
+	uint32 len;
 
 	if (!HeapTupleIsValid(tuple) || tuple->t_data == NULL)
 		return NULL;
 
-	newTuple = (HeapTuple) palloc(HEAPTUPLESIZE + tuple->t_len);
+	len = HEAPTUPLESIZE + tuple->t_len;
+	if(destlen && *destlen < len)
+	{
+		*destlen = len;
+		return NULL;
+	}
+
+	if(destlen)
+	{
+		*destlen = len;
+		newTuple = dest;
+	}
+	else
+		newTuple = (HeapTuple) palloc(HEAPTUPLESIZE + tuple->t_len);
+
 	newTuple->t_len = tuple->t_len;
 	newTuple->t_self = tuple->t_self;
 	newTuple->t_tableOid = tuple->t_tableOid;
@@ -1017,9 +1045,7 @@ heap_copy_tuple_as_datum(HeapTuple tuple, TupleDesc tupleDesc)
  * The result is allocated in the current memory context.
  */
 HeapTuple
-heap_form_tuple(TupleDesc tupleDescriptor,
-				Datum *values,
-				bool *isnull)
+heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTuple dst, uint32 *dstlen)
 {
 	HeapTuple	tuple;			/* return tuple */
 	HeapTupleHeader td;			/* tuple data */
@@ -1062,11 +1088,25 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 
 	len += data_len;
 
+	if (dstlen && (*dstlen) < (HEAPTUPLESIZE + len))
+	{
+		*dstlen = HEAPTUPLESIZE + len;
+		return NULL;
+	}
+
+	if (dstlen)
+	{
+		*dstlen = HEAPTUPLESIZE + len;
+		tuple = dst;
+		memset(tuple, 0, HEAPTUPLESIZE + len);
+	}
+	else
+		tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + len);
+
 	/*
 	 * Allocate and zero the space needed.  Note that the tuple body and
 	 * HeapTupleData management structure are allocated in one chunk.
 	 */
-	tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + len);
 	tuple->t_data = td = (HeapTupleHeader) ((char *) tuple + HEAPTUPLESIZE);
 
 	/*
@@ -1313,14 +1353,14 @@ heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 
 			if (!slow)
 				thisatt->attcacheoff = off;
+
 		}
+		if (!slow && thisatt->attlen < 0)
+			slow = true;
 
 		values[attnum] = fetchatt(thisatt, tp + off);
 
 		off = att_addlength_pointer(off, thisatt->attlen, tp + off);
-
-		if (thisatt->attlen <= 0)
-			slow = true;		/* can't use attcacheoff anymore */
 	}
 
 	/*

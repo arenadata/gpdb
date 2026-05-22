@@ -3,6 +3,8 @@
  * nodeLimit.c
  *	  Routines to handle limiting of query results where appropriate
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -21,6 +23,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeLimit.h"
 #include "miscadmin.h"
@@ -38,7 +41,7 @@ static int64 compute_tuples_needed(LimitState *node);
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *			/* return: a tuple or NULL */
-ExecLimit(PlanState *pstate)
+ExecLimit_guts(PlanState *pstate)
 {
 	LimitState *node = castNode(LimitState, pstate);
 	ScanDirection direction;
@@ -235,6 +238,27 @@ ExecLimit(PlanState *pstate)
 	return slot;
 }
 
+static TupleTableSlot *
+ExecLimit(PlanState *node)
+{
+	TupleTableSlot *result;
+
+	result = ExecLimit_guts(node);
+
+	if (TupIsNull(result) && ScanDirectionIsForward(node->state->es_direction) &&
+		!((LimitState *) node)->expect_rescan)
+	{
+		/*
+		 * CDB: We'll read no more from inner subtree. To keep our sibling
+		 * QEs from being starved, tell source QEs not to clog up the
+		 * pipeline with our never-to-be-consumed data.
+		 */
+		ExecSquelchNode(node);
+	}
+
+	return result;
+}
+
 /*
  * Evaluate the limit/offset expressions --- done at startup or rescan.
  *
@@ -389,6 +413,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	 * node appropriately
 	 */
 	limitstate->ps.ps_ProjInfo = NULL;
+
+	limitstate->expect_rescan = ((eflags & EXEC_FLAG_REWIND) != 0);
 
 	return limitstate;
 }

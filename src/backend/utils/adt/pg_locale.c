@@ -58,6 +58,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_control.h"
 #include "mb/pg_wchar.h"
+#include "utils/faultinjector.h"
 #include "utils/builtins.h"
 #include "utils/formatting.h"
 #include "utils/hsearch.h"
@@ -1347,6 +1348,10 @@ pg_newlocale_from_collation(Oid collid)
 		return (pg_locale_t) 0;
 
 	cache_entry = lookup_collation_cache(collid, false);
+
+#ifdef FAULT_INJECTOR
+	SIMPLE_FAULT_INJECTOR("collate_locale_os_lookup");
+#endif
 
 	if (cache_entry->locale == 0)
 	{

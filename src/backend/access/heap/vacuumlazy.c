@@ -41,7 +41,13 @@
 #include "access/heapam_xlog.h"
 #include "access/htup_details.h"
 #include "access/multixact.h"
+#include "access/nbtree.h"
 #include "access/transam.h"
+#include "access/aosegfiles.h"
+#include "access/aocssegfiles.h"
+#include "access/aomd.h"
+#include "access/appendonly_compaction.h"
+#include "access/aocs_compaction.h"
 #include "access/visibilitymap.h"
 #include "access/xlog.h"
 #include "catalog/storage.h"
@@ -59,6 +65,14 @@
 #include "utils/memutils.h"
 #include "utils/pg_rusage.h"
 #include "utils/timestamp.h"
+
+#include "catalog/pg_am.h"
+#include "catalog/pg_namespace.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbvars.h"
+#include "storage/smgr.h"
+#include "utils/faultinjector.h"
+#include "utils/snapmgr.h"
 
 
 /*
@@ -176,9 +190,8 @@ static int	vac_cmp_itemptr(const void *left, const void *right);
 static bool heap_page_is_all_visible(Relation rel, Buffer buf,
 									 TransactionId *visibility_cutoff_xid, bool *all_frozen);
 
-
 /*
- *	heap_vacuum_rel() -- perform VACUUM for one heap relation
+ *	lazy_vacuum_rel_heap() -- perform VACUUM for one heap relation
  *
  *		This routine vacuums a single heap, cleans out its indexes, and
  *		updates its relpages and reltuples statistics.
@@ -187,7 +200,7 @@ static bool heap_page_is_all_visible(Relation rel, Buffer buf,
  *		and locked the relation.
  */
 void
-heap_vacuum_rel(Relation onerel, VacuumParams *params,
+lazy_vacuum_rel_heap(Relation onerel, VacuumParams *params,
 				BufferAccessStrategy bstrategy)
 {
 	LVRelStats *vacrelstats;
@@ -229,10 +242,19 @@ heap_vacuum_rel(Relation onerel, VacuumParams *params,
 	else
 		elevel = DEBUG2;
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
+
 	pgstat_progress_start_command(PROGRESS_COMMAND_VACUUM,
 								  RelationGetRelid(onerel));
 
 	vac_strategy = bstrategy;
+
+	/*
+	 * MPP-23647.  Update xid limits for heap as well as appendonly
+	 * relations.  This allows setting relfrozenxid to correct value
+	 * for an appendonly (AO/CO) table.
+	 */
 
 	vacuum_set_xid_limits(onerel,
 						  params->freeze_min_age,
@@ -254,23 +276,6 @@ heap_vacuum_rel(Relation onerel, VacuumParams *params,
 											  mxactFullScanLimit);
 	if (params->options & VACOPT_DISABLE_PAGE_SKIPPING)
 		aggressive = true;
-
-	/*
-	 * Normally the relfrozenxid for an anti-wraparound vacuum will be old
-	 * enough to force an aggressive vacuum.  However, a concurrent vacuum
-	 * might have already done this work that the relfrozenxid in relcache has
-	 * been updated.  If that happens this vacuum is redundant, so skip it.
-	 */
-	if (params->is_wraparound && !aggressive)
-	{
-		ereport(DEBUG1,
-				(errmsg("skipping redundant vacuum to prevent wraparound of table \"%s.%s.%s\"",
-						get_database_name(MyDatabaseId),
-						get_namespace_name(RelationGetNamespace(onerel)),
-						RelationGetRelationName(onerel))));
-		pgstat_progress_end_command();
-		return;
-	}
 
 	vacrelstats = (LVRelStats *) palloc0(sizeof(LVRelStats));
 
@@ -360,7 +365,8 @@ heap_vacuum_rel(Relation onerel, VacuumParams *params,
 						nindexes > 0,
 						new_frozen_xid,
 						new_min_multi,
-						false);
+						false,
+						true /* isvacuum */);
 
 	/* report results to the stats collector, too */
 	pgstat_report_vacuum(RelationGetRelid(onerel),
@@ -400,9 +406,10 @@ heap_vacuum_rel(Relation onerel, VacuumParams *params,
 			initStringInfo(&buf);
 			if (params->is_wraparound)
 			{
-				/* an anti-wraparound vacuum has to be aggressive */
-				Assert(aggressive);
-				msgfmt = _("automatic aggressive vacuum to prevent wraparound of table \"%s.%s.%s\": index scans: %d\n");
+				if (aggressive)
+					msgfmt = _("automatic aggressive vacuum to prevent wraparound of table \"%s.%s.%s\": index scans: %d\n");
+				else
+					msgfmt = _("automatic vacuum to prevent wraparound of table \"%s.%s.%s\": index scans: %d\n");
 			}
 			else
 			{
@@ -1048,7 +1055,7 @@ lazy_scan_heap(Relation onerel, VacuumParams *params, LVRelStats *vacrelstats,
 			 * cases impossible (e.g. in-progress insert from the same
 			 * transaction).
 			 */
-			switch (HeapTupleSatisfiesVacuum(&tuple, OldestXmin, buf))
+			switch (HeapTupleSatisfiesVacuum(onerel, &tuple, OldestXmin, buf))
 			{
 				case HEAPTUPLE_DEAD:
 
@@ -1386,6 +1393,9 @@ lazy_scan_heap(Relation onerel, VacuumParams *params, LVRelStats *vacrelstats,
 		 */
 		if (vacrelstats->num_dead_tuples == prev_dead_count)
 			RecordPageWithFreeSpace(onerel, blkno, freespace);
+
+		if (RelationNeedsWAL(onerel))
+			wait_to_avoid_large_repl_lag();
 	}
 
 	/* report that everything is scanned and vacuumed */
@@ -1812,7 +1822,8 @@ lazy_cleanup_index(Relation indrel,
 							false,
 							InvalidTransactionId,
 							InvalidMultiXactId,
-							false);
+							false,
+							true /* isvacuum */);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",
@@ -1991,6 +2002,7 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 	} while (new_rel_pages > vacrelstats->nonempty_pages &&
 			 vacrelstats->lock_waiter_detected);
 }
+
 
 /*
  * Rescan end pages to verify that they are (still) empty of tuples.
@@ -2300,7 +2312,7 @@ heap_page_is_all_visible(Relation rel, Buffer buf,
 		tuple.t_len = ItemIdGetLength(itemid);
 		tuple.t_tableOid = RelationGetRelid(rel);
 
-		switch (HeapTupleSatisfiesVacuum(&tuple, OldestXmin, buf))
+		switch (HeapTupleSatisfiesVacuum(rel, &tuple, OldestXmin, buf))
 		{
 			case HEAPTUPLE_LIVE:
 				{

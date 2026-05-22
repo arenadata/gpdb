@@ -23,11 +23,14 @@
 #include "replication/walsender.h"
 #include "storage/latch.h"
 #include "storage/ipc.h"
+#include "storage/latch.h"
 #include "storage/proc.h"
 #include "storage/shmem.h"
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
+#include "utils/resgroup.h"
 
+#include "cdb/cdbvars.h"
 
 /*
  * The SIGUSR1 signal is multiplexed to support signalling multiple event
@@ -255,6 +258,22 @@ CheckProcSignal(ProcSignalReason reason)
 }
 
 /*
+ * Query-finish signal from QD.  The executor will deliverately try
+ * to finish execution as quickly as possible.
+ */
+static void
+QueryFinishHandler(void)
+{
+	/*
+	 * It might be too much to check Gp_role but just in case.
+	 */
+	if (!proc_exit_inprogress && Gp_role == GP_ROLE_EXECUTE)
+	{
+		QueryFinishPending = true;
+	}
+}
+
+/*
  * procsignal_sigusr1_handler - handle SIGUSR1 signal.
  */
 void
@@ -291,6 +310,12 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 
 	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN))
 		RecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN);
+
+	if (CheckProcSignal(PROCSIG_QUERY_FINISH))
+		QueryFinishHandler();
+
+	if (CheckProcSignal(PROCSIG_RESOURCE_GROUP_MOVE_QUERY))
+		HandleMoveResourceGroup();
 
 	SetLatch(MyLatch);
 

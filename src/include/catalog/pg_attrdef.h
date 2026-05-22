@@ -39,6 +39,9 @@ CATALOG(pg_attrdef,2604,AttrDefaultRelationId)
 #endif
 } FormData_pg_attrdef;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(adrelid REFERENCES pg_attribute(attrelid));
+
 /* ----------------
  *		Form_pg_attrdef corresponds to a pointer to a tuple with
  *		the format of pg_attrdef relation.

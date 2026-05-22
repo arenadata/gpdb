@@ -504,6 +504,15 @@ sub standard_initdb
 			$ENV{PGDATA}) == 0);
 }
 
+# Run "initdb", then reconfigure authentication.
+sub standard_initdb
+{
+	return (
+		system('initdb', '-N') == 0 and system(
+			"$topdir/$Config/pg_regress/pg_regress", '--config-auth',
+			$ENV{PGDATA}) == 0);
+}
+
 # This is similar to appendShellString().  Perl system(@args) bypasses
 # cmd.exe, so omit the caret escape layer.
 sub quote_system_arg

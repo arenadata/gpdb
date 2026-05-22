@@ -3,6 +3,8 @@
  * sequence.h
  *	  prototypes for sequence.c.
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -45,14 +47,20 @@ typedef FormData_pg_sequence_data *Form_pg_sequence_data;
 /* XLOG stuff */
 #define XLOG_SEQ_LOG			0x00
 
+#define SEQ_NEXTVAL_FALSE		'f'
+#define SEQ_NEXTVAL_TRUE		't'
+#define SEQ_NEXTVAL_QUERY_RESPONSE	'?'
+
 typedef struct xl_seq_rec
 {
-	RelFileNode node;
+	RelFileNode 	node;
+
 	/* SEQUENCE TUPLE DATA FOLLOWS AT THE END */
 } xl_seq_rec;
 
-extern int64 nextval_internal(Oid relid, bool check_permissions);
+extern int64 nextval_internal(Oid relid, bool check_permissions, bool called_from_dispatcher);
 extern Datum nextval(PG_FUNCTION_ARGS);
+extern void nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, bool *poverflow);
 extern List *sequence_options(Oid relid);
 
 extern ObjectAddress DefineSequence(ParseState *pstate, CreateSeqStmt *stmt);

@@ -32,7 +32,7 @@ subdir = src/port
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-override CPPFLAGS := -I$(top_builddir)/src/port -DFRONTEND $(CPPFLAGS)
+override CPPFLAGS := -I$(top_builddir)/src/port -DFRONTEND $(CPPFLAGS) -fPIC
 LIBS += $(PTHREAD_LIBS)
 
 OBJS = $(LIBOBJS) $(PG_CRC32C_OBJS) chklocale.o erand48.o inet_net_ntop.o \

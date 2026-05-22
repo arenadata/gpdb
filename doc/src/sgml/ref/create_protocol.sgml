@@ -1,0 +1,64 @@
+<!--
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createprotocol">
+ <indexterm zone="sql-createprotocol">
+  <primary>CREATE PROTOCOL</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE PROTOCOL</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE PROTOCOL</refname>
+  <refpurpose>create a custom data access protocol</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+
+CREATE [TRUSTED] PROTOCOL name (
+   [readfunc='read_call_handler'] [, writefunc='write_call_handler']
+   [, validatorfunc='validate_handler' ])
+
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Only superusers can create protocols.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+ </refsect1>
+
+</refentry>

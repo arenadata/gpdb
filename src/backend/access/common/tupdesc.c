@@ -23,12 +23,12 @@
 #include "access/tupdesc_details.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 #include "miscadmin.h"
 #include "parser/parse_type.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
-#include "utils/hashutils.h"
 #include "utils/resowner_private.h"
 #include "utils/syscache.h"
 
@@ -408,7 +408,7 @@ DecrTupleDescRefCount(TupleDesc tupdesc)
  * We don't compare tdrefcount, either.
  */
 bool
-equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
+equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2, bool strict)
 {
 	int			i,
 				j,
@@ -416,7 +416,7 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
 
 	if (tupdesc1->natts != tupdesc2->natts)
 		return false;
-	if (tupdesc1->tdtypeid != tupdesc2->tdtypeid)
+	if (strict && tupdesc1->tdtypeid != tupdesc2->tdtypeid)
 		return false;
 
 	for (i = 0; i < tupdesc1->natts; i++)
@@ -454,24 +454,31 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
 			return false;
 		if (attr1->attalign != attr2->attalign)
 			return false;
-		if (attr1->attnotnull != attr2->attnotnull)
-			return false;
-		if (attr1->atthasdef != attr2->atthasdef)
-			return false;
-		if (attr1->attidentity != attr2->attidentity)
-			return false;
-		if (attr1->attgenerated != attr2->attgenerated)
-			return false;
-		if (attr1->attisdropped != attr2->attisdropped)
-			return false;
-		if (attr1->attislocal != attr2->attislocal)
-			return false;
-		if (attr1->attinhcount != attr2->attinhcount)
-			return false;
-		if (attr1->attcollation != attr2->attcollation)
-			return false;
-		/* attacl, attoptions and attfdwoptions are not even present... */
+
+		if (strict)
+		{
+			if (attr1->attnotnull != attr2->attnotnull)
+				return false;
+			if (attr1->atthasdef != attr2->atthasdef)
+				return false;
+            if (attr1->attidentity != attr2->attidentity)
+                return false;
+            if (attr1->attgenerated != attr2->attgenerated)
+                return false;
+			if (attr1->attisdropped != attr2->attisdropped)
+				return false;
+			if (attr1->attislocal != attr2->attislocal)
+				return false;
+			if (attr1->attinhcount != attr2->attinhcount)
+				return false;
+			if (attr1->attcollation != attr2->attcollation)
+				return false;
+			/* attacl and attoptions are not even present... */
+		}
 	}
+
+	if (!strict)
+		return true;
 
 	if (tupdesc1->constr != NULL)
 	{

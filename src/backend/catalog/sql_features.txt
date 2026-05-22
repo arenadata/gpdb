@@ -82,11 +82,11 @@ E061	Basic predicates and search conditions	04	LIKE predicate	YES
 E061	Basic predicates and search conditions	05	LIKE predicate ESCAPE clause	YES	
 E061	Basic predicates and search conditions	06	NULL predicate	YES	
 E061	Basic predicates and search conditions	07	Quantified comparison predicate	YES	
-E061	Basic predicates and search conditions	08	EXISTS predicate	YES	
+E061	Basic predicates and search conditions	08	EXISTS predicate	YES	not all uses work
 E061	Basic predicates and search conditions	09	Subqueries in comparison predicate	YES	
 E061	Basic predicates and search conditions	11	Subqueries in IN predicate	YES	
 E061	Basic predicates and search conditions	12	Subqueries in quantified comparison predicate	YES	
-E061	Basic predicates and search conditions	13	Correlated subqueries	YES	
+E061	Basic predicates and search conditions	13	Correlated subqueries	NO	
 E061	Basic predicates and search conditions	14	Search condition	YES	
 E071	Basic query expressions			YES	
 E071	Basic query expressions	01	UNION DISTINCT table operator	YES	
@@ -133,7 +133,7 @@ E141	Basic integrity constraints			YES
 E141	Basic integrity constraints	01	NOT NULL constraints	YES	
 E141	Basic integrity constraints	02	UNIQUE constraints of NOT NULL columns	YES	
 E141	Basic integrity constraints	03	PRIMARY KEY constraints	YES	
-E141	Basic integrity constraints	04	Basic FOREIGN KEY constraint with the NO ACTION default for both referential delete action and referential update action	YES	
+E141	Basic integrity constraints	04	Basic FOREIGN KEY constraint with the NO ACTION default for both referential delete action and referential update action	NO	
 E141	Basic integrity constraints	06	CHECK constraints	YES	
 E141	Basic integrity constraints	07	Column defaults	YES	
 E141	Basic integrity constraints	08	NOT NULL inferred on PRIMARY KEY	YES	
@@ -191,9 +191,9 @@ F053	OVERLAPS predicate			YES
 F054	TIMESTAMP in DATE type precedence list			NO	
 F081	UNION and EXCEPT in views			YES	
 F111	Isolation levels other than SERIALIZABLE			YES	
-F111	Isolation levels other than SERIALIZABLE	01	READ UNCOMMITTED isolation level	YES	
+F111	Isolation levels other than SERIALIZABLE	01	READ UNCOMMITTED isolation level	NO	
 F111	Isolation levels other than SERIALIZABLE	02	READ COMMITTED isolation level	YES	
-F111	Isolation levels other than SERIALIZABLE	03	REPEATABLE READ isolation level	YES	
+F111	Isolation levels other than SERIALIZABLE	03	REPEATABLE READ isolation level	NO	
 F121	Basic diagnostics management			NO	
 F121	Basic diagnostics management	01	GET DIAGNOSTICS statement	NO	
 F121	Basic diagnostics management	02	SET TRANSACTION statement: DIAGNOSTICS SIZE clause	NO	
@@ -207,7 +207,7 @@ F131	Grouped operations	04	Subqueries with GROUP BY and HAVING clauses and group
 F131	Grouped operations	05	Single row SELECT with GROUP BY and HAVING clauses and grouped views	YES	
 F171	Multiple schemas per user			YES	
 F181	Multiple module support			NO	
-F191	Referential delete actions			YES	
+F191	Referential delete actions			NO	
 F200	TRUNCATE TABLE statement			YES	
 F201	CAST function			YES	
 F202	TRUNCATE TABLE: identity column restart option			YES	
@@ -267,13 +267,13 @@ F403	Partitioned joined tables			NO
 F404	Range variable for common column names			NO	
 F411	Time zone specification			YES	differences regarding literal interpretation
 F421	National character			YES	
-F431	Read-only scrollable cursors			YES	
+F431	Read-only scrollable cursors			YES	forward scroll only
 F431	Read-only scrollable cursors	01	FETCH with explicit NEXT	YES	
-F431	Read-only scrollable cursors	02	FETCH FIRST	YES	
+F431	Read-only scrollable cursors	02	FETCH FIRST	NO	
 F431	Read-only scrollable cursors	03	FETCH LAST	YES	
-F431	Read-only scrollable cursors	04	FETCH PRIOR	YES	
-F431	Read-only scrollable cursors	05	FETCH ABSOLUTE	YES	
-F431	Read-only scrollable cursors	06	FETCH RELATIVE	YES	
+F431	Read-only scrollable cursors	04	FETCH PRIOR	NO	
+F431	Read-only scrollable cursors	05	FETCH ABSOLUTE	NO	
+F431	Read-only scrollable cursors	06	FETCH RELATIVE	NO	
 F441	Extended set function support			YES	
 F442	Mixed column references in set functions			YES	
 F451	Character set definition			NO	
@@ -291,7 +291,7 @@ F502	Enhanced documentation tables	01	SQL_SIZING_PROFILES view	YES
 F502	Enhanced documentation tables	02	SQL_IMPLEMENTATION_INFO view	YES	
 F502	Enhanced documentation tables	03	SQL_PACKAGES view	YES	
 F521	Assertions			NO	
-F531	Temporary tables			YES	
+F531	Temporary tables			YES	non-standard form
 F555	Enhanced seconds precision			YES	
 F561	Full value expressions			YES	
 F571	Truth value tests			YES	
@@ -308,9 +308,9 @@ F692	Extended collation support			YES
 F693	SQL-session and client module collations			NO	
 F695	Translation support			NO	
 F696	Additional translation documentation			NO	
-F701	Referential update actions			YES	
+F701	Referential update actions			NO	
 F711	ALTER domain			YES	
-F721	Deferrable constraints			NO	foreign and unique keys only
+F721	Deferrable constraints			NO	
 F731	INSERT column privileges			YES	
 F741	Referential MATCH types			NO	no partial match yet
 F751	View CHECK enhancements			YES	
@@ -442,19 +442,19 @@ T177	Sequence generator support: simple restart option			YES
 T178	Identity columns:  simple restart option			YES	
 T180	System-versioned tables			NO	
 T181	Application-time period tables			NO	
-T191	Referential action RESTRICT			YES	
-T201	Comparable data types for referential constraints			YES	
+T191	Referential action RESTRICT			NO	
+T201	Comparable data types for referential constraints			NO	
 T211	Basic trigger capability			NO	
-T211	Basic trigger capability	01	Triggers activated on UPDATE, INSERT, or DELETE of one base table	YES	
-T211	Basic trigger capability	02	BEFORE triggers	YES	
-T211	Basic trigger capability	03	AFTER triggers	YES	
-T211	Basic trigger capability	04	FOR EACH ROW triggers	YES	
-T211	Basic trigger capability	05	Ability to specify a search condition that must be true before the trigger is invoked	YES	
+T211	Basic trigger capability	01	Triggers activated on UPDATE, INSERT, or DELETE of one base table	NO	
+T211	Basic trigger capability	02	BEFORE triggers	NO	
+T211	Basic trigger capability	03	AFTER triggers	NO	
+T211	Basic trigger capability	04	FOR EACH ROW triggers	NO	
+T211	Basic trigger capability	05	Ability to specify a search condition that must be true before the trigger is invoked	NO	
 T211	Basic trigger capability	06	Support for run-time rules for the interaction of triggers and constraints	NO	
 T211	Basic trigger capability	07	TRIGGER privilege	YES	
 T211	Basic trigger capability	08	Multiple triggers for the same event are executed in the order in which they were created in the catalog	NO	intentionally omitted
-T212	Enhanced trigger capability			YES	
-T213	INSTEAD OF triggers			YES	
+T212	Enhanced trigger capability			NO	
+T213	INSTEAD OF triggers			NO	
 T231	Sensitive cursors			YES	
 T241	START TRANSACTION statement			YES	
 T251	SET TRANSACTION statement: LOCAL option			NO	
@@ -492,7 +492,7 @@ T471	Result sets return value			NO
 T472	DESCRIBE CURSOR			NO	
 T491	LATERAL derived table			YES	
 T495	Combined data change and retrieval			NO	different syntax
-T501	Enhanced EXISTS predicate			YES	
+T501	Enhanced EXISTS predicate			NO	
 T502	Period predicates			NO	
 T511	Transaction counts			NO	
 T521	Named arguments in CALL statement			YES	

@@ -33,6 +33,9 @@ typedef struct ExplainState
 	bool		analyze;		/* print actual times */
 	bool		costs;			/* print estimated costs */
 	bool		buffers;		/* print buffer usage */
+	bool		dxl;			/* CDB: print DXL */
+	bool		slicetable;		/* CDB: print slice table */
+	bool		memory_detail;	/* CDB: print per-node memory usage */
 	bool		timing;			/* print detailed node timing */
 	bool		summary;		/* print total planning and execution timing */
 	bool		settings;		/* print modified settings */
@@ -46,6 +49,13 @@ typedef struct ExplainState
 	List	   *rtable_names;	/* alias names for RTEs */
 	List	   *deparse_cxt;	/* context list for deparsing expressions */
 	Bitmapset  *printed_subplans;	/* ids of SubPlans we've printed */
+
+    /* CDB */
+    struct CdbExplain_ShowStatCtx  *showstatctx;    /* EXPLAIN ANALYZE info */
+	ExecSlice  *currentSlice;	/* slice whose nodes we are visiting */
+	bool		subplanDispatchedSeparately;
+
+	PlanState  *parentPlanState;
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */
@@ -77,10 +87,12 @@ extern void ExplainOneUtility(Node *utilityStmt, IntoClause *into,
 extern void ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into,
 						   ExplainState *es, const char *queryString,
 						   ParamListInfo params, QueryEnvironment *queryEnv,
-						   const instr_time *planduration);
+						   const instr_time *planduration, int cursorOptions);
 
 extern void ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc);
 extern void ExplainPrintTriggers(ExplainState *es, QueryDesc *queryDesc);
+extern void ExplainParallelRetrieveCursor(ExplainState *es, QueryDesc* queryDesc);
+extern void ExplainPrintSliceTable(ExplainState *es, QueryDesc *queryDesc);
 
 extern void ExplainPrintJITSummary(ExplainState *es, QueryDesc *queryDesc);
 extern void ExplainPrintJIT(ExplainState *es, int jit_flags,
@@ -110,4 +122,7 @@ extern void ExplainOpenGroup(const char *objtype, const char *labelname,
 extern void ExplainCloseGroup(const char *objtype, const char *labelname,
 							  bool labeled, ExplainState *es);
 
+extern void ExplainPrintExecStatsEnd(ExplainState *es, QueryDesc *queryDesc);
+
+extern void cdbexplain_printJITSummary(ExplainState *es, QueryDesc *queryDesc);
 #endif							/* EXPLAIN_H */

@@ -22,8 +22,9 @@
 #include "catalog/pg_class_d.h"
 
 /* ----------------
- *		pg_class definition.  cpp turns this into
- *		typedef struct FormData_pg_class
+ *		postgres.h contains the system type definitions and the
+ *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
+ *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
 CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,RelationRelation_Rowtype_Id) BKI_SCHEMA_MACRO
@@ -138,6 +139,14 @@ CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,Relat
 #endif
 } FormData_pg_class;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(relnamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(reltype REFERENCES pg_type(oid));
+FOREIGN_KEY(relowner REFERENCES pg_authid(oid));
+FOREIGN_KEY(relam REFERENCES pg_am(oid));
+FOREIGN_KEY(reltablespace REFERENCES pg_tablespace(oid));
+FOREIGN_KEY(reltoastrelid REFERENCES pg_class(oid));
+
 /* Size of fixed part of pg_class tuples, not counting var-length fields */
 #define CLASS_TUPLE_SIZE \
 	 (offsetof(FormData_pg_class,relminmxid) + sizeof(TransactionId))
@@ -161,6 +170,9 @@ typedef FormData_pg_class *Form_pg_class;
 #define		  RELKIND_FOREIGN_TABLE   'f'	/* foreign table */
 #define		  RELKIND_PARTITIONED_TABLE 'p' /* partitioned table */
 #define		  RELKIND_PARTITIONED_INDEX 'I' /* partitioned index */
+#define		  RELKIND_AOSEGMENTS	  'o'		/* AO segment files and eof's */
+#define		  RELKIND_AOBLOCKDIR	  'b'		/* AO block directory */
+#define		  RELKIND_AOVISIMAP		  'M'		/* AO visibility map */
 
 #define		  RELPERSISTENCE_PERMANENT	'p' /* regular table */
 #define		  RELPERSISTENCE_UNLOGGED	'u' /* unlogged permanent table */
@@ -189,8 +201,10 @@ typedef FormData_pg_class *Form_pg_class;
 	 (relkind) == RELKIND_INDEX || \
 	 (relkind) == RELKIND_SEQUENCE || \
 	 (relkind) == RELKIND_TOASTVALUE || \
+	 (relkind) == RELKIND_AOSEGMENTS || \
+	 (relkind) == RELKIND_AOVISIMAP || \
+	 (relkind) == RELKIND_AOBLOCKDIR || \
 	 (relkind) == RELKIND_MATVIEW)
-
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 

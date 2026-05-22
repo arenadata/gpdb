@@ -24,6 +24,8 @@
 #include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/lsyscache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp_query.h"
 #include "utils/syscache.h"
 #include "rewrite/rewriteHandler.h"
 #include "nodes/nodeFuncs.h"
@@ -67,10 +69,31 @@ LockTableCommand(LockStmt *lockstmt)
 										  RangeVarCallbackForLockTable,
 										  (void *) &lockstmt->mode);
 
+		/*
+		 * CDB: LOCK TABLE will not release the lock until end of transaction,
+		 * set the holdTillEndXact flag for GDD to know about this.
+		 */
+		if (lockstmt->mode != NoLock)
+		{
+			LOCKTAG		tag;
+
+			SET_LOCKTAG_RELATION(tag, MyDatabaseId, reloid);
+			LockSetHoldTillEndXact(&tag);
+		}
+
 		if (get_rel_relkind(reloid) == RELKIND_VIEW)
 			LockViewRecurse(reloid, lockstmt->mode, lockstmt->nowait, NIL);
 		else if (recurse)
 			LockTableRecurse(reloid, lockstmt->mode, lockstmt->nowait, GetUserId());
+	}
+
+	if (Gp_role == GP_ROLE_DISPATCH && !lockstmt->coordinatoronly)
+	{
+		CdbDispatchUtilityStatement((Node *) lockstmt,
+									DF_CANCEL_ON_ERROR|
+									DF_NEED_TWO_PHASE,
+									NIL,
+									NULL);
 	}
 }
 
@@ -84,7 +107,6 @@ RangeVarCallbackForLockTable(const RangeVar *rv, Oid relid, Oid oldrelid,
 {
 	LOCKMODE	lockmode = *(LOCKMODE *) arg;
 	char		relkind;
-	char		relpersistence;
 	AclResult	aclresult;
 
 	if (!OidIsValid(relid))
@@ -102,6 +124,7 @@ RangeVarCallbackForLockTable(const RangeVar *rv, Oid relid, Oid oldrelid,
 				 errmsg("\"%s\" is not a table or view",
 						rv->relname)));
 
+#if 0 /* Upstream code not applicable to GPDB */
 	/*
 	 * Make note if a temporary relation has been accessed in this
 	 * transaction.
@@ -109,6 +132,7 @@ RangeVarCallbackForLockTable(const RangeVar *rv, Oid relid, Oid oldrelid,
 	relpersistence = get_rel_persistence(relid);
 	if (relpersistence == RELPERSISTENCE_TEMP)
 		MyXactFlags |= XACT_FLAGS_ACCESSEDTEMPNAMESPACE;
+#endif
 
 	/* Check permissions. */
 	aclresult = LockTableAclCheck(relid, lockmode, GetUserId());
@@ -149,7 +173,22 @@ LockTableRecurse(Oid reloid, LOCKMODE lockmode, bool nowait, Oid userid)
 
 		/* We have enough rights to lock the relation; do so. */
 		if (!nowait)
+		{
 			LockRelationOid(childreloid, lockmode);
+
+			/*
+			 * CDB: LOCK TABLE will not release the lock until end of
+			 * transaction, set the holdTillEndXact flag for GDD to know about
+			 * this.
+			 */
+			if (lockmode != NoLock)
+			{
+				LOCKTAG		tag;
+
+				SET_LOCKTAG_RELATION(tag, MyDatabaseId, childreloid);
+				LockSetHoldTillEndXact(&tag);
+			}
+		}
 		else if (!ConditionalLockRelationOid(childreloid, lockmode))
 		{
 			/* try to throw error by name; relation could be deleted... */

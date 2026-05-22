@@ -3,9 +3,10 @@
  * schemacmds.c
  *	  schema creation/manipulation commands
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- *
  *
  * IDENTIFICATION
  *	  src/backend/commands/schemacmds.c
@@ -19,10 +20,12 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
+#include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/objectaccess.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/pg_namespace.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
@@ -34,6 +37,10 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbsreh.h"
 
 
 static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
@@ -61,6 +68,27 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	int			save_sec_context;
 	AclResult	aclresult;
 	ObjectAddress address;
+	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH && 
+								  !IsBootstrapProcessingMode());
+
+	/*
+	 * GPDB: Creation of temporary namespaces is a special case. This statement
+	 * is dispatched by the dispatcher node the first time a temporary table is
+	 * created. It bypasses all the normal checks and logic of schema creation,
+	 * and is routed to the internal routine for creating temporary namespaces,
+	 * instead.
+	 */
+	if (stmt->istemp)
+	{
+		Assert(Gp_role == GP_ROLE_EXECUTE);
+
+		Assert(stmt->schemaname == NULL);
+		Assert(stmt->authrole == NULL);
+		Assert(stmt->schemaElts == NIL);
+
+		InitTempTableNamespace();
+		return InvalidOid;
+	}
 
 	GetUserIdAndSecContext(&saved_uid, &save_sec_context);
 
@@ -101,10 +129,13 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 
 	/* Additional check to protect reserved schema names */
 	if (!allowSystemTableMods && IsReservedName(schemaName))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable schema name \"%s\"", schemaName),
-				 errdetail("The prefix \"pg_\" is reserved for system schemas.")));
+				 errdetail("The prefix \"%s\" is reserved for system schemas.",
+						   GetReservedPrefix(schemaName))));
+	}
 
 	/*
 	 * If if_not_exists was given and the schema already exists, bail out.
@@ -113,14 +144,25 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * the permissions checks, but since CREATE TABLE IF NOT EXISTS makes its
 	 * creation-permission check first, we do likewise.
 	 */
-	if (stmt->if_not_exists &&
-		SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(schemaName)))
+	if (stmt->if_not_exists)
 	{
-		ereport(NOTICE,
-				(errcode(ERRCODE_DUPLICATE_SCHEMA),
-				 errmsg("schema \"%s\" already exists, skipping",
-						schemaName)));
-		return InvalidOid;
+		namespaceId = get_namespace_oid(schemaName, true);
+		if (OidIsValid(namespaceId))
+		{
+			/*
+			 * If we are in an extension script, insist that the pre-existing
+			 * object be a member of the extension, to avoid security risks.
+			 */
+			ObjectAddressSet(address, NamespaceRelationId, namespaceId);
+			checkMembershipInCurrentExtension(&address);
+
+			/* OK to skip */
+			ereport(NOTICE,
+					(errcode(ERRCODE_DUPLICATE_SCHEMA),
+					 errmsg("schema \"%s\" already exists, skipping",
+							schemaName)));
+			return InvalidOid;
+		}
 	}
 
 	/*
@@ -136,7 +178,39 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 							   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
 
 	/* Create the schema's namespace */
-	namespaceId = NamespaceCreate(schemaName, owner_uid, false);
+	if (shouldDispatch || Gp_role != GP_ROLE_EXECUTE)
+	{
+		namespaceId = NamespaceCreate(schemaName, owner_uid, false);
+
+		if (shouldDispatch)
+		{
+			elog(DEBUG5, "shouldDispatch = true, namespaceOid = %d", namespaceId);
+
+			/*
+			 * Dispatch the command to all primary and mirror segment dbs.
+			 * Starts a global transaction and reconfigures cluster if needed.
+			 * Waits for QEs to finish.  Exits via ereport(ERROR,...) if error.
+			 */
+			CdbDispatchUtilityStatement((Node *) stmt,
+										DF_CANCEL_ON_ERROR |
+										DF_WITH_SNAPSHOT |
+										DF_NEED_TWO_PHASE,
+										GetAssignedOidsForDispatch(),
+										NULL);
+		}
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackAddObject(NamespaceRelationId,
+							   namespaceId,
+							   saved_uid,
+							   "CREATE", "SCHEMA"
+					);
+	}
+	else
+	{
+		namespaceId = NamespaceCreate(schemaName, owner_uid, false);
+	}
 
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
@@ -232,6 +306,15 @@ RemoveSchemaById(Oid schemaOid)
 	ReleaseSysCache(tup);
 
 	table_close(relation, RowExclusiveLock);
+
+	/*
+	 * Remove all persistent error logs belonging to the the schema.
+	 */
+	PersistentErrorLogDelete(MyDatabaseId, schemaOid, NULL);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackDropObject(NamespaceRelationId, schemaOid);
 }
 
 
@@ -276,15 +359,34 @@ RenameSchema(const char *oldname, const char *newname)
 		aclcheck_error(aclresult, OBJECT_DATABASE,
 					   get_database_name(MyDatabaseId));
 
+	if (!allowSystemTableMods && IsReservedName(oldname))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to ALTER SCHEMA \"%s\"", oldname),
+				 errdetail("Schema %s is reserved for system use.", oldname)));
+	}
+
 	if (!allowSystemTableMods && IsReservedName(newname))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable schema name \"%s\"", newname),
-				 errdetail("The prefix \"pg_\" is reserved for system schemas.")));
+				 errdetail("The prefix \"%s\" is reserved for system schemas.",
+						   GetReservedPrefix(newname))));
+	}
 
 	/* rename */
 	namestrcpy(&nspform->nspname, newname);
 	CatalogTupleUpdate(rel, &tup->t_self, tup);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(NamespaceRelationId,
+						   nspOid,
+						   GetUserId(),
+						   "ALTER", "RENAME"
+				);
 
 	InvokeObjectPostAlterHook(NamespaceRelationId, nspOid, 0);
 
@@ -335,6 +437,14 @@ AlterSchemaOwner(const char *name, Oid newOwnerId)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
 				 errmsg("schema \"%s\" does not exist", name)));
+
+	if (!allowSystemTableMods && IsReservedName(name))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to ALTER SCHEMA \"%s\"", name),
+				 errdetail("Schema %s is reserved for system use.", name)));
+	}
 
 	nspform = (Form_pg_namespace) GETSTRUCT(tup);
 	nspOid = nspform->oid;
@@ -422,6 +532,14 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
 
 		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(NamespaceRelationId,
+							   nspForm->oid,
+							   GetUserId(),
+							   "ALTER", "OWNER"
+					);
 
 		heap_freetuple(newtuple);
 

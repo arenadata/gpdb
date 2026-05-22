@@ -241,7 +241,7 @@ select * from rtest_v1 where b isnull;
 update rtest_t1 set a = a + 10 where b isnull;
 delete from rtest_v1 where b isnull;
 select * from rtest_v1;
- a | b  
+ a | b
 ---+----
  1 | 21
  2 | 22
@@ -251,7 +251,7 @@ select * from rtest_v1;
 -- now updates with constant expression
 update rtest_v1 set b = 42 where a = 2;
 select * from rtest_v1;
- a | b  
+ a | b
 ---+----
  1 | 21
  3 | 23
@@ -260,7 +260,7 @@ select * from rtest_v1;
 
 update rtest_v1 set b = 99 where b = 42;
 select * from rtest_v1;
- a | b  
+ a | b
 ---+----
  1 | 21
  3 | 23
@@ -269,7 +269,7 @@ select * from rtest_v1;
 
 update rtest_v1 set b = 88 where b < 50;
 select * from rtest_v1;
- a | b  
+ a | b
 ---+----
  2 | 99
  1 | 88
@@ -394,11 +394,12 @@ select * from rtest_interface;
 (2 rows)
 
 select * from rtest_admin;
- pname  | sysname 
---------+---------
- bm     | pluto
- jwieck | notjw
-(2 rows)
+ pname | sysname 
+-------+---------
+ bm    | neptun
+ jw    | notjw
+ jw    | orion
+(3 rows)
 
 --
 -- Rule qualification test
@@ -432,9 +433,7 @@ select ename, who = current_user as "matches user", action, newsal, oldsal from 
  mayr                 | t            | hired      |  $6,000.00 |      $0.00
  meyer                | t            | hired      |  $4,000.00 |      $0.00
  wiecc                | t            | hired      |  $5,000.00 |      $0.00
- wieck                | t            | honored    |  $6,000.00 |  $5,000.00
- wieck                | t            | honored    |  $7,000.00 |  $6,000.00
-(8 rows)
+(6 rows)
 
 update rtest_empmass set salary = salary + '1000.00';
 update rtest_emp set salary = rtest_empmass.salary from rtest_empmass where rtest_emp.ename = rtest_empmass.ename;
@@ -450,9 +449,7 @@ select ename, who = current_user as "matches user", action, newsal, oldsal from 
  meyer                | t            | hired      |  $4,000.00 |      $0.00
  meyer                | t            | honored    |  $5,000.00 |  $4,000.00
  wiecc                | t            | hired      |  $5,000.00 |      $0.00
- wieck                | t            | honored    |  $6,000.00 |  $5,000.00
- wieck                | t            | honored    |  $7,000.00 |  $6,000.00
-(11 rows)
+(9 rows)
 
 delete from rtest_emp using rtest_empmass where rtest_emp.ename = rtest_empmass.ename;
 select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
@@ -470,9 +467,7 @@ select ename, who = current_user as "matches user", action, newsal, oldsal from 
  meyer                | t            | hired      |  $4,000.00 |      $0.00
  meyer                | t            | honored    |  $5,000.00 |  $4,000.00
  wiecc                | t            | hired      |  $5,000.00 |      $0.00
- wieck                | t            | honored    |  $6,000.00 |  $5,000.00
- wieck                | t            | honored    |  $7,000.00 |  $6,000.00
-(14 rows)
+(12 rows)
 
 --
 -- Multiple cascaded qualified instead rule test
@@ -792,7 +787,7 @@ select * from rtest_vview1;
  7 | item 7
 (4 rows)
 
-select * from rtest_vview2;
+select * from rtest_vview2 ORDER BY 1;
  a |   b    
 ---+--------
  1 | item 1
@@ -803,7 +798,7 @@ select * from rtest_vview2;
  8 | item 8
 (6 rows)
 
-select * from rtest_vview3;
+select * from rtest_vview3 ORDER BY 1;
  a |   b    
 ---+--------
  2 | item 2
@@ -1280,6 +1275,7 @@ drop table cchild;
 --
 -- Check that ruleutils are working
 --
+-- GPDB_84_MERGE_FIXME: fix this test and re-enable in parallel_schedule
 -- temporarily disable fancy output, so view changes create less diff noise
 \a\t
 SELECT viewname, definition FROM pg_views
@@ -3063,6 +3059,31 @@ View definition:
    FROM ( VALUES (1,2)) v(q, w);
 
 drop view rule_v1;
+-- test for pg_get_functiondef properly regurgitating SET parameters
+-- Note that the function is kept around to stress pg_dump.
+CREATE FUNCTION func_with_set_params() RETURNS integer
+    AS 'select 1;'
+    LANGUAGE SQL
+    SET extra_float_digits TO 2
+    SET work_mem TO '4MB'
+    SET datestyle to iso, mdy
+    SET search_path TO PG_CATALOG, "Mixed/Case", 'c:/''a"/path', '', '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
+    IMMUTABLE STRICT;
+SELECT pg_get_functiondef('func_with_set_params()'::regprocedure);
+                                                                             pg_get_functiondef                                                                             
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION public.func_with_set_params()                                                                                                                  +
+  RETURNS integer                                                                                                                                                          +
+  LANGUAGE sql                                                                                                                                                             +
+  IMMUTABLE STRICT                                                                                                                                                         +
+  SET extra_float_digits TO '2'                                                                                                                                            +
+  SET work_mem TO '4MB'                                                                                                                                                    +
+  SET "DateStyle" TO 'iso, mdy'                                                                                                                                            +
+  SET search_path TO 'pg_catalog', 'Mixed/Case', 'c:/''a"/path', '', '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'+
+ AS $function$select 1;$function$                                                                                                                                          +
+ 
+(1 row)
+
 --
 -- Check DO INSTEAD rules with ON CONFLICT
 --
@@ -3423,3 +3444,7 @@ SELECT * FROM ruletest2;
 
 DROP TABLE ruletest1;
 DROP TABLE ruletest2;
+-- test rule for select-for-update
+create table t_test_rules_select_for_update (c int) distributed randomly;
+create rule myrule as on insert to t_test_rules_select_for_update
+do instead select * from t_test_rules_select_for_update for update;

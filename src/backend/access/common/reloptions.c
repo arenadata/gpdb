@@ -25,6 +25,8 @@
 #include "access/spgist.h"
 #include "access/tuptoaster.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbvars.h"
 #include "commands/defrem.h"
 #include "commands/tablespace.h"
 #include "commands/view.h"
@@ -33,9 +35,12 @@
 #include "utils/array.h"
 #include "utils/attoptcache.h"
 #include "utils/builtins.h"
+#include "utils/formatting.h"
 #include "utils/guc.h"
+#include "utils/guc_tables.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "miscadmin.h"
 
 /*
  * Contents of pg_class.reloptions
@@ -51,6 +56,8 @@
  * default_reloptions)
  * (v) make sure the lock level is set correctly for that operation
  * (vi) don't forget to document the option
+ *
+ * To add an GPDB option, please touch reloptions_gp.c rather than this file.
  *
  * The default choice for any new option should be AccessExclusiveLock.
  * In some cases the lock level can be reduced from there, but the lock
@@ -486,6 +493,8 @@ initialize_reloptions(void)
 	int			i;
 	int			j;
 
+	initialize_reloptions_gp();
+
 	j = 0;
 	for (i = 0; boolRelOpts[i].gen.name; i++)
 	{
@@ -621,7 +630,8 @@ add_reloption(relopt_gen *newoption)
  *		(for types other than string)
  */
 static relopt_gen *
-allocate_reloption(bits32 kinds, int type, const char *name, const char *desc)
+allocate_reloption(bits32 kinds, int type, const char *name, const char *desc,
+				   LOCKMODE lockmode)
 {
 	MemoryContext oldcxt;
 	size_t		size;
@@ -658,6 +668,7 @@ allocate_reloption(bits32 kinds, int type, const char *name, const char *desc)
 	newoption->kinds = kinds;
 	newoption->namelen = strlen(name);
 	newoption->type = type;
+	newoption->lockmode = lockmode;
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -669,12 +680,13 @@ allocate_reloption(bits32 kinds, int type, const char *name, const char *desc)
  *		Add a new boolean reloption
  */
 void
-add_bool_reloption(bits32 kinds, const char *name, const char *desc, bool default_val)
+add_bool_reloption(bits32 kinds, const char *name, const char *desc,
+				   bool default_val, LOCKMODE lockmode)
 {
 	relopt_bool *newoption;
 
 	newoption = (relopt_bool *) allocate_reloption(kinds, RELOPT_TYPE_BOOL,
-												   name, desc);
+												   name, desc, lockmode);
 	newoption->default_val = default_val;
 
 	add_reloption((relopt_gen *) newoption);
@@ -686,12 +698,12 @@ add_bool_reloption(bits32 kinds, const char *name, const char *desc, bool defaul
  */
 void
 add_int_reloption(bits32 kinds, const char *name, const char *desc, int default_val,
-				  int min_val, int max_val)
+				  int min_val, int max_val, LOCKMODE lockmode)
 {
 	relopt_int *newoption;
 
 	newoption = (relopt_int *) allocate_reloption(kinds, RELOPT_TYPE_INT,
-												  name, desc);
+												  name, desc, lockmode);
 	newoption->default_val = default_val;
 	newoption->min = min_val;
 	newoption->max = max_val;
@@ -704,13 +716,14 @@ add_int_reloption(bits32 kinds, const char *name, const char *desc, int default_
  *		Add a new float reloption
  */
 void
-add_real_reloption(bits32 kinds, const char *name, const char *desc, double default_val,
-				   double min_val, double max_val)
+add_real_reloption(bits32 kinds, const char *name, const char *desc,
+				   double default_val, double min_val, double max_val,
+				   LOCKMODE lockmode)
 {
 	relopt_real *newoption;
 
 	newoption = (relopt_real *) allocate_reloption(kinds, RELOPT_TYPE_REAL,
-												   name, desc);
+												   name, desc, lockmode);
 	newoption->default_val = default_val;
 	newoption->min = min_val;
 	newoption->max = max_val;
@@ -728,8 +741,9 @@ add_real_reloption(bits32 kinds, const char *name, const char *desc, double defa
  * the validation.
  */
 void
-add_string_reloption(bits32 kinds, const char *name, const char *desc, const char *default_val,
-					 validate_string_relopt validator)
+add_string_reloption(bits32 kinds, const char *name, const char *desc,
+					 const char *default_val, validate_string_relopt validator,
+					 LOCKMODE lockmode)
 {
 	relopt_string *newoption;
 
@@ -738,7 +752,7 @@ add_string_reloption(bits32 kinds, const char *name, const char *desc, const cha
 		(validator) (default_val);
 
 	newoption = (relopt_string *) allocate_reloption(kinds, RELOPT_TYPE_STRING,
-													 name, desc);
+													 name, desc, lockmode);
 	newoption->validate_cb = validator;
 	if (default_val)
 	{
@@ -1373,6 +1387,13 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"fillfactor", RELOPT_TYPE_INT, offsetof(StdRdOptions, fillfactor)},
+
+		/* AO table options */
+		{SOPT_BLOCKSIZE, RELOPT_TYPE_INT, offsetof(StdRdOptions, blocksize)},
+		{SOPT_COMPLEVEL, RELOPT_TYPE_INT, offsetof(StdRdOptions, compresslevel)},
+		{SOPT_COMPTYPE, RELOPT_TYPE_STRING, offsetof(StdRdOptions, compresstype)},
+		{SOPT_CHECKSUM, RELOPT_TYPE_BOOL, offsetof(StdRdOptions, checksum)},
+
 		{"autovacuum_enabled", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, enabled)},
 		{"autovacuum_vacuum_threshold", RELOPT_TYPE_INT,
@@ -1412,7 +1433,10 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		{"vacuum_index_cleanup", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, vacuum_index_cleanup)},
 		{"vacuum_truncate", RELOPT_TYPE_BOOL,
-		offsetof(StdRdOptions, vacuum_truncate)}
+		offsetof(StdRdOptions, vacuum_truncate)},
+		{SOPT_ANALYZEHLL, RELOPT_TYPE_BOOL,
+		offsetof(StdRdOptions, analyze_hll_non_part_table)}
+
 	};
 
 	options = parseRelOptions(reloptions, validate, kind, &numoptions);
@@ -1426,7 +1450,9 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 	fillRelOptions((void *) rdopts, sizeof(StdRdOptions), options, numoptions,
 				   validate, tab, lengthof(tab));
 
-	pfree(options);
+	validate_and_refill_options(rdopts, options, numoptions, kind, validate);
+
+	free_options_deep(options, numoptions);
 
 	return (bytea *) rdopts;
 }
@@ -1458,7 +1484,7 @@ view_reloptions(Datum reloptions, bool validate)
 	fillRelOptions((void *) vopts, sizeof(ViewOptions), options, numoptions,
 				   validate, tab, lengthof(tab));
 
-	pfree(options);
+	free_options_deep(options, numoptions);
 
 	return (bytea *) vopts;
 }
@@ -1486,16 +1512,20 @@ heap_reloptions(char relkind, Datum reloptions, bool validate)
 			return (bytea *) rdopts;
 		case RELKIND_RELATION:
 		case RELKIND_MATVIEW:
-			return default_reloptions(reloptions, validate, RELOPT_KIND_HEAP);
+				return default_reloptions(reloptions, validate,
+										  RELOPT_KIND_HEAP);
 		case RELKIND_PARTITIONED_TABLE:
+			/*
+			 * GPDB: we maintain reloptions for partition roots to support reloption
+			 * inheritance and hierarchy wide ALTER TABLE SET().
+			 */
 			return default_reloptions(reloptions, validate,
-									  RELOPT_KIND_PARTITIONED);
+									  RELOPT_KIND_HEAP);
 		default:
 			/* other relkinds are not supported */
 			return NULL;
 	}
 }
-
 
 /*
  * Parse options for indexes.
@@ -1542,7 +1572,7 @@ attribute_reloptions(Datum reloptions, bool validate)
 	fillRelOptions((void *) aopts, sizeof(AttributeOpts), options, numoptions,
 				   validate, tab, lengthof(tab));
 
-	pfree(options);
+	free_options_deep(options, numoptions);
 
 	return (bytea *) aopts;
 }
@@ -1574,7 +1604,7 @@ tablespace_reloptions(Datum reloptions, bool validate)
 	fillRelOptions((void *) tsopts, sizeof(TableSpaceOpts), options, numoptions,
 				   validate, tab, lengthof(tab));
 
-	pfree(options);
+	free_options_deep(options, numoptions);
 
 	return (bytea *) tsopts;
 }

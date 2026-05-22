@@ -1,4 +1,9 @@
 --
+-- Exercise outfuncs
+--
+set Debug_print_parse=on;
+set Debug_print_plan=on;
+--
 -- CREATE_VIEW
 -- Virtual class definitions
 --	(this also tests the query rewrite system)
@@ -1632,12 +1637,14 @@ select pg_get_viewdef('tt18v', true);
 (1 row)
 
 explain (costs off) select * from tt18v;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
- Append
-   ->  Seq Scan on int8_tbl xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   ->  Seq Scan on int8_tbl xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_1
-(3 rows)
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on int8_tbl xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+         ->  Seq Scan on int8_tbl xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_1
+ Optimizer: Postgres query optimizer
+(5 rows)
 
 -- check display of ScalarArrayOp with a sub-select
 select 'foo'::text = any(array['abc','def','foo']::text[]);

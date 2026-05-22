@@ -41,6 +41,8 @@
 #include "libpq/pqformat.h"
 #include "utils/portal.h"
 
+#include "cdb/cdbvars.h"
+#include "utils/vmem_tracker.h"
 
 /* ----------------
  *		dummy DestReceiver functions
@@ -148,7 +150,7 @@ CreateDestReceiver(CommandDest dest)
 			return CreateSQLFunctionDestReceiver();
 
 		case DestTransientRel:
-			return CreateTransientRelDestReceiver(InvalidOid);
+			return CreateTransientRelDestReceiver(InvalidOid, InvalidOid, false, 't', false);
 
 		case DestTupleQueue:
 			return CreateTupleQueueDestReceiver(NULL);
@@ -258,6 +260,17 @@ ReadyForQuery(CommandDest dest)
 			{
 				StringInfoData buf;
 
+				if (Gp_role == GP_ROLE_EXECUTE)
+				{
+					pq_beginmessage(&buf, 'k');
+					pq_sendint64(&buf, VmemTracker_GetMaxReservedVmemBytes());
+					pq_endmessage(&buf);
+
+					pq_beginmessage(&buf, 'x');
+					pq_sendbyte(&buf, TransactionDidWriteXLog());
+					pq_endmessage(&buf);
+				}
+
 				pq_beginmessage(&buf, 'Z');
 				pq_sendbyte(&buf, TransactionBlockStatusCode());
 				pq_endmessage(&buf);
@@ -279,4 +292,25 @@ ReadyForQuery(CommandDest dest)
 		case DestTupleQueue:
 			break;
 	}
+}
+
+/*
+ * Send a gpdb libpq message.
+ *
+ * This sends a message identical to that used when sending values of
+ * GUC_REPORT gucs to the client (see ReportGUCOption()). The motion
+ * listener port is sent as if there was a GUC called "qe_listener_port".
+ */
+void
+sendQEDetails(void)
+{
+	StringInfoData msgbuf;
+	char		port_str[11];
+
+	snprintf(port_str, sizeof(port_str), "%u", Gp_listener_port);
+
+	pq_beginmessage(&msgbuf, 'S');
+	pq_sendstring(&msgbuf, "qe_listener_port");
+	pq_sendstring(&msgbuf, port_str);
+	pq_endmessage(&msgbuf);
 }

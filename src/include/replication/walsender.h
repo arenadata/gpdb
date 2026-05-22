@@ -15,6 +15,7 @@
 #include <signal.h>
 
 #include "fmgr.h"
+#include "access/xlogdefs.h"
 
 /*
  * What to do with a snapshot in create replication slot command.
@@ -31,11 +32,13 @@ extern bool am_walsender;
 extern bool am_cascading_walsender;
 extern bool am_db_walsender;
 extern bool wake_wal_senders;
+extern volatile sig_atomic_t walsender_ready_to_stop;
 
 /* user-settable parameters */
 extern int	max_wal_senders;
 extern int	wal_sender_timeout;
 extern bool log_replication_commands;
+extern int	repl_catchup_within_range;
 
 extern void InitWalSender(void);
 extern bool exec_replication_command(const char *query_string);
@@ -48,6 +51,8 @@ extern void WalSndInitStopping(void);
 extern void WalSndWaitStopping(void);
 extern void HandleWalSndInitStopping(void);
 extern void WalSndRqstFileReload(void);
+extern XLogRecPtr WalSndCtlGetXLogCleanUpTo(void);
+extern void WalSndSetXLogCleanUpTo(XLogRecPtr xlogPtr);
 
 /*
  * Remember that we want to wakeup walsenders later

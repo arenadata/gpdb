@@ -34,13 +34,18 @@ my $oids = Catalog::FindAllOidsFromHeaders(@input_files);
 
 # Also push FirstGenbkiObjectId to serve as a terminator for the last gap.
 my $FirstGenbkiObjectId =
-  Catalog::FindDefinedSymbol('access/transam.h', '..', 'FirstGenbkiObjectId');
+  Catalog::FindDefinedSymbol('catalog/pg_magic_oid.h', '..', 'FirstGenbkiObjectId');
 push @{$oids}, $FirstGenbkiObjectId;
+
+# This value splits the OID range into two so that GPDB and GPSQL can add
+# new built-in objects in parallel.
+my $FirstGPDBObjectId =
+  Catalog::FindDefinedSymbol('catalog/pg_magic_oid.h', '..', 'LowestGPSQLBootstrapObjectId');
 
 my $prev_oid = 0;
 foreach my $oid (sort { $a <=> $b } @{$oids})
 {
-	if ($oid > $prev_oid + 1)
+	if ($oid > $prev_oid + 1 && $oid < $FirstGPDBObjectId)
 	{
 		if ($oid > $prev_oid + 2)
 		{

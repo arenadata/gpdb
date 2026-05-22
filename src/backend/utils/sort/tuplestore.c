@@ -43,6 +43,29 @@
  * before switching to the other state or activating a different read pointer.
  *
  *
+ * Greenplum changes
+ * -----------------
+ *
+ * In Greenplum, tuplestores have one extra capability: a tuplestore can
+ * be created and filled in one process, and opened for reading in another
+ * process. To do this, call tuplestore_make_shared() immediately
+ * after creating the tuplestore, in the writer process. Then populate the
+ * tuplestore as usual, by calling tuplestore_puttupleslot(). When you're
+ * finished writing to it, call tuplestore_freeze(). tuplestore_freeze()
+ * flushes all the tuples to the file. No new rows may be added after
+ * freezing it.
+ *
+ * After freezing, you can open the tupletore for reading in the other
+ * process by calling tuplestore_open_shared(). It may be opened for reading
+ * as many times as you want, in different processes, until it is destroyed
+ * by the original writer process by calling tuplestore_end().
+ *
+ * Note that tuplestore doesn't do any synchronization across processes!
+ * It is up to the calling code to do the freezing, opening for reading, and
+ * destroying the tuplestore in the right order!
+ *
+ * Portions Copyright (c) 2007-2010, Greenplum Inc.
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -63,6 +86,10 @@
 #include "storage/buffile.h"
 #include "utils/memutils.h"
 #include "utils/resowner.h"
+
+#include "cdb/cdbvars.h"
+#include "executor/instrument.h"        /* struct Instrumentation */
+#include "utils/workfile_mgr.h"
 
 
 /*
@@ -97,6 +124,13 @@ typedef struct
 	off_t		offset;			/* byte offset in file */
 } TSReadPointer;
 
+typedef enum
+{
+	TSHARE_NOT_SHARED,
+	TSHARE_WRITER,
+	TSHARE_READER
+} TSSharedStatus;
+
 /*
  * Private state of a Tuplestore operation.
  */
@@ -113,6 +147,12 @@ struct Tuplestorestate
 	BufFile    *myfile;			/* underlying file, or NULL if none */
 	MemoryContext context;		/* memory context for holding tuples */
 	ResourceOwner resowner;		/* resowner for holding temp files */
+
+	TSSharedStatus share_status;
+	bool		frozen;
+	SharedFileSet *fileset;
+	char	   *shared_filename;
+	workfile_set *work_set; /* workfile set to use when using workfile manager */
 
 	/*
 	 * These function pointers decouple the routines that must know what kind
@@ -178,6 +218,13 @@ struct Tuplestorestate
 
 	int			writepos_file;	/* file# (valid if READFILE state) */
 	off_t		writepos_offset;	/* offset (valid if READFILE state) */
+
+    /*
+     * CDB: EXPLAIN ANALYZE reporting interface and statistics.
+     */
+	struct Instrumentation *instrument;
+	long        availMemMin;    /* availMem low water mark (bytes) */
+	int64       spilledBytes;   /* memory used for spilled tuples */
 };
 
 #define COPYTUP(state,tup)	((*(state)->copytup) (state, tup))
@@ -185,7 +232,12 @@ struct Tuplestorestate
 #define READTUP(state,len)	((*(state)->readtup) (state, len))
 #define LACKMEM(state)		((state)->availMem < 0)
 #define USEMEM(state,amt)	((state)->availMem -= (amt))
-#define FREEMEM(state,amt)	((state)->availMem += (amt))
+#define FREEMEM(state,amt)	\
+	do { \
+		if ((state)->availMemMin > (state)->availMem) \
+			(state)->availMemMin = (state)->availMem; \
+		(state)->availMem += (amt); \
+	} while(0)
 
 /*--------------------
  *
@@ -244,6 +296,12 @@ static void writetup_heap(Tuplestorestate *state, void *tup);
 static void *readtup_heap(Tuplestorestate *state, unsigned int len);
 
 
+char *
+tuplestore_get_buffilename(Tuplestorestate *state)
+{
+	return state->myfile ? pstrdup(BufFileGetFilename(state->myfile)) : NULL;
+}
+
 /*
  *		tuplestore_begin_xxx
  *
@@ -262,6 +320,7 @@ tuplestore_begin_common(int eflags, bool interXact, int maxKBytes)
 	state->truncated = false;
 	state->allowedMem = maxKBytes * 1024L;
 	state->availMem = state->allowedMem;
+	state->availMemMin = state->availMem;
 	state->myfile = NULL;
 	state->context = CurrentMemoryContext;
 	state->resowner = CurrentResourceOwner;
@@ -454,8 +513,38 @@ tuplestore_end(Tuplestorestate *state)
 {
 	int			i;
 
+	/*
+	 * CDB: Report statistics to EXPLAIN ANALYZE.
+	 */
+	if (state->instrument && state->instrument->need_cdb)
+	{
+		double  nbytes;
+
+		/* How close did we come to the work_mem limit? */
+		FREEMEM(state, 0);              /* update low-water mark */
+		nbytes = state->allowedMem - state->availMemMin;
+		state->instrument->workmemused = Max(state->instrument->workmemused, nbytes);
+
+		/* How much work_mem would be enough to hold all tuples in memory? */
+		if (state->spilledBytes > 0)
+		{
+			nbytes = state->allowedMem - state->availMem + state->spilledBytes;
+			state->instrument->workmemwanted =
+				Max(state->instrument->workmemwanted, nbytes);
+		}
+
+		if (state->myfile)
+			state->instrument->workfileCreated = true;
+	}
+
 	if (state->myfile)
 		BufFileClose(state->myfile);
+	if (state->share_status == TSHARE_WRITER)
+		BufFileDeleteShared(state->fileset, state->shared_filename);
+	if (state->work_set)
+		workfile_mgr_close_set(state->work_set);
+	if (state->shared_filename)
+		pfree(state->shared_filename);
 	if (state->memtuples)
 	{
 		for (i = state->memtupdeleted; i < state->memtupcount; i++)
@@ -754,6 +843,7 @@ tuplestore_putvalues(Tuplestorestate *state, TupleDesc tdesc,
 	MemoryContext oldcxt = MemoryContextSwitchTo(state->context);
 
 	tuple = heap_form_minimal_tuple(tdesc, values, isnull);
+
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 
 	tuplestore_puttuple_common(state, (void *) tuple);
@@ -767,6 +857,9 @@ tuplestore_puttuple_common(Tuplestorestate *state, void *tuple)
 	TSReadPointer *readptr;
 	int			i;
 	ResourceOwner oldowner;
+
+	if (state->frozen)
+		elog(ERROR, "cannot write new tuples to frozen tuplestore");
 
 	state->tuples++;
 
@@ -818,7 +911,9 @@ tuplestore_puttuple_common(Tuplestorestate *state, void *tuple)
 			oldowner = CurrentResourceOwner;
 			CurrentResourceOwner = state->resowner;
 
-			state->myfile = BufFileCreateTemp(state->interXact);
+			char tmpprefix[50];
+			snprintf(tmpprefix, 50, "slice%d_tuplestore", currentSliceId);
+			state->myfile = BufFileCreateTemp(tmpprefix, state->interXact);
 
 			CurrentResourceOwner = oldowner;
 
@@ -981,6 +1076,18 @@ tuplestore_gettuple(Tuplestorestate *state, bool forward,
 				if ((tuplen = getlen(state, true)) != 0)
 				{
 					tup = READTUP(state, tuplen);
+
+					/* CDB XXX XXX XXX XXX */
+					/* MPP-1347: EXPLAIN ANALYZE shows runaway memory usage.
+					 * Readtup does a usemem, but the free happens in
+					 * ExecStoreTuple.  Do a free so state->availMem
+					 * doesn't go massively negative to screw up
+					 * stats.  It would be better to interrogate the
+					 * heap for actual memory usage than use this
+					 * homemade accounting.
+					 */
+					FREEMEM(state, GetMemoryChunkSpace(tup));
+					/* CDB XXX XXX XXX XXX */
 					return tup;
 				}
 				else
@@ -1370,6 +1477,10 @@ tuplestore_trim(Tuplestorestate *state)
 	if (state->eflags & EXEC_FLAG_REWIND)
 		return;
 
+	/* Cannot trim tuplestore if another process might be reading it */
+	if (state->frozen)
+		return;
+
 	/*
 	 * We don't bother trimming temp files since it usually would mean more
 	 * work than just letting them sit in kernel buffers until they age out.
@@ -1528,7 +1639,9 @@ writetup_heap(Tuplestorestate *state, void *tup)
 					(errcode_for_file_access(),
 					 errmsg("could not write to tuplestore temporary file: %m")));
 
-	FREEMEM(state, GetMemoryChunkSpace(tuple));
+	Size		memsize = GetMemoryChunkSpace(tuple);
+	state->spilledBytes += memsize;
+	FREEMEM(state, memsize);
 	heap_free_minimal_tuple(tuple);
 }
 
@@ -1555,4 +1668,127 @@ readtup_heap(Tuplestorestate *state, unsigned int len)
 					(errcode_for_file_access(),
 					 errmsg("could not read from tuplestore temporary file: %m")));
 	return (void *) tuple;
+}
+
+/*
+ * tuplestore_set_instrument
+ *
+ * May be called after tuplestore_begin_xxx() to enable reporting of
+ * statistics and events for EXPLAIN ANALYZE.
+ *
+ * The 'instr' ptr is retained in the 'state' object.  The caller must
+ * ensure that it remains valid for the life of the Tuplestorestate object.
+ */
+void
+tuplestore_set_instrument(Tuplestorestate *state,
+						  struct Instrumentation *instrument)
+{
+	state->instrument = instrument;
+}                               /* tuplestore_set_instrument */
+
+
+/* Extra GPDB functions for sharing tuplestores across processes */
+
+/*
+ * tuplestore_make_shared
+ *
+ * Make a tuplestore available for sharing later. This must be called
+ * immediately after tuplestore_begin_heap().
+ */
+void
+tuplestore_make_shared(Tuplestorestate *state, SharedFileSet *fileset, const char *filename)
+{
+	ResourceOwner oldowner;
+
+	state->work_set = workfile_mgr_create_set("SharedTupleStore", filename, true /* hold pin */);
+
+	Assert(state->status == TSS_INMEM);
+	Assert(state->tuples == 0);
+	Assert(state->share_status == TSHARE_NOT_SHARED);
+	state->share_status = TSHARE_WRITER;
+	state->fileset = fileset;
+	state->shared_filename = pstrdup(filename);
+
+	/*
+	 * Switch to tape-based operation, like in tuplestore_puttuple_common().
+	 * We could delay this until tuplestore_freeze(), but we know we'll have
+	 * to write everything to the file anyway, so let's not waste memory
+	 * buffering the tuples in the meanwhile.
+	 */
+	PrepareTempTablespaces();
+
+	/* associate the file with the store's resource owner */
+	oldowner = CurrentResourceOwner;
+	CurrentResourceOwner = state->resowner;
+
+	state->myfile = BufFileCreateShared(fileset, filename, state->work_set);
+	CurrentResourceOwner = oldowner;
+
+	/*
+	 * For now, be conservative and always use trailing length words for
+	 * cross-process tuplestores. It's important that the writer and the
+	 * reader processes agree on this, and forcing it to true is the
+	 * simplest way to achieve that.
+	 */
+	state->backward = true;
+	state->status = TSS_WRITEFILE;
+}
+
+static void
+writetup_forbidden(Tuplestorestate *state, void *tup)
+{
+	elog(ERROR, "cannot write to tuplestore, it is already frozen");
+}
+
+/*
+ * tuplestore_freeze
+ *
+ * Flush the current buffer to disk, and forbid further inserts. This
+ * prepares the tuplestore for reading from a different process.
+ */
+void
+tuplestore_freeze(Tuplestorestate *state)
+{
+	Assert(state->share_status == TSHARE_WRITER);
+	Assert(!state->frozen);
+	dumptuples(state);
+	BufFileExportShared(state->myfile);
+	state->frozen = true;
+}
+
+/*
+ * tuplestore_open_shared
+ *
+ * Open a shared tuplestore that has been populated in another process
+ * for reading.
+ */
+Tuplestorestate *
+tuplestore_open_shared(SharedFileSet *fileset, const char *filename)
+{
+	Tuplestorestate *state;
+	int			eflags;
+
+	eflags = EXEC_FLAG_BACKWARD | EXEC_FLAG_REWIND;
+
+	state = tuplestore_begin_common(eflags,
+									false /* interXact, ignored because we open existing files */,
+									10 /* no need for memory buffers */);
+
+	state->backward = true;
+
+	state->copytup = copytup_heap;
+	state->writetup = writetup_forbidden;
+	state->readtup = readtup_heap;
+
+	state->myfile = BufFileOpenShared(fileset, filename);
+	state->readptrs[0].file = 0;
+	state->readptrs[0].offset = 0L;
+	state->status = TSS_READFILE;
+
+	state->share_status = TSHARE_READER;
+	state->frozen = false;
+	state->fileset = fileset;
+	state->shared_filename = pstrdup(filename);
+
+	return state;
 }

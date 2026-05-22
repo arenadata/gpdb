@@ -69,7 +69,7 @@ void		sqlprint(void);
 /* define this for simplicity as well as compatibility */
 
 #define		SQLCODE		sqlca.sqlcode
-#define		SQLSTATE		sqlca.sqlstate
+#define		SQLSTATE        sqlca.sqlstate
 
 /* dynamic SQL */
 
@@ -77,9 +77,9 @@ bool		ECPGdo_descriptor(int, const char *, const char *, const char *);
 bool		ECPGdeallocate_desc(int, const char *);
 bool		ECPGallocate_desc(int, const char *);
 bool		ECPGget_desc_header(int, const char *, int *);
-bool		ECPGget_desc(int, const char *, int,...);
+bool		ECPGget_desc(int, const char *, int, ...);
 bool		ECPGset_desc_header(int, const char *, int);
-bool		ECPGset_desc(int, const char *, int,...);
+bool		ECPGset_desc(int, const char *, int, ...);
 
 void		ECPGset_noind_null(enum ECPGttype, void *);
 bool		ECPGis_noind_null(enum ECPGttype, const void *);

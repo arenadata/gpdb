@@ -154,6 +154,8 @@ typedef struct ReplicationSlot
 #define SlotIsPhysical(slot) (slot->data.database == InvalidOid)
 #define SlotIsLogical(slot) (slot->data.database != InvalidOid)
 
+#define INTERNAL_WAL_REPLICATION_SLOT_NAME	"internal_wal_replication_slot"
+
 /*
  * Shared memory control area for all of replication slots.
  */
@@ -204,5 +206,7 @@ extern void StartupReplicationSlots(void);
 extern void CheckPointReplicationSlots(void);
 
 extern void CheckSlotRequirements(void);
+
+extern void ReplicationSlotDropIfExists(const char *name);
 
 #endif							/* SLOT_H */

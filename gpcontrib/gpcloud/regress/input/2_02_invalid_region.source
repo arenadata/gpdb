@@ -1,0 +1,6 @@
+CREATE READABLE EXTERNAL TABLE s3regress_invalid_region (date text, time text, open float, high float,
+	low float, volume int) LOCATION('s3://neverland.amazonaws.com/wherever/whatever/ config=@config_file@') format 'csv';
+
+SELECT count(*) FROM s3regress_invalid_region;
+
+DROP EXTERNAL TABLE s3regress_invalid_region;

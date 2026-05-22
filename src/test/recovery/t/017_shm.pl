@@ -48,7 +48,8 @@ if (!$PostgresNode::use_tcp)
 			port     => $lock_port,
 			own_host => 1);
 		$port_holder->init;
-		$port_holder->append_conf('postgresql.conf', 'max_connections = 5');
+		# GPDB: minimum max_connections is 10 in GPDB
+		$port_holder->append_conf('postgresql.conf', 'max_connections = 10');
 		$port_holder->start;
 		# Match the AddToDataDirLockFile() call in sysv_shmem.c.  Assume all
 		# systems not using sysv_shmem.c do use TCP.
@@ -69,7 +70,8 @@ sub init_start
 	defined($port) or $port = $ret->port;    # same port for all nodes
 	$ret->init;
 	# Limit semaphore consumption, since we run several nodes concurrently.
-	$ret->append_conf('postgresql.conf', 'max_connections = 5');
+	# GPDB: minimum max_connections is 10 in GPDB
+	$ret->append_conf('postgresql.conf', 'max_connections = 10');
 	$ret->start;
 	log_ipcs();
 	return $ret;

@@ -199,12 +199,12 @@ set_spins_per_delay(int shared_spins_per_delay)
 }
 
 /*
- * Update shared estimate of spins_per_delay during backend exit.
+ * Recompute shared estimate of spins_per_delay during backend exit.
  *
  * NB: this has to be pretty fast as it is called while holding a spinlock
  */
 int
-update_spins_per_delay(int shared_spins_per_delay)
+recompute_spins_per_delay(int shared_spins_per_delay)
 {
 	/*
 	 * We use an exponential moving average with a relatively slow adaption

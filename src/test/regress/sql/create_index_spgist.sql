@@ -4,6 +4,7 @@
 
 CREATE TABLE quad_point_tbl AS
     SELECT point(unique1,unique2) AS p FROM tenk1;
+ANALYZE quad_point_tbl;
 
 INSERT INTO quad_point_tbl
     SELECT '(333.0,400.0)'::point FROM generate_series(1,1000);
@@ -23,6 +24,7 @@ INSERT INTO radix_text_tbl
     SELECT 'P0123456789abcdef' FROM generate_series(1,1000);
 INSERT INTO radix_text_tbl VALUES ('P0123456789abcde');
 INSERT INTO radix_text_tbl VALUES ('P0123456789abcdefF');
+ANALYZE radix_text_tbl;
 
 CREATE INDEX sp_radix_ind ON radix_text_tbl USING spgist (t);
 
@@ -92,6 +94,7 @@ SELECT count(*) FROM radix_text_tbl WHERE t ~>~  'Worth                         
 
 SELECT count(*) FROM radix_text_tbl WHERE t ^@  'Worth';
 
+set optimizer_enable_tablescan = OFF;
 -- Now check the results from plain indexscan
 SET enable_seqscan = OFF;
 SET enable_indexscan = ON;
@@ -410,6 +413,7 @@ EXPLAIN (COSTS OFF)
 SELECT count(*) FROM radix_text_tbl WHERE t ^@	 'Worth';
 SELECT count(*) FROM radix_text_tbl WHERE t ^@	 'Worth';
 
+RESET optimizer_enable_tablescan;
 RESET enable_seqscan;
 RESET enable_indexscan;
 RESET enable_bitmapscan;

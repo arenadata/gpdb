@@ -9,6 +9,7 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -83,7 +84,18 @@ typedef struct
 /*
  * POSTGRES backend dependent Constants.
  */
-#define CMDSTATUS_LEN 64		/* should match COMPLETION_TAG_BUFSIZE */
+
+/*
+ * Note:  GPDB uses 72 for COMPLETION_TAG_BUFSIZE, PostgreSQL uses 64.
+ * Does this cause a problem?   It seems like it will if any application is compiled with
+ * the PostgreSQL header files, and "cheats" by looking directly in to the pg_result struct,
+ * instead of accessing the struct through the normal functions.
+ *
+ * If we set this to 64, we avoid that problem, but strings copied into cmdStatus might overflow
+ * the field, so we'd need to check on that.  And the number of rows could get truncated... Ugh.
+ */
+
+#define CMDSTATUS_LEN 72		/* should match COMPLETION_TAG_BUFSIZE */
 
 /*
  * PGresult and the subsidiary types PGresAttDesc, PGresAttValue
@@ -164,6 +176,20 @@ typedef struct PGEvent
 	bool		resultInitialized;	/* T if RESULTCREATE/COPY succeeded */
 } PGEvent;
 
+/* CDB: Statistical response message list element */
+typedef struct pgCdbStatCell
+{
+    struct pgCdbStatCell   *next;
+    int         len;
+    char       *data;
+} pgCdbStatCell;
+
+typedef enum PGExtraType {
+	PGExtraTypeNone,
+	PGExtraTypeVacuumStats,		/* Stats collected for vacuum and analyze from QEs */
+	PGExtraTypeTableStats		/* Table stats collected for statement from QEs */
+} PGExtraType;
+
 struct pg_result
 {
 	int			ntups;
@@ -210,6 +236,24 @@ struct pg_result
 	int			spaceLeft;		/* number of free bytes remaining in block */
 
 	size_t		memorySize;		/* total space allocated for this PGresult */
+
+    /* CDB: List of statistical response messages ('Y') from qExec. */
+    pgCdbStatCell  *cdbstats;   /* ordered from newest to oldest */
+
+	/*
+	 * Used for gang management commands and stats collected from QEs.
+	 */
+    void * extras;
+    int	   extraslen;
+    PGExtraType		extraType;
+
+	/* GPDB: number of rows rejected in SREH (protocol message 'j') */
+	int64		numRejected;
+	/* GPDB: number of rows completed when COPY FROM */
+	int64		numCompleted;
+	/* GPDB */
+	int		nWaits;
+	int		*waitGxids;
 };
 
 /* PGAsyncStatusType defines the state of the query-execution state machine */
@@ -363,6 +407,9 @@ struct pg_conn
 #if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	char	   *krbsrvname;		/* Kerberos service name */
 #endif
+    char       *gpconntype; /* type of connection */
+    char       *gpqeid;        /* MPP: session id & startup info for qExec */
+    char       *diffoptions;  /* MPP: transfer changed GUCs(require sync) from QD to QEs */
 
 	/* Type of connection to make.  Possible values: any, read-write. */
 	char	   *target_session_attrs;
@@ -427,6 +474,9 @@ struct pg_conn
 	/* Miscellaneous stuff */
 	int			be_pid;			/* PID of backend --- needed for cancels */
 	int			be_key;			/* key of backend --- needed for cancels */
+
+    int64      mop_high_watermark;   /* highwater mark for mop */
+
 	pgParameterStatus *pstatus; /* ParameterStatus data */
 	int			client_encoding;	/* encoding id */
 	bool		std_strings;	/* standard_conforming_strings */
@@ -446,6 +496,9 @@ struct pg_conn
 	int			outBufSize;		/* allocated size of buffer */
 	int			outCount;		/* number of chars waiting in buffer */
 
+	bool		outBuffer_shared; /* are we sending external buffer? */
+	char	   *outBufferSaved; /* stash area in case of outBuffer_shared */
+
 	/* State for constructing messages in outBuffer */
 	int			outMsgStart;	/* offset to msg start (length word); if -1,
 								 * msg has no length word */
@@ -458,6 +511,8 @@ struct pg_conn
 	/* Status for asynchronous result construction */
 	PGresult   *result;			/* result being constructed */
 	PGresult   *next_result;	/* next result (used in single-row mode) */
+
+	char		wrote_xlog;
 
 	/* Assorted state for SASL, SSL, GSS, etc */
 	void	   *sasl_state;
@@ -490,6 +545,23 @@ struct pg_conn
 	bool		try_gss;		/* GSS attempting permitted */
 	bool		gssenc;			/* GSS encryption is usable */
 	gss_cred_id_t gcred;		/* GSS credential temp storage. */
+
+	/* GSS encryption I/O state --- see fe-secure-gssapi.c */
+	char	   *gss_SendBuffer; /* Encrypted data waiting to be sent */
+	int			gss_SendLength; /* End of data available in gss_SendBuffer */
+	int			gss_SendNext;	/* Next index to send a byte from
+								 * gss_SendBuffer */
+	int			gss_SendConsumed;	/* Number of *unencrypted* bytes consumed
+									 * for current contents of gss_SendBuffer */
+	char	   *gss_RecvBuffer; /* Received, encrypted data */
+	int			gss_RecvLength; /* End of data available in gss_RecvBuffer */
+	char	   *gss_ResultBuffer;	/* Decryption of data in gss_RecvBuffer */
+	int			gss_ResultLength;	/* End of data available in
+									 * gss_ResultBuffer */
+	int			gss_ResultNext; /* Next index to read a byte from
+								 * gss_ResultBuffer */
+	uint32		gss_MaxPktSize; /* Maximum size we can encrypt and fit the
+								 * results into our output buffer */
 #endif
 
 #ifdef ENABLE_SSPI
@@ -594,6 +666,7 @@ extern void pqSaveMessageField(PGresult *res, char code,
 extern void pqSaveParameterStatus(PGconn *conn, const char *name,
 								  const char *value);
 extern int	pqRowProcessor(PGconn *conn, const char **errmsgp);
+extern bool PQsendQueryStart(PGconn *conn);
 
 /* === in fe-protocol2.c === */
 
@@ -646,14 +719,19 @@ extern int	pqGetnchar(char *s, size_t len, PGconn *conn);
 extern int	pqSkipnchar(size_t len, PGconn *conn);
 extern int	pqPutnchar(const char *s, size_t len, PGconn *conn);
 extern int	pqGetInt(int *result, size_t bytes, PGconn *conn);
+extern int64 pqGetInt64(int64 *result, PGconn *conn);  /* GPDB only */
 extern int	pqPutInt(int value, size_t bytes, PGconn *conn);
 extern int	pqPutMsgStart(char msg_type, bool force_len, PGconn *conn);
 extern int	pqPutMsgEnd(PGconn *conn);
+extern void pqPutMsgEndNoAutoFlush(PGconn *conn);   /* GPDB only */
 extern int	pqReadData(PGconn *conn);
 extern int	pqFlush(PGconn *conn);
+extern int	pqFlushNonBlocking(PGconn *conn);
 extern int	pqWait(int forRead, int forWrite, PGconn *conn);
 extern int	pqWaitTimed(int forRead, int forWrite, PGconn *conn,
 						time_t finish_time);
+extern int	pqWaitTimeout(int forRead, int forWrite, PGconn *conn,
+						  time_t finish_time);
 extern int	pqReadReady(PGconn *conn);
 extern int	pqWriteReady(PGconn *conn);
 

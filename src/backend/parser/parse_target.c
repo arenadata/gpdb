@@ -396,11 +396,13 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 				markTargetListOrigin(pstate, tle, aliasvar, netlevelsup);
 			}
 			break;
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 		case RTE_VALUES:
 		case RTE_TABLEFUNC:
 		case RTE_NAMEDTUPLESTORE:
 		case RTE_RESULT:
+		case RTE_VOID:
 			/* not a simple relation, leave it unmarked */
 			break;
 		case RTE_CTE:
@@ -1107,7 +1109,9 @@ ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref,
 		 * Since the grammar only accepts bare '*' at top level of SELECT, we
 		 * need not handle the make_target_entry==false case here.
 		 */
-		Assert(make_target_entry);
+		if (!make_target_entry)
+			elog(ERROR, "invalid use of *");
+
 		return ExpandAllTables(pstate, cref->location);
 	}
 	else
@@ -1589,6 +1593,7 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 				return expandRecordVariable(pstate, (Var *) expr, netlevelsup);
 			/* else fall through to inspect the expression */
 			break;
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 
 			/*
@@ -1639,6 +1644,9 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 				}
 				/* else fall through to inspect the expression */
 			}
+			break;
+		case RTE_VOID:
+			elog(ERROR, "unexpected RTE type RTE_VOID");
 			break;
 	}
 
@@ -1784,6 +1792,10 @@ FigureColnameInternal(Node *node, char **name)
 			/* make GROUPING() act like a regular function */
 			*name = "grouping";
 			return 2;
+		case T_GroupId:
+			/* make GROUP_ID() act like a regular function */
+			*name = "group_id";
+			return 2;
 		case T_SubLink:
 			switch (((SubLink *) node)->subLinkType)
 			{
@@ -1818,12 +1830,15 @@ FigureColnameInternal(Node *node, char **name)
 						}
 					}
 					break;
+
 					/* As with other operator-like nodes, these have no names */
 				case MULTIEXPR_SUBLINK:
 				case ALL_SUBLINK:
 				case ANY_SUBLINK:
 				case ROWCOMPARE_SUBLINK:
 				case CTE_SUBLINK:
+				case INITPLAN_FUNC_SUBLINK:
+				case NOT_EXISTS_SUBLINK:
 					break;
 			}
 			break;

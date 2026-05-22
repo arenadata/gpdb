@@ -40,6 +40,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 static void _ArchiveEntry(ArchiveHandle *AH, TocEntry *te);
 static void _StartData(ArchiveHandle *AH, TocEntry *te);
@@ -59,6 +60,8 @@ static void _StartBlobs(ArchiveHandle *AH, TocEntry *te);
 static void _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid);
 static void _EndBlob(ArchiveHandle *AH, TocEntry *te, Oid oid);
 static void _EndBlobs(ArchiveHandle *AH, TocEntry *te);
+
+static FILE *newTempFile(void);
 
 #define K_STD_BUF_SIZE 1024
 
@@ -107,7 +110,7 @@ static void tarClose(ArchiveHandle *AH, TAR_MEMBER *TH);
 #ifdef __NOT_USED__
 static char *tarGets(char *buf, size_t len, TAR_MEMBER *th);
 #endif
-static int	tarPrintf(ArchiveHandle *AH, TAR_MEMBER *th, const char *fmt,...) pg_attribute_printf(3, 4);
+static int	tarPrintf(TAR_MEMBER *th, const char *fmt,...) pg_attribute_printf(2, 3);
 
 static void _tarAddFile(ArchiveHandle *AH, TAR_MEMBER *th);
 static TAR_MEMBER *_tarPositionTo(ArchiveHandle *AH, const char *filename);
@@ -376,7 +379,7 @@ tarOpen(ArchiveHandle *AH, const char *filename, char mode)
 		old_umask = umask(S_IRWXG | S_IRWXO);
 
 #ifndef WIN32
-		tm->tmpFH = tmpfile();
+		tm->tmpFH = newTempFile();
 #else
 
 		/*
@@ -435,6 +438,80 @@ tarOpen(ArchiveHandle *AH, const char *filename, char mode)
 	tm->tarFH = ctx->tarFH;
 
 	return tm;
+}
+
+/*
+ * newTempFile - creates and opens a stream over a unlinked file.  This
+ * function provides an implmentation of the <stdio.h>/tmpfile() function
+ * that respects the TMPDIR variable.
+ */
+static FILE *
+newTempFile(void)
+{
+	int			fd;
+	char	   *tmpdir;
+	struct stat buf;
+	char	   *tempFileName = NULL;
+	FILE	   *f = NULL;
+	static int	tmpdirChecked = 0;
+
+	/*
+	 * The mkstemp() function does't respect the value of the TMPDIR
+	 * environment variable. Get it.
+	 */
+	if ((tmpdir = getenv("TMPDIR")) != NULL)
+	{
+		if (!(stat(tmpdir, &buf) == 0 && S_ISDIR(buf.st_mode)))
+		{
+			if (!tmpdirChecked)
+			{
+				tmpdirChecked = 1;
+				pg_log_info("TMPDIR value \"%s\" is not an existing directory; using system default", tmpdir);
+			}
+			tmpdir = NULL;
+		}
+	}
+
+	/*
+	 * Attempt to generate and open exclusively a new temporary file.
+	 */
+	if (tmpdir)
+	{
+		char *template = "/GPDB_XXXXXX";
+		size_t len1 = strlen(tmpdir), len2 = strlen(template);
+
+		tempFileName = (char *)malloc(len1 + len2 + 1);
+		memcpy(tempFileName, tmpdir, len1);
+		memcpy(tempFileName+len1, template, len2+1);
+	}
+	else
+	{
+		tempFileName = strdup("/tmp/GPDB_XXXXXX");
+	}
+
+	fd = mkstemp(tempFileName);
+	if (fd < 0)
+		return NULL;
+
+	/*
+	 * We've created and opened a new file.  Make it temporary by unlinking
+	 * it; the file will exist only until the file descriptor is open.	This
+	 * code segment completes what tmpfile() would do.
+	 *
+	 * The trailing `Xs' of tempFileName were replaced with a unique
+	 * alphanumeric combination, which is fine to unlink().
+	 */
+	unlink(tempFileName);
+	free(tempFileName);
+
+	/* Now attempt to open a stream over the temporary file. */
+	if ((f = fdopen(fd, "w+b")) == NULL)
+	{
+		/* Can't open stream over file; all errors are fatal. */
+		close(fd);
+	}
+
+	return f;
 }
 
 static void
@@ -854,7 +931,7 @@ _CloseArchive(ArchiveHandle *AH)
 		 */
 		th = tarOpen(AH, "restore.sql", 'w');
 
-		tarPrintf(AH, th, "--\n"
+		tarPrintf(th, "--\n"
 				  "-- NOTE:\n"
 				  "--\n"
 				  "-- File paths need to be edited. Search for $$PATH$$ and\n"
@@ -967,7 +1044,7 @@ _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
 
 	sprintf(fname, "blob_%u.dat%s", oid, sfx);
 
-	tarPrintf(AH, ctx->blobToc, "%u %s\n", oid, fname);
+	tarPrintf(ctx->blobToc, "%u %s\n", oid, fname);
 
 	tctx->TH = tarOpen(AH, fname, 'w');
 }
@@ -1011,7 +1088,7 @@ _EndBlobs(ArchiveHandle *AH, TocEntry *te)
  */
 
 static int
-tarPrintf(ArchiveHandle *AH, TAR_MEMBER *th, const char *fmt,...)
+tarPrintf(TAR_MEMBER *th, const char *fmt,...)
 {
 	int			save_errno = errno;
 	char	   *p;

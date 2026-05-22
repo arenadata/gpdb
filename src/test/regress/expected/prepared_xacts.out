@@ -168,7 +168,7 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
   CREATE TABLE pxtest4 (a int);
   INSERT INTO pxtest4 VALUES (1);
   INSERT INTO pxtest4 VALUES (2);
-  DECLARE foo CURSOR FOR SELECT * FROM pxtest4;
+  DECLARE foo CURSOR FOR SELECT * FROM pxtest4 ORDER BY 1;
   -- Fetch 1 tuple, keeping the cursor open
   FETCH 1 FROM foo;
  a 

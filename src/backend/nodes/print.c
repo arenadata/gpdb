@@ -261,24 +261,26 @@ print_rt(const List *rtable)
 	foreach(l, rtable)
 	{
 		RangeTblEntry *rte = lfirst(l);
+		const char    *name = rte->eref ? rte->eref->aliasname
+		                                : "<null>";
 
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
 				printf("%d\t%s\t%u\t%c",
-					   i, rte->eref->aliasname, rte->relid, rte->relkind);
+					   i, name, rte->relid, rte->relkind);
 				break;
 			case RTE_SUBQUERY:
 				printf("%d\t%s\t[subquery]",
-					   i, rte->eref->aliasname);
+					   i, name);
 				break;
 			case RTE_JOIN:
 				printf("%d\t%s\t[join]",
-					   i, rte->eref->aliasname);
+					   i, name);
 				break;
 			case RTE_FUNCTION:
 				printf("%d\t%s\t[rangefunction]",
-					   i, rte->eref->aliasname);
+					   i, name);
 				break;
 			case RTE_TABLEFUNC:
 				printf("%d\t%s\t[table function]",
@@ -286,11 +288,19 @@ print_rt(const List *rtable)
 				break;
 			case RTE_VALUES:
 				printf("%d\t%s\t[values list]",
-					   i, rte->eref->aliasname);
+					   i, name);
 				break;
 			case RTE_CTE:
 				printf("%d\t%s\t[cte]",
-					   i, rte->eref->aliasname);
+					   i, name);
+				break;
+			case RTE_TABLEFUNCTION:
+				printf("%d\t%s\t[tablefunction]",
+					   i, name);
+				break;
+			case RTE_VOID:
+				printf("%d\t%s\t[void]",
+					   i, name);
 				break;
 			case RTE_NAMEDTUPLESTORE:
 				printf("%d\t%s\t[tuplestore]",
@@ -302,7 +312,7 @@ print_rt(const List *rtable)
 				break;
 			default:
 				printf("%d\t%s\t[unknown rtekind]",
-					   i, rte->eref->aliasname);
+					   i, name);
 		}
 
 		printf("\t%s\t%s\n",
@@ -493,15 +503,191 @@ void
 print_slot(TupleTableSlot *slot)
 {
 	if (TupIsNull(slot))
-	{
 		printf("tuple is null.\n");
-		return;
-	}
-	if (!slot->tts_tupleDescriptor)
-	{
+	else if (!slot->tts_tupleDescriptor)
 		printf("no tuple descriptor.\n");
+	else
+		debugtup(slot, NULL);
+
+	fflush(stdout);
+}
+
+char *
+plannode_type(Plan *p)
+{
+	switch (nodeTag(p))
+	{
+		case T_Plan:
+			return "PLAN";
+		case T_Result:
+			return "RESULT";
+		case T_Append:
+			return "APPEND";
+		case T_BitmapAnd:
+			return "BITMAPAND";
+		case T_BitmapOr:
+			return "BITMAPOR";
+		case T_Scan:
+			return "SCAN";
+		case T_SeqScan:
+			return "SEQSCAN";
+		case T_IndexScan:
+			return "INDEXSCAN";
+		case T_BitmapIndexScan:
+			return "BITMAPINDEXSCAN";
+		case T_BitmapHeapScan:
+			return "BITMAPHEAPSCAN";
+		case T_TidScan:
+			return "TIDSCAN";
+		case T_SubqueryScan:
+			return "SUBQUERYSCAN";
+		case T_FunctionScan:
+			return "FUNCTIONSCAN";
+		case T_ValuesScan:
+			return "VALUESSCAN";
+		case T_Join:
+			return "JOIN";
+		case T_NestLoop:
+			return "NESTLOOP";
+		case T_MergeJoin:
+			return "MERGEJOIN";
+		case T_HashJoin:
+			return "HASHJOIN";
+		case T_ShareInputScan:
+			return "SHAREINPUTSCAN";
+		case T_Material:
+			return "MATERIAL";
+		case T_Sort:
+			return "SORT";
+		case T_Agg:
+			return "AGG";
+		case T_TupleSplit:
+			return "TupleSplit";
+		case T_WindowAgg:
+			return "WINDOWAGG";
+		case T_TableFunctionScan:
+			return "TABLEFUNCTIONSCAN";
+		case T_Unique:
+			return "UNIQUE";
+		case T_SetOp:
+			return "SETOP";
+		case T_Limit:
+			return "LIMIT";
+		case T_Hash:
+			return "HASH";
+		case T_Motion:
+			return "MOTION";
+		case T_ForeignScan:
+			return "FOREIGNSCAN";
+		case T_SplitUpdate:
+			return "SPLITUPDATE";
+		default:
+			return "UNKNOWN";
+	}
+}
+
+/*
+ * Recursively prints a simple text description of the plan tree
+ */
+static void
+print_plan_recursive(Plan *p, Query *parsetree, int indentLevel, char *label)
+{
+	int			i;
+	char		extraInfo[NAMEDATALEN + 100];
+
+	if (!p)
 		return;
+	for (i = 0; i < indentLevel; i++)
+		printf(" ");
+	printf("%s%s :c=%.2f..%.2f :r=%.0f :w=%d ", label, plannode_type(p),
+		   p->startup_cost, p->total_cost,
+		   p->plan_rows, p->plan_width);
+	if (IsA(p, Scan) ||
+		IsA(p, SeqScan) ||
+		IsA(p, BitmapHeapScan))
+	{
+		RangeTblEntry *rte;
+
+		rte = rt_fetch(((Scan *) p)->scanrelid, parsetree->rtable);
+		strlcpy(extraInfo, rte->eref->aliasname, NAMEDATALEN);
+	}
+	else if (IsA(p, IndexScan))
+	{
+		RangeTblEntry *rte;
+
+		rte = rt_fetch(((IndexScan *) p)->scan.scanrelid, parsetree->rtable);
+		strlcpy(extraInfo, rte->eref->aliasname, NAMEDATALEN);
+	}
+	else if (IsA(p, FunctionScan))
+	{
+		RangeTblEntry *rte;
+
+		rte = rt_fetch(((FunctionScan *) p)->scan.scanrelid, parsetree->rtable);
+		strlcpy(extraInfo, rte->eref->aliasname, NAMEDATALEN);
+	}
+	else if (IsA(p, ValuesScan))
+	{
+		RangeTblEntry *rte;
+
+		rte = rt_fetch(((ValuesScan *) p)->scan.scanrelid, parsetree->rtable);
+		strlcpy(extraInfo, rte->eref->aliasname, NAMEDATALEN);
+	}
+	else
+		extraInfo[0] = '\0';
+	if (extraInfo[0] != '\0')
+		printf(" ( %s )\n", extraInfo);
+	else
+		printf("\n");
+	print_plan_recursive(p->lefttree, parsetree, indentLevel + 3, "l: ");
+	print_plan_recursive(p->righttree, parsetree, indentLevel + 3, "r: ");
+
+	if (IsA(p, Append))
+	{
+		ListCell   *l;
+		Append	   *appendplan = (Append *) p;
+
+		foreach(l, appendplan->appendplans)
+		{
+			Plan	   *subnode = (Plan *) lfirst(l);
+
+			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
+		}
 	}
 
-	debugtup(slot, NULL);
+	if (IsA(p, BitmapAnd))
+	{
+		ListCell   *l;
+		BitmapAnd  *bitmapandplan = (BitmapAnd *) p;
+
+		foreach(l, bitmapandplan->bitmapplans)
+		{
+			Plan	   *subnode = (Plan *) lfirst(l);
+
+			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
+		}
+	}
+
+	if (IsA(p, BitmapOr))
+	{
+		ListCell   *l;
+		BitmapOr   *bitmaporplan = (BitmapOr *) p;
+
+		foreach(l, bitmaporplan->bitmapplans)
+		{
+			Plan	   *subnode = (Plan *) lfirst(l);
+
+			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
+		}
+	}
+}
+
+/*
+ * print_plan
+ *
+ * prints just the plan node types
+ */
+void
+print_plan(Plan *p, Query *parsetree)
+{
+	print_plan_recursive(p, parsetree, 0, "");
 }

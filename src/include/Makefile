@@ -13,7 +13,7 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
 
-all: pg_config.h pg_config_ext.h pg_config_os.h
+all: pg_config.h pg_config_ext.h pg_config_os.h check_oids
 
 
 # Subdirectories containing installable headers
@@ -25,6 +25,8 @@ SUBDIRS = access bootstrap catalog commands common datatype \
 	tsearch/dicts utils port port/atomics port/win32 port/win32_msvc \
 	port/win32_msvc/sys port/win32/arpa port/win32/netinet \
 	port/win32/sys portability
+
+SUBDIRS += cdb
 
 # Install all headers
 install: all installdirs
@@ -54,7 +56,7 @@ install: all installdirs
 	  cp $(srcdir)/$$dir/*.h '$(DESTDIR)$(includedir_server)'/$$dir/ || exit; \
 	done
 ifeq ($(vpath_build),yes)
-	for file in catalog/schemapg.h catalog/pg_*_d.h parser/gram.h storage/lwlocknames.h utils/probes.h; do \
+	for file in catalog/schemapg.h catalog/pg_*_d.h catalog/gp_*_d.h parser/gram.h storage/lwlocknames.h utils/probes.h; do \
 	  cp $$file '$(DESTDIR)$(includedir_server)'/$$file || exit; \
 	done
 endif
@@ -75,11 +77,13 @@ uninstall:
 # heuristic...
 	rm -rf $(addprefix '$(DESTDIR)$(includedir_server)'/, $(SUBDIRS) *.h)
 
+check_oids:
+	(cd $(abs_top_srcdir)/src/include/catalog/ && ./duplicate_oids) 
 
 clean:
 	rm -f utils/fmgroids.h utils/fmgrprotos.h utils/errcodes.h utils/header-stamp
 	rm -f parser/gram.h storage/lwlocknames.h utils/probes.h
-	rm -f catalog/schemapg.h catalog/pg_*_d.h catalog/header-stamp
+	rm -f catalog/schemapg.h catalog/pg_*_d.h catalog/gp_*_d.h catalog/header-stamp
 
 distclean maintainer-clean: clean
 	rm -f pg_config.h pg_config_ext.h pg_config_os.h stamp-h stamp-ext-h

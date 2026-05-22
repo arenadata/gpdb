@@ -175,22 +175,22 @@ CREATE TABLE aggtest (
 CREATE TABLE hash_i4_heap (
 	seqno 		int4,
 	random 		int4
-);
+) distributed by (seqno);
 
 CREATE TABLE hash_name_heap (
 	seqno 		int4,
 	random 		name
-);
+) distributed by (seqno);
 
 CREATE TABLE hash_txt_heap (
 	seqno 		int4,
 	random 		text
-);
+) distributed by (seqno);
 
 CREATE TABLE hash_f8_heap (
 	seqno		int4,
 	random 		float8
-);
+) distributed by (seqno);
 
 -- don't include the hash_ovfl_heap stuff in the distribution
 -- the data set is too large for what it's worth
@@ -868,6 +868,10 @@ drop table perm_parted cascade;
 drop table temp_parted cascade;
 
 -- check that adding partitions to a table while it is being used is prevented
+-- This test doesn't work as intended in GPDB, because statement-triggers don't
+-- work. I was not able to formulate a test that would exercise the same
+-- codepath as this does in upstream. So this test produces a different error,
+-- and isn't very interesting in GPDB.
 create table tab_part_create (a int) partition by list (a);
 create or replace function func_part_create() returns trigger
   language plpgsql as $$
@@ -903,3 +907,8 @@ create table defcheck_1 partition of defcheck for values in (1, null);
 insert into defcheck_def values (0, 0);
 create table defcheck_0 partition of defcheck for values in (0);
 drop table defcheck;
+
+-- Test github issue #7340. truncating a toast unlogged table fails.
+-- Leave the table on purpose for pg_dump and gp_replica_check tests.
+CREATE UNLOGGED TABLE unlogged_toast (a text);
+TRUNCATE unlogged_toast;

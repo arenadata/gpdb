@@ -3,6 +3,8 @@
  * nodeMaterial.c
  *	  Routines to handle materialization nodes.
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -24,6 +26,14 @@
 #include "executor/executor.h"
 #include "executor/nodeMaterial.h"
 #include "miscadmin.h"
+
+#include "cdb/cdbvars.h"
+#include "executor/instrument.h"        /* Instrumentation */
+
+static void ExecMaterialExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+static void ExecChildRescan(MaterialState *node);
+
+static void ExecEagerFreeMaterial(MaterialState *node);
 
 /* ----------------------------------------------------------------
  *		ExecMaterial
@@ -61,7 +71,7 @@ ExecMaterial(PlanState *pstate)
 	 */
 	if (tuplestorestate == NULL && node->eflags != 0)
 	{
-		tuplestorestate = tuplestore_begin_heap(true, false, work_mem);
+		tuplestorestate = tuplestore_begin_heap(true, false, PlanStateOperatorMemKB(&node->ss.ps));
 		tuplestore_set_eflags(tuplestorestate, node->eflags);
 		if (node->eflags & EXEC_FLAG_MARK)
 		{
@@ -76,6 +86,39 @@ ExecMaterial(PlanState *pstate)
 			Assert(ptrno == 1);
 		}
 		node->tuplestorestate = tuplestorestate;
+
+        /* CDB: Offer extra info for EXPLAIN ANALYZE. */
+        if (node->ss.ps.instrument && node->ss.ps.instrument->need_cdb)
+        {
+            /* Let the tuplestore share our Instrumentation object. */
+			tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
+
+            /* Request a callback at end of query. */
+            node->ss.ps.cdbexplainfun = ExecMaterialExplainEnd;
+        }
+
+		/*
+		 * MPP: If requested, fetch all rows from subplan and put them
+		 * in the tuplestore.  This decouples a middle slice's receiving
+		 * and sending Motion operators to neutralize a deadlock hazard.
+		 * MPP TODO: Remove when a better solution is implemented.
+		 *
+		 * See motion_sanity_walker() for details on how a deadlock may occur.
+		 */
+		if (((Material *) node->ss.ps.plan)->cdb_strict)
+		{
+			for (;;)
+			{
+				TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
+
+				if (TupIsNull(outerslot))
+					break;
+
+				tuplestore_puttupleslot(tuplestorestate, outerslot);
+			}
+			node->eof_underlying = true;
+			tuplestore_rescan(tuplestorestate);
+		}
 	}
 
 	/*
@@ -120,6 +163,9 @@ ExecMaterial(PlanState *pstate)
 	 * subplan calls.  It's not optional, unfortunately, because some plan
 	 * node types are not robust about being called again when they've already
 	 * returned NULL.
+	 *
+	 * GPDB: If reusing cached workfiles, there is no need to execute subplan
+	 * at all.
 	 */
 	if (eof_tuplestore && !node->eof_underlying)
 	{
@@ -135,6 +181,11 @@ ExecMaterial(PlanState *pstate)
 		if (TupIsNull(outerslot))
 		{
 			node->eof_underlying = true;
+			if (!node->delayEagerFree)
+			{
+				ExecEagerFreeMaterial(node);
+			}
+
 			return NULL;
 		}
 
@@ -148,6 +199,11 @@ ExecMaterial(PlanState *pstate)
 
 		ExecCopySlot(slot, outerslot);
 		return slot;
+	}
+
+	if (!node->delayEagerFree)
+	{
+		ExecEagerFreeMaterial(node);
 	}
 
 	/*
@@ -174,6 +230,22 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	matstate->ss.ps.state = estate;
 	matstate->ss.ps.ExecProcNode = ExecMaterial;
 
+	if (node->cdb_strict)
+		eflags |= EXEC_FLAG_REWIND;
+
+	/*
+	 * If the Material node was inserted to protect the child node from rescanning, don't
+	 * eager free.
+	 *
+	 * XXX: The planner doesn't always set the flag for Material nodes that are put
+	 * directly on top of Motion nodes, so check for that, too. (Or is this for ORCA?)
+	 */
+	if (node->cdb_shield_child_from_rescans ||
+		IsA(outerPlan((Plan *) node), Motion))
+	{
+		eflags |= EXEC_FLAG_REWIND;
+	}
+
 	/*
 	 * We must have a tuplestore buffering the subplan output to do backward
 	 * scan or mark/restore.  We also prefer to materialize the subplan output
@@ -196,6 +268,7 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 
 	matstate->eof_underlying = false;
 	matstate->tuplestorestate = NULL;
+	matstate->ts_destroyed = false;
 
 	/*
 	 * Miscellaneous initialization
@@ -205,14 +278,41 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	 */
 
 	/*
+	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
+	 * then this node is not eager free safe.
+	 */
+	matstate->delayEagerFree =
+		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
+
+	/*
 	 * initialize child nodes
 	 *
-	 * We shield the child node from the need to support REWIND, BACKWARD, or
+	 * We shield the child node from the need to support BACKWARD, or
 	 * MARK/RESTORE.
 	 */
-	eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
+	eflags &= ~(EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
+
+	/*
+	 * If Materialize does not have any external parameters, then it
+	 * can shield the child node from being rescanned as well, hence
+	 * we can clear the EXEC_FLAG_REWIND as well. If there are parameters,
+	 * don't clear the REWIND flag, as the child will be rewound.
+	 */
+	if (node->plan.allParam == NULL || node->plan.extParam == NULL)
+	{
+		eflags &= ~EXEC_FLAG_REWIND;
+	}
 
 	outerPlan = outerPlan(node);
+	/*
+	 * A very basic check to see if the optimizer requires the material to do a projection.
+	 * Ideally, this check would recursively compare all the target list expressions. However,
+	 * such a check is tricky because of the varno mismatch (outer plan may have a varno that
+	 * index into range table, while the material may refer to the same relation as "outer" varno)
+	 * [JIRA: MPP-25365]
+	 */
+	if (list_length(node->plan.targetlist) != list_length(outerPlan->targetlist))
+		elog(ERROR, "Material operator does not support projection");
 	outerPlanState(matstate) = ExecInitNode(outerPlan, estate, eflags);
 
 	/*
@@ -232,6 +332,21 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	return matstate;
 }
 
+/*
+ * ExecMaterialExplainEnd
+ *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
+ *
+ * Some of the cleanup that ordinarily would occur during ExecEndMaterial()
+ * needs to be done earlier in order to report statistics to EXPLAIN ANALYZE.
+ * Note that ExecEndMaterial() will be called again during ExecutorEnd().
+ */
+static void
+ExecMaterialExplainEnd(PlanState *planstate, struct StringInfoData *buf)
+{
+	ExecEagerFreeMaterial((MaterialState*)planstate);
+}                               /* ExecMaterialExplainEnd */
+
+
 /* ----------------------------------------------------------------
  *		ExecEndMaterial
  * ----------------------------------------------------------------
@@ -248,7 +363,10 @@ ExecEndMaterial(MaterialState *node)
 	 * Release tuplestore resources
 	 */
 	if (node->tuplestorestate != NULL)
+	{
 		tuplestore_end(node->tuplestorestate);
+		node->ts_destroyed = true;
+	}
 	node->tuplestorestate = NULL;
 
 	/*
@@ -308,6 +426,24 @@ ExecMaterialRestrPos(MaterialState *node)
 	tuplestore_copy_read_pointer(node->tuplestorestate, 1, 0);
 }
 
+/*
+ * ExecChildRescan
+ *      Helper function for rescanning child of materialize node
+ */
+static void
+ExecChildRescan(MaterialState *node)
+{
+	Assert(node);
+	/*
+	 * if parameters of subplan have changed, then subplan will be rescanned by
+	 * first ExecProcNode. Otherwise, we need to rescan subplan here
+	 */
+	if (node->ss.ps.lefttree->chgParam == NULL)
+		ExecReScan(node->ss.ps.lefttree);
+
+	node->eof_underlying = false;
+}
+
 /* ----------------------------------------------------------------
  *		ExecReScanMaterial
  *
@@ -324,12 +460,21 @@ ExecReScanMaterial(MaterialState *node)
 	if (node->eflags != 0)
 	{
 		/*
-		 * If we haven't materialized yet, just return. If outerplan's
-		 * chgParam is not NULL then it will be re-scanned by ExecProcNode,
-		 * else no reason to re-scan it at all.
+		 * If tuple store is empty, then either we have not materialized yet
+		 * or tuple store was destroyed after a previous execution of materialize.
 		 */
 		if (!node->tuplestorestate)
+		{
+			/*
+			 *  If tuple store was destroyed before, then materialize is part of subquery
+			 *  execution, and we need to rescan child (MPP-15087).
+			 */
+			if (node->ts_destroyed)
+			{
+				ExecChildRescan(node);
+			}
 			return;
+		}
 
 		/*
 		 * If subnode is to be rescanned then we forget previous stored
@@ -346,6 +491,7 @@ ExecReScanMaterial(MaterialState *node)
 		{
 			tuplestore_end(node->tuplestorestate);
 			node->tuplestorestate = NULL;
+			node->ts_destroyed = true;
 			if (outerPlan->chgParam == NULL)
 				ExecReScan(outerPlan);
 			node->eof_underlying = false;
@@ -364,5 +510,38 @@ ExecReScanMaterial(MaterialState *node)
 		if (outerPlan->chgParam == NULL)
 			ExecReScan(outerPlan);
 		node->eof_underlying = false;
+	}
+}
+
+static void
+ExecEagerFreeMaterial(MaterialState *node)
+{
+	/*
+	 * Release tuplestore resources
+	 */
+	if (node->tuplestorestate)
+	{
+		tuplestore_end(node->tuplestorestate);
+		node->ts_destroyed = true;
+	}
+	node->tuplestorestate = NULL;
+}
+
+void
+ExecSquelchMaterial(MaterialState *node)
+{
+	/*
+	 * If this Material is shielding the underlying nodes from rescanning (for
+	 * example, if there is a Motion node below), then keep the tuplestore.
+	 * Also, don't recurse to the subtree in that case, because we might need
+	 * to read more tuples from it after a ReScan. Most likely we have already
+	 * read all the tuples from the underlying node in that case, but it's
+	 * possible that ExecMaterial hasn't been called even once yet, and we
+	 * haven't created the tuplestore yet.
+	 */
+	if (!node->delayEagerFree)
+	{
+		ExecEagerFreeMaterial(node);
+		ExecSquelchNode(outerPlanState(node));
 	}
 }

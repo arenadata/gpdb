@@ -22,6 +22,9 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/print.h"
+#include "nodes/nodeFuncs.h"
+#include "parser/parsetree.h"               /* get_tle_by_resno */
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
@@ -112,7 +115,7 @@ coerce_to_target_type(ParseState *pstate, Node *expr, Oid exprtype,
 	result = coerce_type_typmod(result,
 								targettype, targettypmod,
 								ccontext, cformat, location,
-								(result != expr && !IsA(result, Const)));
+								(result != expr && !IsA(result, Const) && !IsA(result, Var)));
 
 	if (expr != origexpr)
 	{
@@ -204,6 +207,32 @@ coerce_type(ParseState *pstate, Node *node,
 		 * since the other functions in this file will not match such a
 		 * parameter to ANYENUM.  But that should get changed eventually.
 		 */
+
+		/*
+		 * BUG BUG 
+		 * JIRA MPP-3786
+		 *
+		 * Special handling for ANYARRAY type.  
+		 *
+		 * GPDB_95_MERGE_FIXME: can this be removed?
+		 */
+		if(targetTypeId == ANYARRAYOID && IsA(node, Const) && inputTypeId != UNKNOWNOID)
+		{
+			Const	   *con = (Const *) node;
+			Const	   *newcon = makeNode(Const);
+			Oid elemoid = get_element_type(inputTypeId);
+
+			if(elemoid == InvalidOid)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH), 
+					 errmsg("cannot convert non-Array type to ANYARRAY")));
+
+			memcpy(newcon, con, sizeof(Const));
+			newcon->consttype = ANYARRAYOID;
+
+			return (Node *) newcon;
+		}
+
 		if (inputTypeId != UNKNOWNOID)
 		{
 			Oid			baseTypeId = getBaseType(inputTypeId);
@@ -557,6 +586,21 @@ can_coerce_type(int nargs, const Oid *input_typeids, const Oid *target_typeids,
 		/* no problem if same type */
 		if (inputTypeId == targetTypeId)
 			continue;
+
+		/* 
+		 * ANYTABLE is a special case that can occur when a function is 
+		 * called with a TableValue expression.  A table value expression
+		 * can only match a parameter to a function defined as a "anytable".
+		 *
+		 * Only allow ANYTABLE to match another ANYTABLE, anything else would
+		 * be a mismatch of Table domain and Value domain expressions.  
+		 *
+		 * Validation of ANYTABLE coercion is processed at a higher level
+		 * that has more context related to the tupleDesc for the tables
+		 * involved.
+		 */
+		if (targetTypeId == ANYTABLEOID || inputTypeId == ANYTABLEOID)
+			return false;
 
 		/* accept if target is ANY */
 		if (targetTypeId == ANYOID)
@@ -1245,15 +1289,15 @@ coerce_to_specific_type(ParseState *pstate, Node *node,
  * XXX possibly this is more generally useful than coercion errors;
  * if so, should rename and place with parser_errposition.
  */
-int
+void
 parser_coercion_errposition(ParseState *pstate,
 							int coerce_location,
 							Node *input_expr)
 {
 	if (coerce_location >= 0)
-		return parser_errposition(pstate, coerce_location);
+		parser_errposition(pstate, coerce_location);
 	else
-		return parser_errposition(pstate, exprLocation(input_expr));
+		parser_errposition(pstate, exprLocation(input_expr));
 }
 
 

@@ -80,6 +80,13 @@ CATALOG(pg_amop,2602,AccessMethodOperatorRelationId)
 	Oid			amopsortfamily BKI_DEFAULT(0) BKI_LOOKUP(pg_opfamily);
 } FormData_pg_amop;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(amopfamily REFERENCES pg_opfamily(oid));
+FOREIGN_KEY(amoplefttype REFERENCES pg_type(oid));
+FOREIGN_KEY(amoprighttype REFERENCES pg_type(oid));
+FOREIGN_KEY(amopopr REFERENCES pg_operator(oid));
+FOREIGN_KEY(amopmethod REFERENCES pg_am(oid));
+
 /* ----------------
  *		Form_pg_amop corresponds to a pointer to a tuple with
  *		the format of pg_amop relation.

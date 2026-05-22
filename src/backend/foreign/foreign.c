@@ -18,6 +18,8 @@
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
 #include "catalog/pg_user_mapping.h"
+#include "cdb/cdbutil.h"
+#include "commands/defrem.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "lib/stringinfo.h"
@@ -27,6 +29,86 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+
+extern Datum pg_options_to_table(PG_FUNCTION_ARGS);
+extern Datum postgresql_fdw_validator(PG_FUNCTION_ARGS);
+
+/* Get and separate out the mpp_execute option. */
+char
+SeparateOutMppExecute(List **options)
+{
+	ListCell *lc = NULL;
+	ListCell *prev = NULL;
+	char *mpp_execute = NULL;
+	char exec_location = FTEXECLOCATION_NOT_DEFINED;
+
+	foreach(lc, *options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "mpp_execute") == 0)
+		{
+			mpp_execute = defGetString(def);
+
+			if (pg_strcasecmp(mpp_execute, "any") == 0)
+				exec_location = FTEXECLOCATION_ANY;
+			else if (pg_strcasecmp(mpp_execute, "master") == 0)
+				exec_location = FTEXECLOCATION_COORDINATOR;
+			else if (pg_strcasecmp(mpp_execute, "coordinator") == 0)
+				exec_location = FTEXECLOCATION_COORDINATOR;
+			else if (pg_strcasecmp(mpp_execute, "all segments") == 0)
+				exec_location = FTEXECLOCATION_ALL_SEGMENTS;
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("\"%s\" is not a valid mpp_execute value",
+								mpp_execute)));
+			}
+
+			*options = list_delete_cell(*options, lc, prev);
+			break;
+		}
+		prev = lc;
+	}
+
+	return exec_location;
+}
+
+/* Get and separate out the num_segments option */
+int32
+SeparateOutNumSegments(List **options)
+{
+	ListCell *lc = NULL;
+	ListCell *prev = NULL;
+	char *num_segments_str = NULL;
+	int32 num_segments = 0;
+
+	foreach(lc, *options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "num_segments") == 0)
+		{
+			num_segments_str = defGetString(def);
+			num_segments = pg_atoi(num_segments_str, sizeof(int32), 0);
+
+			if (num_segments <= 0)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("\"%d\" is not a valid num_segments value",
+								num_segments)));
+			}
+
+			*options = list_delete_cell(*options, lc, prev);
+			break;
+		}
+
+		prev = lc;
+	}
+	return num_segments;
+}
 
 /*
  * GetForeignDataWrapper -	look up the foreign-data wrapper by OID.
@@ -79,6 +161,10 @@ GetForeignDataWrapperExtended(Oid fdwid, bits16 flags)
 		fdw->options = NIL;
 	else
 		fdw->options = untransformRelOptions(datum);
+
+	fdw->exec_location = SeparateOutMppExecute(&fdw->options);
+	if (fdw->exec_location == FTEXECLOCATION_NOT_DEFINED)
+		fdw->exec_location = FTEXECLOCATION_COORDINATOR;
 
 	ReleaseSysCache(tp);
 
@@ -166,6 +252,19 @@ GetForeignServerExtended(Oid serverid, bits16 flags)
 		server->options = NIL;
 	else
 		server->options = untransformRelOptions(datum);
+
+	server->exec_location = SeparateOutMppExecute(&server->options);
+	if (server->exec_location == FTEXECLOCATION_NOT_DEFINED)
+	{
+		ForeignDataWrapper *fdw = GetForeignDataWrapper(server->fdwid);
+		server->exec_location = fdw->exec_location;
+	}
+
+	server->num_segments = SeparateOutNumSegments(&server->options);
+	if (server->num_segments <= 0)
+	{
+		server->num_segments = getgpsegmentCount();
+	}
 
 	ReleaseSysCache(tp);
 
@@ -272,11 +371,40 @@ GetForeignTable(Oid relid)
 	else
 		ft->options = untransformRelOptions(datum);
 
+	ft->exec_location = SeparateOutMppExecute(&ft->options);
+	if (ft->exec_location == FTEXECLOCATION_NOT_DEFINED)
+	{
+		ForeignServer *server = GetForeignServer(ft->serverid);
+		ft->exec_location = server->exec_location;
+	}
+
 	ReleaseSysCache(tp);
 
 	return ft;
 }
 
+/*
+ * Is the given table a GPDB external table, rather than a normal foreign
+ * table?
+ */
+bool
+rel_is_external_table(Oid relid)
+{
+	Form_pg_foreign_table tableform;
+	HeapTuple	tp;
+	bool		result;
+
+	tp = SearchSysCache1(FOREIGNTABLEREL, ObjectIdGetDatum(relid));
+	if (!HeapTupleIsValid(tp))
+		return false;
+	tableform = (Form_pg_foreign_table) GETSTRUCT(tp);
+
+	result = (tableform->ftserver == get_foreign_server_oid(GP_EXTTABLE_SERVER_NAME, false));
+
+	ReleaseSysCache(tp);
+
+	return result;
+}
 
 /*
  * GetForeignColumnOptions - Get attfdwoptions of given relation/attnum

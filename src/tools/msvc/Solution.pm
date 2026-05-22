@@ -145,6 +145,7 @@ sub GetOpenSSLVersion
 sub GenerateFiles
 {
 	my $self = shift;
+	my $buildclient = shift;
 	my $bits = $self->{platform} eq 'Win32' ? 32 : 64;
 
 	# Parse configure.in to get version numbers
@@ -152,7 +153,12 @@ sub GenerateFiles
 	  || confess("Could not open configure.in for reading\n");
 	while (<$c>)
 	{
-		if (/^AC_INIT\(\[PostgreSQL\], \[([^\]]+)\]/)
+		if (/^AC_INIT\(\[Greenplum Database\], \[([^\]]+)\]/)
+		{
+			$self->{gpdbver} = $1;
+			$self->{gpdbmajorver} = substr $1, 0, 1;
+		}
+		if (/\[PG_PACKAGE_VERSION=([^\]]+)\]/)
 		{
 			$self->{strver} = $1;
 			if ($self->{strver} !~ /^(\d+)(?:\.(\d+))?/)
@@ -189,6 +195,8 @@ sub GenerateFiles
 			s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, compiled by Visual C++ build " CppAsString2(_MSC_VER) ", $bits-bit"};
 			print $o $_;
 		}
+		print $o "#define GP_VERSION \"$self->{gpdbver}\"\n";
+		print $o "#define GP_MAJORVERSION \"$self->{gpdbmajorver}\"\n";
 		print $o "#define PG_MAJORVERSION \"$self->{majorver}\"\n";
 		print $o "#define LOCALEDIR \"/share/locale\"\n"
 		  if ($self->{options}->{nls});
@@ -728,10 +736,20 @@ sub AddProject
 	}
 	if ($self->{options}->{gss})
 	{
-		$proj->AddIncludeDir($self->{options}->{gss} . '\inc\krb5');
-		$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\krb5_32.lib');
-		$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\comerr32.lib');
-		$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\gssapi32.lib');
+		if ($self->{platform} eq 'Win32')
+		{
+			$proj->AddIncludeDir($self->{options}->{gss} . '\inc\krb5');
+			$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\krb5_32.lib');
+			$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\comerr32.lib');
+			$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\gssapi32.lib');
+		}
+		else
+		{
+			$proj->AddIncludeDir($self->{options}->{gss} . '\include');
+			$proj->AddLibrary($self->{options}->{gss} . '\lib\krb5_64.lib');
+			$proj->AddLibrary($self->{options}->{gss} . '\lib\comerr64.lib');
+			$proj->AddLibrary($self->{options}->{gss} . '\lib\gssapi64.lib');
+		}
 	}
 	if ($self->{options}->{iconv})
 	{
@@ -775,10 +793,10 @@ sub AddProject
 
 sub Save
 {
-	my ($self) = @_;
+	my ($self, $buildclient) = @_;
 	my %flduid;
 
-	$self->GenerateFiles();
+	$self->GenerateFiles($buildclient);
 	foreach my $fld (keys %{ $self->{projects} })
 	{
 		foreach my $proj (@{ $self->{projects}->{$fld} })

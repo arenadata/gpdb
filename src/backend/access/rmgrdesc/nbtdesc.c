@@ -16,6 +16,72 @@
 
 #include "access/nbtxlog.h"
 
+/*
+ * GPDB: Print additional information about an INSERT record.
+ */
+static void
+out_insert(StringInfo buf, uint8 info, XLogReaderState *record)
+{
+	char		*rec = XLogRecGetData(record);
+	char		*ptr;
+	xl_btree_insert	*xlrec = (xl_btree_insert *) rec;
+	xl_btree_metadata *md;
+	BlockNumber	blkno;	
+	bool		fullpage;
+	Size		datalen;
+
+	fullpage = XLogRecHasBlockImage(record, 0);
+	XLogRecGetBlockTag(record, 0, NULL, NULL, &blkno);
+	XLogRecGetBlockData(record, 0, &datalen);
+
+	if (fullpage && info == XLOG_BTREE_INSERT_LEAF)
+	{
+		appendStringInfo(buf, "; page %u", blkno);
+		return;					/* nothing to do */
+	}
+
+	if (!fullpage)
+	{
+		appendStringInfo(buf, "; add length %d item at offset %d in page %u",
+						 (int) datalen, xlrec->offnum, blkno);
+	}
+
+	if (info == XLOG_BTREE_INSERT_META)
+	{
+		ptr = XLogRecGetBlockData(record, 2, NULL);
+		md = (xl_btree_metadata *)ptr;
+		appendStringInfo(buf, "; restore metadata page 0 (root page value %u, level %d, fastroot page value %u, fastlevel %d)",
+						 md->root, 
+						 md->level,
+						 md->fastroot, 
+						 md->fastlevel);
+	}
+}
+
+/*
+ * GPDB: Print additional information about a DELETE record.
+ */
+static void
+out_delete(StringInfo buf, XLogReaderState *record)
+{
+	xl_btree_delete *xlrec = (xl_btree_delete *) XLogRecGetData(record);
+
+	if (XLogRecHasBlockImage(record, 0))
+		return;
+
+	if (XLogRecGetDataLen(record) > SizeOfBtreeDelete)
+	{
+		OffsetNumber *unused;
+		OffsetNumber *unend;
+
+		unused = (OffsetNumber *) ((char *) xlrec + SizeOfBtreeDelete);
+		unend = (OffsetNumber *) ((char *) xlrec + XLogRecGetDataLen(record));
+
+		appendStringInfo(buf, "; page index (unend - unused = %u)",
+						 (unsigned int)(unend - unused));
+	}
+}
+
 void
 btree_desc(StringInfo buf, XLogReaderState *record)
 {
@@ -31,6 +97,7 @@ btree_desc(StringInfo buf, XLogReaderState *record)
 				xl_btree_insert *xlrec = (xl_btree_insert *) rec;
 
 				appendStringInfo(buf, "off %u", xlrec->offnum);
+				out_insert(buf, info, record);
 				break;
 			}
 		case XLOG_BTREE_SPLIT_L:
@@ -56,6 +123,7 @@ btree_desc(StringInfo buf, XLogReaderState *record)
 
 				appendStringInfo(buf, "%d items, latest removed xid %u",
 								 xlrec->nitems, xlrec->latestRemovedXid);
+				out_delete(buf, record);
 				break;
 			}
 		case XLOG_BTREE_MARK_PAGE_HALFDEAD:

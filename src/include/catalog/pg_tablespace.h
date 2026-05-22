@@ -31,12 +31,14 @@ CATALOG(pg_tablespace,1213,TableSpaceRelationId) BKI_SHARED_RELATION
 	Oid			oid;			/* oid */
 	NameData	spcname;		/* tablespace name */
 	Oid			spcowner;		/* owner of tablespace */
-
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	aclitem		spcacl[1];		/* access permissions */
 	text		spcoptions[1];	/* per-tablespace options */
 #endif
 } FormData_pg_tablespace;
+
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(spcowner REFERENCES pg_authid(oid));
 
 /* ----------------
  *		Form_pg_tablespace corresponds to a pointer to a tuple with

@@ -73,6 +73,10 @@ CATALOG(pg_database,1262,DatabaseRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID
 #endif
 } FormData_pg_database;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(datdba REFERENCES pg_authid(oid));
+FOREIGN_KEY(dattablespace REFERENCES pg_tablespace(oid));
+
 /* ----------------
  *		Form_pg_database corresponds to a pointer to a tuple with
  *		the format of pg_database relation.

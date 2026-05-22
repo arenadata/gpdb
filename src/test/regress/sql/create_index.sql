@@ -86,16 +86,19 @@ CREATE INDEX gpointind ON point_tbl USING gist (f1);
 
 CREATE TEMP TABLE gpolygon_tbl AS
     SELECT polygon(home_base) AS f1 FROM slow_emp4000;
+ANALYZE gpolygon_tbl;
 INSERT INTO gpolygon_tbl VALUES ( '(1000,0,0,1000)' );
 INSERT INTO gpolygon_tbl VALUES ( '(0,1000,1000,1000)' );
 
 CREATE TEMP TABLE gcircle_tbl AS
     SELECT circle(home_base) AS f1 FROM slow_emp4000;
+ANALYZE gcircle_tbl;
 
 CREATE INDEX ggpolygonind ON gpolygon_tbl USING gist (f1);
 
 CREATE INDEX ggcircleind ON gcircle_tbl USING gist (f1);
 
+SET optimizer_enable_tablescan = OFF;
 --
 -- Test GiST indexes
 --
@@ -142,13 +145,16 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 >^ '(0.0, 0.0)';
 
 SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
 
-SELECT * FROM point_tbl ORDER BY f1 <-> '0,1';
+-- In gpdb, we intentional filter out point (1e-300, -1e-300) every order by related queries
+-- in this test case file. It is an underflow point, rank it cause randomly results( (0,0),
+-- (1e-300, -1e-300) are equal).
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
 
 SELECT * FROM point_tbl WHERE f1 IS NULL;
 
-SELECT * FROM point_tbl WHERE f1 IS NOT NULL ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
 
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
 
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
 
@@ -232,20 +238,20 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
 SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl ORDER BY f1 <-> '0,1';
-SELECT * FROM point_tbl ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM point_tbl WHERE f1 IS NULL;
 SELECT * FROM point_tbl WHERE f1 IS NULL;
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE f1 IS NOT NULL ORDER BY f1 <-> '0,1';
-SELECT * FROM point_tbl WHERE f1 IS NOT NULL ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
@@ -261,8 +267,8 @@ SET enable_indexscan = OFF;
 SET enable_bitmapscan = ON;
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-SELECT * FROM point_tbl WHERE f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
 
 RESET enable_seqscan;
 RESET enable_indexscan;
@@ -391,12 +397,12 @@ RESET maintenance_work_mem;
 -- Test functional index
 --
 CREATE TABLE func_index_heap (f1 text, f2 text);
-CREATE UNIQUE INDEX func_index_index on func_index_heap (textcat(f1,f2));
+CREATE INDEX func_index_index on func_index_heap (textcat(f1,f2));
 
 INSERT INTO func_index_heap VALUES('ABC','DEF');
 INSERT INTO func_index_heap VALUES('AB','CDEFG');
 INSERT INTO func_index_heap VALUES('QWE','RTY');
--- this should fail because of unique index:
+-- this should fail because of unique index: (In GPDB, the index isn't unique, so no error)
 INSERT INTO func_index_heap VALUES('ABCD', 'EF');
 -- but this shouldn't:
 INSERT INTO func_index_heap VALUES('QWERTY');
@@ -407,12 +413,12 @@ INSERT INTO func_index_heap VALUES('QWERTY');
 --
 DROP TABLE func_index_heap;
 CREATE TABLE func_index_heap (f1 text, f2 text);
-CREATE UNIQUE INDEX func_index_index on func_index_heap ((f1 || f2) text_ops);
+CREATE  INDEX func_index_index on func_index_heap ((f1 || f2) text_ops);
 
 INSERT INTO func_index_heap VALUES('ABC','DEF');
 INSERT INTO func_index_heap VALUES('AB','CDEFG');
 INSERT INTO func_index_heap VALUES('QWE','RTY');
--- this should fail because of unique index:
+-- this should fail because of unique index: (In GPDB, the index isn't unique, so no error)
 INSERT INTO func_index_heap VALUES('ABCD', 'EF');
 -- but this shouldn't:
 INSERT INTO func_index_heap VALUES('QWERTY');
@@ -441,29 +447,33 @@ DROP TABLE covering_index_heap;
 -- Also try building functional, expressional, and partial indexes on
 -- tables that already contain data.
 --
-create unique index hash_f8_index_1 on hash_f8_heap(abs(random));
-create unique index hash_f8_index_2 on hash_f8_heap((seqno + 1), random);
-create unique index hash_f8_index_3 on hash_f8_heap(random) where seqno > 1000;
+create index hash_f8_index_1 on hash_f8_heap(abs(random));
+create index hash_f8_index_2 on hash_f8_heap((seqno + 1), random);
+create index hash_f8_index_3 on hash_f8_heap(random) where seqno > 1000;
 
 --
 -- Try some concurrent index builds
 --
 -- Unfortunately this only tests about half the code paths because there are
 -- no concurrent updates happening to the table at the same time.
-
-CREATE TABLE concur_heap (f1 text, f2 text);
+--
+-- Concurrent index building is not currently supported in Greenplum.
+--start_ignore
+CREATE TABLE concur_heap (f1 text, f2 text, dk text) distributed by (dk);
 -- empty table
 CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS concur_index1 ON concur_heap(f2,f1);
-INSERT INTO concur_heap VALUES  ('a','b');
-INSERT INTO concur_heap VALUES  ('b','b');
+INSERT INTO concur_heap VALUES  ('a','b', '1');
+INSERT INTO concur_heap VALUES  ('b','b', '1');
+INSERT INTO concur_heap VALUES  ('c','c', '2');
+INSERT INTO concur_heap VALUES  ('d','d', '3');
 -- unique index
-CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(f1);
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS concur_index2 ON concur_heap(f1);
+CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(dk, f1);
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS concur_index2 ON concur_heap(dk, f1);
 -- check if constraint is set up properly to be enforced
-INSERT INTO concur_heap VALUES ('b','x');
+INSERT INTO concur_heap VALUES ('b','x', '1');
 -- check if constraint is enforced properly at build time
-CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
+CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(dk, f2);
 -- test that expression indexes and partial indexes work concurrently
 CREATE INDEX CONCURRENTLY concur_index4 on concur_heap(f2) WHERE f1='a';
 CREATE INDEX CONCURRENTLY concur_index5 on concur_heap(f2) WHERE f1='x';
@@ -491,6 +501,7 @@ REINDEX TABLE concur_heap;
 
 --
 -- Try some concurrent index drops
+-- Greenplum: The functionality of these tests is replicated in gp_index
 --
 DROP INDEX CONCURRENTLY "concur_index2";				-- works
 DROP INDEX CONCURRENTLY IF EXISTS "concur_index2";		-- notice
@@ -512,6 +523,7 @@ DROP INDEX CONCURRENTLY "concur_heap_expr_idx";
 
 DROP TABLE concur_heap;
 
+--end_ignore
 --
 -- Test ADD CONSTRAINT USING INDEX
 --
@@ -566,7 +578,7 @@ DROP TABLE syscol_table;
 -- Tests for IS NULL/IS NOT NULL with b-tree indexes
 --
 
-SELECT unique1, unique2 INTO onek_with_null FROM onek;
+CREATE TABLE onek_with_null AS SELECT unique1, unique2 FROM onek DISTRIBUTED BY (unique1);
 INSERT INTO onek_with_null (unique1,unique2) VALUES (NULL, -1), (NULL, NULL);
 CREATE UNIQUE INDEX onek_nulltest ON onek_with_null (unique2,unique1);
 
@@ -727,8 +739,21 @@ create temp table boolindex (b bool, i int, unique(b, i), junk float);
 
 explain (costs off)
   select * from boolindex order by b, i limit 10;
+
+-- In PostgreSQL, this uses an Index Scan. In GPDB, the logic to deduce
+-- which path keys are useful for ordering miss this case. That's because
+-- we build a path key to also represent the DISTRIBUTED BY key, which is 'b'
+-- for this table, and the index is deemed not useful for that path key.
+-- We can live with that. But to cover the same codepaths as in upstream,
+-- run the test again with different distribution key so that index scans
+-- are used.
 explain (costs off)
   select * from boolindex where b order by i limit 10;
+-- Repeate with different distribution key
+alter table boolindex set distributed by (i);
+explain (costs off)
+  select * from boolindex where b order by i limit 10;
+
 explain (costs off)
   select * from boolindex where b = true order by i desc limit 10;
 explain (costs off)
@@ -760,7 +785,7 @@ CREATE UNIQUE INDEX concur_reindex_ind1 ON concur_reindex_tab(c1);
 -- Normal index with text column
 CREATE INDEX concur_reindex_ind2 ON concur_reindex_tab(c2);
 -- UNIQUE index with expression
-CREATE UNIQUE INDEX concur_reindex_ind3 ON concur_reindex_tab(abs(c1));
+CREATE UNIQUE INDEX concur_reindex_ind3 ON concur_reindex_tab(c1, abs(c1));
 -- Duplicate column names
 CREATE INDEX concur_reindex_ind4 ON concur_reindex_tab(c1, c1, c2);
 -- Create table for check on foreign key dependence switch with indexes swapped
@@ -770,6 +795,14 @@ INSERT INTO concur_reindex_tab VALUES  (1, 'a');
 INSERT INTO concur_reindex_tab VALUES  (2, 'a');
 -- Reindex concurrently of exclusion constraint currently not supported
 CREATE TABLE concur_reindex_tab3 (c1 int, c2 int4range, EXCLUDE USING gist (c2 WITH &&));
+
+-- GPDB: The above fails, because the exclusion constraint doesn't include the
+-- distribution key. But this works.
+CREATE TABLE concur_reindex_tab3 (c1 int, c2 int4range,
+      distkey int4range DEFAULT 'empty',
+      EXCLUDE USING gist (c2 WITH &&, distkey WITH =))
+DISTRIBUTED BY (distkey);
+
 INSERT INTO concur_reindex_tab3 VALUES  (3, '[1,2]');
 REINDEX INDEX CONCURRENTLY  concur_reindex_tab3_c2_excl;  -- error
 REINDEX TABLE CONCURRENTLY concur_reindex_tab3;  -- succeeds with warning
@@ -814,12 +847,6 @@ CREATE INDEX concur_reindex_part_index_0_2 ON ONLY concur_reindex_part_0_2 (c1);
 ALTER INDEX concur_reindex_part_index_0 ATTACH PARTITION concur_reindex_part_index_0_2;
 SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_index')
   ORDER BY relid, level;
--- REINDEX fails for partitioned indexes
-REINDEX INDEX concur_reindex_part_index_10;
-REINDEX INDEX CONCURRENTLY concur_reindex_part_index_10;
--- REINDEX is a no-op for partitioned tables
-REINDEX TABLE concur_reindex_part_10;
-REINDEX TABLE CONCURRENTLY concur_reindex_part_10;
 SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_index')
   ORDER BY relid, level;
 -- REINDEX should preserve dependencies of partition tree.
@@ -831,6 +858,88 @@ REINDEX TABLE CONCURRENTLY concur_reindex_part_0_1;
 REINDEX TABLE CONCURRENTLY concur_reindex_part_0_2;
 SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_index')
   ORDER BY relid, level;
+
+-- REINDEX for partitioned indexes
+-- REINDEX TABLE fails for partitioned indexes
+-- Top-most parent index
+REINDEX TABLE concur_reindex_part_index; -- error
+REINDEX TABLE CONCURRENTLY concur_reindex_part_index; -- error
+-- Partitioned index with no leaves
+REINDEX TABLE concur_reindex_part_index_10; -- error
+REINDEX TABLE CONCURRENTLY concur_reindex_part_index_10; -- error
+-- Cannot run in a transaction block
+BEGIN;
+REINDEX INDEX concur_reindex_part_index;
+ROLLBACK;
+-- Helper functions to track changes of relfilenodes in a partition tree.
+-- Create a table tracking the relfilenode state.
+CREATE OR REPLACE FUNCTION create_relfilenode_part(relname text, indname text)
+  RETURNS VOID AS
+  $func$
+  BEGIN
+  EXECUTE format('
+    CREATE TABLE %I AS
+      SELECT oid, relname, relfilenode, relkind, reltoastrelid
+      FROM pg_class
+      WHERE oid IN
+         (SELECT relid FROM pg_partition_tree(''%I''));',
+	 relname, indname);
+  END
+  $func$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION compare_relfilenode_part(tabname text)
+  RETURNS TABLE (relname name, relkind "char", state text) AS
+  $func$
+  BEGIN
+    RETURN QUERY EXECUTE
+      format(
+        'SELECT  b.relname,
+                 b.relkind,
+                 CASE WHEN a.relfilenode = b.relfilenode THEN ''relfilenode is unchanged''
+                 ELSE ''relfilenode has changed'' END
+           -- Do not join with OID here as CONCURRENTLY changes it.
+           FROM %I b JOIN pg_class a ON b.relname = a.relname
+           ORDER BY 1;', tabname);
+  END
+  $func$ LANGUAGE plpgsql;
+--  Check that expected relfilenodes are changed, non-concurrent case.
+SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
+REINDEX INDEX concur_reindex_part_index;
+SELECT * FROM compare_relfilenode_part('reindex_index_status');
+DROP TABLE reindex_index_status;
+-- concurrent case.
+SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
+REINDEX INDEX CONCURRENTLY concur_reindex_part_index;
+SELECT * FROM compare_relfilenode_part('reindex_index_status');
+DROP TABLE reindex_index_status;
+
+-- REINDEX for partitioned tables
+-- REINDEX INDEX fails for partitioned tables
+-- Top-most parent
+REINDEX INDEX concur_reindex_part; -- error
+REINDEX INDEX CONCURRENTLY concur_reindex_part; -- error
+-- Partitioned with no leaves
+REINDEX INDEX concur_reindex_part_10; -- error
+REINDEX INDEX CONCURRENTLY concur_reindex_part_10; -- error
+-- Cannot run in a transaction block
+BEGIN;
+REINDEX TABLE concur_reindex_part;
+ROLLBACK;
+-- Check that expected relfilenodes are changed, non-concurrent case.
+-- Note that the partition tree changes of the *indexes* need to be checked.
+SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
+REINDEX TABLE concur_reindex_part;
+SELECT * FROM compare_relfilenode_part('reindex_index_status');
+DROP TABLE reindex_index_status;
+-- concurrent case.
+SELECT create_relfilenode_part('reindex_index_status', 'concur_reindex_part_index');
+REINDEX TABLE CONCURRENTLY concur_reindex_part;
+SELECT * FROM compare_relfilenode_part('reindex_index_status');
+DROP TABLE reindex_index_status;
+
+DROP FUNCTION create_relfilenode_part;
+DROP FUNCTION compare_relfilenode_part;
+
+-- Cleanup of partition tree used for REINDEX test.
 DROP TABLE concur_reindex_part;
 
 -- Check errors

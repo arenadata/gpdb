@@ -35,6 +35,7 @@
 #include "access/table.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
@@ -48,6 +49,9 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp_query.h"
 
 static Oid	ValidateRestrictionEstimator(List *restrictionName);
 static Oid	ValidateJoinEstimator(List *joinName);
@@ -87,6 +91,18 @@ DefineOperator(List *names, List *parameters)
 
 	/* Convert list of names to a name and namespace */
 	oprNamespace = QualifiedNameGetCreationNamespace(names, &oprName);
+
+	/*
+	 * The SQL standard committee has decided that => should be used for named
+	 * parameters; therefore, a future release of PostgreSQL may disallow it
+	 * as the name of a user-defined operator.
+	 *
+	 * Only complain in the QD node, to avoid being too noisy.
+	 */
+	if (Gp_role != GP_ROLE_EXECUTE && strcmp(oprName, "=>") == 0)
+		ereport(WARNING,
+				(errmsg("=> is deprecated as an operator name"),
+				 errdetail("This name may be disallowed altogether in future versions of PostgreSQL.")));
 
 	/* Check we have creation rights in target namespace */
 	aclresult = pg_namespace_aclcheck(oprNamespace, GetUserId(), ACL_CREATE);
@@ -237,7 +253,7 @@ DefineOperator(List *names, List *parameters)
 	/*
 	 * now have OperatorCreate do all the work..
 	 */
-	return
+	ObjectAddress objAddr =
 		OperatorCreate(oprName, /* operator name */
 					   oprNamespace,	/* namespace */
 					   typeId1, /* left type id */
@@ -249,6 +265,23 @@ DefineOperator(List *names, List *parameters)
 					   joinOid, /* optional join sel. function name */
 					   canMerge,	/* operator merges */
 					   canHash);	/* operator hashes */
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		DefineStmt * stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_OPERATOR;
+		stmt->oldstyle = false;
+		stmt->defnames = names;
+		stmt->args = NIL;
+		stmt->definition = parameters;
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+	return objAddr;
 }
 
 /*

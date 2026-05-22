@@ -389,6 +389,16 @@ pgwin32_safestat(const char *path, struct stat *buf)
 		return r;
 	}
 
+	// MPP-24774: just return if path refer to a windows named pipe file.
+	// no need to get size of a windows named pipe file
+	if (strlen(path) >2)
+	{
+		if (path[0] == '\\' && path[1] == '\\')
+		{
+			return r;
+		}
+	}
+
 	if (!GetFileAttributesEx(path, GetFileExInfoStandard, &attr))
 	{
 		_dosmaperr(GetLastError());

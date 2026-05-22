@@ -23,7 +23,7 @@ PostgreSQL documentation
 <synopsis>
 CREATE SERVER [ IF NOT EXISTS ] <replaceable class="parameter">server_name</replaceable> [ TYPE '<replaceable class="parameter">server_type</replaceable>' ] [ VERSION '<replaceable class="parameter">server_version</replaceable>' ]
     FOREIGN DATA WRAPPER <replaceable class="parameter">fdw_name</replaceable>
-    [ OPTIONS ( <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [, ... ] ) ]
+    [ OPTIONS ( [ mpp_execute 'any | master | all segments' ], <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [, ... ] ) ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -105,7 +105,7 @@ CREATE SERVER [ IF NOT EXISTS ] <replaceable class="parameter">server_name</repl
    </varlistentry>
 
    <varlistentry>
-    <term><literal>OPTIONS ( <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [, ... ] )</literal></term>
+    <term><literal>OPTIONS ( [ mpp_execute 'any | master | all segments' ], <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [, ... ] )</literal></term>
     <listitem>
      <para>
       This clause specifies the options for the server.  The options
@@ -115,6 +115,25 @@ CREATE SERVER [ IF NOT EXISTS ] <replaceable class="parameter">server_name</repl
      </para>
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">mpp_execute</replaceable></term>
+    <listitem>
+     <para>
+     MASTER, FDW requests for data from master.
+
+     ANY, FDW requests for data from master or one any segment, depends on
+     which path costs less.
+
+     ALL SEGMENTS, FDW requests for data from all segments, wrappers need to
+     have a policy matching the segments to data.
+
+     A mpp_execute option setting in a foreign table of this foreign server
+     takes precedence.
+     </para>
+    </listitem>
+   </varlistentry>
+
   </variablelist>
  </refsect1>
 

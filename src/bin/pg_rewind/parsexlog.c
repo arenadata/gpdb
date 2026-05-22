@@ -23,6 +23,8 @@
 #include "catalog/storage_xlog.h"
 #include "commands/dbcommands_xlog.h"
 
+/* GPDB specific headers */
+#include "cdb/cdbappendonlyxlog.h"
 
 /*
  * RmgrNames is an array of resource manager names, to make error messages
@@ -387,6 +389,36 @@ extractPageInfo(XLogReaderState *record)
 				 (uint32) (record->ReadRecPtr >> 32), (uint32) (record->ReadRecPtr),
 				 RmgrNames[rmid], info);
 	}
+	else if (rmid == RM_APPEND_ONLY_ID)
+	{
+		if (rminfo == XLOG_APPENDONLY_INSERT)
+		{
+			xl_ao_insert *insert_record = (xl_ao_insert *) XLogRecGetData(record);
+			process_target_wal_aofile_change(insert_record->target.node,
+								  insert_record->target.segment_filenum,
+								  insert_record->target.offset);
+		}
+		else if (rminfo == XLOG_APPENDONLY_TRUNCATE)
+		{
+			/*
+			 * We can safely ignore these. If a file is truncated
+			 * locally, we'll notice that when we compare the sizes,
+			 * and will copy the missing tail from remote system.
+			 */
+		}
+
+		/*
+		 * GPDB_95_MERGE_FIXME: should we just return here? there seems be no buffer
+		 * registered when xlog is inserted.
+		 */
+	}
+	/*
+	 * GPDB_95_MERGE_FIXME:
+	 * 1. should RM_DISTRIBUTEDLOG_ID be taken care of
+	 * 2. we used to have a special treat towards RM_BITMAP_ID, now we hope the
+	 * buffers are registered properly when the xlog is inserted. We need to
+	 * revisit here to make sure RM_BITMAP_ID works.
+	 */
 
 	for (block_id = 0; block_id <= record->max_block_id; block_id++)
 	{
@@ -401,6 +433,6 @@ extractPageInfo(XLogReaderState *record)
 		if (forknum != MAIN_FORKNUM)
 			continue;
 
-		process_block_change(forknum, rnode, blkno);
+		process_target_wal_block_change(forknum, rnode, blkno);
 	}
 }

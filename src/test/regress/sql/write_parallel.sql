@@ -2,6 +2,9 @@
 -- PARALLEL
 --
 
+-- GPDB_96_MERGE_FIXME: We don't support parallel query. These tests won't actually
+-- generate any parallel plans. Same as in 'select_parallel' test.
+
 -- Serializable isolation would disable parallel query, so explicitly use an
 -- arbitrary other level.
 begin isolation level repeatable read;

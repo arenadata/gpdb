@@ -34,6 +34,8 @@
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
 
+#include "cdb/cdbaocsam.h"
+#include "cdb/cdbappendonlyam.h"
 
 /*-----------------------
  * PartitionTupleRouting - Encapsulates all information required to
@@ -176,8 +178,7 @@ static void FormPartitionKeyDatum(PartitionDispatch pd,
 								  EState *estate,
 								  Datum *values,
 								  bool *isnull);
-static int	get_partition_for_tuple(PartitionDispatch pd, Datum *values,
-									bool *isnull);
+
 static char *ExecBuildSlotPartitionKeyDescription(Relation rel,
 												  Datum *values,
 												  bool *isnull,
@@ -333,7 +334,7 @@ ExecFindPartition(ModifyTableState *mtstate,
 		 * these values, error out.
 		 */
 		if (partdesc->nparts == 0 ||
-			(partidx = get_partition_for_tuple(dispatch, values, isnull)) < 0)
+			(partidx = get_partition_for_tuple(dispatch->key, dispatch->partdesc, values, isnull)) < 0)
 		{
 			char	   *val_desc;
 
@@ -341,7 +342,13 @@ ExecFindPartition(ModifyTableState *mtstate,
 															values, isnull, 64);
 			Assert(OidIsValid(RelationGetRelid(rel)));
 			ereport(ERROR,
-					(errcode(ERRCODE_CHECK_VIOLATION),
+					/*
+					 * GPDB: use dedicated error code for this, not the generic
+					 * ERRCODE_CHECK_VIOLATION as in upstream. The SREH stuff
+					 * only catches errors in the ERRCODE_DATA_EXCEPTION class,
+					 * so without this, this error would not be caught by SREH.
+					 */
+					(errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY),
 					 errmsg("no partition of relation \"%s\" found for row",
 							RelationGetRelationName(rel)),
 					 val_desc ?
@@ -871,6 +878,9 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 		lappend(estate->es_tuple_routing_result_relations,
 				leaf_part_rri);
 
+	if (leaf_part_rri->ri_RelationDesc->rd_tableam)
+		table_dml_init(leaf_part_rri->ri_RelationDesc);
+
 	MemoryContextSwitchTo(oldcxt);
 
 	return leaf_part_rri;
@@ -1153,6 +1163,9 @@ ExecCleanupTupleRouting(ModifyTableState *mtstate,
 				continue;
 		}
 
+		if (resultRelInfo->ri_RelationDesc->rd_tableam)
+			table_dml_finish(resultRelInfo->ri_RelationDesc);
+
 		ExecCloseIndices(resultRelInfo);
 		table_close(resultRelInfo->ri_RelationDesc, NoLock);
 	}
@@ -1232,14 +1245,15 @@ FormPartitionKeyDatum(PartitionDispatch pd,
  * Return value is index of the partition (>= 0 and < partdesc->nparts) if one
  * found or -1 if none found.
  */
-static int
-get_partition_for_tuple(PartitionDispatch pd, Datum *values, bool *isnull)
+int
+get_partition_for_tuple(PartitionKey key, PartitionDesc partdesc, Datum *values, bool *isnull)
 {
 	int			bound_offset;
 	int			part_index = -1;
-	PartitionKey key = pd->key;
-	PartitionDesc partdesc = pd->partdesc;
 	PartitionBoundInfo boundinfo = partdesc->boundinfo;
+
+	if (partdesc->nparts == 0)
+		return part_index;
 
 	/* Route as appropriate based on partitioning strategy. */
 	switch (key->strategy)
@@ -1981,18 +1995,85 @@ ExecFindInitialMatchingSubPlans(PartitionPruneState *prunestate, int nsubplans)
 }
 
 /*
+ * Like ExecFindMatchingSubPlans, but adds the matching partitions
+ * to an existing Bitmapset.
+ */
+Bitmapset *
+ExecAddMatchingSubPlans(PartitionPruneState *prunestate, Bitmapset *result)
+{
+	Bitmapset *thisresult;
+
+	thisresult = ExecFindMatchingSubPlans(prunestate, NULL, -1, NIL);
+
+	result = bms_add_members(result, thisresult);
+
+	bms_free(thisresult);
+
+	return result;
+}
+
+/*
  * ExecFindMatchingSubPlans
  *		Determine which subplans match the pruning steps detailed in
  *		'prunestate' for the current comparison expression values.
  *
  * Here we assume we may evaluate PARAM_EXEC Params.
+ *
+ * GPDB: 'join_prune_paramids' can contain a list of PARAM_EXEC Param IDs
+ * containing results that were computed earlier by PartitionSelector
+ * nodes.
  */
 Bitmapset *
-ExecFindMatchingSubPlans(PartitionPruneState *prunestate)
+ExecFindMatchingSubPlans(PartitionPruneState *prunestate,
+						 EState *estate,
+						 int nplans, List *join_prune_paramids)
 {
 	Bitmapset  *result = NULL;
 	MemoryContext oldcontext;
 	int			i;
+	Bitmapset  *join_selected = NULL;
+
+	if (join_prune_paramids)
+	{
+		ListCell   *lc;
+
+		join_selected = bms_add_range(join_selected, 0, nplans - 1);
+
+		foreach (lc, join_prune_paramids)
+		{
+			int			paramid = lfirst_int(lc);
+			ParamExecData *param;
+			PartitionSelectorState *psstate;
+
+			param = &(estate->es_param_exec_vals[paramid]);
+			Assert(param->execPlan == NULL);
+			Assert(!param->isnull);
+			psstate = (PartitionSelectorState *) DatumGetPointer(param->value);
+
+			if (psstate == NULL)
+			{
+				/*
+				 * The planner should have ensured that the Partition Selector
+				 * is fully executed before the Append.
+				 */
+				elog(WARNING, "partition selector was not fully executed");
+			}
+			else
+			{
+				Assert(IsA(psstate, PartitionSelectorState));
+
+				join_selected = bms_intersect(join_selected,
+											  psstate->part_prune_result);
+			}
+		}
+
+
+		if (!prunestate)
+		{
+			/* rely entirely on partition selectors */
+			return join_selected;
+		}
+	}
 
 	/*
 	 * If !do_exec_prune, we've got problems because
@@ -2033,6 +2114,11 @@ ExecFindMatchingSubPlans(PartitionPruneState *prunestate)
 
 	/* Copy result out of the temp context before we reset it */
 	result = bms_copy(result);
+
+	if (join_prune_paramids)
+	{
+		result = bms_intersect(result, join_selected);
+	}
 
 	MemoryContextReset(prunestate->prune_context);
 

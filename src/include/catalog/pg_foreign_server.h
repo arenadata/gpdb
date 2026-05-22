@@ -47,4 +47,6 @@ CATALOG(pg_foreign_server,1417,ForeignServerRelationId)
  */
 typedef FormData_pg_foreign_server *Form_pg_foreign_server;
 
+#define GP_EXTTABLE_SERVER_NAME "gp_exttable_server"
+
 #endif							/* PG_FOREIGN_SERVER_H */

@@ -394,6 +394,7 @@ extern void heap2_redo(XLogReaderState *record);
 extern void heap2_desc(StringInfo buf, XLogReaderState *record);
 extern const char *heap2_identify(uint8 info);
 extern void heap_xlog_logical_rewrite(XLogReaderState *r);
+extern void heap_mask(char *pagedata, BlockNumber blkno);
 
 extern XLogRecPtr log_heap_cleanup_info(RelFileNode rnode,
 										TransactionId latestRemovedXid);

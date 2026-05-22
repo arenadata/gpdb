@@ -1,3 +1,9 @@
+-- start_matchsubs
+-- m/NOTICE:  One or more columns in the following table\(s\) do not have statistics: /
+-- s/.//gs
+-- m/HINT:  For non-partitioned tables, run analyze .+\. For partitioned tables, run analyze rootpartition .+\. See log for columns missing statistics\./
+-- s/.//gs
+-- end_matchsubs
 --
 -- insert with DEFAULT in the target_list
 --
@@ -299,6 +305,7 @@ drop table list_parted;
 -- more tests for certain multi-level partitioning scenarios
 create table mlparted (a int, b int) partition by range (a, b);
 create table mlparted1 (b int not null, a int not null) partition by range ((b+0));
+
 create table mlparted11 (like mlparted1);
 alter table mlparted11 drop a;
 alter table mlparted11 add a int;
@@ -312,6 +319,9 @@ where attname = 'a'
    or attrelid = 'mlparted1'::regclass
    or attrelid = 'mlparted11'::regclass)
 order by attrelid::regclass::text;
+
+alter table mlparted1 set distributed by (a);
+alter table mlparted11 set distributed by (a);
 
 alter table mlparted1 attach partition mlparted11 for values from (2) to (5);
 alter table mlparted attach partition mlparted1 for values from (1, 2) to (1, 10);
@@ -361,11 +371,13 @@ drop table lparted_nonullpart;
 alter table mlparted drop constraint check_b;
 create table mlparted12 partition of mlparted1 for values from (5) to (10);
 create table mlparted2 (b int not null, a int not null);
+alter table mlparted2 set distributed by (a);
 alter table mlparted attach partition mlparted2 for values from (1, 10) to (1, 20);
 create table mlparted3 partition of mlparted for values from (1, 20) to (1, 30);
 create table mlparted4 (like mlparted);
 alter table mlparted4 drop a;
 alter table mlparted4 add a int not null;
+alter table mlparted4 set distributed by (a);
 alter table mlparted attach partition mlparted4 for values from (1, 30) to (1, 40);
 with ins (a, b, c) as
   (insert into mlparted (b, a) select s.a, 1 from generate_series(2, 39) s(a) returning tableoid::regclass, *)
@@ -373,6 +385,7 @@ with ins (a, b, c) as
 
 alter table mlparted add c text;
 create table mlparted5 (c text, a int not null, b int not null) partition by list (c);
+alter table mlparted5 set distributed by (a);
 create table mlparted5a (a int not null, c text, b int not null);
 alter table mlparted5 attach partition mlparted5a for values in ('a');
 alter table mlparted attach partition mlparted5 for values from (1, 40) to (1, 50);
@@ -414,6 +427,7 @@ create table mlparted5_cd partition of mlparted5
   for values from ('c') to ('e') partition by list (c);
 create table mlparted5_a partition of mlparted5_ab for values in ('a');
 create table mlparted5_b (d int, b int, c text, a int);
+alter table mlparted5_b set distributed by (a);
 alter table mlparted5_ab attach partition mlparted5_b for values in ('b');
 truncate mlparted;
 insert into mlparted values (1, 2, 'a', 1);
@@ -547,7 +561,9 @@ drop function brtrigpartcon1trigf();
 -- routed tuple)
 create table donothingbrtrig_test (a int, b text) partition by list (a);
 create table donothingbrtrig_test1 (b text, a int);
+alter table donothingbrtrig_test1 set distributed by (a);
 create table donothingbrtrig_test2 (c text, b text, a int);
+alter table donothingbrtrig_test2 set distributed by (a);
 alter table donothingbrtrig_test2 drop column c;
 create or replace function donothingbrtrig_func() returns trigger as $$begin raise notice 'b: %', new.b; return NULL; end$$ language plpgsql;
 create trigger donothingbrtrig1 before insert on donothingbrtrig_test1 for each row execute procedure donothingbrtrig_func();
@@ -600,7 +616,44 @@ insert into returningwrtest values (1) returning returningwrtest;
 -- check also that the wholerow vars in RETURNING list are converted as needed
 alter table returningwrtest add b text;
 create table returningwrtest2 (b text, c int, a int);
+alter table returningwrtest2 set distributed by (a);
 alter table returningwrtest2 drop c;
 alter table returningwrtest attach partition returningwrtest2 for values in (2);
 insert into returningwrtest values (2, 'foo') returning returningwrtest;
 drop table returningwrtest;
+
+
+-- MPP-6775 : Adding and dropping a column. Then perform an insert.
+ 
+create table bar(x int) distributed randomly;        
+create table foo(like bar) distributed randomly;
+
+alter table foo add column y int;
+alter table foo drop column y;
+
+insert into bar values(1);
+insert into bar values(2);
+
+insert into foo(x) select  t1.x from    bar t1 join bar t2 on t1.x=t2.x;
+insert into foo(x) select  t1.x from    bar t1;
+insert into foo(x) select  t1.x from    bar t1 group by t1.x;
+
+drop table if exists foo;
+drop table if exists bar;
+
+-- MPP-6775 : Dropping a column. Then perform an insert.
+
+create table bar(x int, y int) distributed randomly;        
+create table foo(like bar) distributed randomly;
+
+alter table foo drop column y;
+
+insert into bar values(1,1);
+insert into bar values(2,2);
+
+insert into foo(x) select  t1.x from    bar t1 join bar t2 on t1.x=t2.x;
+insert into foo(x) select  t1.x from    bar t1;
+insert into foo(x) select  t1.x from    bar t1 group by t1.x;
+
+drop table if exists foo;
+drop table if exists bar;

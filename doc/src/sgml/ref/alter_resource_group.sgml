@@ -1,0 +1,37 @@
+<!--
+doc/src/sgml/ref/alter_resource_group.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterresourcegroup">
+ <indexterm zone="sql-alterresourcegroup">
+  <primary>ALTER RESOURCE GROUP</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER RESOURCE GROUP</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER RESOURCE GROUP</refname>
+  <refpurpose>change the limits of a resource group</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+
+ALTER RESOURCE GROUP name SET group_attribute value
+where group_attribute is one of:
+   CONCURRENCY integer
+   CPU_RATE_LIMIT integer
+   CPUSET tuple
+   MEMORY_LIMIT integer
+   MEMORY_SHARED_QUOTA integer
+   MEMORY_SPILL_RATIO integer
+
+</synopsis>
+ </refsynopsisdiv>
+
+</refentry>

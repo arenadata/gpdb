@@ -1,7 +1,16 @@
 --
 -- Tests for PL/pgSQL handling of composite (record) variables
 --
-
+-- GPDB:
+-- Insert to "mutable" table results in random distribution of tuples
+-- as distribution (first) column is dropped by test. Hence, the ctid
+-- printed via function sillytrig() is not consistent as PostgreSQL,
+-- since depends on which segment the tuples land. Hence, add rule to
+-- ignore the ctid.
+-- start_matchsubs
+-- m/NOTICE:  old.ctid = \(0,[12]\)/
+-- s/NOTICE:  old.ctid = \(0,[12]\)/ NOTICE:  old.ctid = \(0,XXX\)/
+-- end_matchsubs
 create type two_int4s as (f1 int4, f2 int4);
 create type two_int8s as (q1 int8, q2 int8);
 
@@ -417,7 +426,7 @@ insert into sometable values (3, 'z', repeat('ffoob',100000));
 do $$
 declare d ordered_texts;
 begin
-  for d in select a, b from sometable loop
+  for d in select a, b from sometable order by id loop
     raise notice 'succeeded at "%"', d.f1;
   end loop;
 end$$;
@@ -425,7 +434,7 @@ end$$;
 do $$
 declare r record; d ordered_texts;
 begin
-  for r in select * from sometable loop
+  for r in select * from sometable order by id loop
     raise notice 'processing row %', r.id;
     d := row(r.a, r.b);
   end loop;
@@ -434,7 +443,7 @@ end$$;
 do $$
 declare r record; d ordered_texts;
 begin
-  for r in select * from sometable loop
+  for r in select * from sometable order by id loop
     raise notice 'processing row %', r.id;
     d := null;
     d.f1 := r.a;

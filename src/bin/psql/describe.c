@@ -14,6 +14,7 @@
 
 #include <ctype.h>
 
+#include "catalog/pg_am.h"
 #include "catalog/pg_attribute_d.h"
 #include "catalog/pg_cast_d.h"
 #include "catalog/pg_class_d.h"
@@ -29,11 +30,16 @@
 #include "settings.h"
 #include "variables.h"
 
+#include "catalog/gp_distribution_policy.h"
+#include "catalog/pg_foreign_server.h"
 
 static bool describeOneTableDetails(const char *schemaname,
 									const char *relationname,
 									const char *oid,
 									bool verbose);
+static void add_external_table_footer(printTableContent *const cont, const char *oid);
+static void add_distributed_by_footer(printTableContent *const cont, const char *oid);
+static void add_partition_by_footer(printTableContent *const cont, const char *oid);
 static void add_tablespace_footer(printTableContent *const cont, char relkind,
 								  Oid tablespace, const bool newline);
 static void add_role_attribute(PQExpBuffer buf, const char *const str);
@@ -46,7 +52,145 @@ static bool describeOneTSConfig(const char *oid, const char *nspname,
 								const char *pnspname, const char *prsname);
 static void printACLColumn(PQExpBuffer buf, const char *colname);
 static bool listOneExtensionContents(const char *extname, const char *oid);
+static bool isGPDB(void);
+static bool isGPDB4200OrLater(void);
+static bool isGPDB5000OrLater(void);
+static bool isGPDB6000OrLater(void);
+static bool isGPDB7000OrLater(void);
 
+static bool isGPDB(void)
+{
+	static enum
+	{
+		gpdb_maybe,
+		gpdb_yes,
+		gpdb_no
+	} talking_to_gpdb;
+
+	PGresult   *res;
+	char       *ver;
+
+	if (talking_to_gpdb == gpdb_yes)
+		return true;
+	else if (talking_to_gpdb == gpdb_no)
+		return false;
+
+	res = PSQLexec("select pg_catalog.version()");
+	if (!res)
+		return false;
+
+	ver = PQgetvalue(res, 0, 0);
+	if (strstr(ver, "Greenplum") != NULL)
+	{
+		PQclear(res);
+		talking_to_gpdb = gpdb_yes;
+		return true;
+	}
+
+	talking_to_gpdb = gpdb_no;
+	PQclear(res);
+
+	/* If we reconnect to a GPDB system later, do the check again */
+	talking_to_gpdb = gpdb_maybe;
+
+	return false;
+}
+
+
+/*
+ * A new catalog table was introduced in GPDB 4.2 (pg_catalog.pg_attribute_encoding).
+ * If the database appears to be GPDB and has that table, we assume it is 4.2 or later.
+ *
+ * Return true if GPDB version 4.2 or later, false otherwise.
+ */
+static bool isGPDB4200OrLater(void)
+{
+	bool       retValue = false;
+
+	if (isGPDB() == true)
+	{
+		PGresult  *result;
+
+		result = PSQLexec("select oid from pg_catalog.pg_class where relnamespace = 11 and relname  = 'pg_attribute_encoding'");
+		if (PQgetisnull(result, 0, 0))
+			 retValue = false;
+		else
+			retValue = true;
+	}
+	return retValue;
+}
+
+/*
+ * Returns true if GPDB version 4.3 or later, false otherwise.
+ */
+static bool
+isGPDB4300OrLater(void)
+{
+	bool       retValue = false;
+
+	if (isGPDB() == true)
+	{
+		PGresult  *result;
+
+		result = PSQLexec(
+				"select attnum from pg_catalog.pg_attribute "
+				"where attrelid = 'pg_catalog.pg_proc'::regclass and "
+				"attname = 'prodataaccess'");
+		retValue = PQntuples(result) > 0;
+	}
+	return retValue;
+}
+
+
+/*
+ * If GPDB version is 5.0, pg_proc has provariadic as column number 20.
+ * When we have version() returns GPDB version instead of "main build dev" or
+ * something similar, we'll fix this function.
+ */
+static bool isGPDB5000OrLater(void)
+{
+	bool	retValue = false;
+
+	if (isGPDB() == true)
+	{
+		PGresult   *res;
+
+		res = PSQLexec("select attnum from pg_catalog.pg_attribute where attrelid = 1255 and attname = 'provariadic'");
+		if (PQntuples(res) == 1)
+			retValue = true;
+	}
+	return retValue;
+}
+
+static bool
+isGPDB6000OrLater(void)
+{
+	if (!isGPDB())
+		return false;		/* Not Greenplum at all. */
+
+	/* GPDB 6 is based on PostgreSQL 9.4 */
+	return pset.sversion >= 90400;
+}
+
+static bool
+isGPDB6000OrBelow(void)
+{
+	if (!isGPDB())
+		return false;		/* Not Greenplum at all. */
+
+	/* GPDB 6 is based on PostgreSQL 9.4 */
+	return pset.sversion <= 90400;
+}
+
+static bool
+isGPDB7000OrLater(void)
+{
+	if (!isGPDB())
+		return false;		/* Not Greenplum at all. */
+
+	/* GPDB 7 is based on PostgreSQL v12 */
+	return pset.sversion >= 120000;
+}
 
 /*----------------
  * Handlers for various slash commands displaying some sort of list
@@ -236,7 +380,7 @@ describeTablespaces(const char *pattern, bool verbose)
 
 	initPQExpBuffer(&buf);
 
-	if (pset.sversion >= 90200)
+	if (pset.sversion >= 90200 || isGPDB6000OrLater())
 		printfPQExpBuffer(&buf,
 						  "SELECT spcname AS \"%s\",\n"
 						  "  pg_catalog.pg_get_userbyid(spcowner) AS \"%s\",\n"
@@ -324,10 +468,10 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 	PQExpBufferData buf;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
-	static const bool translate_columns[] = {false, false, false, false, true, true, true, false, true, false, false, false, false};
+	static const bool translate_columns[] = {false, false, false, false, true, true, true, false, false, false, true, false, false, false, false};
 
 	/* No "Parallel" column before 9.6 */
-	static const bool translate_columns_pre_96[] = {false, false, false, false, true, true, false, true, false, false, false, false};
+	static const bool translate_columns_pre_96[] = {false, false, false, false, true, true, false, false, false, true, false, false, false, false};
 
 	if (strlen(functypes) != strspn(functypes, "anptwS+"))
 	{
@@ -410,6 +554,24 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 						  gettext_noop("trigger"),
 						  gettext_noop("func"),
 						  gettext_noop("Type"));
+	else if (isGPDB5000OrLater())
+		appendPQExpBuffer(&buf,
+						  "  pg_catalog.pg_get_function_result(p.oid) as \"%s\",\n"
+						  "  pg_catalog.pg_get_function_arguments(p.oid) as \"%s\",\n"
+						  " CASE\n"
+						  "  WHEN p.proisagg THEN '%s'\n"
+						  "  WHEN p.proiswin THEN '%s'\n"
+						  "  WHEN p.prorettype = 'pg_catalog.trigger'::pg_catalog.regtype THEN '%s'\n"
+						  "  ELSE '%s'\n"
+						  "END as \"%s\"",
+						  gettext_noop("Result data type"),
+						  gettext_noop("Argument data types"),
+		/* translator: "agg" is short for "aggregate" */
+						  gettext_noop("agg"),
+						  gettext_noop("window"),
+						  gettext_noop("trigger"),
+						  gettext_noop("normal"),
+						  gettext_noop("Type"));
 	else if (pset.sversion >= 80100)
 		appendPQExpBuffer(&buf,
 						  "  CASE WHEN p.proretset THEN 'SETOF ' ELSE '' END ||\n"
@@ -475,6 +637,32 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 
 	if (verbose)
 	{
+		if (isGPDB4300OrLater())
+			appendPQExpBuffer(&buf,
+						  ",\n CASE\n"
+						  "  WHEN p.prodataaccess = 'n' THEN '%s'\n"
+						  "  WHEN p.prodataaccess = 'c' THEN '%s'\n"
+						  "  WHEN p.prodataaccess = 'r' THEN '%s'\n"
+						  "  WHEN p.prodataaccess = 'm' THEN '%s'\n"
+						  "END as \"%s\"",
+						  gettext_noop("no sql"),
+						  gettext_noop("contains sql"),
+						  gettext_noop("reads sql data"),
+						  gettext_noop("modifies sql data"),
+						  gettext_noop("Data access"));
+		if (isGPDB6000OrLater())
+			appendPQExpBuffer(&buf,
+						  ",\n CASE\n"
+						  "  WHEN p.proexeclocation = 'a' THEN '%s'\n"
+						  "  WHEN p.proexeclocation = 'c' THEN '%s'\n"
+						  "  WHEN p.proexeclocation = 's' THEN '%s'\n"
+						  "  WHEN p.proexeclocation = 'i' THEN '%s'\n"
+						  "END as \"%s\"",
+						  gettext_noop("any"),
+						  gettext_noop("coordinator"),
+						  gettext_noop("all segments"),
+						  gettext_noop("initplan"),
+						  gettext_noop("Execute on"));
 		appendPQExpBuffer(&buf,
 						  ",\n CASE\n"
 						  "  WHEN p.provolatile = 'i' THEN '%s'\n"
@@ -670,6 +858,7 @@ describeTypes(const char *pattern, bool verbose, bool showSystem)
 	PQExpBufferData buf;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
+	bool isGE42 = isGPDB4200OrLater();
 
 	initPQExpBuffer(&buf);
 
@@ -679,6 +868,7 @@ describeTypes(const char *pattern, bool verbose, bool showSystem)
 					  gettext_noop("Schema"),
 					  gettext_noop("Name"));
 	if (verbose)
+	{
 		appendPQExpBuffer(&buf,
 						  "  t.typname AS \"%s\",\n"
 						  "  CASE WHEN t.typrelid != 0\n"
@@ -689,6 +879,7 @@ describeTypes(const char *pattern, bool verbose, bool showSystem)
 						  "  END AS \"%s\",\n",
 						  gettext_noop("Internal name"),
 						  gettext_noop("Size"));
+	}
 	if (verbose && pset.sversion >= 80300)
 	{
 		appendPQExpBufferStr(&buf,
@@ -710,6 +901,8 @@ describeTypes(const char *pattern, bool verbose, bool showSystem)
 						  "      E'\\n'\n"
 						  "  ) AS \"%s\",\n",
 						  gettext_noop("Elements"));
+	if (verbose && isGE42 == true)
+		appendPQExpBuffer(&buf, " pg_catalog.array_to_string(te.typoptions, ',') AS \"%s\",\n", gettext_noop("Type Options"));
 	}
 	if (verbose)
 	{
@@ -729,6 +922,8 @@ describeTypes(const char *pattern, bool verbose, bool showSystem)
 
 	appendPQExpBufferStr(&buf, "FROM pg_catalog.pg_type t\n"
 						 "     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace\n");
+	if (verbose && isGE42 == true)
+		appendPQExpBuffer(&buf, "\n   LEFT OUTER JOIN pg_catalog.pg_type_encoding te ON te.typid = t.oid ");
 
 	/*
 	 * do not include complex types (typrelid!=0) unless they are standalone
@@ -1068,7 +1263,9 @@ permissionsList(const char *pattern)
 	}
 
 	myopt.nullPrint = NULL;
+
 	printfPQExpBuffer(&buf, _("Access privileges"));
+
 	myopt.title = buf.data;
 	myopt.translate_header = true;
 	myopt.translate_columns = translate_columns;
@@ -1170,7 +1367,6 @@ listDefaultACLs(const char *pattern)
  * their comments displayed by their own backslash commands. The following
  * types of objects will be displayed: constraint, operator class,
  * operator family, rule, and trigger.
- *
  */
 bool
 objectDescription(const char *pattern, bool showSystem)
@@ -1435,6 +1631,30 @@ describeTableDetails(const char *pattern, bool verbose, bool showSystem)
 	return true;
 }
 
+static inline bool
+greenplum_is_ao_row(const char olddesc, const char *newdesc)
+{
+	if (olddesc == 'a')
+		return true;
+
+	if (newdesc && !strncmp(newdesc, "ao_row", strlen("ao_row")))
+		return true;
+
+	return false;
+}
+
+static inline bool
+greenplum_is_ao_column(const char olddesc, const char *newdesc)
+{
+	if (olddesc == 'c')
+		return true;
+
+	if (newdesc && !strncmp(newdesc, "ao_column", strlen("ao_column")))
+		return true;
+
+	return false;
+}
+
 /*
  * describeOneTableDetails (for \d)
  *
@@ -1473,11 +1693,13 @@ describeOneTableDetails(const char *schemaname,
 				attstorage_col = -1,
 				attstattarget_col = -1,
 				attdescr_col = -1;
+	int			attoptions_col = -1;
 	int			numrows;
 	struct
 	{
 		int16		checks;
 		char		relkind;
+		char		relstorage;
 		bool		hasindex;
 		bool		hasrules;
 		bool		hastriggers;
@@ -1491,8 +1713,20 @@ describeOneTableDetails(const char *schemaname,
 		char		relpersistence;
 		char		relreplident;
 		char	   *relam;
+
+		char	   *compressionType;
+		char	   *compressionLevel;
+		char	   *blockSize;
+		char	   *checksum;
 	}			tableinfo;
 	bool		show_column_details = false;
+
+	tableinfo.compressionType  = NULL;
+	tableinfo.compressionLevel = NULL;
+	tableinfo.blockSize        = NULL;
+	tableinfo.checksum         = NULL;
+
+	bool isGE42 = isGPDB4200OrLater();
 
 	myopt.default_footer = false;
 	/* This output looks confusing in expanded mode. */
@@ -1546,6 +1780,7 @@ describeOneTableDetails(const char *schemaname,
 						  "c.relhasoids, false as relispartition, %s, c.reltablespace, "
 						  "CASE WHEN c.reloftype = 0 THEN '' ELSE c.reloftype::pg_catalog.regtype::pg_catalog.text END, "
 						  "c.relpersistence, c.relreplident\n"
+						  ", %s as relstorage "
 						  "FROM pg_catalog.pg_class c\n "
 						  "LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)\n"
 						  "WHERE c.oid = '%s';",
@@ -1553,6 +1788,8 @@ describeOneTableDetails(const char *schemaname,
 						   "pg_catalog.array_to_string(c.reloptions || "
 						   "array(select 'toast.' || x from pg_catalog.unnest(tc.reloptions) x), ', ')\n"
 						   : "''"),
+						  /* GPDB Only:  relstorage  */
+						  (isGPDB() ? "c.relstorage" : "'h'"),
 						  oid);
 	}
 	else if (pset.sversion >= 90400)
@@ -1563,6 +1800,7 @@ describeOneTableDetails(const char *schemaname,
 						  "false as relispartition, %s, c.reltablespace, "
 						  "CASE WHEN c.reloftype = 0 THEN '' ELSE c.reloftype::pg_catalog.regtype::pg_catalog.text END, "
 						  "c.relpersistence, c.relreplident\n"
+						  ", %s as relstorage "
 						  "FROM pg_catalog.pg_class c\n "
 						  "LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)\n"
 						  "WHERE c.oid = '%s';",
@@ -1570,6 +1808,8 @@ describeOneTableDetails(const char *schemaname,
 						   "pg_catalog.array_to_string(c.reloptions || "
 						   "array(select 'toast.' || x from pg_catalog.unnest(tc.reloptions) x), ', ')\n"
 						   : "''"),
+						  /* GPDB Only:  relstorage  */
+						  (isGPDB() ? "c.relstorage" : "'h'"),
 						  oid);
 	}
 	else if (pset.sversion >= 90100)
@@ -1580,6 +1820,7 @@ describeOneTableDetails(const char *schemaname,
 						  "false as relispartition, %s, c.reltablespace, "
 						  "CASE WHEN c.reloftype = 0 THEN '' ELSE c.reloftype::pg_catalog.regtype::pg_catalog.text END, "
 						  "c.relpersistence\n"
+						  ", %s as relstorage "
 						  "FROM pg_catalog.pg_class c\n "
 						  "LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)\n"
 						  "WHERE c.oid = '%s';",
@@ -1587,6 +1828,8 @@ describeOneTableDetails(const char *schemaname,
 						   "pg_catalog.array_to_string(c.reloptions || "
 						   "array(select 'toast.' || x from pg_catalog.unnest(tc.reloptions) x), ', ')\n"
 						   : "''"),
+						  /* GPDB Only:  relstorage  */
+						  (isGPDB() ? "c.relstorage" : "'h'"),
 						  oid);
 	}
 	else if (pset.sversion >= 90000)
@@ -1596,6 +1839,7 @@ describeOneTableDetails(const char *schemaname,
 						  "c.relhastriggers, false, false, c.relhasoids, "
 						  "false as relispartition, %s, c.reltablespace, "
 						  "CASE WHEN c.reloftype = 0 THEN '' ELSE c.reloftype::pg_catalog.regtype::pg_catalog.text END\n"
+						  ", %s as relstorage "
 						  "FROM pg_catalog.pg_class c\n "
 						  "LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)\n"
 						  "WHERE c.oid = '%s';",
@@ -1603,6 +1847,8 @@ describeOneTableDetails(const char *schemaname,
 						   "pg_catalog.array_to_string(c.reloptions || "
 						   "array(select 'toast.' || x from pg_catalog.unnest(tc.reloptions) x), ', ')\n"
 						   : "''"),
+						  /* GPDB Only:  relstorage  */
+						  (isGPDB() ? "c.relstorage" : "'h'"),
 						  oid);
 	}
 	else if (pset.sversion >= 80400)
@@ -1611,6 +1857,7 @@ describeOneTableDetails(const char *schemaname,
 						  "SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, "
 						  "c.relhastriggers, false, false, c.relhasoids, "
 						  "false as relispartition, %s, c.reltablespace\n"
+						  ", %s as relstorage "
 						  "FROM pg_catalog.pg_class c\n "
 						  "LEFT JOIN pg_catalog.pg_class tc ON (c.reltoastrelid = tc.oid)\n"
 						  "WHERE c.oid = '%s';",
@@ -1618,6 +1865,8 @@ describeOneTableDetails(const char *schemaname,
 						   "pg_catalog.array_to_string(c.reloptions || "
 						   "array(select 'toast.' || x from pg_catalog.unnest(tc.reloptions) x), ', ')\n"
 						   : "''"),
+						  /* GPDB Only:  relstorage  */
+						  (isGPDB() ? "c.relstorage" : "'h'"),
 						  oid);
 	}
 	else if (pset.sversion >= 80200)
@@ -1626,9 +1875,12 @@ describeOneTableDetails(const char *schemaname,
 						  "SELECT relchecks, relkind, relhasindex, relhasrules, "
 						  "reltriggers <> 0, false, false, relhasoids, "
 						  "false as relispartition, %s, reltablespace\n"
+						  ", %s as relstorage "
 						  "FROM pg_catalog.pg_class WHERE oid = '%s';",
 						  (verbose ?
 						   "pg_catalog.array_to_string(reloptions, E', ')" : "''"),
+						  /* GPDB Only:  relstorage  */
+						  (isGPDB() ? "relstorage" : "'h'"),
 						  oid);
 	}
 	else if (pset.sversion >= 80000)
@@ -1687,6 +1939,13 @@ describeOneTableDetails(const char *schemaname,
 			(char *) NULL : pg_strdup(PQgetvalue(res, 0, 14));
 	else
 		tableinfo.relam = NULL;
+
+	/* GPDB Only:  relstorage  */
+	if (pset.sversion < 120000 && isGPDB())
+		tableinfo.relstorage = *(PQgetvalue(res, 0, PQfnumber(res, "relstorage")));
+	else
+		tableinfo.relstorage = 'h';
+
 	PQclear(res);
 	res = NULL;
 
@@ -1812,6 +2071,36 @@ describeOneTableDetails(const char *schemaname,
 		goto error_return;		/* not an error, just return early */
 	}
 
+	if (tableinfo.relkind != RELKIND_PARTITIONED_TABLE &&
+		(greenplum_is_ao_column(tableinfo.relstorage, tableinfo.relam)
+			|| greenplum_is_ao_row(tableinfo.relstorage, tableinfo.relam)))
+	{
+		PGresult *result = NULL;
+		/* Get Append Only information
+		 * always have 4 bits of info: blocksize, compresstype, compresslevel and checksum
+		 */
+		printfPQExpBuffer(&buf,
+				"SELECT a.compresstype, a.compresslevel, a.blocksize, a.checksum\n"
+					"FROM pg_catalog.pg_appendonly a, pg_catalog.pg_class c\n"
+					"WHERE c.oid = a.relid AND c.oid = '%s'", oid);
+
+		result = PSQLexec(buf.data);
+		if (!result)
+			goto error_return;
+
+		if (PQgetisnull(result, 0, 0) || PQgetvalue(result, 0, 0)[0] == '\0')
+		{
+			tableinfo.compressionType = pg_malloc(sizeof("None") + 1);
+			strcpy(tableinfo.compressionType, "None");
+		} else
+			tableinfo.compressionType = pg_strdup(PQgetvalue(result, 0, 0));
+		tableinfo.compressionLevel = pg_strdup(PQgetvalue(result, 0, 1));
+		tableinfo.blockSize = pg_strdup(PQgetvalue(result, 0, 2));
+		tableinfo.checksum = pg_strdup(PQgetvalue(result, 0, 3));
+		PQclear(res);
+		res = NULL;
+	}
+
 	/* Identify whether we should print collation, nullable, default vals */
 	if (tableinfo.relkind == RELKIND_RELATION ||
 		tableinfo.relkind == RELKIND_VIEW ||
@@ -1901,6 +2190,15 @@ describeOneTableDetails(const char *schemaname,
 			attstattarget_col = cols++;
 		}
 
+		if (greenplum_is_ao_column(tableinfo.relstorage, tableinfo.relam))
+		{
+			if (isGE42 == true)
+			{
+				appendPQExpBufferStr(&buf, ",\n  pg_catalog.array_to_string(e.attoptions, ',')");
+				attoptions_col = cols++;
+			}
+		}
+
 		/*
 		 * In 9.0+, we have column comments for: relations, views, composite
 		 * types, and foreign tables (cf. CommentObject() in comment.c).
@@ -1918,6 +2216,11 @@ describeOneTableDetails(const char *schemaname,
 	}
 
 	appendPQExpBufferStr(&buf, "\nFROM pg_catalog.pg_attribute a");
+	if (isGE42 == true)
+	{
+		appendPQExpBufferStr(&buf, "\nLEFT OUTER JOIN pg_catalog.pg_attribute_encoding e");
+		appendPQExpBufferStr(&buf, "\nON   e.attrelid = a .attrelid AND e.attnum = a.attnum");
+	}
 	appendPQExpBuffer(&buf, "\nWHERE a.attrelid = '%s' AND a.attnum > 0 AND NOT a.attisdropped", oid);
 	appendPQExpBufferStr(&buf, "\nORDER BY a.attnum;");
 
@@ -1990,6 +2293,18 @@ describeOneTableDetails(const char *schemaname,
 				printfPQExpBuffer(&title, _("Partitioned table \"%s.%s\""),
 								  schemaname, relationname);
 			break;
+		case RELKIND_AOSEGMENTS:
+			printfPQExpBuffer(&title, _("Appendonly segment entry table: \"%s.%s\""),
+							  schemaname, relationname);
+			break;
+		case RELKIND_AOVISIMAP:
+			printfPQExpBuffer(&title, _("Appendonly visibility map table: \"%s.%s\""),
+							  schemaname, relationname);
+			break;
+		case RELKIND_AOBLOCKDIR:
+			printfPQExpBuffer(&title, _("Appendonly block directory table: \"%s.%s\""),
+							  schemaname, relationname);
+			break;
 		default:
 			/* untranslated unknown relkind */
 			printfPQExpBuffer(&title, "?%c? \"%s.%s\"",
@@ -2017,6 +2332,14 @@ describeOneTableDetails(const char *schemaname,
 		headers[cols++] = gettext_noop("Storage");
 	if (attstattarget_col >= 0)
 		headers[cols++] = gettext_noop("Stats target");
+
+	if (verbose && greenplum_is_ao_column(tableinfo.relstorage, tableinfo.relam))
+	{
+		headers[cols++] = gettext_noop("Compression Type");
+		headers[cols++] = gettext_noop("Compression Level");
+		headers[cols++] = gettext_noop("Block Size");
+	}
+
 	if (attdescr_col >= 0)
 		headers[cols++] = gettext_noop("Description");
 
@@ -2081,6 +2404,7 @@ describeOneTableDetails(const char *schemaname,
 		{
 			char	   *storage = PQgetvalue(res, i, attstorage_col);
 
+			/* Storage */
 			/* these strings are literal in our syntax, so not translated. */
 			printTableAddCell(&cont, (storage[0] == 'p' ? "plain" :
 									  (storage[0] == 'm' ? "main" :
@@ -2094,6 +2418,55 @@ describeOneTableDetails(const char *schemaname,
 		if (attstattarget_col >= 0)
 			printTableAddCell(&cont, PQgetvalue(res, i, attstattarget_col),
 							  false, false);
+
+		if (greenplum_is_ao_column(tableinfo.relstorage, tableinfo.relam)
+				&& attoptions_col >= 0)
+		{
+			/* The compression type, compression level, and block size are all in the next column.
+			 * attributeOptions is a text array of key=value pairs retrieved as a string from the catalog.
+			 * Each key=value pair is separated by a ",".
+			 *
+			 * If the table was created pre-4.2, then it will not have entries in the new pg_attribute_storage table.
+			 * If there are no entries, we go to the pre-4.1 values stored in the pg_appendonly table.
+			 */
+			char *attributeOptions;
+			attributeOptions = PQgetvalue(res, i, attoptions_col); /* pg_catalog.pg_attribute_storage(attoptions) */
+			char *key = strtok(attributeOptions, ",=");
+			char *value = NULL;
+			char *compressionType = NULL;
+			char *compressionLevel = NULL;
+			char *blockSize = NULL;
+
+			while (key != NULL)
+			{
+				value = strtok(NULL, ",=");
+				if (strcmp(key, "compresstype") == 0)
+					compressionType = value;
+				else if (strcmp(key, "compresslevel") == 0)
+					compressionLevel = value;
+				else if (strcmp(key, "blocksize") == 0)
+					blockSize = value;
+				key = strtok(NULL, ",=");
+			}
+
+			/* Compression Type */
+			if (compressionType == NULL)
+				printTableAddCell(&cont, tableinfo.compressionType, false, false);
+			else
+				printTableAddCell(&cont, compressionType, false, false);
+
+			/* Compression Level */
+			if (compressionLevel == NULL)
+				printTableAddCell(&cont, tableinfo.compressionLevel, false, false);
+			else
+				printTableAddCell(&cont, compressionLevel, false, false);
+
+			/* Block Size */
+			if (blockSize == NULL)
+				printTableAddCell(&cont, tableinfo.blockSize, false, false);
+			else
+				printTableAddCell(&cont, blockSize, false, false);
+		}
 
 		/* Column comments, if the relkind supports this feature */
 		if (attdescr_col >= 0)
@@ -2311,13 +2684,38 @@ describeOneTableDetails(const char *schemaname,
 			 tableinfo.relkind == RELKIND_FOREIGN_TABLE ||
 			 tableinfo.relkind == RELKIND_PARTITIONED_TABLE ||
 			 tableinfo.relkind == RELKIND_PARTITIONED_INDEX ||
-			 tableinfo.relkind == RELKIND_TOASTVALUE)
+			 tableinfo.relkind == RELKIND_TOASTVALUE ||
+			 tableinfo.relkind == RELKIND_AOSEGMENTS ||
+			 tableinfo.relkind == RELKIND_AOBLOCKDIR ||
+			 tableinfo.relkind == RELKIND_AOVISIMAP)
 	{
 		/* Footer information about a table */
 		PGresult   *result = NULL;
 		int			tuples = 0;
 
-		/* print indexes */
+		/* external tables were marked in catalogs like this before GPDB 7 */
+		if (tableinfo.relkind == 'r' && tableinfo.relstorage == 'x')
+			add_external_table_footer(&cont, oid);
+
+		/* print append only table information */
+		if (tableinfo.relkind != RELKIND_PARTITIONED_TABLE &&
+			(greenplum_is_ao_row(tableinfo.relstorage, tableinfo.relam) ||
+			greenplum_is_ao_column(tableinfo.relstorage, tableinfo.relam)))
+		{
+			if (greenplum_is_ao_row(tableinfo.relstorage, tableinfo.relam))
+			{
+				printfPQExpBuffer(&buf, _("Compression Type: %s"), tableinfo.compressionType);
+				printTableAddFooter(&cont, buf.data);
+				printfPQExpBuffer(&buf, _("Compression Level: %s"), tableinfo.compressionLevel);
+				printTableAddFooter(&cont, buf.data);
+				printfPQExpBuffer(&buf, _("Block Size: %s"), tableinfo.blockSize);
+				printTableAddFooter(&cont, buf.data);
+			}
+			printfPQExpBuffer(&buf, _("Checksum: %s"), tableinfo.checksum);
+			printTableAddFooter(&cont, buf.data);
+		}
+
+        /* print indexes */
 		if (tableinfo.hasindex)
 		{
 			printfPQExpBuffer(&buf,
@@ -3014,6 +3412,16 @@ describeOneTableDetails(const char *schemaname,
 							if ((*tgenabled == 'D' || *tgenabled == 'f') &&
 								*tgisinternal == 't')
 								list_trigger = true;
+
+							/*
+							 * Foreign keys are not enforced in GPDB. All foreign
+							 * key triggers are disabled, so let's not bother
+							 * listing them.
+							 */
+							tgdef = PQgetvalue(result, i, 1);
+							if (isGPDB() && strstr(tgdef, "RI_FKey_") != NULL)
+								list_trigger = false;
+
 							break;
 						case 3:
 							if (*tgenabled == 'A')
@@ -3113,10 +3521,13 @@ describeOneTableDetails(const char *schemaname,
 				goto error_return;
 			}
 
-			/* Print server name */
-			printfPQExpBuffer(&buf, _("Server: %s"),
-							  PQgetvalue(result, 0, 0));
-			printTableAddFooter(&cont, buf.data);
+			if (strcmp(PQgetvalue(result, 0, 0), GP_EXTTABLE_SERVER_NAME) != 0)
+			{
+				/* Print server name */
+				printfPQExpBuffer(&buf, _("Server: %s"),
+								  PQgetvalue(result, 0, 0));
+				printTableAddFooter(&cont, buf.data);
+			}
 
 			/* Print per-table FDW options, if any */
 			ftoptions = PQgetvalue(result, 0, 1);
@@ -3281,6 +3692,13 @@ describeOneTableDetails(const char *schemaname,
 		if (verbose && tableinfo.relkind != RELKIND_MATVIEW && tableinfo.hasoids)
 			printTableAddFooter(&cont, _("Has OIDs: yes"));
 
+		/* mpp addition start: dump distributed by clause */
+		add_distributed_by_footer(&cont, oid);
+
+		/* Still needed by legacy partitioning to print old version server's 'partition by' clause */
+		if (!isGPDB7000OrLater() && tuples > 0)
+			add_partition_by_footer(&cont, oid);
+
 		/* Tablespace info */
 		add_tablespace_footer(&cont, tableinfo.relkind, tableinfo.tablespace,
 							  true);
@@ -3319,10 +3737,529 @@ error_return:
 	if (view_def)
 		free(view_def);
 
+	if (tableinfo.compressionType)
+		free(tableinfo.compressionType);
+	if (tableinfo.compressionLevel)
+		free(tableinfo.compressionLevel);
+	if (tableinfo.blockSize)
+		free(tableinfo.blockSize);
+	if (tableinfo.checksum)
+		free(tableinfo.checksum);
+
 	if (res)
 		PQclear(res);
 
 	return retval;
+}
+
+/* Print footer information for an external table */
+static void
+add_external_table_footer(printTableContent *const cont, const char *oid)
+{
+	PQExpBufferData buf;
+	PQExpBufferData tmpbuf;
+	PGresult   *result = NULL;
+	bool	    gpdb5OrLater = isGPDB5000OrLater();
+	bool	    gpdb6OrLater = isGPDB6000OrLater();
+	bool		gpdb7OrLater = isGPDB7000OrLater();
+	char	   *optionsName = gpdb5OrLater ? ", x.options " : "";
+	char	   *execLocations = gpdb5OrLater ? "x.urilocation, x.execlocation" : "x.location";
+	char	   *urislocation = NULL;
+	char	   *execlocation = NULL;
+	char	   *fmttype = NULL;
+	char	   *fmtopts = NULL;
+	char	   *command = NULL;
+	char	   *rejlim = NULL;
+	char	   *rejlimtype = NULL;
+	char	   *writable = NULL;
+	char	   *errtblname = NULL;
+	char	   *extencoding = NULL;
+	char	   *errortofile = NULL;
+	char	   *logerrors = NULL;
+	char       *format = NULL;
+	char	   *exttaboptions = NULL;
+	char	   *options = NULL;
+
+	initPQExpBuffer(&buf);
+	initPQExpBuffer(&tmpbuf);
+
+	if (gpdb6OrLater)
+	{
+		printfPQExpBuffer(&buf,
+						  "SELECT %s, x.fmttype, x.fmtopts, x.command, x.logerrors, "
+						  "x.rejectlimit, x.rejectlimittype, x.writable, "
+						  "pg_catalog.pg_encoding_to_char(x.encoding) "
+						  "%s"
+						  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
+						  "WHERE x.reloid = c.oid AND c.oid = '%s'\n", execLocations, optionsName, oid);
+	}
+	else
+	{
+		printfPQExpBuffer(&buf,
+						  "SELECT %s, x.fmttype, x.fmtopts, x.command, "
+						  "x.rejectlimit, x.rejectlimittype, x.writable, "
+						  "(SELECT relname "
+						  "FROM pg_class "
+						  "WHERE Oid=x.fmterrtbl) AS errtblname, "
+						  "pg_catalog.pg_encoding_to_char(x.encoding), "
+						  "x.fmterrtbl = x.reloid AS errortofile "
+						  "%s"
+						  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
+						  "WHERE x.reloid = c.oid AND c.oid = '%s'\n", execLocations, optionsName, oid);
+	}
+
+	result = PSQLexec(buf.data);
+	if (!result)
+		goto error_return;
+	if (PQntuples(result) != 1)
+		goto error_return;
+
+	if (gpdb7OrLater)
+	{
+		exttaboptions = PQgetvalue(result, 0, 0);
+	}
+	else if (gpdb6OrLater)
+	{
+		urislocation = PQgetvalue(result, 0, 0);
+		execlocation = PQgetvalue(result, 0, 1);
+		fmttype = PQgetvalue(result, 0, 2);
+		fmtopts = PQgetvalue(result, 0, 3);
+		command = PQgetvalue(result, 0, 4);
+		logerrors = PQgetvalue(result, 0, 5);
+		rejlim =  PQgetvalue(result, 0, 6);
+		rejlimtype = PQgetvalue(result, 0, 7);
+		writable = PQgetvalue(result, 0, 8);
+		extencoding = PQgetvalue(result, 0, 9);
+		options = PQgetvalue(result, 0, 10);
+	}
+	else if (gpdb5OrLater)
+	{
+		urislocation = PQgetvalue(result, 0, 0);
+		execlocation = PQgetvalue(result, 0, 1);
+		fmttype = PQgetvalue(result, 0, 2);
+		fmtopts = PQgetvalue(result, 0, 3);
+		command = PQgetvalue(result, 0, 4);
+		rejlim =  PQgetvalue(result, 0, 5);
+		rejlimtype = PQgetvalue(result, 0, 6);
+		writable = PQgetvalue(result, 0, 7);
+		errtblname = PQgetvalue(result, 0, 8);
+		extencoding = PQgetvalue(result, 0, 9);
+		errortofile = PQgetvalue(result, 0, 10);
+		options = PQgetvalue(result, 0, 11);
+	}
+	else
+	{
+		urislocation = PQgetvalue(result, 0, 0);
+		fmttype = PQgetvalue(result, 0, 1);
+		fmtopts = PQgetvalue(result, 0, 2);
+		command = PQgetvalue(result, 0, 3);
+		rejlim =  PQgetvalue(result, 0, 4);
+		rejlimtype = PQgetvalue(result, 0, 5);
+		writable = PQgetvalue(result, 0, 6);
+		errtblname = PQgetvalue(result, 0, 7);
+		extencoding = PQgetvalue(result, 0, 8);
+		errortofile = PQgetvalue(result, 0, 9);
+		execlocation = "";
+		options = "";
+	}
+
+	/* Writable/Readable */
+	if (writable)
+	{
+		printfPQExpBuffer(&tmpbuf, _("Type: %s"), writable[0] == 't' ? "writable" : "readable");
+		printTableAddFooter(cont, tmpbuf.data);
+	}
+
+	/* encoding */
+	if (extencoding)
+	{
+		printfPQExpBuffer(&tmpbuf, _("Encoding: %s"), extencoding);
+		printTableAddFooter(cont, tmpbuf.data);
+	}
+
+	if (fmttype)
+	{
+		/* format type */
+		switch ( fmttype[0] )
+		{
+		case 't':
+			{
+				format = "text";
+			}
+			break;
+		case 'c':
+			{
+				format = "csv";
+			}
+			break;
+		case 'b':
+			{
+				format = "custom";
+			}
+			break;
+		default:
+			{
+				format = "";
+				fprintf(stderr, _("Unknown fmttype value: %c\n"), fmttype[0]);
+			}
+			break;
+		};
+		printfPQExpBuffer(&tmpbuf, _("Format type: %s"), format);
+		printTableAddFooter(cont, tmpbuf.data);
+	}
+
+	/* format options */
+	if (fmtopts)
+	{
+		printfPQExpBuffer(&tmpbuf, _("Format options: %s"), fmtopts);
+		printTableAddFooter(cont, tmpbuf.data);
+	}
+
+	if (gpdb7OrLater)
+	{
+		/* external table options */
+		printfPQExpBuffer(&tmpbuf, _("External options: %s"), exttaboptions);
+		printTableAddFooter(cont, tmpbuf.data);
+	}
+	else if (gpdb5OrLater)
+	{
+		/* external table options */
+		printfPQExpBuffer(&tmpbuf, _("External options: %s"), options);
+		printTableAddFooter(cont, tmpbuf.data);
+	}
+
+	if (command && strlen(command) > 0)
+	{
+		/* EXECUTE type table - show command and command location */
+
+		printfPQExpBuffer(&tmpbuf, _("Command: %s"), command);
+		printTableAddFooter(cont, tmpbuf.data);
+
+		char* on_clause = gpdb5OrLater ? execlocation : urislocation;
+		on_clause[strlen(on_clause) - 1] = '\0'; /* don't print the '}' character */
+		on_clause++; /* don't print the '{' character */
+
+		if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
+			printfPQExpBuffer(&tmpbuf, _("Execute on: host '%s'"), on_clause + strlen("HOST:"));
+		else if(strncmp(on_clause, "PER_HOST", strlen("PER_HOST")) == 0)
+			printfPQExpBuffer(&tmpbuf, _("Execute on: one segment per host"));
+		else if(strncmp(on_clause, "MASTER_ONLY", strlen("MASTER_ONLY")) == 0)
+			printfPQExpBuffer(&tmpbuf, _("Execute on: master segment"));
+		else if(strncmp(on_clause, "COORDINATOR_ONLY", strlen("COORDINATOR_ONLY")) == 0)
+			printfPQExpBuffer(&tmpbuf, _("Execute on: coordinator"));
+		else if(strncmp(on_clause, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
+			printfPQExpBuffer(&tmpbuf, _("Execute on: segment %s"), on_clause + strlen("SEGMENT_ID:"));
+		else if(strncmp(on_clause, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)
+			printfPQExpBuffer(&tmpbuf, _("Execute on: %s random segments"), on_clause + strlen("TOTAL_SEGS:"));
+		else if(strncmp(on_clause, "ALL_SEGMENTS", strlen("ALL_SEGMENTS")) == 0)
+			printfPQExpBuffer(&tmpbuf, _("Execute on: all segments"));
+		else
+			printfPQExpBuffer(&tmpbuf, _("Execute on: ERROR: invalid catalog entry (describe.c)"));
+
+		printTableAddFooter(cont, tmpbuf.data);
+
+	}
+	else if (urislocation)
+	{
+		/* LOCATION type table - show external location */
+
+		urislocation[strlen(urislocation) - 1] = '\0'; /* don't print the '}' character */
+		urislocation++; /* don't print the '{' character */
+		printfPQExpBuffer(&tmpbuf, _("External location: %s"), urislocation);
+		printTableAddFooter(cont, tmpbuf.data);
+
+		if (gpdb5OrLater)
+		{
+			execlocation[strlen(execlocation) - 1] = '\0'; /* don't print the '}' character */
+			execlocation++; /* don't print the '{' character */
+
+			if(strncmp(execlocation, "HOST:", strlen("HOST:")) == 0)
+				printfPQExpBuffer(&tmpbuf, _("Execute on: host '%s'"), execlocation + strlen("HOST:"));
+			else if(strncmp(execlocation, "PER_HOST", strlen("PER_HOST")) == 0)
+				printfPQExpBuffer(&tmpbuf, _("Execute on: one segment per host"));
+			else if(strncmp(execlocation, "MASTER_ONLY", strlen("MASTER_ONLY")) == 0)
+				printfPQExpBuffer(&tmpbuf, _("Execute on: master segment"));
+			else if(strncmp(execlocation, "COORDINATOR_ONLY", strlen("COORDINATOR_ONLY")) == 0)
+				printfPQExpBuffer(&tmpbuf, _("Execute on: coordinator"));
+			else if(strncmp(execlocation, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
+				printfPQExpBuffer(&tmpbuf, _("Execute on: segment %s"), execlocation + strlen("SEGMENT_ID:"));
+			else if(strncmp(execlocation, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)
+				printfPQExpBuffer(&tmpbuf, _("Execute on: %s random segments"), execlocation + strlen("TOTAL_SEGS:"));
+			else if(strncmp(execlocation, "ALL_SEGMENTS", strlen("ALL_SEGMENTS")) == 0)
+				printfPQExpBuffer(&tmpbuf, _("Execute on: all segments"));
+			else
+				printfPQExpBuffer(&tmpbuf, _("Execute on: ERROR: invalid catalog entry (describe.c)"));
+
+			printTableAddFooter(cont, tmpbuf.data);
+		}
+	}
+
+	/* Single row error handling */
+	if (rejlim && strlen(rejlim) > 0)
+	{
+		/* reject limit and type */
+		printfPQExpBuffer(&tmpbuf, _("Segment reject limit: %s %s"),
+						  rejlim,
+						  (rejlimtype[0] == 'p' ? "percent" : "rows"));
+		printTableAddFooter(cont, tmpbuf.data);
+
+		if ((errortofile && errortofile[0] == 't') || (logerrors && logerrors[0] == 't'))
+		{
+			printfPQExpBuffer(&tmpbuf, _("Error Log in File"));
+			printTableAddFooter(cont, tmpbuf.data);
+		}
+		else if (logerrors && logerrors[0] == 'p')
+		{
+			printfPQExpBuffer(&tmpbuf, _("Error Log in Persistent File"));
+			printTableAddFooter(cont, tmpbuf.data);
+		}
+		else if(errtblname && strlen(errtblname) > 0)
+		{
+			printfPQExpBuffer(&tmpbuf, _("Error table: %s"), errtblname);
+			printTableAddFooter(cont, tmpbuf.data);
+		}
+	}
+
+error_return:
+	PQclear(result);
+	termPQExpBuffer(&buf);
+	termPQExpBuffer(&tmpbuf);
+}
+
+static void
+add_distributed_by_footer(printTableContent *const cont, const char *oid)
+{
+	PQExpBufferData buf;
+	PQExpBufferData tempbuf;
+	PGresult   *result1 = NULL,
+			   *result2 = NULL;
+	int			is_distributed;
+
+	initPQExpBuffer(&buf);
+	initPQExpBuffer(&tempbuf);
+
+	if (isGPDB6000OrLater())
+	{
+		printfPQExpBuffer(&tempbuf,
+						  "SELECT pg_catalog.pg_get_table_distributedby('%s')",
+						  oid);
+
+		result1 = PSQLexec(tempbuf.data);
+		if (!result1)
+		{
+			/* Error:  Well, so what?  Best to continue */
+			return;
+		}
+
+		char	   *distributedby = PQgetvalue(result1, 0, 0);
+
+		if (strcmp(distributedby, "") != 0)
+		{
+			if (strcmp(distributedby, "DISTRIBUTED RANDOMLY") == 0)
+			{
+				printfPQExpBuffer(&buf, "Distributed randomly");
+			}
+			else if (strcmp(distributedby, "DISTRIBUTED REPLICATED") == 0)
+			{
+				printfPQExpBuffer(&buf, "Distributed Replicated");
+			}
+			else if (strncmp(distributedby, "DISTRIBUTED BY ", strlen("DISTRIBUTED BY ")) == 0)
+			{
+				printfPQExpBuffer(&buf, "Distributed by: %s",
+								  &distributedby[strlen("DISTRIBUTED BY ")]);
+			}
+			else
+			{
+				/*
+				 * This probably prints something silly like "Distributed by: DISTRIBUTED ...".
+				 * But if we don't recognize it, it's the best we can do.
+				 */
+				printfPQExpBuffer(&buf, "Distributed by: %s", distributedby);
+			}
+
+			printTableAddFooter(cont, buf.data);
+		}
+
+		PQclear(result1);
+
+		termPQExpBuffer(&tempbuf);
+		termPQExpBuffer(&buf);
+
+		return; /* success */
+	}
+	else
+	{
+		printfPQExpBuffer(&tempbuf,
+						  "SELECT attrnums \n"
+						  "FROM pg_catalog.gp_distribution_policy t\n"
+						  "WHERE localoid = '%s'",
+						  oid);
+
+		result1 = PSQLexec(tempbuf.data);
+		if (!result1)
+		{
+			/* Error:  Well, so what?  Best to continue */
+			return;
+		}
+
+		is_distributed = PQntuples(result1);
+		if (is_distributed)
+		{
+			char	   *col;
+			char	   *dist_columns = PQgetvalue(result1, 0, 0);
+			char	   *dist_colname;
+
+			if (dist_columns && strlen(dist_columns) > 0)
+			{
+				dist_columns[strlen(dist_columns)-1] = '\0'; /* remove '}' */
+				dist_columns++;  /* skip '{' */
+
+				/* Get the attname for the first distribution column.*/
+				printfPQExpBuffer(&tempbuf,
+								  "SELECT attname FROM pg_catalog.pg_attribute \n"
+								  "WHERE attrelid = '%s' \n"
+								  "AND attnum = '%d' ",
+								  oid,
+								  atoi(dist_columns));
+				result2 = PSQLexec(tempbuf.data);
+				if (!result2)
+					return;
+				dist_colname = PQgetvalue(result2, 0, 0);
+				if (!dist_colname)
+					return;
+				printfPQExpBuffer(&buf, "Distributed by: (%s",
+								  dist_colname);
+				PQclear(result2);
+				dist_colname = NULL;
+
+				if (!isGPDB6000OrLater())
+					col = strchr(dist_columns, ',');
+				else
+					col = strchr(dist_columns, ' ');
+
+				while (col != NULL)
+				{
+					col++;
+					/* Get the attname for next distribution columns.*/
+					printfPQExpBuffer(&tempbuf,
+									  "SELECT attname FROM pg_catalog.pg_attribute \n"
+									  "WHERE attrelid = '%s' \n"
+									  "AND attnum = '%d' ",
+									  oid,
+									  atoi(col));
+					result2 = PSQLexec(tempbuf.data);
+					if (!result2)
+						return;
+					dist_colname = PQgetvalue(result2, 0, 0);
+					if (!dist_colname)
+						return;
+					appendPQExpBuffer(&buf, ", %s", dist_colname);
+					PQclear(result2);
+
+					if (!isGPDB6000OrLater())
+						col = strchr(col, ',');
+					else
+						col = strchr(col, ' ');
+				}
+				appendPQExpBuffer(&buf, ")");
+			}
+			else
+			{
+				printfPQExpBuffer(&buf, "Distributed randomly");
+			}
+
+			printTableAddFooter(cont, buf.data);
+		}
+
+		PQclear(result1);
+
+		termPQExpBuffer(&tempbuf);
+		termPQExpBuffer(&buf);
+
+		return; /* success */
+	}
+}
+
+/*
+ * Add a 'partition by' description to the footer.
+ */
+static void
+add_partition_by_footer(printTableContent *const cont, const char *oid)
+{
+	PGresult   *result;
+	PQExpBufferData buf;
+	int			nRows;
+	int			nPartKey;
+
+	initPQExpBuffer(&buf);
+
+	/* check if current relation is root partition, if it is root partition, at least 1 row returns */
+	printfPQExpBuffer(&buf, "SELECT parrelid FROM pg_catalog.pg_partition WHERE parrelid = '%s'", oid);
+	result = PSQLexec(buf.data);
+
+	if (!result)
+		return;
+	nRows = PQntuples(result);
+
+	PQclear(result);
+
+	if (nRows)
+	{
+		/* query partition key on the root partition */
+		printfPQExpBuffer(&buf,
+			"WITH att_arr AS (SELECT unnest(paratts) \n"
+			"	FROM pg_catalog.pg_partition p \n"
+			"	WHERE p.parrelid = '%s' AND p.parlevel = 0 AND p.paristemplate = false), \n"
+			"idx_att AS (SELECT row_number() OVER() AS idx, unnest AS att_num FROM att_arr) \n"
+			"SELECT attname FROM pg_catalog.pg_attribute, idx_att \n"
+			"	WHERE attrelid='%s' AND attnum = att_num ORDER BY idx ",
+			oid, oid);
+	}
+	else
+	{
+		/* query partition key on the intermediate partition */
+		printfPQExpBuffer(&buf,
+			"WITH att_arr AS (SELECT unnest(paratts) FROM pg_catalog.pg_partition p, \n"
+			"	(SELECT parrelid, parlevel \n"
+			"		FROM pg_catalog.pg_partition p, pg_catalog.pg_partition_rule pr \n"
+			"		WHERE pr.parchildrelid='%s' AND p.oid = pr.paroid) AS v \n"
+			"	WHERE p.parrelid = v.parrelid AND p.parlevel = v.parlevel+1 AND p.paristemplate = false), \n"
+			"idx_att AS (SELECT row_number() OVER() AS idx, unnest AS att_num FROM att_arr) \n"
+			"SELECT attname FROM pg_catalog.pg_attribute, idx_att \n"
+			"	WHERE attrelid='%s' AND attnum = att_num ORDER BY idx ",
+			oid, oid);
+	}
+
+	result = PSQLexec(buf.data);
+	if (!result)
+		return;
+
+	nPartKey = PQntuples(result);
+	if (nPartKey)
+	{
+		char	   *partColName;
+		int			i;
+
+		resetPQExpBuffer(&buf);
+		appendPQExpBuffer(&buf, "Partition by: (");
+		for (i = 0; i < nPartKey; i++)
+		{
+			if (i > 0)
+				appendPQExpBuffer(&buf, ", ");
+			partColName = PQgetvalue(result, i, 0);
+
+			if (!partColName)
+				return;
+			appendPQExpBuffer(&buf, "%s", partColName);
+		}
+		appendPQExpBuffer(&buf, ")");
+		printTableAddFooter(cont, buf.data);
+	}
+
+	PQclear(result);
+
+	termPQExpBuffer(&buf);
+	return;		/* success */
 }
 
 /*
@@ -3409,6 +4346,7 @@ describeRoles(const char *pattern, bool verbose, bool showSystem)
 	int			conns;
 	const char	align = 'l';
 	char	  **attr;
+	const int   numgreenplumspecificattrs = 3;
 
 	myopt.default_footer = false;
 
@@ -3424,6 +4362,11 @@ describeRoles(const char *pattern, bool verbose, bool showSystem)
 						  "        FROM pg_catalog.pg_auth_members m\n"
 						  "        JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid)\n"
 						  "        WHERE m.member = r.oid) as memberof");
+
+		/* add Greenplum specific attributes */
+		appendPQExpBufferStr(&buf, "\n, r.rolcreaterextgpfd");
+		appendPQExpBufferStr(&buf, "\n, r.rolcreatewextgpfd");
+		appendPQExpBufferStr(&buf, "\n, r.rolcreaterexthttp");
 
 		if (verbose && pset.sversion >= 80200)
 		{
@@ -3499,11 +4442,25 @@ describeRoles(const char *pattern, bool verbose, bool showSystem)
 		if (strcmp(PQgetvalue(res, i, 4), "t") == 0)
 			add_role_attribute(&buf, _("Create DB"));
 
+
+		/* output Greenplum specific attributes */
+		if (strcmp(PQgetvalue(res, i, 9), "t") == 0)
+			add_role_attribute(&buf, _("Ext gpfdist Table"));
+
+		if (strcmp(PQgetvalue(res, i, 10), "t") == 0)
+			add_role_attribute(&buf, _("Wri Ext gpfdist Table"));
+
+		if (strcmp(PQgetvalue(res, i, 11), "t") == 0)
+			add_role_attribute(&buf, _("Ext http Table"));
+		/* end Greenplum specific attributes */
+
+
 		if (strcmp(PQgetvalue(res, i, 5), "t") != 0)
 			add_role_attribute(&buf, _("Cannot login"));
 
 		if (pset.sversion >= 90100)
-			if (strcmp(PQgetvalue(res, i, (verbose ? 10 : 9)), "t") == 0)
+			/* +numgreenplumspecificattrs is due to additional Greenplum specific attributes */
+			if (strcmp(PQgetvalue(res, i, (verbose ? 10 + numgreenplumspecificattrs : 9 + numgreenplumspecificattrs)), "t") == 0)
 				add_role_attribute(&buf, _("Replication"));
 
 		if (pset.sversion >= 90500)
@@ -3540,7 +4497,7 @@ describeRoles(const char *pattern, bool verbose, bool showSystem)
 		printTableAddCell(&cont, PQgetvalue(res, i, 8), false, false);
 
 		if (verbose && pset.sversion >= 80200)
-			printTableAddCell(&cont, PQgetvalue(res, i, 9), false, false);
+			printTableAddCell(&cont, PQgetvalue(res, i, 9 + numgreenplumspecificattrs), false, false);
 	}
 	termPQExpBuffer(&buf);
 
@@ -3654,6 +4611,7 @@ listDbRoleSettings(const char *pattern, const char *pattern2)
 bool
 listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSystem)
 {
+	bool		showChildren = true;
 	bool		showTables = strchr(tabtypes, 't') != NULL;
 	bool		showIndexes = strchr(tabtypes, 'i') != NULL;
 	bool		showViews = strchr(tabtypes, 'v') != NULL;
@@ -3665,11 +4623,19 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 	int			cols_so_far;
-	bool		translate_columns[] = {false, false, true, false, false, false, false, false};
+	bool		translate_columns[] = {false, false, true, false, false /* Storage */, false, false, false, false, false};
 
 	/* If tabtypes is empty, we default to \dtvmsE (but see also command.c) */
 	if (!(showTables || showIndexes || showViews || showMatViews || showSeq || showForeign))
 		showTables = showViews = showMatViews = showSeq = showForeign = true;
+
+	bool		showExternal = showForeign;
+
+	if (strchr(tabtypes, 'P') != NULL)
+	{
+		showTables = true;
+		showChildren = false;
+	}
 
 	initPQExpBuffer(&buf);
 
@@ -3706,6 +4672,28 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 					  gettext_noop("Type"),
 					  gettext_noop("Owner"));
 	cols_so_far = 4;
+
+	/* Show Storage type for tables */
+	if (showTables && isGPDB())
+	{
+		if (isGPDB7000OrLater())
+		{
+			/* In GPDB7, we can have user defined access method, display the access method name directly */
+			appendPQExpBuffer(&buf, ", a.amname as \"%s\"\n", gettext_noop("Storage"));
+		}
+		else
+		{
+			appendPQExpBuffer(&buf, ", CASE c.relstorage");
+			appendPQExpBuffer(&buf, " WHEN 'h' THEN '%s'", gettext_noop("heap"));
+			appendPQExpBuffer(&buf, " WHEN 'x' THEN '%s'", gettext_noop("external"));
+			appendPQExpBuffer(&buf, " WHEN 'a' THEN '%s'", gettext_noop("append only"));
+			appendPQExpBuffer(&buf, " WHEN 'v' THEN '%s'", gettext_noop("none"));
+			appendPQExpBuffer(&buf, " WHEN 'c' THEN '%s'", gettext_noop("append only columnar"));
+			appendPQExpBuffer(&buf, " WHEN 'p' THEN '%s'", gettext_noop("Apache Parquet"));
+			appendPQExpBuffer(&buf, " WHEN 'f' THEN '%s'", gettext_noop("foreign"));
+			appendPQExpBuffer(&buf, " END as \"%s\"\n", gettext_noop("Storage"));
+		}
+	}
 
 	if (showIndexes)
 	{
@@ -3759,13 +4747,17 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 	appendPQExpBufferStr(&buf,
 						 "\nFROM pg_catalog.pg_class c"
 						 "\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace");
+	if (showTables && isGPDB7000OrLater())
+		appendPQExpBufferStr(&buf,
+							"\n     LEFT JOIN pg_catalog.pg_am a ON a.oid = c.relam");
 	if (showIndexes)
 		appendPQExpBufferStr(&buf,
 							 "\n     LEFT JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid"
 							 "\n     LEFT JOIN pg_catalog.pg_class c2 ON i.indrelid = c2.oid");
 
 	appendPQExpBufferStr(&buf, "\nWHERE c.relkind IN (");
-	if (showTables)
+	if (showTables ||
+		(showExternal && isGPDB6000OrBelow()))
 		appendPQExpBufferStr(&buf, CppAsString2(RELKIND_RELATION) ","
 							 CppAsString2(RELKIND_PARTITIONED_TABLE) ",");
 	if (showViews)
@@ -3785,6 +4777,26 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 	appendPQExpBufferStr(&buf, "''");	/* dummy */
 	appendPQExpBufferStr(&buf, ")\n");
 
+	/*
+	 * GPDB 6 and earlier versions had pg_class.relstorage column, to distinguish
+	 * external and other kinds of tables. It's gone in GPDB 6, we use relkind and
+	 * relam fields now.
+	 */
+	if (isGPDB6000OrBelow())   /* GPDB? */
+	{
+		appendPQExpBuffer(&buf, "AND c.relstorage IN (");
+		if (showTables || showIndexes || showSeq || (showSystem && showTables) || showMatViews)
+			appendPQExpBuffer(&buf, "'h', 'a', 'c',");
+		if (showExternal)
+			appendPQExpBuffer(&buf, "'x',");
+		if (showForeign)
+			appendPQExpBuffer(&buf, "'f',");
+		if (showViews)
+			appendPQExpBuffer(&buf, "'v',");
+		appendPQExpBuffer(&buf, "''");		/* dummy */
+		appendPQExpBuffer(&buf, ")\n");
+	}
+
 	if (!showSystem && !pattern)
 		appendPQExpBufferStr(&buf, "      AND n.nspname <> 'pg_catalog'\n"
 							 "      AND n.nspname <> 'information_schema'\n");
@@ -3797,6 +4809,9 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 	 * table/index.
 	 */
 	appendPQExpBufferStr(&buf, "      AND n.nspname !~ '^pg_toast'\n");
+
+	if (!showChildren)
+		appendPQExpBuffer(&buf, "      AND c.oid NOT IN (select inhrelid from pg_catalog.pg_inherits)\n");
 
 	processSQLNamePattern(pset.db, &buf, pattern, true, false,
 						  "n.nspname", "c.relname", NULL,
@@ -5539,7 +6554,7 @@ listExtensions(const char *pattern)
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 
-	if (pset.sversion < 90100)
+	if (pset.sversion < 80300)
 	{
 		char		sverbuf[32];
 
@@ -5596,7 +6611,11 @@ listExtensionContents(const char *pattern)
 	PGresult   *res;
 	int			i;
 
-	if (pset.sversion < 90100)
+	/*
+	 * In PostgreSQL, extension support added in 9.1, but it was backported
+	 * to GPDB 5, which is based on 8.3.
+	 */
+	if (pset.sversion < 80300)
 	{
 		char		sverbuf[32];
 
@@ -5604,6 +6623,17 @@ listExtensionContents(const char *pattern)
 					 formatPGVersionNumber(pset.sversion, false,
 										   sverbuf, sizeof(sverbuf)));
 		return true;
+	}
+
+	/*
+	 * The pg_desribe_object function is is needed \dx+. It was introduced
+	 * in PostgreSQL 9.1. That means that GPDB 5 didn't have it, even though
+	 * extensions support was backported. If we can't use pg_describe_object,
+	 * print the same as plain \dx does.
+	 */
+	if (pset.sversion < 90100)
+	{
+		return listExtensions(pattern);
 	}
 
 	initPQExpBuffer(&buf);

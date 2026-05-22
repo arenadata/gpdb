@@ -63,6 +63,11 @@ CATALOG(pg_trigger,2620,TriggerRelationId)
 #endif
 } FormData_pg_trigger;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(tgrelid REFERENCES pg_class(oid));
+FOREIGN_KEY(tgfoid REFERENCES pg_proc(oid));
+FOREIGN_KEY(tgconstrrelid REFERENCES pg_class(oid));
+
 /* ----------------
  *		Form_pg_trigger corresponds to a pointer to a tuple with
  *		the format of pg_trigger relation.

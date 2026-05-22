@@ -91,7 +91,6 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
-
 /*
  * Defines for MultiXactOffset page sizes.  A page is the same BLCKSZ as is
  * used everywhere else in Postgres.
@@ -2110,6 +2109,7 @@ ShutdownMultiXact(void)
 	TRACE_POSTGRESQL_MULTIXACT_CHECKPOINT_START(false);
 	SimpleLruFlush(MultiXactOffsetCtl, false);
 	SimpleLruFlush(MultiXactMemberCtl, false);
+
 	TRACE_POSTGRESQL_MULTIXACT_CHECKPOINT_DONE(false);
 }
 
@@ -2117,7 +2117,7 @@ ShutdownMultiXact(void)
  * Get the MultiXact data to save in a checkpoint record
  */
 void
-MultiXactGetCheckptMulti(bool is_shutdown,
+MultiXactGetCheckptMulti(bool is_shutdown pg_attribute_unused() ,
 						 MultiXactId *nextMulti,
 						 MultiXactOffset *nextMultiOffset,
 						 MultiXactId *oldestMulti,

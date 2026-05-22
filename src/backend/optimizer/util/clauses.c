@@ -3,6 +3,8 @@
  * clauses.c
  *	  routines to manipulate qualification clauses
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,6 +22,7 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_language.h"
@@ -68,6 +71,10 @@ typedef struct
 	List	   *active_fns;
 	Node	   *case_val;
 	bool		estimate;
+	bool		eval_stable_functions;
+	bool		recurse_queries; /* recurse into query structures */
+	bool		recurse_sublink_testexpr; /* recurse into sublink test expressions */
+	Size        max_size; /* max constant binary size in bytes, 0: no restrictions */
 } eval_const_expressions_context;
 
 typedef struct
@@ -131,6 +138,7 @@ static Expr *simplify_function(Oid funcid,
 							   Oid result_collid, Oid input_collid, List **args_p,
 							   bool funcvariadic, bool process_args, bool allow_non_const,
 							   eval_const_expressions_context *context);
+static bool large_const(Expr *expr, Size max_size);
 static List *reorder_function_arguments(List *args, HeapTuple func_tuple);
 static List *add_function_defaults(List *args, HeapTuple func_tuple);
 static List *fetch_function_defaults(HeapTuple func_tuple);
@@ -157,6 +165,10 @@ static Node *substitute_actual_srf_parameters_mutator(Node *node,
 													  substitute_actual_srf_parameters_context *context);
 static bool tlist_matches_coltypelist(List *tlist, List *coltypelist);
 
+/*
+ * Greenplum specific functions
+ */
+static bool should_eval_stable_functions(PlannerInfo *root);
 
 /*****************************************************************************
  *		Aggregate-function clause manipulation
@@ -196,6 +208,16 @@ contain_agg_clause_walker(Node *node, void *context)
 		Assert(((GroupingFunc *) node)->agglevelsup == 0);
 		return true;			/* abort the tree traversal and return true */
 	}
+	if (IsA(node, GroupId))
+	{
+		Assert(((GroupId *) node)->agglevelsup == 0);
+		return true;			/* abort the tree traversal and return true */
+	}
+	if (IsA(node, GroupingSetId))
+	{
+		return true;			/* abort the tree traversal and return true */
+	}
+
 	Assert(!IsA(node, SubLink));
 	return expression_tree_walker(node, contain_agg_clause_walker, context);
 }
@@ -314,17 +336,39 @@ get_agg_clause_costs_walker(Node *node, get_agg_clause_costs_context *context)
 		}
 
 		/*
+		 * The PostgreSQL 'numOrderedAggs' field includes DISTINCT aggregates,
+		 * too, but cdbgroup.c handles DISTINCT aggregates differently, and
+		 * needs to know if there are any purely ordered aggs, not counting
+		 * DISTINCT aggs.
+		 */
+		if (aggref->aggorder != NIL)
+			costs->numPureOrderedAggs++;
+
+		if (aggref->aggdistinct != NIL)
+			costs->distinctAggrefs = lappend(costs->distinctAggrefs, aggref);
+
+		/*
 		 * Check whether partial aggregation is feasible, unless we already
 		 * found out that we can't do it.
+		 *
+		 * In GPDB, we can do two-stage aggregation with DISTINCT-qualified
+		 * aggregates, if the data distribution happens to match the DISTINCT
+		 * expressions. So we keep track whether all aggregates have combine
+		 * functions, even if there are DISTINCT aggregates. hasNonCombine is
+		 * set if there are any aggregates without combine functions, even if
+		 * there are DISTINCT aggregates.
 		 */
-		if (!costs->hasNonPartial)
+		if (!costs->hasNonCombine)
 		{
 			/*
 			 * If there is no combine function, then partial aggregation is
 			 * not possible.
 			 */
 			if (!OidIsValid(aggcombinefn))
+			{
+				costs->hasNonCombine = true;
 				costs->hasNonPartial = true;
+			}
 
 			/*
 			 * If we have any aggs with transtype INTERNAL then we must check
@@ -464,6 +508,17 @@ get_agg_clause_costs_walker(Node *node, get_agg_clause_costs_context *context)
 			else
 				costs->transitionSpace += ALLOCSET_DEFAULT_INITSIZE;
 		}
+
+		/*
+		 * Complain if the aggregate's arguments contain any aggregates;
+		 * nested agg functions are semantically nonsensical.  Aggregates in
+		 * the FILTER clause are detected in transformAggregateCall().
+		 */
+		if (contain_agg_clause((Node *) aggref->args) ||
+			contain_agg_clause((Node *) aggref->aggorder))
+			ereport(ERROR,
+					(errcode(ERRCODE_GROUPING_ERROR),
+					 errmsg("aggregate function calls cannot be nested")));
 
 		/*
 		 * We assume that the parser checked that there are no aggregates (of
@@ -658,6 +713,16 @@ contain_mutable_functions_walker(Node *node, void *context)
 {
 	if (node == NULL)
 		return false;
+
+    /* the functions in predtest.c handle expressions and
+     * RestrictInfo objects -- so make this function handle
+     * them too for convenience */
+    if (IsA(node, RestrictInfo))
+    {
+        RestrictInfo * info = (RestrictInfo *) node;
+        return contain_mutable_functions_walker((Node*)info->clause, context);
+    }
+
 	/* Check for mutable functions in node itself */
 	if (check_functions_in_node(node, contain_mutable_functions_checker,
 								context))
@@ -737,6 +802,18 @@ contain_volatile_functions_walker(Node *node, void *context)
 {
 	if (node == NULL)
 		return false;
+
+	/*
+	 * We need to handle RestrictInfo, a case that uses this
+	 * is that replicated table with a volatile restriction.
+	 * We have to find the pattern and turn it into singleQE.
+	 */
+	if (IsA(node, RestrictInfo))
+	{
+		RestrictInfo * info = (RestrictInfo *) node;
+		return contain_volatile_functions_walker((Node*)info->clause, context);
+	}
+
 	/* Check for volatile functions in node itself */
 	if (check_functions_in_node(node, contain_volatile_functions_checker,
 								context))
@@ -762,6 +839,7 @@ contain_volatile_functions_walker(Node *node, void *context)
 								 contain_volatile_functions_walker,
 								 context, 0);
 	}
+
 	return expression_tree_walker(node, contain_volatile_functions_walker,
 								  context);
 }
@@ -1553,9 +1631,10 @@ find_nonnullable_rels_walker(Node *node, bool top_level)
 	}
 	else if (IsA(node, ScalarArrayOpExpr))
 	{
+		/* Strict if it's "foo op ANY array" and op is strict */
 		ScalarArrayOpExpr *expr = (ScalarArrayOpExpr *) node;
 
-		if (is_strict_saop(expr, true))
+		if (expr->useOr && op_strict(expr->opno))
 			result = find_nonnullable_rels_walker((Node *) expr->args, false);
 	}
 	else if (IsA(node, BoolExpr))
@@ -2063,6 +2142,51 @@ is_strict_saop(ScalarArrayOpExpr *expr, bool falseOK)
 }
 
 
+
+typedef struct
+{
+	char		exec_location;
+} check_execute_on_functions_context;
+
+static bool
+check_execute_on_functions_walker(Node *node,
+								  check_execute_on_functions_context *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *expr = (FuncExpr *) node;
+		char		exec_location;
+
+		exec_location = func_exec_location(expr->funcid);
+		if (exec_location != PROEXECLOCATION_ANY && exec_location != context->exec_location)
+		{
+			if (context->exec_location != PROEXECLOCATION_ANY)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot mix EXECUTE ON MASTER and EXECUTE ON ALL SEGMENTS functions in same query level")));
+			context->exec_location = exec_location;
+		}
+		/* fall through to check args */
+	}
+	return expression_tree_walker(node, check_execute_on_functions_walker, context);
+}
+
+
+char
+check_execute_on_functions(Node *clause)
+{
+	check_execute_on_functions_context context;
+
+	context.exec_location = PROEXECLOCATION_ANY;
+
+	check_execute_on_functions_walker(clause, &context);
+
+	return context.exec_location;
+}
+
 /*****************************************************************************
  *		Check for "pseudo-constant" clauses
  *****************************************************************************/
@@ -2212,6 +2336,107 @@ rowtype_field_matches(Oid rowtypeid, int fieldnum,
 }
 
 
+/**
+ * fold_constants
+ *
+ * Recurses into query tree and folds all constant expressions.
+ */
+
+Query *
+fold_constants(PlannerInfo *root, Query *q, ParamListInfo boundParams, Size max_size)
+{
+	eval_const_expressions_context context;
+
+	context.root = root;
+	context.boundParams = boundParams;
+	context.active_fns = NIL;	/* nothing being recursively simplified */
+	context.case_val = NULL;	/* no CASE being examined */
+	context.estimate = false;	/* safe transformations only */
+	context.recurse_queries = true; /* recurse into query structures */
+	context.recurse_sublink_testexpr = false; /* do not recurse into sublink test expressions */
+
+	context.max_size = max_size;
+	
+	context.eval_stable_functions = should_eval_stable_functions(root);
+
+	return (Query *) query_or_expression_tree_mutator
+						(
+						(Node *) q,
+						eval_const_expressions_mutator,
+						&context,
+						0
+						);
+}
+
+/*
+ * Transform a small array constant to an ArrayExpr.
+ *
+ * This is used by ORCA, to transform the array argument of a ScalarArrayExpr
+ * into an ArrayExpr. If a ScalarArrayExpr has an ArrayExpr argument, ORCA can
+ * perform some optimizations - partition pruning at least - by first expanding
+ * the ArrayExpr into its disjunctive normal form and then deriving constraints
+ * based on the elements in the ArrayExpr. It doesn't currently know how to
+ * extract elements from an Array const, however, so to enable those
+ * optimizations in ORCA, we convert Array Consts into corresponding
+ * ArrayExprs.
+ *
+ * If the argument is not an array constant return the original Const unmodified.
+ * We convert an array const of any size to ArrayExpr. ORCA can use it to derive
+ * statistics.
+ */
+Expr *
+transform_array_Const_to_ArrayExpr(Const *c)
+{
+	Oid			elemtype;
+	int16		elemlen;
+	bool		elembyval;
+	char		elemalign;
+	int			nelems;
+	Datum	   *elems;
+	bool	   *nulls;
+	ArrayType  *ac;
+	ArrayExpr *aexpr;
+	int			i;
+
+	Assert(IsA(c, Const));
+
+	/* Does it look like the right kind of an array Const? */
+	if (c->constisnull)
+		return (Expr *) c;	/* NULL const */
+
+	elemtype = get_element_type(c->consttype);
+	if (elemtype == InvalidOid)
+		return (Expr *) c;	/* not an array */
+
+	ac = DatumGetArrayTypeP(c->constvalue);
+	nelems = ArrayGetNItems(ARR_NDIM(ac), ARR_DIMS(ac));
+
+	/* All set, extract the elements, and an ArrayExpr to hold them. */
+	get_typlenbyvalalign(elemtype, &elemlen, &elembyval, &elemalign);
+	deconstruct_array(ac, elemtype, elemlen, elembyval, elemalign,
+					  &elems, &nulls, &nelems);
+
+	aexpr = makeNode(ArrayExpr);
+	aexpr->array_typeid = c->consttype;
+	aexpr->element_typeid = elemtype;
+	aexpr->multidims = false;
+	aexpr->location = c->location;
+
+	for (i = 0; i < nelems; i++)
+	{
+		aexpr->elements = lappend(aexpr->elements,
+								  makeConst(elemtype,
+											-1,
+											c->constcollid,
+											elemlen,
+											elems[i],
+											nulls[i],
+											elembyval));
+	}
+
+	return (Expr *) aexpr;
+}
+
 /*--------------------
  * eval_const_expressions
  *
@@ -2253,6 +2478,8 @@ Node *
 eval_const_expressions(PlannerInfo *root, Node *node)
 {
 	eval_const_expressions_context context;
+	Node                          *result;
+	List                          *saved_oid_assignments;
 
 	if (root)
 		context.boundParams = root->glob->boundParams;	/* bound Params */
@@ -2262,7 +2489,16 @@ eval_const_expressions(PlannerInfo *root, Node *node)
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.estimate = false;	/* safe transformations only */
-	return eval_const_expressions_mutator(node, &context);
+	context.recurse_queries = false; /* do not recurse into query structures */
+	context.recurse_sublink_testexpr = true;
+	context.max_size = 0;
+	context.eval_stable_functions = should_eval_stable_functions(root);
+
+	saved_oid_assignments = SaveOidAssignments();
+	result = eval_const_expressions_mutator(node, &context);
+	RestoreOidAssignments(saved_oid_assignments);
+
+	return result;
 }
 
 /*--------------------
@@ -2293,6 +2529,11 @@ estimate_expression_value(PlannerInfo *root, Node *node)
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.estimate = true;	/* unsafe transformations OK */
+	context.recurse_queries = false; /* do not recurse into query structures */
+	context.recurse_sublink_testexpr = true;
+	context.max_size = 0;
+	context.eval_stable_functions = false;
+
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -2452,6 +2693,7 @@ eval_const_expressions_mutator(Node *node,
 				newexpr->winref = expr->winref;
 				newexpr->winstar = expr->winstar;
 				newexpr->winagg = expr->winagg;
+				newexpr->windistinct = expr->windistinct;
 				newexpr->location = expr->location;
 
 				return (Node *) newexpr;
@@ -3152,8 +3394,14 @@ eval_const_expressions_mutator(Node *node,
 
 				/* Copy the node and const-simplify its arguments */
 				node = ece_generic_processing(node);
+
 				/* If all arguments are Consts, we can fold to a constant */
-				if (ece_all_arguments_const(node))
+				/* In gpdb, RowExpr's TupleDesc will lost in QE if we evaluate
+				 * expr in planner. It is hard to dispatch these TupleDesc to QE
+				 * since it affect typecache more complex.
+				 */
+				if (ece_all_arguments_const(node) &&
+					(!IsA(node, RowExpr) || ((RowExpr *) node)->row_typeid != RECORDOID))
 					return ece_evaluate_expr(node);
 				return node;
 			}
@@ -3213,17 +3461,39 @@ eval_const_expressions_mutator(Node *node,
 				/*
 				 * All variants of SQLValueFunction are stable, so if we are
 				 * estimating the expression's value, we should evaluate the
-				 * current function value.  Otherwise just copy.
+				 * current function value.
+				 *
+				 * In GPDB, we add eval_stable_functions field in the context
+				 * to decide whether we should pre-evaluate this stable function.
+				 * If it is true, we evaluate the function value here so that we
+				 * can directly dispatch a single row insertion query that contains
+				 * SQLValueFunction (Otherwise we need to add a redistribution
+				 * motion). In a specific case where we use prepare/execute statement,
+				 * we need to set oneoffPlan to true so that we can re-evaluate 
+				 * the SQLValueFunction in the execute statement.
+				 *
+				 * If neither condition holds, we just copy.
 				 */
 				SQLValueFunction *svf = (SQLValueFunction *) node;
 
-				if (context->estimate)
+				if (context->eval_stable_functions)
+				{
+					context->root->glob->oneoffPlan = true;
 					return (Node *) evaluate_expr((Expr *) svf,
 												  svf->type,
 												  svf->typmod,
 												  InvalidOid);
-				else
-					return copyObject((Node *) svf);
+				}
+
+				if (context->estimate)
+				{
+					return (Node *) evaluate_expr((Expr *) svf,
+												  svf->type,
+												  svf->typmod,
+												  InvalidOid);
+				}
+
+				return copyObject((Node *) svf);
 			}
 		case T_FieldSelect:
 			{
@@ -3593,6 +3863,32 @@ eval_const_expressions_mutator(Node *node,
 			}
 		default:
 			break;
+	}
+
+	/* prevent recursion into sublinks */
+	if (IsA(node, SubLink) && !context->recurse_sublink_testexpr)
+	{
+		SubLink    *sublink = (SubLink *) node;
+		SubLink    *newnode = copyObject(sublink);
+
+		/*
+		 * Also invoke the mutator on the sublink's Query node, so it
+		 * can recurse into the sub-query if it wants to.
+		 */
+		newnode->subselect = (Node *) query_tree_mutator((Query *) sublink->subselect, eval_const_expressions_mutator, (void*) context, 0);
+		return (Node *) newnode;
+	}
+
+	/* recurse into query structure if requested */
+	if (IsA(node, Query) && context->recurse_queries)
+	{
+		return (Node *)
+					query_tree_mutator
+					(
+					(Query *) node,
+					eval_const_expressions_mutator,
+					(void *) context,
+					0);
 	}
 
 	/*
@@ -4000,6 +4296,12 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 								args, funcvariadic,
 								func_tuple, context);
 
+	if (large_const(newexpr, context->max_size))
+	{
+		// folded expression prohibitively large
+		newexpr = NULL;
+	}
+
 	if (!newexpr && allow_non_const && OidIsValid(func_form->prosupport))
 	{
 		/*
@@ -4263,6 +4565,35 @@ recheck_cast_function_args(List *args, Oid result_type, HeapTuple func_tuple)
 }
 
 /*
+ * large_const: check if given expression is a Const expression larger than
+ * the given size
+ *
+ */
+static bool
+large_const(Expr *expr, Size max_size)
+{
+	if (NULL == expr || 0 == max_size)
+	{
+		return false;
+	}
+	
+	if (!IsA(expr, Const))
+	{
+		return false;
+	}
+	
+	Const *const_expr = (Const *) expr;
+	
+	if (const_expr->constisnull)
+	{
+		return false;
+	}
+	
+	Size size = datumGetSize(const_expr->constvalue, const_expr->constbyval, const_expr->constlen);
+	return size > max_size;
+}
+
+/*
  * evaluate_function: try to pre-evaluate a function call
  *
  * We can do this if the function is strict and has any constant-null inputs
@@ -4346,6 +4677,11 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 		 /* okay */ ;
 	else if (context->estimate && funcform->provolatile == PROVOLATILE_STABLE)
 		 /* okay */ ;
+	else if (context->eval_stable_functions && funcform->provolatile == PROVOLATILE_STABLE)
+	{
+		/* okay, but we cannot reuse this plan */
+		context->root->glob->oneoffPlan = true;
+	}
 	else
 		return NULL;
 
@@ -5224,6 +5560,146 @@ substitute_actual_srf_parameters_mutator(Node *node,
 }
 
 /*
+ * flatten_join_alias_var_optimizer
+ *	  Replace Vars that reference JOIN outputs with references to the original
+ *	  relation variables instead.
+ */
+Query *
+flatten_join_alias_var_optimizer(Query *query, int queryLevel)
+{
+	Query *queryNew = (Query *) copyObject(query);
+
+	/*
+	 * Flatten join alias for expression in
+	 * 1. targetlist
+	 * 2. returningList
+	 * 3. having qual
+	 * 4. scatterClause
+	 * 5. limit offset
+	 * 6. limit count
+	 * 
+	 * We flatten the above expressions since these entries may be moved during the query 
+	 * normalization step before algebrization. In contrast, the planner flattens alias 
+	 * inside quals to allow predicates involving such vars to be pushed down. 
+	 * 
+	 * Here we ignore the flattening of quals due to the following reasons:
+	 * 1. we assume that the function will be called before Query->DXL translation:
+	 * 2. the quals never gets moved from old query to the new top-level query in the 
+	 * query normalization phase before algebrization. In other words, the quals hang of 
+	 * the same query structure that is now the new derived table.
+	 * 3. the algebrizer can resolve the abiquity of join aliases in quals since we maintain 
+	 * all combinations of <query level, varno, varattno> to DXL-ColId during Query->DXL translation.
+	 * 
+	 */
+
+	List *targetList = queryNew->targetList;
+	if (NIL != targetList)
+	{
+		queryNew->targetList = (List *) flatten_join_alias_vars(queryNew, (Node *) targetList);
+		pfree(targetList);
+	}
+
+	List * returningList = queryNew->returningList;
+	if (NIL != returningList)
+	{
+		queryNew->returningList = (List *) flatten_join_alias_vars(queryNew, (Node *) returningList);
+		pfree(returningList);
+	}
+
+	Node *havingQual = queryNew->havingQual;
+	if (NULL != havingQual)
+	{
+		queryNew->havingQual = flatten_join_alias_vars(queryNew, havingQual);
+		pfree(havingQual);
+	}
+
+	List *scatterClause = queryNew->scatterClause;
+	if (NIL != scatterClause)
+	{
+		queryNew->scatterClause = (List *) flatten_join_alias_vars(queryNew, (Node *) scatterClause);
+		pfree(scatterClause);
+	}
+
+	Node *limitOffset = queryNew->limitOffset;
+	if (NULL != limitOffset)
+	{
+		queryNew->limitOffset = flatten_join_alias_vars(queryNew, limitOffset);
+		pfree(limitOffset);
+	}
+
+	List *windowClause = queryNew->windowClause;
+	if (NIL != queryNew->windowClause)
+	{
+		ListCell *l;
+
+		foreach (l, windowClause)
+		{
+			WindowClause *wc = (WindowClause *) lfirst(l);
+
+			if (wc == NULL)
+				continue;
+
+			if (wc->startOffset)
+				wc->startOffset = flatten_join_alias_vars(queryNew, wc->startOffset);
+
+			if (wc->endOffset)
+				wc->endOffset = flatten_join_alias_vars(queryNew, wc->endOffset);
+		}
+	}
+
+	Node *limitCount = queryNew->limitCount;
+	if (NULL != limitCount)
+	{
+		queryNew->limitCount = flatten_join_alias_vars(queryNew, limitCount);
+		pfree(limitCount);
+	}
+
+    return queryNew;
+}
+
+/**
+ * Structs and Methods to support searching of matching subexpressions.
+ */
+
+typedef struct subexpression_matching_context
+{
+	Expr *needle;	/* This is the expression being searched */
+} subexpression_matching_context;
+
+/**
+ * expression_matching_walker checks if the expression 'needle' in context is a sub-expression of hayStack.
+ */
+static bool subexpression_matching_walker(Node *hayStack, void *context)
+{
+	Assert(context);
+	subexpression_matching_context *ctx = (subexpression_matching_context *) context;
+	Assert(ctx->needle);
+
+	if (!hayStack)
+	{
+		return false;
+	}
+
+	if (equal(ctx->needle, hayStack))
+	{
+		return true;
+	}
+
+	return expression_tree_walker(hayStack, subexpression_matching_walker, (void *) context);
+}
+
+/**
+ * Method checks if expr1 is a subexpression of expr2.
+ * For example, expr1 = (x + 2) and expr = (x + 2 ) * 100 + 20 would return true.
+ */
+bool subexpression_match(Expr *expr1, Expr *expr2)
+{
+	subexpression_matching_context ctx;
+	ctx.needle = expr1;
+	return subexpression_matching_walker((Node *) expr2, (void *) &ctx);
+}
+
+/*
  * Check whether a SELECT targetlist emits the specified column types,
  * to see if it's safe to inline a function returning record.
  *
@@ -5264,4 +5740,78 @@ tlist_matches_coltypelist(List *tlist, List *coltypelist)
 		return false;			/* too few tlist items */
 
 	return true;
+}
+
+/*
+ * If this expression is part of a query, and the query isn't a simple
+ * "SELECT foo()" style query with no actual tables involved, then we
+ * also aggressively evaluate stable functions, in addition to immutable
+ * ones. Such plans cannot be reused, and therefore need to be re-planned
+ * on every execution, but it can be a big win if it allows partition
+ * elimination to happen. That's considered a good tradeoff in GPDB, as
+ * typical queries are long-running.
+ */
+static bool
+should_eval_stable_functions(PlannerInfo *root)
+{
+	/*
+	 * Without PlannerGlobal, we cannot mark the plan as a `oneoffPlan`
+	 */
+	if (root == NULL) return false;
+	if (root->glob == NULL) return false;
+	if (root->parse == NULL) return false;
+
+	/*
+	 * If the query has no range table, then there is no reason to need to
+	 * pre-evaluate stable functions, as the output cannot be used as part
+	 * of static partition elimination, unless the query is part of a
+	 * subquery.
+	 */
+	if (root->query_level > 1) return true;
+
+	int rtable_num_total = list_length(root->parse->rtable);
+	ListCell *lc;
+	foreach(lc, root->parse->rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *)lfirst(lc);
+
+		/* RTE_RESULT is a dummy RTE generated by empty from clause */
+		if (rte->rtekind == RTE_RESULT)
+			rtable_num_total --;
+	}
+
+	return rtable_num_total > 0;
+}
+
+
+/*
+ * get_leftscalararrayop
+ *
+ * Returns the left operand of a clause of the form (scalar op ANY/ALL (array))
+ */
+Node *
+get_leftscalararrayop(const Expr *clause)
+{
+	const ScalarArrayOpExpr *expr = (const ScalarArrayOpExpr *) clause;
+
+	if (expr->args != NIL)
+		return linitial(expr->args);
+	else
+		return NULL;
+}
+
+/*
+ * get_rightscalararrayop
+ *
+ * Returns the right operand in a clause of the form (scalar op ANY/ALL (array)).
+ */
+Node *
+get_rightscalararrayop(const Expr *clause)
+{
+	const ScalarArrayOpExpr *expr = (const ScalarArrayOpExpr *) clause;
+
+	if (list_length(expr->args) >= 2)
+		return lsecond(expr->args);
+	else
+		return NULL;
 }

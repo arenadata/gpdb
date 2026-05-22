@@ -18,6 +18,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "executor/executor.h"          /* ReturnSetInfo, RegisterExprContextCallback */
 #include "funcapi.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parse_coerce.h"
@@ -266,6 +267,41 @@ get_func_result_type(Oid functionId,
 }
 
 /*
+ * assign_func_result_transient_type
+ *		assign typmod if the result of function is transient type.
+ *
+ */
+void
+assign_func_result_transient_type(Oid funcid)
+{
+	HeapTuple	tp;
+	Form_pg_proc procform;
+	TupleDesc	tupdesc;
+
+	tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+	procform = (Form_pg_proc) GETSTRUCT(tp);
+
+	tupdesc = build_function_result_tupdesc_t(tp);
+	if (tupdesc == NULL)
+	{
+		ReleaseSysCache(tp);
+		return;
+	}
+
+	if (resolve_polymorphic_tupdesc(tupdesc,
+									&procform->proargtypes,
+									NULL))
+	{
+		if (tupdesc->tdtypeid == RECORDOID &&
+			tupdesc->tdtypmod < 0)
+			assign_record_type_typmod(tupdesc);
+	}
+	ReleaseSysCache(tp);
+}
+
+/*
  * internal_get_result_type -- workhorse code implementing all the above
  *
  * funcid must always be supplied.  call_expr and rsinfo can be NULL if not
@@ -337,7 +373,7 @@ internal_get_result_type(Oid funcid,
 	{
 		Oid			newrettype = exprType(call_expr);
 
-		if (newrettype == InvalidOid)	/* this probably should not happen */
+		if (!OidIsValid(newrettype))	/* this probably should not happen */
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("could not determine actual result type for function \"%s\" declared to return type %s",
@@ -1275,24 +1311,33 @@ build_function_result_tupdesc_d(char prokind,
 	{
 		char	   *pname;
 
-		if (argmodes[i] == PROARGMODE_IN ||
-			argmodes[i] == PROARGMODE_VARIADIC)
-			continue;
-		Assert(argmodes[i] == PROARGMODE_OUT ||
-			   argmodes[i] == PROARGMODE_INOUT ||
-			   argmodes[i] == PROARGMODE_TABLE);
-		outargtypes[numoutargs] = argtypes[i];
-		if (argnames)
-			pname = TextDatumGetCString(argnames[i]);
-		else
-			pname = NULL;
-		if (pname == NULL || pname[0] == '\0')
+		switch (argmodes[i])
 		{
-			/* Parameter is not named, so gin up a column name */
-			pname = psprintf("column%d", numoutargs + 1);
+			/* input modes */
+			case PROARGMODE_IN:
+			case PROARGMODE_VARIADIC:
+				break;
+
+			/* input and output */
+			case PROARGMODE_INOUT:
+				/* fallthrough */
+
+			/* output modes */
+			case PROARGMODE_OUT:
+			case PROARGMODE_TABLE:
+				outargtypes[numoutargs] = argtypes[i];
+				if (argnames)
+					pname = TextDatumGetCString(argnames[i]);
+				else
+					pname = NULL;
+				if (pname == NULL || pname[0] == '\0')
+				{
+					/* Parameter is not named, so gin up a column name */
+					pname = psprintf("column%d", numoutargs + 1);
+				}
+				outargnames[numoutargs] = pname;
+				numoutargs++;
 		}
-		outargnames[numoutargs] = pname;
-		numoutargs++;
 	}
 
 	/*

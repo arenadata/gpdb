@@ -1,0 +1,13 @@
+data/wet_multi_locations_1.tbl
+data/wet_multi_locations_2.tbl
+data/wet_region.out
+sql
+expected
+results
+data/gpfdist_ssl/tbl2.tbl
+data/gpfdist_ssl/certs_matching
+data/gpfdist_ssl/certs_multiCA
+data/gpfdist_ssl/certs_not_matching/root.crt
+data/gpfdist_ssl/certs_server_no_verify
+regression.diffs
+regression.out

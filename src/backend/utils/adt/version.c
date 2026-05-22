@@ -18,7 +18,15 @@
 
 
 Datum
-pgsql_version(PG_FUNCTION_ARGS)
+pgsql_version(PG_FUNCTION_ARGS pg_attribute_unused() )
 {
-	PG_RETURN_TEXT_P(cstring_to_text(PG_VERSION_STR));
+	char version[512];
+
+	strcpy(version, PG_VERSION_STR " compiled on " __DATE__ " " __TIME__);
+	
+#ifdef USE_ASSERT_CHECKING
+	strcat(version, " (with assert checking)");
+#endif 
+
+	PG_RETURN_TEXT_P(cstring_to_text(version));
 }

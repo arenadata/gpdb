@@ -16,6 +16,7 @@
 #include "parser/parse_type.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+#include "utils/faultinjector.h"
 
 #include "plpython.h"
 
@@ -51,6 +52,8 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 	volatile ResourceOwner oldowner;
 	volatile int nargs;
 
+	PLy_enter_python_intepreter = false;
+
 	if (!PyArg_ParseTuple(args, "s|O:prepare", &query, &list))
 		return NULL;
 
@@ -58,11 +61,15 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 	{
 		PLy_exception_set(PyExc_TypeError,
 						  "second argument of plpy.prepare must be a sequence");
+		PLy_enter_python_intepreter = true;
 		return NULL;
 	}
 
 	if ((plan = (PLyPlanObject *) PLy_plan_new()) == NULL)
+	{
+		PLy_enter_python_intepreter = true;
 		return NULL;
+	}
 
 	plan->mcxt = AllocSetContextCreate(TopMemoryContext,
 									   "PL/Python plan context",
@@ -150,6 +157,7 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 	PG_END_TRY();
 
 	Assert(plan->plan != NULL);
+	PLy_enter_python_intepreter = true;
 	return (PyObject *) plan;
 }
 
@@ -163,22 +171,33 @@ PLy_spi_execute(PyObject *self, PyObject *args)
 	PyObject   *plan;
 	PyObject   *list = NULL;
 	long		limit = 0;
+	PyObject   *ret;
+	PLy_enter_python_intepreter = false;
 
 	if (PyArg_ParseTuple(args, "s|l", &query, &limit))
-		return PLy_spi_execute_query(query, limit);
+	{
+		ret = PLy_spi_execute_query(query, (int64)limit);
+		PLy_enter_python_intepreter = true;
+		return ret;
+	}
 
 	PyErr_Clear();
 
 	if (PyArg_ParseTuple(args, "O|Ol", &plan, &list, &limit) &&
 		is_PLyPlanObject(plan))
-		return PLy_spi_execute_plan(plan, list, limit);
+	{
+		ret = PLy_spi_execute_plan(plan, list, (int64)limit);
+		PLy_enter_python_intepreter = true;
+		return ret;
+	}
 
 	PLy_exception_set(PLy_exc_error, "plpy.execute expected a query or a plan");
+	PLy_enter_python_intepreter = true;
 	return NULL;
 }
 
 PyObject *
-PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
+PLy_spi_execute_plan(PyObject *ob, PyObject *list, int64 limit)
 {
 	volatile int nargs;
 	int			i,
@@ -311,7 +330,7 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 }
 
 static PyObject *
-PLy_spi_execute_query(char *query, long limit)
+PLy_spi_execute_query(char *query, int64 limit)
 {
 	int			rv;
 	volatile MemoryContext oldcontext;
@@ -358,6 +377,24 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 	PLyResultObject *result;
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
 	volatile MemoryContext oldcontext;
+
+
+#ifdef FAULT_INJECTOR
+	if (rows >= 10000 && rows <= 1000000)
+	{
+		if (FaultInjector_InjectFaultIfSet("executor_run_high_processed",
+											DDLNotSpecified,
+											"" /* databaseName */,
+											"" /* tableName */) == FaultInjectorTypeSkip)
+		{
+			/*
+			 * For testing purposes, pretend that we have already processed
+			 * almost 2^32 rows.
+			 */
+			rows = UINT_MAX - 10;
+		}
+	}
+#endif /* FAULT_INJECTOR */
 
 	result = (PLyResultObject *) PLy_result_new();
 	if (!result)

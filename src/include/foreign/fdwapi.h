@@ -104,6 +104,12 @@ typedef void (*BeginForeignInsert_function) (ModifyTableState *mtstate,
 typedef void (*EndForeignInsert_function) (EState *estate,
 										   ResultRelInfo *rinfo);
 
+typedef void (*BeginForeignInsert_function) (ModifyTableState *mtstate,
+											 ResultRelInfo *rinfo);
+
+typedef void (*EndForeignInsert_function) (EState *estate,
+										   ResultRelInfo *rinfo);
+
 typedef int (*IsForeignRelUpdatable_function) (Relation rel);
 
 typedef bool (*PlanDirectModify_function) (PlannerInfo *root,
@@ -150,6 +156,8 @@ typedef bool (*AnalyzeForeignTable_function) (Relation relation,
 
 typedef List *(*ImportForeignSchema_function) (ImportForeignSchemaStmt *stmt,
 											   Oid serverOid);
+
+typedef bool (*ForeignTableSize_function) (Relation relation, int64 *tablesize);
 
 typedef Size (*EstimateDSMForeignScan_function) (ForeignScanState *node,
 												 ParallelContext *pcxt);
@@ -246,6 +254,17 @@ typedef struct FdwRoutine
 
 	/* Support functions for path reparameterization. */
 	ReparameterizeForeignPathByChild_function ReparameterizeForeignPathByChild;
+
+	/*
+	 * These two callbacks are MPP interface for analyze and
+	 * only invoked by QE.
+	 *
+	 * In gpdb, `gp_acquire_sample_rows` and `pg_relation_size`
+	 * take responsebility to fetch statistic information from segment.
+	 * If the table is a foreign data wrapper, these two calls will be called.
+	 */
+	AcquireSampleRowsFunc AcquireSampleRowsOnSegment;
+	ForeignTableSize_function GetRelationSizeOnSegment;
 } FdwRoutine;
 
 

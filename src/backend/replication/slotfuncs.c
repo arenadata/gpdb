@@ -34,6 +34,13 @@ check_permissions(void)
 				 (errmsg("must be superuser or replication role to use replication slots"))));
 }
 
+static void
+warn_slot_only_created_on_segment(const char *name) {
+	ereport(WARNING,
+			(errmsg("replication slot \"%s\" created only on this segment", name),
+			 errhint("Creating replication slots on a single segment is not advised.  Replication slots are automatically created by management tools.")));
+}
+
 /*
  * Helper function for creating a new physical replication slot with
  * given arguments. Note that this function doesn't release the created
@@ -88,6 +95,8 @@ pg_create_physical_replication_slot(PG_FUNCTION_ARGS)
 	check_permissions();
 
 	CheckSlotRequirements();
+
+	warn_slot_only_created_on_segment(NameStr(*name));
 
 	create_physical_replication_slot(NameStr(*name),
 									 immediately_reserve,

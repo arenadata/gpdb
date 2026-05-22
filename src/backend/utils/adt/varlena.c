@@ -20,6 +20,7 @@
 #include "access/tuptoaster.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 #include "common/int.h"
 #include "lib/hyperloglog.h"
 #include "libpq/pqformat.h"
@@ -29,7 +30,6 @@
 #include "regex/regex.h"
 #include "utils/builtins.h"
 #include "utils/bytea.h"
-#include "utils/hashutils.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
@@ -636,20 +636,6 @@ unknownsend(PG_FUNCTION_ARGS)
 /* ========== PUBLIC ROUTINES ========== */
 
 /*
- * textlen -
- *	  returns the logical length of a text*
- *	   (which is less than the VARSIZE of the text*)
- */
-Datum
-textlen(PG_FUNCTION_ARGS)
-{
-	Datum		str = PG_GETARG_DATUM(0);
-
-	/* try to avoid decompressing argument */
-	PG_RETURN_INT32(text_length(str));
-}
-
-/*
  * text_length -
  *	Does the real work for textlen()
  *
@@ -658,7 +644,7 @@ textlen(PG_FUNCTION_ARGS)
  *	it may still be in compressed form.  We can avoid decompressing it at all
  *	in some cases.
  */
-static int32
+static inline int32
 text_length(Datum str)
 {
 	/* fastpath when max encoding length is one */
@@ -671,6 +657,20 @@ text_length(Datum str)
 		PG_RETURN_INT32(pg_mbstrlen_with_len(VARDATA_ANY(t),
 											 VARSIZE_ANY_EXHDR(t)));
 	}
+}
+
+/*
+ * textlen -
+ *	  returns the logical length of a text*
+ *	   (which is less than the VARSIZE of the text*)
+ */
+Datum
+textlen(PG_FUNCTION_ARGS)
+{
+	Datum		str = PG_GETARG_DATUM(0);
+
+	/* try to avoid decompressing argument */
+	PG_RETURN_INT32(text_length(str));
 }
 
 /*
@@ -4193,7 +4193,7 @@ bytea_sortsupport(PG_FUNCTION_ARGS)
 static void
 appendStringInfoText(StringInfo str, const text *t)
 {
-	appendBinaryStringInfo(str, VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
+	appendBinaryStringInfo(str, VARDATA_ANY((void *) t), VARSIZE_ANY_EXHDR((void *) t));
 }
 
 /*
@@ -5569,8 +5569,8 @@ text_format(PG_FUNCTION_ARGS)
 		if (strchr("sIL", *cp) == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("unrecognized format() type specifier \"%c\"",
-							*cp),
+					 errmsg("unrecognized format() type specifier \"%.*s\"",
+							pg_mblen(cp), cp),
 					 errhint("For a single \"%%\" use \"%%%%\".")));
 
 		/* If indirect width was specified, get its value */
@@ -5690,8 +5690,8 @@ text_format(PG_FUNCTION_ARGS)
 				/* should not get here, because of previous check */
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("unrecognized format() type specifier \"%c\"",
-								*cp),
+						 errmsg("unrecognized format() type specifier \"%.*s\"",
+								pg_mblen(cp), cp),
 						 errhint("For a single \"%%\" use \"%%%%\".")));
 				break;
 		}

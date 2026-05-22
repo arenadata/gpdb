@@ -69,11 +69,28 @@ drop rule qqq on copydml_test;
 -- triggers
 create function qqq_trig() returns trigger as $$
 begin
+
+-- In GPDB, the tuple is sent from the QE to QD via the interconnect, while
+-- the NOTICE is sent via the main QE-QD libpq connection. It's not
+-- deterministic, which one reaches the QD first. Add a little sleep here
+-- to make it more consistent, for the sake of having stable expected output.
+--
+-- Even with the sleep, there's no guarantee. One known inconsistency at the
+-- moment is that the UDP interconnect buffers tuples differently. So despite
+-- the sleep, we need an alternative expected output file for the case that
+-- all the NOTICEs arrive before the tuples, but at least we don't need an
+-- output file for every combination of orderings of the NOTICEs and the
+-- tuples, in the three COPY (...) TO STDOUT commands below. It may seem odd
+-- that the BEFORE NOTICE arrives only after the tuple, despite this sleep,
+-- but it's not well defined when the QD drains the NOTICes from the libpq
+-- connection relative to the interconnect data.
+perform pg_sleep(0.2);
+
 if tg_op in ('INSERT', 'UPDATE') then
-    raise notice '% %', tg_op, new.id;
+    raise notice '% % %', tg_when, tg_op, new.id;
     return new;
 else
-    raise notice '% %', tg_op, old.id;
+    raise notice '% % %', tg_when, tg_op, old.id;
     return old;
 end if;
 end

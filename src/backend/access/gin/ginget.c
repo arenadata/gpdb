@@ -1846,12 +1846,31 @@ scanPendingInsert(IndexScanDesc scan, TIDBitmap *tbm, int64 *ntids)
 #define GinIsVoidRes(s)		( ((GinScanOpaque) scan->opaque)->isVoidRes )
 
 int64
-gingetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
+gingetbitmap(IndexScanDesc scan, Node **bmNodeP)
 {
+
+	TIDBitmap  *tbm;
 	GinScanOpaque so = (GinScanOpaque) scan->opaque;
 	int64		ntids;
 	ItemPointerData iptr;
 	bool		recheck;
+
+	/*
+	 * GPDB specific code. Since GPDB also support StreamBitmap
+	 * in bitmap index. So normally we need to create specific bitmap
+	 * node in the amgetbitmap AM.
+	 */
+	Assert(bmNodeP);
+	if (*bmNodeP == NULL)
+	{
+		/* XXX should we use less than work_mem for this? */
+		tbm = tbm_create(work_mem * 1024L, NULL);
+		*bmNodeP = (Node *) tbm;
+	}
+	else if (!IsA(*bmNodeP, TIDBitmap))
+		elog(ERROR, "non gin bitmap");
+	else
+		tbm = (TIDBitmap *)*bmNodeP;
 
 	/*
 	 * Set up the scan keys, and check for unsatisfiable query.

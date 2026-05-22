@@ -64,8 +64,8 @@ AC_DEFUN([PGAC_FUNC_GETTIMEOFDAY_1ARG],
 [AC_CACHE_CHECK(whether gettimeofday takes only one argument,
 pgac_cv_func_gettimeofday_1arg,
 [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <sys/time.h>],
-[struct timeval *tp;
-struct timezone *tzp;
+[struct timeval *tp = 0;
+struct timezone *tzp = 0;
 gettimeofday(tp,tzp);])],
 [pgac_cv_func_gettimeofday_1arg=no],
 [pgac_cv_func_gettimeofday_1arg=yes])])

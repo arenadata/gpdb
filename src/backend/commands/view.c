@@ -3,6 +3,8 @@
  * view.c
  *	  use rewrite rules to construct views
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -17,6 +19,8 @@
 #include "access/relation.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
+#include "catalog/oid_dispatch.h"
+#include "catalog/pg_depend.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
 #include "commands/view.h"
@@ -34,6 +38,10 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+
+
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbvars.h"
 
 
 static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
@@ -74,6 +82,8 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 	CreateStmt *createStmt = makeNode(CreateStmt);
 	List	   *attrList;
 	ListCell   *t;
+
+	createStmt->ownerid = GetUserId();
 
 	/*
 	 * create a list of ColumnDef nodes based on the names and types of the
@@ -205,7 +215,7 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		CommandCounterIncrement();
 
 		/*
-		 * Finally update the view options.
+		 * Update the view's options.
 		 *
 		 * The new options list replaces the existing options list, even if
 		 * it's empty.
@@ -218,7 +228,21 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		/* EventTriggerAlterTableStart called by ProcessUtilitySlow */
 		AlterTableInternal(viewOid, atcmds, true);
 
+		/*
+		 * There is very little to do here to update the view's dependencies.
+		 * Most view-level dependency relationships, such as those on the
+		 * owner, schema, and associated composite type, aren't changing.
+		 * Because we don't allow changing type or collation of an existing
+		 * view column, those dependencies of the existing columns don't
+		 * change either, while the AT_AddColumnToView machinery took care of
+		 * adding such dependencies for new view columns.  The dependencies of
+		 * the view's query could have changed arbitrarily, but that was dealt
+		 * with inside StoreViewQuery.  What remains is only to check that
+		 * view replacement is allowed when we're creating an extension.
+		 */
 		ObjectAddressSet(address, RelationRelationId, viewOid);
+
+		recordDependencyOnCurrentExtension(&address, true);
 
 		/*
 		 * Seems okay, so return the OID of the pre-existing view.
@@ -242,7 +266,9 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		createStmt->options = options;
 		createStmt->oncommit = ONCOMMIT_NOOP;
 		createStmt->tablespacename = NULL;
+		createStmt->relKind = RELKIND_VIEW;
 		createStmt->if_not_exists = false;
+		createStmt->gp_style_alter_part = false;
 
 		/*
 		 * Create the relation (this will error out if there's an existing
@@ -250,7 +276,8 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		 * false).
 		 */
 		address = DefineRelation(createStmt, RELKIND_VIEW, InvalidOid, NULL,
-								 NULL);
+								 NULL,
+								 false, true, NULL);
 		Assert(address.objectId != InvalidOid);
 
 		/* Make the new view relation visible */
@@ -418,6 +445,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 		   int stmt_location, int stmt_len)
 {
 	RawStmt    *rawstmt;
+	Query	   *viewParse_orig;
 	Query	   *viewParse;
 	RangeVar   *view;
 	ListCell   *cell;
@@ -430,13 +458,22 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	 *
 	 * Since parse analysis scribbles on its input, copy the raw parse tree;
 	 * this ensures we don't corrupt a prepared statement, for example.
+	 *
+	 * GPDB: Parse analysis is only performed in the dispatcher, the segments
+	 * receive an already-analysed version from the dispatcher.
 	 */
-	rawstmt = makeNode(RawStmt);
-	rawstmt->stmt = (Node *) copyObject(stmt->query);
-	rawstmt->stmt_location = stmt_location;
-	rawstmt->stmt_len = stmt_len;
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
+		rawstmt = makeNode(RawStmt);
+		rawstmt->stmt = (Node *) copyObject(stmt->query);
+		rawstmt->stmt_location = stmt_location;
+		rawstmt->stmt_len = stmt_len;
 
-	viewParse = parse_analyze(rawstmt, queryString, NULL, 0, NULL);
+		viewParse = parse_analyze(rawstmt, queryString, NULL, 0, NULL);
+	}
+	else
+		viewParse = (Query *) stmt->query;
+	viewParse_orig = copyObject(viewParse);
 
 	/*
 	 * The grammar should ensure that the result is a single SELECT Query.
@@ -461,6 +498,17 @@ DefineView(ViewStmt *stmt, const char *queryString,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("views must not contain data-modifying statements in WITH")));
+
+	/*
+	 * Don't allow creating a view that contains dynamically typed functions.
+	 * We cannot guarantee that the future return type would be the same when
+	 * the view was used, as what it was now.
+	 */
+	if (viewParse->hasDynamicFunctions)
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_DATATYPE),
+				 errmsg("CREATE VIEW statements cannot include calls to "
+						"dynamically typed function")));
 
 	/*
 	 * If the user specified the WITH CHECK OPTION, add it to the list of
@@ -551,9 +599,10 @@ DefineView(ViewStmt *stmt, const char *queryString,
 		&& isQueryUsingTempRelation(viewParse))
 	{
 		view->relpersistence = RELPERSISTENCE_TEMP;
-		ereport(NOTICE,
-				(errmsg("view \"%s\" will be a temporary view",
-						view->relname)));
+		if (Gp_role != GP_ROLE_EXECUTE)
+			ereport(NOTICE,
+					(errmsg("view \"%s\" will be a temporary view",
+							view->relname)));
 	}
 
 	/*
@@ -564,6 +613,18 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	 */
 	address = DefineVirtualRelation(view, viewParse->targetList,
 									stmt->replace, stmt->options, viewParse);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		ViewStmt *dispatchStmt = (ViewStmt *) copyObject(stmt);
+		dispatchStmt->query = (Node *) viewParse_orig;
+		CdbDispatchUtilityStatement((Node *) dispatchStmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	return address;
 }

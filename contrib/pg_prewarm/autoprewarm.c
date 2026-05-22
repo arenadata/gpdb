@@ -489,7 +489,7 @@ autoprewarm_database_main(Datum main_arg)
 			StartTransactionCommand();
 			reloid = RelidByRelfilenode(blk->tablespace, blk->filenode);
 			if (OidIsValid(reloid))
-				rel = try_relation_open(reloid, AccessShareLock);
+				rel = relation_open(reloid, AccessShareLock);
 
 			if (!rel)
 				CommitTransactionCommand();

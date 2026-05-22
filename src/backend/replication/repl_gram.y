@@ -74,6 +74,7 @@ static SQLCmd *make_sqlcmd(void);
 %token K_FAST
 %token K_WAIT
 %token K_NOWAIT
+%token K_EXCLUDE
 %token K_MAX_RATE
 %token K_WAL
 %token K_TABLESPACE_MAP
@@ -213,6 +214,11 @@ base_backup_opt:
 				{
 				  $$ = makeDefElem("noverify_checksums",
 								   (Node *)makeInteger(true), -1);
+				}
+			| K_EXCLUDE SCONST
+				{
+				  $$ = makeDefElem("exclude",
+						  (Node *) makeString($2), -1);
 				}
 			;
 

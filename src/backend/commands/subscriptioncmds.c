@@ -52,6 +52,11 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
+#include "catalog/heap.h"
+#include "catalog/oid_dispatch.h"
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbvars.h"
+
 static List *fetch_table_list(WalReceiverConn *wrconn, List *publications);
 
 /*
@@ -390,7 +395,13 @@ CreateSubscription(CreateSubscriptionStmt *stmt, bool isTopLevel)
 	publications = stmt->publication;
 
 	/* Load the library providing us libpq calls. */
-	load_file("libpqwalreceiver", false);
+	/*
+	 * In GPDB, we build libpqwalreceiver functions, as well as a copy of
+	 * libpq into the backend itself, to support QD-QE communication. See
+	 * src/backend/libpq.
+	 */
+	if (!WalReceiverFunctions)
+		libpqwalreceiver_PG_init();
 
 	/* Check the connection info string. */
 	walrcv_check_conninfo(conninfo);
@@ -399,8 +410,9 @@ CreateSubscription(CreateSubscriptionStmt *stmt, bool isTopLevel)
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	subid = GetNewOidWithIndex(rel, SubscriptionObjectIndexId,
-							   Anum_pg_subscription_oid);
+	subid = GetNewOidForSubscription(rel, SubscriptionObjectIndexId,
+									 Anum_pg_subscription_oid,
+									 MyDatabaseId, stmt->subname);
 	values[Anum_pg_subscription_oid - 1] = ObjectIdGetDatum(subid);
 	values[Anum_pg_subscription_subdbid - 1] = ObjectIdGetDatum(MyDatabaseId);
 	values[Anum_pg_subscription_subname - 1] =
@@ -512,6 +524,22 @@ CreateSubscription(CreateSubscriptionStmt *stmt, bool isTopLevel)
 
 	table_close(rel, RowExclusiveLock);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackAddObject(SubscriptionRelationId,
+						   subid,
+						   GetUserId(),
+						   "CREATE", "SUBSCRIPTION");
+	}
+
 	if (enabled)
 		ApplyLauncherWakeupAtCommit();
 
@@ -534,7 +562,13 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data)
 	int			off;
 
 	/* Load the library providing us libpq calls. */
-	load_file("libpqwalreceiver", false);
+	/*
+	 * In GPDB, we build libpqwalreceiver functions, as well as a copy of
+	 * libpq into the backend itself, to support QD-QE communication. See
+	 * src/backend/libpq.
+	 */
+	if (!WalReceiverFunctions)
+		libpqwalreceiver_PG_init();
 
 	/* Try to connect to the publisher. */
 	wrconn = walrcv_connect(sub->conninfo, true, sub->name, &err);
@@ -742,7 +776,13 @@ AlterSubscription(AlterSubscriptionStmt *stmt)
 
 		case ALTER_SUBSCRIPTION_CONNECTION:
 			/* Load the library providing us libpq calls. */
-			load_file("libpqwalreceiver", false);
+			/*
+			 * In GPDB, we build libpqwalreceiver functions, as well as a copy of
+			 * libpq into the backend itself, to support QD-QE communication. See
+			 * src/backend/libpq.
+			 */
+			if (!WalReceiverFunctions)
+				libpqwalreceiver_PG_init();
 			/* Check the connection info string. */
 			walrcv_check_conninfo(stmt->conninfo);
 
@@ -820,6 +860,22 @@ AlterSubscription(AlterSubscriptionStmt *stmt)
 	}
 
 	table_close(rel, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(SubscriptionRelationId,
+						   subid,
+						   GetUserId(),
+						   "ALTER", "SUBSCRIPTION");
+	}
 
 	ObjectAddressSet(myself, SubscriptionRelationId, subid);
 
@@ -925,9 +981,8 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	 * of a subscription that is associated with a replication slot", but we
 	 * don't have the proper facilities for that.
 	 */
-	if (slotname)
+	if (slotname && Gp_role != GP_ROLE_EXECUTE)
 		PreventInTransactionBlock(isTopLevel, "DROP SUBSCRIPTION");
-
 
 	ObjectAddressSet(myself, SubscriptionRelationId, subid);
 	EventTriggerSQLDropAddObject(&myself, true, true);
@@ -976,6 +1031,20 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	if (originid != InvalidRepOriginId)
 		replorigin_drop(originid, false);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackDropObject(SubscriptionRelationId,
+							subid);
+	}
+
 	/*
 	 * If there is no slot associated with the subscription, we can finish
 	 * here.
@@ -990,7 +1059,13 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	 * Otherwise drop the replication slot at the publisher node using the
 	 * replication connection.
 	 */
-	load_file("libpqwalreceiver", false);
+	/*
+	 * In GPDB, we build libpqwalreceiver functions, as well as a copy of
+	 * libpq into the backend itself, to support QD-QE communication. See
+	 * src/backend/libpq.
+	 */
+	if (!WalReceiverFunctions)
+		libpqwalreceiver_PG_init();
 
 	initStringInfo(&cmd);
 	appendStringInfo(&cmd, "DROP_REPLICATION_SLOT %s WAIT", quote_identifier(slotname));

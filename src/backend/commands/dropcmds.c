@@ -29,6 +29,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "cdb/cdbvars.h"
 
 
 static void does_not_exist_skipping(ObjectType objtype,
@@ -108,12 +109,14 @@ RemoveObjects(DropStmt *stmt)
 			check_object_ownership(GetUserId(), stmt->removeType, address,
 								   object, relation);
 
+#if 0 /* Upstream code not applicable to GPDB */
 		/*
 		 * Make note if a temporary namespace has been accessed in this
 		 * transaction.
 		 */
 		if (OidIsValid(namespaceId) && isTempNamespace(namespaceId))
 			MyXactFlags |= XACT_FLAGS_ACCESSEDTEMPNAMESPACE;
+#endif
 
 		/* Release any relcache reference count, but keep lock until commit. */
 		if (relation)
@@ -480,13 +483,20 @@ does_not_exist_skipping(ObjectType objtype, Node *object)
 			msg = gettext_noop("publication \"%s\" does not exist, skipping");
 			name = strVal((Value *) object);
 			break;
+		case OBJECT_EXTPROTOCOL:
+			msg = gettext_noop("protocol \"%s\" does not exist, skipping");
+			name = strVal((Value *) object);
+			break;
 		default:
 			elog(ERROR, "unrecognized object type: %d", (int) objtype);
 			break;
 	}
 
-	if (!args)
-		ereport(NOTICE, (errmsg(msg, name)));
-	else
-		ereport(NOTICE, (errmsg(msg, name, args)));
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
+		if (!args)
+			ereport(NOTICE, (errmsg(msg, name)));
+		else
+			ereport(NOTICE, (errmsg(msg, name, args)));
+	}
 }

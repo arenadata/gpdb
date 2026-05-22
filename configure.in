@@ -17,26 +17,30 @@ dnl Read the Autoconf manual for details.
 dnl
 m4_pattern_forbid(^PGAC_)dnl to catch undefined macros
 
-AC_INIT([PostgreSQL], [13devel], [pgsql-bugs@lists.postgresql.org])
+dnl The PACKAGE_VERSION from upstream PostgreSQL is maintained in the
+dnl PG_PACKAGE_VERSION variable, when merging make sure to update this
+dnl variable with the merge conflict from the AC_INIT() statement.
+AC_INIT([Greenplum Database], [8.0.0-alpha.0], [support@greenplum.org])
+[PG_PACKAGE_VERSION=13alpha0]
+AC_SUBST(PG_PACKAGE_VERSION)
 
-m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.69], [], [m4_fatal([Autoconf version 2.69 is required.
-Untested combinations of 'autoconf' and PostgreSQL versions are not
-recommended.  You can remove the check from 'configure.in' but it is then
-your responsibility whether the result works or not.])])
+dnl m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.69], [], [m4_fatal([Autoconf version 2.69 is required.
+dnl Untested combinations of 'autoconf' and PostgreSQL versions are not
+dnl recommended.  You can remove the check from 'configure.in' but it is then
+dnl your responsibility whether the result works or not.])])
 AC_COPYRIGHT([Copyright (c) 1996-2019, PostgreSQL Global Development Group])
 AC_CONFIG_SRCDIR([src/backend/access/common/heaptuple.c])
 AC_CONFIG_AUX_DIR(config)
-AC_PREFIX_DEFAULT(/usr/local/pgsql)
+AC_PREFIX_DEFAULT(/usr/local/gpdb)
 AC_SUBST(configure_args, [$ac_configure_args])
 
-[PG_MAJORVERSION=`expr "$PACKAGE_VERSION" : '\([0-9][0-9]*\)'`]
+[PG_MAJORVERSION=`expr "$PG_PACKAGE_VERSION" : '\([0-9][0-9]*\)'`]
 AC_SUBST(PG_MAJORVERSION)
 AC_DEFINE_UNQUOTED(PG_MAJORVERSION, "$PG_MAJORVERSION", [PostgreSQL major version as a string])
 
-PGAC_ARG_REQ(with, extra-version, [STRING], [append STRING to version],
-             [PG_VERSION="$PACKAGE_VERSION$withval"],
-             [PG_VERSION="$PACKAGE_VERSION"])
-AC_DEFINE_UNQUOTED(PG_VERSION, "$PG_VERSION", [PostgreSQL version as a string])
+[PG_VERSION="$PG_PACKAGE_VERSION"]
+PGAC_ARG_REQ(with, extra-version, [STRING], [append STRING to version], [], [])
+AC_DEFINE_UNQUOTED(PG_VERSION, "$PG_PACKAGE_VERSION", [Postgres version Greenplum Database is based on])
 
 AC_CANONICAL_HOST
 
@@ -79,7 +83,7 @@ PostgreSQL has apparently not been ported to your platform yet.
 To try a manual configuration, look into the src/template directory
 for a similar platform and use the '--with-template=' option.
 
-Please also contact <pgsql-bugs@lists.postgresql.org> to see about
+Please also contact <bugs@greenplum.org> to see about
 rectifying this.  Include the above 'checking host system type...'
 line.
 *******************************************************************
@@ -134,16 +138,24 @@ PGAC_ARG_BOOL(enable, integer-datetimes, yes, [obsolete option, no longer suppor
 #
 # NLS
 #
-AC_MSG_CHECKING([whether NLS is wanted])
-PGAC_ARG_OPTARG(enable, nls,
-                [LANGUAGES], [enable Native Language Support],
-                [],
-                [WANTED_LANGUAGES=$enableval],
-                [AC_DEFINE(ENABLE_NLS, 1,
-                           [Define to 1 if you want National Language Support. (--enable-nls)])])
-AC_MSG_RESULT([$enable_nls])
-AC_SUBST(enable_nls)
-AC_SUBST(WANTED_LANGUAGES)
+# NLS is not supported in Greenplum. There's no fundamental reason for it,
+# but no-one's kept the translations up-to-date. The .po files have been
+# removed from the repository, so it won't work if you just uncomment the
+# below block. If we wanted to enable NLS support, we should come up with a
+# scheme to use the upstream PostgreSQL .po files as is, to make merging
+# easier, and provide additional .po files for all the Greenplum-specific
+# strings.
+# to the users to let them build with very incomplete translations.
+#AC_MSG_CHECKING([whether NLS is wanted])
+#PGAC_ARG_OPTARG(enable, nls,
+#                [LANGUAGES], [enable Native Language Support],
+#                [],
+#                [WANTED_LANGUAGES=$enableval],
+#                [AC_DEFINE(ENABLE_NLS, 1,
+#                           [Define to 1 if you want National Language Support. (--enable-nls)])])
+#AC_MSG_RESULT([$enable_nls])
+#AC_SUBST(enable_nls)
+#AC_SUBST(WANTED_LANGUAGES)
 
 #
 # Default port number (--with-pgport), default 5432
@@ -192,6 +204,36 @@ PGAC_ARG_BOOL(enable, spinlocks, yes,
 #
 PGAC_ARG_BOOL(enable, atomics, yes,
               [do not use atomic operations])
+
+#
+# Random number generation
+#
+PGAC_ARG_BOOL(enable, strong-random, yes,
+              [do not use a strong random number source])
+AC_SUBST(enable_strong_random)
+
+#
+# gpfdist
+#
+PGAC_ARG_BOOL(enable, gpfdist, yes,
+             [do not use gpfdist])
+AC_SUBST(enable_gpfdist)
+
+#
+# include debug extensions in gpcontrib
+#
+PGAC_ARG_BOOL(enable, debug-extensions, yes,
+              [exclude debug extensions in gpcontrib],
+              [AC_DEFINE([FAULT_INJECTOR], 1,
+                         [Define to 1 to build with fault injector. (--enable-debug-extensions)])])
+AC_SUBST(enable_debug_extensions)
+
+#
+# orafce
+#
+PGAC_ARG_BOOL(enable, orafce, no,
+             [build with Oracle compatibility functions])
+AC_SUBST(enable_orafce)
 
 #
 # --enable-debug adds -g to compiler flags
@@ -248,9 +290,9 @@ AC_SUBST(enable_tap_tests)
 # Block size
 #
 AC_MSG_CHECKING([for block size])
-PGAC_ARG_REQ(with, blocksize, [BLOCKSIZE], [set table block size in kB [8]],
+PGAC_ARG_REQ(with, blocksize, [BLOCKSIZE], [set table block size in kB [32]],
              [blocksize=$withval],
-             [blocksize=8])
+             [blocksize=32])
 case ${blocksize} in
   1) BLCKSZ=1024;;
   2) BLCKSZ=2048;;
@@ -312,9 +354,9 @@ AC_DEFINE_UNQUOTED([RELSEG_SIZE], ${RELSEG_SIZE}, [
 # WAL block size
 #
 AC_MSG_CHECKING([for WAL block size])
-PGAC_ARG_REQ(with, wal-blocksize, [BLOCKSIZE], [set WAL block size in kB [8]],
+PGAC_ARG_REQ(with, wal-blocksize, [BLOCKSIZE], [set WAL block size in kB [32]],
              [wal_blocksize=$withval],
-             [wal_blocksize=8])
+             [wal_blocksize=32])
 case ${wal_blocksize} in
   1) XLOG_BLCKSZ=1024;;
   2) XLOG_BLCKSZ=2048;;
@@ -402,7 +444,7 @@ unset CXXFLAGS
 # If the user specifies something in the environment, that is used.
 # else:  If the template file set something, that is used.
 # else:  If coverage was enabled, don't set anything.
-# else:  If the compiler is GCC, then we use -O2.
+# else:  If the compiler is GCC, then we use -O3.
 # else:  If the compiler is something else, then we use -O, unless debugging.
 
 if test "$ac_env_CFLAGS_set" = set; then
@@ -412,7 +454,7 @@ elif test "${CFLAGS+set}" = set; then
 elif test "$enable_coverage" = yes; then
   : # no optimization by default
 elif test "$GCC" = yes; then
-  CFLAGS="-O2"
+  CFLAGS="-O3"
 else
   # if the user selected debug mode, don't use -O
   if test "$enable_debug" != yes; then
@@ -427,7 +469,7 @@ elif test "${CXXFLAGS+set}" = set; then
 elif test "$enable_coverage" = yes; then
   : # no optimization by default
 elif test "$GCC" = yes; then
-  CXXFLAGS="-O2"
+  CXXFLAGS="-O3"
 else
   # if the user selected debug mode, don't use -O
   if test "$enable_debug" != yes; then
@@ -477,7 +519,8 @@ if test "$GCC" = yes -a "$ICC" = no; then
   CXXFLAGS="-Wall -Wpointer-arith"
   # These work in some but not all gcc versions
   save_CFLAGS=$CFLAGS
-  PGAC_PROG_CC_CFLAGS_OPT([-Wdeclaration-after-statement])
+  # GPDB code is full of declarations after statement.
+  #PGAC_PROG_CC_CFLAGS_OPT([-Wdeclaration-after-statement])
   # -Wdeclaration-after-statement isn't applicable for C++.  Specific C files
   # disable it, so AC_SUBST the negative form.
   PERMIT_DECLARATION_AFTER_STATEMENT=
@@ -503,6 +546,19 @@ if test "$GCC" = yes -a "$ICC" = no; then
   PGAC_PROG_CXX_CFLAGS_OPT([-fwrapv])
   # Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
   PGAC_PROG_CC_CFLAGS_OPT([-fexcess-precision=standard])
+  PGAC_PROG_CXX_CXXFLAGS_OPT([-fexcess-precision=standard])
+
+  # Silence compiler warnings about variables that are set, but otherwise
+  # unused. All of these warnings have been fixed in PostgreSQL, but there is
+  # still some GPDB added code that emit these. TODO: Fix the GPDB code and
+  # remove this.
+  PGAC_PROG_CC_CFLAGS_OPT([-Wno-unused-but-set-variable])
+
+  # We rely on /* fallthrough */ comments to signal explicit fallthrough, but
+  # some compilers (clang) don't recognize those and give spurious errors. Make
+  # sure the compiler supports fallthrough comments by explicitly requesting
+  # implicit-fallthrough level 3 (GCC's default).
+  PGAC_PROG_CC_CFLAGS_OPT([-Werror=implicit-fallthrough=3])
   PGAC_PROG_CXX_CFLAGS_OPT([-fexcess-precision=standard])
   # Optimization flags for specific files that benefit from vectorization
   PGAC_PROG_CC_VAR_OPT(CFLAGS_VECTOR, [-funroll-loops])
@@ -525,6 +581,18 @@ if test "$GCC" = yes -a "$ICC" = no; then
   PGAC_PROG_CC_VAR_OPT(NOT_THE_CFLAGS, [-Wstringop-truncation])
   if test -n "$NOT_THE_CFLAGS"; then
     CFLAGS="$CFLAGS -Wno-stringop-truncation"
+  fi
+  # GPDB_12_MERGE_FIXME: there's a chance we can rearrange our #include's to
+  # avoid the specific headers that use "register" once we merge with Postgres
+  # 12
+
+  # Greenplum's ORCA translator includes a lot of C headers, and Clang will
+  # warn us about the use of the "register" keyword in Postgres' inline
+  # functions which we can do nothing about. Silence it.
+  NOT_THE_CXXFLAGS=""
+  PGAC_PROG_CXX_VAR_OPT(NOT_THE_CXXFLAGS, [-Wdeprecated-register])
+  if test -n "$NOT_THE_CXXFLAGS"; then
+    CXXFLAGS="$CXXFLAGS -Wno-deprecated-register"
   fi
 elif test "$ICC" = yes; then
   # Intel's compiler has a bug/misoptimization in checking for
@@ -596,7 +664,8 @@ fi
 
 # We already have this in Makefile.win32, but configure needs it too
 if test "$PORTNAME" = "win32"; then
-  CPPFLAGS="$CPPFLAGS -I$srcdir/src/include/port/win32 -DEXEC_BACKEND"
+  CPPFLAGS="$CPPFLAGS -I$srcdir/src/include/port/win32 -IgpAux/ext/win32/kfw-3-2-2/inc/krb5 -IgpAux/ext/win32/kfw-3-2-2/inc/krb5/gssapi -LgpAux/ext/win32/kfw-3-2-2/lib  -DEXEC_BACKEND -DUNSAFE_STAT_OK"
+
 fi
 
 # Now that we're done automatically adding stuff to C[XX]FLAGS, put back the
@@ -660,6 +729,10 @@ else
 fi
 AC_SUBST(TAS)
 
+#
+# Set up pkg_config in case we need it below
+#
+PKG_PROG_PKG_CONFIG
 
 #
 # Automatic dependency tracking
@@ -676,6 +749,58 @@ PGAC_ARG_BOOL(enable, cassert, no, [enable assertion checks (for debugging)],
               [AC_DEFINE([USE_ASSERT_CHECKING], 1,
                          [Define to 1 to build with assertion checks. (--enable-cassert)])])
 
+#
+# Enable GPORCA optimizer
+#
+PGAC_ARG_BOOL(enable, orca, yes, [disable ORCA optimizer],
+              [AC_DEFINE([USE_ORCA], 1,
+                         [Define to 1 to build with Greenplum ORCA optimizer. (--enable-orca)])])
+AC_MSG_RESULT([checking whether to build with ORCA... $enable_orca])
+AC_SUBST(enable_orca)
+
+# Build ORCA in debug if enable-cassert
+if test "$enable_cassert" = yes; then
+  AC_DEFINE([GPOS_DEBUG], 1,
+	    [Define to 1 to build ORCA in debug (GPOS_DEBUG=1)])
+fi
+
+if test "$PORTNAME" = darwin; then
+  AC_DEFINE([GPOS_Darwin], 1,
+	    [Define to 1 to build ORCA for MacOS (GPOS_Darwin=1)])
+fi
+
+
+#
+# --enable-mapreduce enables GPMapreduce support
+#
+PGAC_ARG_BOOL(enable, mapreduce, no, [enable Greenplum Mapreduce support],
+              [AC_DEFINE([USE_MAPREDUCE], 1,
+			             [Define to 1 to build with Mapreduce capabilities (--enable-mapreduce)])])
+AC_MSG_RESULT([checking whether to build with Greenplum Mapreduce... $enable_mapreduce])
+AC_SUBST(enable_mapreduce)
+
+#
+# gpcloud, enabled by default
+#
+PGAC_ARG_BOOL(enable, gpcloud, no, [enable gpcloud support],
+              [AC_DEFINE([USE_GPCLOUD], 1,
+			             [Define to 1 to build with gpcloud (--enable-gpcloud)])])
+AC_MSG_RESULT([checking whether to build with gpcloud... $enable_gpcloud])
+AC_SUBST(enable_gpcloud)
+
+AS_IF([test "$enable_orca" = yes || test "$enable_gpcloud" = yes],
+[ # then
+  AX_CXX_COMPILE_STDCXX([14], [noext], [mandatory])
+]) # fi
+
+#
+# ic-proxy
+#
+PGAC_ARG_BOOL(enable, ic-proxy, no,
+              [enable interconnect proxy mode (requires libuv library)],
+              [AC_DEFINE(ENABLE_IC_PROXY, 1,
+                         [Define to 1 to build with ic-proxy support (--enable-ic-proxy)])])
+AC_SUBST(enable_ic_proxy)
 
 #
 # Include directories
@@ -759,9 +884,18 @@ AC_SUBST(with_perl)
 # Optionally build Python modules (PL/Python)
 #
 AC_MSG_CHECKING([whether to build Python modules])
-PGAC_ARG_BOOL(with, python, no, [build Python modules (PL/Python)])
+PGAC_ARG_BOOL(with, python, yes, [build Python modules (PL/Python)])
 AC_MSG_RESULT([$with_python])
 AC_SUBST(with_python)
+
+#
+# Optionally build Python modules for gpMgmt
+#
+AC_MSG_CHECKING([whether to build Python modules for gpMgmt])
+PGAC_ARG_BOOL(with, pythonsrc-ext, no, [build Python modules for gpMgmt])
+AC_MSG_RESULT([$with_pythonsrc_ext])
+AC_SUBST(with_pythonsrc_ext)
+
 
 #
 # GSSAPI
@@ -965,6 +1099,63 @@ PGAC_ARG_BOOL(with, zlib, yes,
 AC_SUBST(with_zlib)
 
 #
+# bzip2
+#
+PGAC_ARG_BOOL(with, libbz2, yes,
+              [do not use bzip2])
+AC_SUBST(with_libbz2)
+
+#
+# zstd
+#
+AC_MSG_CHECKING([whether to build with ZSTD support])
+PGAC_ARG_BOOL(with, zstd, yes, [do not build with Zstandard],
+              [AC_DEFINE([USE_ZSTD], 1, [Define to build with zstd support. (--with-zstd)])])
+AC_MSG_RESULT([$with_zstd])
+AC_SUBST(with_zstd)
+
+if test "$with_zstd" = yes; then
+  dnl zstd_errors.h was renamed from error_public.h in v1.1.1
+  PKG_CHECK_MODULES([ZSTD], [libzstd >= 1.1.1])
+fi
+
+#
+# quicklz
+#
+PGAC_ARG_BOOL(with, quicklz, no,
+              [build with QuickLZ support (requires quicklz library)])
+AC_SUBST(with_quicklz)
+
+#
+# Realtime library
+#
+PGAC_ARG_BOOL(with, rt, yes,
+              [do not use Realtime Library])
+AC_SUBST(with_rt)
+
+#
+# libcurl. Used for external table support
+#
+PGAC_ARG_BOOL(with, libcurl, yes,
+              [do not use libcurl])
+AC_SUBST(with_libcurl)
+
+if test "$with_libcurl" = "no" && test "$enable_gpcloud" = "yes"; then
+  AC_MSG_ERROR([libcurl is required by gpcloud])
+fi
+
+if test "$with_libxml" = "no" && test "$enable_gpcloud" = "yes"; then
+  AC_MSG_ERROR([libxml is required by gpcloud])
+fi
+
+#
+# libapr. Used for gpfdist
+#
+PGAC_ARG_REQ(with, apr-config,
+             [PATH], [path to apr-1-config utility])
+AC_SUBST(with_apr_config)
+
+#
 # Assignments
 #
 
@@ -973,6 +1164,9 @@ LDFLAGS="$LDFLAGS $LIBDIRS"
 
 AC_ARG_VAR(LDFLAGS_EX, [extra linker flags for linking executables only])
 AC_ARG_VAR(LDFLAGS_SL, [extra linker flags for linking shared libraries only])
+
+AC_MSG_NOTICE([using CPPFLAGS=$CPPFLAGS])
+AC_MSG_NOTICE([using LDFLAGS=$LDFLAGS])
 
 PGAC_PROG_LD
 AC_SUBST(LD)
@@ -1131,6 +1325,8 @@ AC_SEARCH_LIBS(sched_yield, rt)
 AC_SEARCH_LIBS(gethostbyname_r, nsl)
 # Cygwin:
 AC_SEARCH_LIBS(shmget, cygipc)
+# *BSD
+AC_SEARCH_LIBS(backtrace_symbols, execinfo)
 
 if test "$with_readline" = yes; then
   PGAC_CHECK_READLINE
@@ -1148,6 +1344,16 @@ if test "$with_zlib" = yes; then
 If you have zlib already installed, see config.log for details on the
 failure.  It is possible the compiler isn't looking in the proper directory.
 Use --without-zlib to disable zlib support.])])
+fi
+
+if test "$with_quicklz" = yes; then
+  AC_CHECK_LIB(quicklz, qlz_compress, [],
+               [AC_MSG_ERROR([quicklz library not found.])])
+fi
+
+if test "$enable_ic_proxy" = yes; then
+  AC_CHECK_LIB(uv, uv_default_loop, [],
+               [AC_MSG_ERROR([libuv library not found, it is required by --enable-ic-proxy.])])
 fi
 
 if test "$enable_spinlocks" = yes; then
@@ -1173,6 +1379,39 @@ if test "$with_gssapi" = yes ; then
   fi
 fi
 
+AC_DEFUN([CHECK_APR], [
+  GPAC_PATH_APR_1_CONFIG
+  # If the 'apr-1-config --link-ld' produced correct output, -lapr-1 is already
+  # in LIBS, hence AC_SEARCH_LIBS rather than AC_CHECK_LIB. (and the autoconf
+  # manual recommends always using AC_SEARCH_LIBS rather than AC_CHECK_LIB
+  # anyway)
+  _LIBS="$LIBS"
+  LIBS="$LIBS $apr_link_ld_libs"
+  AC_SEARCH_LIBS(apr_getopt_long, [apr-1], [], [AC_MSG_ERROR([libapr-1 is required by gpfdist])])
+  LIBS="$_LIBS"
+ ])
+
+if test "$enable_gpfdist" = yes ; then
+  CHECK_APR()
+  _LIBS="$LIBS"
+  AC_SEARCH_LIBS(event_add, [event], [], [AC_MSG_ERROR([libevent is required for gpfdist])])
+  EVENT_LIBS=" -levent"
+  AC_SUBST(EVENT_LIBS)
+
+  AC_SEARCH_LIBS(yaml_parser_initialize, [yaml], [have_yaml=yes; YAML_LIBS=" -lyaml"], [AC_MSG_WARN([libyaml is not found. disabling transformations for gpfdist.])])
+  AC_SUBST(YAML_LIBS)
+  AC_SUBST(have_yaml)
+  LIBS="$_LIBS"
+fi
+
+if test "$enable_mapreduce" = yes ; then
+  _LIBS="$LIBS"
+  AC_SEARCH_LIBS(yaml_parser_initialize, [yaml], [have_yaml=yes; YAML_LIBS=" -lyaml"], [AC_MSG_ERROR([libyaml is required for Greenplum Mapreduce])])
+  AC_SUBST(YAML_LIBS)
+  AC_SUBST(have_yaml)
+  LIBS="$_LIBS"
+fi
+
 if test "$with_openssl" = yes ; then
   dnl Order matters!
   if test "$PORTNAME" != "win32"; then
@@ -1195,12 +1434,31 @@ if test "$with_openssl" = yes ; then
   AC_CHECK_FUNCS([CRYPTO_lock])
 fi
 
+if test "$with_rt" = yes ; then
+  AC_CHECK_LIB(rt, clock_gettime, [],
+                [AC_MSG_WARN([Realtime library not found])])
+fi
+
 if test "$with_pam" = yes ; then
   AC_CHECK_LIB(pam,    pam_start, [], [AC_MSG_ERROR([library 'pam' is required for PAM])])
 fi
 
 if test "$with_libxml" = yes ; then
   AC_CHECK_LIB(xml2, xmlSaveToBuffer, [], [AC_MSG_ERROR([library 'xml2' (version >= 2.6.23) is required for XML support])])
+fi
+
+# Check for curl.
+if test "$with_libcurl" = yes ; then
+  AC_CHECK_CURL([7.19.0])
+  CFLAGS="$CFLAGS $CURL_CFLAGS"
+  LIBS="$LIBS $CURL_LIBS"
+  AC_DEFINE([USE_CURL], 1,
+          [Define to 1 to build with libcurl support. (--with-libcurl)])
+fi
+
+# Check for bzip2
+if test "$with_libbz2" = yes ; then
+  AC_CHECK_LIB(bz2, BZ2_bzDecompress, [], [AC_MSG_ERROR([library 'bz2' is required for bzip2 support])])
 fi
 
 if test "$with_libxslt" = yes ; then
@@ -1263,6 +1521,15 @@ elif test "$with_uuid" = ossp ; then
 fi
 AC_SUBST(UUID_LIBS)
 
+# Check for xerces if GPORCA is enabled.
+if test "$enable_orca" = yes; then
+  PGAC_CHECK_ORCA_XERCES
+fi
+
+# OpenBSD requires libexecinfo from ports for backtrace() as it's a glibc addition
+if test "$PORTNAME" = "openbsd"; then
+  AC_CHECK_LIB(execinfo, backtrace, [], [AC_MSG_ERROR([library 'execinfo' is required for backtrace support])])
+fi
 
 ##
 ## Header files
@@ -1299,6 +1566,9 @@ AC_CHECK_HEADERS(m4_normalize([
 	wchar.h
 	wctype.h
 ]))
+
+# GPDB additions.
+AC_CHECK_HEADERS([ execinfo.h ])
 
 # On BSD, test for net/if.h will fail unless sys/socket.h
 # is included first.
@@ -1356,11 +1626,35 @@ Use --without-readline to disable libedit support.])])])])
                 [AC_CHECK_HEADERS(readline/history.h)])])
 fi
 
+if test "$enable_gpfdist" = yes; then
+  if test "$PORTNAME" = "win32"; then
+    AC_CHECK_HEADERS([winsock2.h])
+  fi
+
+  AC_CHECK_HEADERS(yaml.h, [], [AC_MSG_WARN([header file <yaml.h> is not found. disabling transformations for gpfdist.])])
+  AC_CHECK_HEADERS(event.h, [], [AC_MSG_ERROR([header file <event.h> is required for gpfdist])])
+
+  ac_save_CPPFLAGS=$CPPFLAGS
+  CPPFLAGS="$apr_includes $CPPFLAGS"
+  AC_CHECK_HEADERS(apr_getopt.h, [], [AC_MSG_ERROR(['header file <apr_getopt.h> is required for gpfdist'])])
+  CPPFLAGS=$ac_save_CPPFLAGS
+fi
+
 if test "$with_zlib" = yes; then
   AC_CHECK_HEADER(zlib.h, [], [AC_MSG_ERROR([zlib header not found
 If you have zlib already installed, see config.log for details on the
 failure.  It is possible the compiler isn't looking in the proper directory.
 Use --without-zlib to disable zlib support.])])
+fi
+
+# Check for bzlib.h
+if test "$with_libbz2" = yes ; then
+  AC_CHECK_HEADER(bzlib.h, [], [AC_MSG_ERROR([header file <bzlib.h> is required for bzip2 support])], [])
+fi
+
+# Check for quicklz.h
+if test "$with_quicklz" = yes; then
+  AC_CHECK_HEADER(quicklz.h, [], [AC_MSG_ERROR([header file <quicklz.h> is required for QuickLZ support])])
 fi
 
 if test "$with_gssapi" = yes ; then
@@ -1394,6 +1688,34 @@ fi
 if test "$with_libxslt" = yes ; then
   AC_CHECK_HEADER(libxslt/xslt.h, [], [AC_MSG_ERROR([header file <libxslt/xslt.h> is required for XSLT support])])
 fi
+
+# PGAC_LDAP_SAFE
+# --------------
+# PostgreSQL sometimes loads libldap_r and plain libldap into the same
+# process.  Check for OpenLDAP versions known not to tolerate doing so; assume
+# non-OpenLDAP implementations are safe.  The dblink test suite exercises the
+# hazardous interaction directly.
+
+AC_DEFUN([PGAC_LDAP_SAFE],
+[AC_CACHE_CHECK([for compatible LDAP implementation], [pgac_cv_ldap_safe],
+[AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
+[#include <ldap.h>
+#if !defined(LDAP_VENDOR_VERSION) || \
+     (defined(LDAP_API_FEATURE_X_OPENLDAP) && \
+      LDAP_VENDOR_VERSION >= 20424 && LDAP_VENDOR_VERSION <= 20431)
+choke me
+#endif], [])],
+[pgac_cv_ldap_safe=yes],
+[pgac_cv_ldap_safe=no])])
+
+if test "$pgac_cv_ldap_safe" != yes; then
+  AC_MSG_WARN([
+*** With OpenLDAP versions 2.4.24 through 2.4.31, inclusive, each backend
+*** process that loads libpq (via WAL receiver, dblink, or postgres_fdw) and
+*** also uses LDAP will crash on exit.])
+fi])
+
+
 
 if test "$with_ldap" = yes ; then
   if test "$PORTNAME" != "win32"; then
@@ -1443,8 +1765,37 @@ elif test "$with_uuid" = ossp ; then
       [AC_MSG_ERROR([header file <ossp/uuid.h> or <uuid.h> is required for OSSP UUID])])])
 fi
 
+# For processor affinity support in Linux on NUMA platforms such as
+# AMD x86_64, the 'numactl' or 'libnuma' package is required.  See
+#  http://lwn.net/Articles/67005/
+#  http://www.x86-64.org/pipermail/discuss/2003-May/003528.html
+case $template in
+  linux*)
+    AC_CHECK_LIB(numa, numa_available)
+    AC_CHECK_HEADERS([numa.h])
+    ;;
+esac
+
+# realtime library header
+if test "$with_rt" = yes; then
+	AC_CHECK_HEADERS([time.h], [],
+			 [AC_MSG_ERROR([header file <time.h> is required for realtime library support])])
+fi
+
+if test "$enable_mapreduce" = yes; then
+  if test "$with_perl" = no; then
+    AC_MSG_ERROR([Greenplum Mapreduce requires Perl, reconfigure with --with-perl])
+  fi
+  AC_CHECK_HEADERS(yaml.h, [], [AC_MSG_ERROR([header file <yaml.h> is required for Greenplum Mapreduce])])
+fi
+
 if test "$PORTNAME" = "win32" ; then
    AC_CHECK_HEADERS(crtdefs.h)
+fi
+
+# OpenBSD requires libexecinfo from ports for backtrace() as it's a glibc addition
+if test "$PORTNAME" = "openbsd"; then
+  AC_CHECK_HEADERS([execinfo.h], [], [AC_MSG_ERROR([header file <execinfo.h> is required for backtrace support])])
 fi
 
 ##
@@ -1464,6 +1815,7 @@ PGAC_C_TYPES_COMPATIBLE
 PGAC_C_BUILTIN_CONSTANT_P
 PGAC_C_BUILTIN_UNREACHABLE
 PGAC_C_COMPUTED_GOTO
+PGAC_C_BUILTIN_FRAME_ADDRESS
 PGAC_STRUCT_TIMEZONE
 PGAC_UNION_SEMUN
 PGAC_STRUCT_SOCKADDR_UN
@@ -1505,6 +1857,13 @@ AC_CHECK_TYPES([struct option], [], [],
 [#ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif])
+
+if test x"$pgac_cv__builtin_frame_address" = xno && test "$enable_orca" = yes; then :
+    AC_MSG_ERROR([[
+Built-in function __builtin_frame_address() is required for ORCA.
+Use --disable-orca to disable ORCA support.
+]])
+fi
 
 if test "$with_zlib" = yes; then
   # Check that <zlib.h> defines z_streamp (versions before about 1.0.4
@@ -1588,6 +1947,7 @@ LIBS_including_readline="$LIBS"
 LIBS=`echo "$LIBS" | sed -e 's/-ledit//g' -e 's/-lreadline//g'`
 
 AC_CHECK_FUNCS(m4_normalize([
+	backtrace_symbols
 	cbrt
 	clock_gettime
 	copyfile
@@ -1616,6 +1976,17 @@ AC_CHECK_FUNCS(m4_normalize([
 	utimes
 	wcstombs_l
 ]))
+
+# For upstream Postgres, the getifaddrs() symbol is optional, but the GPDB
+# ifaddrs utility requires it, along with inet_ntop(). The check for getifaddrs
+# is duplicated here to avoid a merge conflict in the AC_CHECK_FUNCS block
+# above.
+AC_CHECK_FUNCS(m4_normalize([
+	getifaddrs
+	inet_ntop
+]), [], [
+	AC_MSG_ERROR([getifaddrs and inet_ntop are required for Greenplum])
+])
 
 # These typically are compiler builtins, for which AC_CHECK_FUNCS fails.
 PGAC_CHECK_BUILTIN_FUNC([__builtin_bswap16], [int x])
@@ -1826,6 +2197,17 @@ AC_CHECK_FUNCS([strtoull __strtoull strtouq], [break])
 # strto[u]ll may exist but not be declared
 AC_CHECK_DECLS([strtoll, strtoull])
 
+AC_CACHE_CHECK([for builtin locking functions], pgac_cv_gcc_int_atomics,
+[AC_TRY_LINK([],
+  [int lock = 0;
+   __sync_lock_test_and_set(&lock, 1);
+   __sync_lock_release(&lock);],
+  [pgac_cv_gcc_int_atomics="yes"],
+  [pgac_cv_gcc_int_atomics="no"])])
+if test x"$pgac_cv_gcc_int_atomics" = x"yes"; then
+  AC_DEFINE(HAVE_GCC_INT_ATOMICS, 1, [Define to 1 if you have __sync_lock_test_and_set(int *) and friends.])
+fi
+
 if test "$with_icu" = yes; then
   ac_save_CPPFLAGS=$CPPFLAGS
   CPPFLAGS="$ICU_CFLAGS $CPPFLAGS"
@@ -1909,38 +2291,17 @@ AC_CHECK_SIZEOF([void *])
 AC_CHECK_SIZEOF([size_t])
 AC_CHECK_SIZEOF([long])
 
-# Decide whether float4 is passed by value: user-selectable, enabled by default
-AC_MSG_CHECKING([whether to build with float4 passed by value])
-PGAC_ARG_BOOL(enable, float4-byval, yes, [disable float4 passed by value],
-              [AC_DEFINE([USE_FLOAT4_BYVAL], 1,
-                         [Define to 1 if you want float4 values to be passed by value. (--enable-float4-byval)])
-               float4passbyval=true],
-              [float4passbyval=false])
-AC_MSG_RESULT([$enable_float4_byval])
-AC_DEFINE_UNQUOTED([FLOAT4PASSBYVAL], [$float4passbyval], [float4 values are passed by value if 'true', by reference if 'false'])
+# In GPDB, float4 and float8 are always passed by value. There is
+# GPDB-specific code that assumes that in various places, so it's not
+# configurable.
+float4passbyval=true
+AC_DEFINE([USE_FLOAT4_BYVAL], 1, [Define to 1 if you want float4 values to be passed by value. (Always defined in GPDB)])
+AC_DEFINE_UNQUOTED([FLOAT4PASSBYVAL], [$float4passbyval], [float4 values are passed by value if 'true', by reference if 'false' (always true in GPDB)])
 
-# Decide whether float8 is passed by value.
 # Note: this setting also controls int8 and related types such as timestamp.
-# If sizeof(Datum) >= 8, this is user-selectable, enabled by default.
-# If not, trying to select it is an error.
-AC_MSG_CHECKING([whether to build with float8 passed by value])
-if test $ac_cv_sizeof_void_p -ge 8 ; then
-  PGAC_ARG_BOOL(enable, float8-byval, yes, [disable float8 passed by value])
-else
-  PGAC_ARG_BOOL(enable, float8-byval, no, [disable float8 passed by value])
-  if test "$enable_float8_byval" = yes ; then
-    AC_MSG_ERROR([--enable-float8-byval is not supported on 32-bit platforms.])
-  fi
-fi
-if test "$enable_float8_byval" = yes ; then
-  AC_DEFINE([USE_FLOAT8_BYVAL], 1,
-            [Define to 1 if you want float8, int8, etc values to be passed by value. (--enable-float8-byval)])
-  float8passbyval=true
-else
-  float8passbyval=false
-fi
-AC_MSG_RESULT([$enable_float8_byval])
-AC_DEFINE_UNQUOTED([FLOAT8PASSBYVAL], [$float8passbyval], [float8, int8, and related values are passed by value if 'true', by reference if 'false'])
+float8passbyval=true
+AC_DEFINE([USE_FLOAT8_BYVAL], 1, [Define to 1 if you want float8, int8, etc values to be passed by value. (Always defined in GPDB)])
+AC_DEFINE_UNQUOTED([FLOAT8PASSBYVAL], [$float8passbyval], [float8, int8, and related values are passed by value if 'true', by reference if 'false' (always true in GPDB)])
 
 # Determine memory alignment requirements for the basic C data types.
 
@@ -2115,6 +2476,24 @@ fi
 AC_SUBST(PG_CRC32C_OBJS)
 
 
+if test $ac_cv_func_fseeko = yes; then
+AC_SYS_LARGEFILE
+enable_largefile=yes
+else
+enable_largefile=no
+fi
+AC_SUBST(enable_largefile)
+
+# Check for largefile support (must be after AC_SYS_LARGEFILE)
+AC_CHECK_SIZEOF([off_t])
+
+if test "$PORTNAME" != "win32"; then
+# If we don't have largefile support, can't handle segsize >= 2GB.
+if test "$ac_cv_sizeof_off_t" -lt 8 -a "$segsize" != "1"; then
+   AC_MSG_ERROR([Large file support is not enabled. Segment size cannot be larger than 1GB.])
+fi
+fi
+
 # Select semaphore implementation type.
 if test "$PORTNAME" != "win32"; then
   if test x"$PREFERRED_SEMAPHORES" = x"NAMED_POSIX" ; then
@@ -2254,13 +2633,12 @@ if test "$with_python" = yes; then
 fi
 
 #
-# Check for DocBook and tools
+# Check for documentation-building tools
 #
-PGAC_PATH_XMLLINT
-PGAC_CHECK_DOCBOOK(4.2)
-PGAC_PATH_PROGS(DBTOEPUB, dbtoepub)
+PGAC_PATH_PROGS(XMLLINT, xmllint)
 PGAC_PATH_PROGS(XSLTPROC, xsltproc)
 PGAC_PATH_PROGS(FOP, fop)
+PGAC_PATH_PROGS(DBTOEPUB, dbtoepub)
 
 #
 # Check for test tools
@@ -2337,6 +2715,52 @@ else
   PGAC_PROG_CC_LDFLAGS_OPT([-Wl,--as-needed], $link_test_func)
 fi
 
+# Many of the autoconf tests produce warnings, or even compiler errors, on
+# purpose as they run through the conftest programs. So, treating warning as
+# error should be last step after all autoconf checks are performed, otherwise
+# false side-effects happens.
+if test "$GCC" = yes -a "$ICC" = no; then
+  PGAC_PROG_CC_CFLAGS_OPT([-Werror=uninitialized])
+  PGAC_PROG_CC_CFLAGS_OPT([-Werror=implicit-function-declaration])
+fi
+
+[BLD_ARCH=`echo $BLD_ARCH`]
+AC_SUBST(BLD_ARCH)
+
+# Get the Greenplum version string from VERSION
+
+GP_VERSION_LONG=`bash ./getversion`
+
+GP_VERSION_LONG="$GP_VERSION_LONG$with_extra_version"
+AC_SUBST(GP_VERSION_LONG)
+
+echo $GP_VERSION_LONG > VERSION
+GP_VERSION=`cat VERSION`
+
+GP_VERSION_SHORT=`bash ./getversion --short`
+GP_VERSION_SHORT="$GP_VERSION_SHORT$with_extra_version"
+AC_SUBST(GP_VERSION_SHORT)
+
+GP_BASH_VERSION_IN="gpMgmt/bin/lib/gp_bash_version.sh.in"
+GP_BASH_VERSION_SH="gpMgmt/bin/lib/gp_bash_version.sh"
+if grep '##' $GP_BASH_VERSION_IN > /dev/null 2>&1 ; then
+    sed "s,##.*##,$GP_VERSION," $GP_BASH_VERSION_IN > $GP_BASH_VERSION_SH
+fi
+
+GPTEST_IN="src/test/regress/GPTest.pm.in"
+GPTEST_PM="src/test/regress/GPTest.pm"
+if grep '##' $GPTEST_IN > /dev/null 2>&1 ; then
+    sed "s,##.*##,$GP_VERSION," $GPTEST_IN > $GPTEST_PM
+fi
+
+AC_DEFINE_UNQUOTED(GP_VERSION,
+                   ["$GP_VERSION"],
+                   [A string containing the Greenplum version number])
+
+[GP_MAJORVERSION=`expr "$GP_VERSION" : '\([0-9][0-9]*\)'`]
+AC_SUBST(GP_MAJORVERSION)
+AC_DEFINE_UNQUOTED(GP_MAJORVERSION, "$GP_MAJORVERSION", [Greenplum major version as a string])
+
 # Create compiler version string
 if test x"$GCC" = x"yes" ; then
   cc_string=`${CC} --version | sed q`
@@ -2348,12 +2772,12 @@ else
 fi
 
 AC_DEFINE_UNQUOTED(PG_VERSION_STR,
-                   ["PostgreSQL $PG_VERSION on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"],
+                   ["PostgreSQL $PG_VERSION (Greenplum Database $GP_VERSION) on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"],
                    [A string containing the version number, platform, and C compiler])
 
 # Supply a numeric version string for use by 3rd party add-ons
 # awk -F is a regex on some platforms, and not on others, so make "." a tab
-[PG_VERSION_NUM="`echo "$PACKAGE_VERSION" | sed 's/[A-Za-z].*$//' |
+[PG_VERSION_NUM="`echo "$PG_PACKAGE_VERSION" | sed 's/[A-Za-z].*$//' |
 tr '.' '	' |
 $AWK '{printf "%d%04d", $1, $2}'`"]
 AC_DEFINE_UNQUOTED(PG_VERSION_NUM, $PG_VERSION_NUM, [PostgreSQL version as a number])
@@ -2368,17 +2792,23 @@ if test x"$PG_SYSROOT" != x; then
 fi
 AC_SUBST(PG_SYSROOT)
 
+#
+[GP_VERSION_NUM="`echo "$PACKAGE_VERSION" | sed 's/[A-Za-z].*$//' |
+tr '.' '	' |
+$AWK '{printf "%d%02d%02d", $1, $2, (NF >= 3) ? $3 : 0}'`"]
+AC_DEFINE_UNQUOTED(GP_VERSION_NUM, $GP_VERSION_NUM, [Greenplum version as a number])
+
 
 # Begin output steps
 
 AC_MSG_NOTICE([using compiler=$cc_string])
+AC_MSG_NOTICE([using CXX=$CXX])
 AC_MSG_NOTICE([using CFLAGS=$CFLAGS])
+AC_MSG_NOTICE([using CXXFLAGS=$CXXFLAGS])
 AC_MSG_NOTICE([using CPPFLAGS=$CPPFLAGS])
 AC_MSG_NOTICE([using LDFLAGS=$LDFLAGS])
 # Currently only used when LLVM is used
 if test "$with_llvm" = yes ; then
-   AC_MSG_NOTICE([using CXX=$CXX])
-   AC_MSG_NOTICE([using CXXFLAGS=$CXXFLAGS])
    AC_MSG_NOTICE([using CLANG=$CLANG])
    AC_MSG_NOTICE([using BITCODE_CFLAGS=$BITCODE_CFLAGS])
    AC_MSG_NOTICE([using BITCODE_CXXFLAGS=$BITCODE_CXXFLAGS])
@@ -2404,6 +2834,8 @@ AC_SUBST(vpath_build)
 
 
 AC_CONFIG_FILES([GNUmakefile src/Makefile.global])
+
+AC_CONFIG_FILES([src/include/catalog/gp_version_at_initdb.dat])
 
 AC_CONFIG_LINKS([
   src/backend/port/pg_sema.c:${SEMA_IMPLEMENTATION}

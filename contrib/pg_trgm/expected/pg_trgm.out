@@ -2343,12 +2343,15 @@ select t,similarity(t,'gwertyu1988') as sml from test_trgm where t % 'gwertyu198
 
 explain (costs off)
 select t <-> 'q0987wertyu0988', t from test_trgm order by t <-> 'q0987wertyu0988' limit 2;
-                    QUERY PLAN                     
----------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Limit
-   ->  Index Scan using trgm_idx on test_trgm
-         Order By: (t <-> 'q0987wertyu0988'::text)
-(3 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: ((t <-> 'q0987wertyu0988'::text))
+         ->  Limit
+               ->  Index Scan using trgm_idx on test_trgm
+                     Order By: (t <-> 'q0987wertyu0988'::text)
+(7 rows)
 
 select t <-> 'q0987wertyu0988', t from test_trgm order by t <-> 'q0987wertyu0988' limit 2;
  ?column? |      t      
@@ -3507,23 +3510,25 @@ create index test2_idx_gin on test2 using gin (t gin_trgm_ops);
 set enable_seqscan=off;
 explain (costs off)
   select * from test2 where t like '%BCD%';
-                QUERY PLAN                
-------------------------------------------
- Bitmap Heap Scan on test2
-   Recheck Cond: (t ~~ '%BCD%'::text)
-   ->  Bitmap Index Scan on test2_idx_gin
-         Index Cond: (t ~~ '%BCD%'::text)
-(4 rows)
+                   QUERY PLAN                   
+------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on test2
+         Recheck Cond: (t ~~ '%BCD%'::text)
+         ->  Bitmap Index Scan on test2_idx_gin
+               Index Cond: (t ~~ '%BCD%'::text)
+(6 rows)
 
 explain (costs off)
   select * from test2 where t ilike '%BCD%';
-                QUERY PLAN                 
--------------------------------------------
- Bitmap Heap Scan on test2
-   Recheck Cond: (t ~~* '%BCD%'::text)
-   ->  Bitmap Index Scan on test2_idx_gin
-         Index Cond: (t ~~* '%BCD%'::text)
-(4 rows)
+                   QUERY PLAN                    
+-------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on test2
+         Recheck Cond: (t ~~* '%BCD%'::text)
+         ->  Bitmap Index Scan on test2_idx_gin
+               Index Cond: (t ~~* '%BCD%'::text)
+(6 rows)
 
 select * from test2 where t like '%BCD%';
  t 
@@ -3568,23 +3573,25 @@ select * from test2 where t like '  z foo%';
 
 explain (costs off)
   select * from test2 where t ~ '[abc]{3}';
-                 QUERY PLAN                 
---------------------------------------------
- Bitmap Heap Scan on test2
-   Recheck Cond: (t ~ '[abc]{3}'::text)
-   ->  Bitmap Index Scan on test2_idx_gin
-         Index Cond: (t ~ '[abc]{3}'::text)
-(4 rows)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on test2
+         Recheck Cond: (t ~ '[abc]{3}'::text)
+         ->  Bitmap Index Scan on test2_idx_gin
+               Index Cond: (t ~ '[abc]{3}'::text)
+(6 rows)
 
 explain (costs off)
   select * from test2 where t ~* 'DEF';
-                QUERY PLAN                
-------------------------------------------
- Bitmap Heap Scan on test2
-   Recheck Cond: (t ~* 'DEF'::text)
-   ->  Bitmap Index Scan on test2_idx_gin
-         Index Cond: (t ~* 'DEF'::text)
-(4 rows)
+                   QUERY PLAN                   
+------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on test2
+         Recheck Cond: (t ~* 'DEF'::text)
+         ->  Bitmap Index Scan on test2_idx_gin
+               Index Cond: (t ~* 'DEF'::text)
+(6 rows)
 
 select * from test2 where t ~ '[abc]{3}';
    t    
@@ -3708,19 +3715,27 @@ create index test2_idx_gist on test2 using gist (t gist_trgm_ops);
 set enable_seqscan=off;
 explain (costs off)
   select * from test2 where t like '%BCD%';
-                QUERY PLAN                
-------------------------------------------
- Index Scan using test2_idx_gist on test2
-   Index Cond: (t ~~ '%BCD%'::text)
-(2 rows)
+                   QUERY PLAN                    
+-------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on test2
+         Recheck Cond: (t ~~ '%BCD%'::text)
+         ->  Bitmap Index Scan on test2_idx_gist
+               Index Cond: (t ~~ '%BCD%'::text)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 explain (costs off)
   select * from test2 where t ilike '%BCD%';
-                QUERY PLAN                
-------------------------------------------
- Index Scan using test2_idx_gist on test2
-   Index Cond: (t ~~* '%BCD%'::text)
-(2 rows)
+                   QUERY PLAN                    
+-------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on test2
+         Recheck Cond: (t ~~* '%BCD%'::text)
+         ->  Bitmap Index Scan on test2_idx_gist
+               Index Cond: (t ~~* '%BCD%'::text)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 select * from test2 where t like '%BCD%';
  t 
@@ -3765,19 +3780,27 @@ select * from test2 where t like '  z foo%';
 
 explain (costs off)
   select * from test2 where t ~ '[abc]{3}';
-                QUERY PLAN                
-------------------------------------------
- Index Scan using test2_idx_gist on test2
-   Index Cond: (t ~ '[abc]{3}'::text)
-(2 rows)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on test2
+         Recheck Cond: (t ~ '[abc]{3}'::text)
+         ->  Bitmap Index Scan on test2_idx_gist
+               Index Cond: (t ~ '[abc]{3}'::text)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 explain (costs off)
   select * from test2 where t ~* 'DEF';
-                QUERY PLAN                
-------------------------------------------
- Index Scan using test2_idx_gist on test2
-   Index Cond: (t ~* 'DEF'::text)
-(2 rows)
+                   QUERY PLAN                    
+-------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on test2
+         Recheck Cond: (t ~* 'DEF'::text)
+         ->  Bitmap Index Scan on test2_idx_gist
+               Index Cond: (t ~* 'DEF'::text)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 select * from test2 where t ~ '[abc]{3}';
    t    
@@ -3912,16 +3935,20 @@ SELECT similarity('Szczecin', 'Warsaw');
 EXPLAIN (COSTS OFF)
 SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
   FROM restaurants WHERE city % 'Warsaw';
-                         QUERY PLAN                          
--------------------------------------------------------------
- Unique
-   ->  Sort
-         Sort Key: city, (similarity(city, 'Warsaw'::text))
-         ->  Bitmap Heap Scan on restaurants
-               Recheck Cond: (city % 'Warsaw'::text)
-               ->  Bitmap Index Scan on restaurants_city_idx
-                     Index Cond: (city % 'Warsaw'::text)
-(7 rows)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: city, (similarity(city, 'Warsaw'::text))
+   ->  Unique
+         Group Key: city, (similarity(city, 'Warsaw'::text))
+         ->  Sort
+               Sort Key: city, (similarity(city, 'Warsaw'::text))
+               ->  Bitmap Heap Scan on restaurants
+                     Recheck Cond: (city % 'Warsaw'::text)
+                     ->  Bitmap Index Scan on restaurants_city_idx
+                           Index Cond: (city % 'Warsaw'::text)
+ Optimizer: Postgres query optimizer
+(11 rows)
 
 SELECT set_limit(0.3);
  set_limit 

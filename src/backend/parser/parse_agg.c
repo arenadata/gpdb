@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * parse_agg.c
- *	  handle aggregates and window functions in parser
+ *	  handle aggregates in parser
  *
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -50,6 +50,11 @@ typedef struct
 	int			sublevels_up;
 	bool		in_agg_direct_args;
 } check_ungrouped_columns_context;
+
+typedef struct
+{
+	int sublevels_up;
+} checkHasGroupExtFuncs_context;
 
 static int	check_agg_arguments(ParseState *pstate,
 								List *directargs,
@@ -277,6 +282,25 @@ transformGroupingFunc(ParseState *pstate, GroupingFunc *p)
 }
 
 /*
+ * transformGroupingFunc
+ *		Transform a GROUPING expression
+ *
+ * GROUP_ID() behaves very like an aggregate.  Processing of levels and nesting
+ * is done as for aggregates.  We set p_hasAggs for these expressions too.
+ */
+Node *
+transformGroupId(ParseState *pstate, GroupId *p)
+{
+	GroupId	   *result = makeNode(GroupId);
+
+	result->location = p->location;
+
+	check_agglevels_and_constraints(pstate, (Node *) result);
+
+	return (Node *) result;
+}
+
+/*
  * Aggregate functions and grouping operations (which are combined in the spec
  * as <set function specification>) are very similar with regard to level and
  * nesting restrictions (though we allow a lot more things than the spec does).
@@ -304,6 +328,14 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 		filter = agg->aggfilter;
 		location = agg->location;
 		p_levelsup = &agg->agglevelsup;
+	}
+	else if (IsA(expr, GroupId))
+	{
+		GroupId *grp = (GroupId *) expr;
+
+		args = NIL;
+		location = grp->location;
+		p_levelsup = &grp->agglevelsup;
 	}
 	else
 	{
@@ -348,7 +380,6 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 			Assert(false);		/* can't happen */
 			break;
 		case EXPR_KIND_OTHER:
-
 			/*
 			 * Accept aggregate/grouping here; caller must throw error if
 			 * wanted
@@ -505,6 +536,9 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 			else
 				err = _("grouping operations are not allowed in trigger WHEN conditions");
 
+			break;
+		case EXPR_KIND_SCATTER_BY:
+			/* okay */
 			break;
 		case EXPR_KIND_PARTITION_BOUND:
 			if (isAgg)
@@ -742,7 +776,21 @@ check_agg_arguments_walker(Node *node,
 		}
 		/* Continue and descend into subtree */
 	}
+	if (IsA(node, GroupId))
+	{
+		int			agglevelsup = ((GroupId *) node)->agglevelsup;
 
+		/* convert levelsup to frame of reference of original query */
+		agglevelsup -= context->sublevels_up;
+		/* ignore local aggs of subqueries */
+		if (agglevelsup >= 0)
+		{
+			if (context->min_agglevel < 0 ||
+				context->min_agglevel > agglevelsup)
+				context->min_agglevel = agglevelsup;
+		}
+		/* Continue and descend into subtree */
+	}
 	/*
 	 * SRFs and window functions can be rejected immediately, unless we are
 	 * within a sub-select within the aggregate's arguments; in that case
@@ -800,6 +848,7 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 {
 	const char *err;
 	bool		errkind;
+	char	   *name;
 
 	/*
 	 * A window function call can't contain another one (but aggs are OK). XXX
@@ -918,6 +967,9 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 		case EXPR_KIND_TRIGGER_WHEN:
 			err = _("window functions are not allowed in trigger WHEN conditions");
 			break;
+		case EXPR_KIND_SCATTER_BY:
+			/* okay */
+			break;
 		case EXPR_KIND_PARTITION_BOUND:
 			err = _("window functions are not allowed in partition bound");
 			break;
@@ -960,23 +1012,41 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 	 * clause (which had better be present).  Otherwise, try to match all the
 	 * properties of the OVER clause, and make a new entry in the p_windowdefs
 	 * list if no luck.
+	 *
+	 * In PostgreSQL, the syntax for this is "agg() OVER w". In GPDB, we also
+	 * accept "agg() OVER (w)", with the extra parens.
 	 */
 	if (windef->name)
 	{
-		Index		winref = 0;
-		ListCell   *lc;
+		name = windef->name;
 
 		Assert(windef->refname == NULL &&
 			   windef->partitionClause == NIL &&
 			   windef->orderClause == NIL &&
 			   windef->frameOptions == FRAMEOPTION_DEFAULTS);
+	}
+	else if (windef->refname &&
+			 !windef->partitionClause &&
+			 !windef->orderClause &&
+			 (windef->frameOptions & FRAMEOPTION_NONDEFAULT) == 0)
+	{
+		/* This is "agg() OVER (w)" */
+		name = windef->refname;
+	}
+	else
+		name = NULL;
+
+	if (name)
+	{
+		Index		winref = 0;
+		ListCell   *lc;
 
 		foreach(lc, pstate->p_windowdefs)
 		{
 			WindowDef  *refwin = (WindowDef *) lfirst(lc);
 
 			winref++;
-			if (refwin->name && strcmp(refwin->name, windef->name) == 0)
+			if (refwin->name && strcmp(refwin->name, name) == 0)
 			{
 				wfunc->winref = winref;
 				break;
@@ -985,7 +1055,7 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 		if (lc == NULL)			/* didn't find it? */
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("window \"%s\" does not exist", windef->name),
+					 errmsg("window \"%s\" does not exist", name),
 					 parser_errposition(pstate, windef->location)));
 	}
 	else
@@ -1311,6 +1381,16 @@ check_ungrouped_columns_walker(Node *node,
 			return false;
 	}
 
+	if (IsA(node, GroupId))
+	{
+		GroupId	   *grp = (GroupId *) node;
+
+		/* handled GroupId separately, no need to recheck at this level */
+
+		if ((int) grp->agglevelsup >= context->sublevels_up)
+			return false;
+	}
+
 	/*
 	 * If we have any GROUP BY items that are not simple Vars, check to see if
 	 * subexpression as a whole matches any GROUP BY item. We need to do this
@@ -1339,7 +1419,7 @@ check_ungrouped_columns_walker(Node *node,
 	{
 		Var		   *var = (Var *) node;
 		RangeTblEntry *rte;
-		char	   *attname;
+		const char *attname;
 
 		if (var->varlevelsup != context->sublevels_up)
 			return false;		/* it's not local to my query, ignore */

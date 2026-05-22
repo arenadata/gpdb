@@ -8,6 +8,7 @@
 #include "postgres_fe.h"
 #include "copy.h"
 
+#include <ctype.h>
 #include <signal.h>
 #include <sys/stat.h>
 #ifndef WIN32
@@ -261,6 +262,54 @@ error:
 }
 
 
+/* \copy command doesn't support on segment option */
+static void
+trim(char *s)
+{
+	int s_len = strlen(s);
+	if (strlen(s) == 0)
+		return;
+	char *read = s + 1;
+	char *write = s;
+	*write = toupper(*write);
+	if (*write == '\t')
+	{
+		*write = ' ';
+	}
+	for (int i = 1; i < s_len; i++)
+	{
+		if (*read == '\0')
+		{
+			*(++write) = '\0';
+			break;
+		}
+
+		if (!(isspace(*write) && isspace(*read)))
+		{
+			*(++write) = isspace(*read)?' ':toupper(*read);
+		}
+		read++;
+	}
+	return;
+}
+
+static bool
+is_on_segment(char * after_tofrom)
+{
+	bool on_segment = false;
+	if (!after_tofrom || strlen(after_tofrom) == 0)
+		return false;
+	char *s = pg_strdup(after_tofrom);
+	trim(s);
+	if (strstr(s, "ON SEGMENT"))
+	{
+		on_segment = true;
+	}
+	free(s);
+	return on_segment;
+}
+
+
 /*
  * Execute a \copy command (frontend copy). We have to open a file (or execute
  * a command), then submit a COPY query to the backend and either feed it data
@@ -280,6 +329,12 @@ do_copy(const char *args)
 	if (!options)
 		return false;
 
+	if (options->after_tofrom && is_on_segment(options->after_tofrom))
+	{
+		pg_log_error("\\COPY command doesn't support ON SEGMENT");
+		free_copy_options(options);
+		return false;
+	}
 	/* prepare to read or write the target file */
 	if (options->file && !options->program)
 		canonicalize_path(options->file);

@@ -22,9 +22,14 @@
 
 /*
  * Name of major-version-specific tablespace subdirectories
+ *
+ * In PostgreSQL, this is called just TABLESPACE_VERSION_DIRECTORY..
+ * This constant has been renamed so that we catch and know to modify all
+ * upstream uses of TABLESPACE_VERSION_DIRECTORY.
  */
-#define TABLESPACE_VERSION_DIRECTORY	"PG_" PG_MAJORVERSION "_" \
+#define GP_TABLESPACE_VERSION_DIRECTORY	"GPDB_" GP_MAJORVERSION "_" \
 									CppAsString2(CATALOG_VERSION_NO)
+
 
 /* Characters to allow for an OID in a relation path */
 #define OIDCHARS		10		/* max chars printed by %u */
@@ -43,6 +48,13 @@ typedef enum ForkNumber
 	MAIN_FORKNUM = 0,
 	FSM_FORKNUM,
 	VISIBILITYMAP_FORKNUM,
+
+	/*
+	 * Init forks are used to create an initial state that can be used to
+	 * quickly revert an object back to its empty state. This is useful for
+	 * reverting unlogged tables and indexes back to their initial state during
+	 * recovery.
+	 */
 	INIT_FORKNUM
 
 	/*
@@ -86,5 +98,8 @@ extern char *GetRelationPath(Oid dbNode, Oid spcNode, Oid relNode,
 /* First argument is a RelFileNodeBackend */
 #define relpath(rnode, forknum) \
 	relpathbackend((rnode).node, (rnode).backend, forknum)
+
+#define aorelpath(rnode, segno) \
+		aorelpathbackend((rnode).node, (rnode).backend, (segno))
 
 #endif							/* RELPATH_H */

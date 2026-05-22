@@ -8,6 +8,8 @@
  * stepping on each others' toes.  Formerly we used table-level locks
  * on pg_database, but that's too coarse-grained.
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -22,7 +24,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <catalog/storage.h>
 
+#include "access/transam.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -32,13 +36,17 @@
 #include "access/xlogutils.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
+#include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_class.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/storage_database.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
 #include "commands/dbcommands_xlog.h"
@@ -64,6 +72,14 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+#include "catalog/oid_dispatch.h"
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbhash.h"
+#include "cdb/cdbsreh.h"
+#include "cdb/cdbvars.h"
+
+#include "utils/pg_rusage.h"
 
 typedef struct
 {
@@ -71,16 +87,26 @@ typedef struct
 	Oid			dest_dboid;		/* DB we are trying to create */
 } createdb_failure_params;
 
+/*
+ * GPDB: A different cleanup mechanism is used. Refer comment in movedb().
+ */
+#if 0
 typedef struct
 {
 	Oid			dest_dboid;		/* DB we are trying to move */
 	Oid			dest_tsoid;		/* tablespace we are trying to move to */
 } movedb_failure_params;
+#endif
 
 /* non-export function prototypes */
 static void createdb_failure_callback(int code, Datum arg);
 static void movedb(const char *dbname, const char *tblspcname);
+/*
+ * GPDB: A different cleanup mechanism is used. Refer comment in movedb().
+ */
+#if 0
 static void movedb_failure_callback(int code, Datum arg);
+#endif
 static bool get_db_info(const char *name, LOCKMODE lockmode,
 						Oid *dbIdP, Oid *ownerIdP,
 						int *encodingP, bool *dbIsTemplateP, bool *dbAllowConnP,
@@ -101,17 +127,17 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 {
 	TableScanDesc scan;
 	Relation	rel;
-	Oid			src_dboid;
+	Oid			src_dboid = InvalidOid;
 	Oid			src_owner;
-	int			src_encoding;
-	char	   *src_collate;
-	char	   *src_ctype;
+	int			src_encoding = 0;
+	char	   *src_collate = NULL;
+	char	   *src_ctype = NULL;
 	bool		src_istemplate;
 	bool		src_allowconn;
-	Oid			src_lastsysoid;
-	TransactionId src_frozenxid;
-	MultiXactId src_minmxid;
-	Oid			src_deftablespace;
+	Oid			src_lastsysoid = InvalidOid;
+	TransactionId src_frozenxid = InvalidTransactionId;
+	MultiXactId src_minmxid = InvalidTransactionId;
+	Oid			src_deftablespace = InvalidOid;
 	volatile Oid dst_deftablespace;
 	Relation	pg_database_rel;
 	HeapTuple	tuple;
@@ -143,6 +169,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			notherbackends;
 	int			npreparedxacts;
 	createdb_failure_params fparms;
+	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH);
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -290,6 +317,13 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 						 errmsg("%s is not a valid encoding name",
 								encoding_name),
 						 parser_errposition(pstate, dencoding->location)));
+		}
+
+		if (encoding == PG_SQL_ASCII && shouldDispatch)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("server encoding 'SQL_ASCII' is not supported")));
 		}
 	}
 	if (dlocale && dlocale->arg)
@@ -534,11 +568,19 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 */
 	pg_database_rel = table_open(DatabaseRelationId, RowExclusiveLock);
 
-	do
+	if (Gp_role == GP_ROLE_EXECUTE)
+		dboid = GetPreassignedOidForDatabase(dbname);
+	else
 	{
-		dboid = GetNewOidWithIndex(pg_database_rel, DatabaseOidIndexId,
-								   Anum_pg_database_oid);
-	} while (check_db_file_conflict(dboid));
+		do
+		{
+			dboid = GetNewOidWithIndex(pg_database_rel, DatabaseOidIndexId,
+									   Anum_pg_database_oid);
+		} while (check_db_file_conflict(dboid));
+
+		if (Gp_role == GP_ROLE_DISPATCH)
+			RememberAssignedOidForDatabase(dbname, dboid);
+	}
 
 	/*
 	 * Insert a new tuple into pg_database.  This establishes our ownership of
@@ -566,7 +608,6 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	new_record[Anum_pg_database_datfrozenxid - 1] = TransactionIdGetDatum(src_frozenxid);
 	new_record[Anum_pg_database_datminmxid - 1] = TransactionIdGetDatum(src_minmxid);
 	new_record[Anum_pg_database_dattablespace - 1] = ObjectIdGetDatum(dst_deftablespace);
-
 	/*
 	 * We deliberately set datacl to default (NULL), rather than copying it
 	 * from the template database.  Copying it would be a bad idea when the
@@ -579,6 +620,23 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	CatalogTupleInsert(pg_database_rel, tuple);
 
+	if (shouldDispatch)
+	{
+		elog(DEBUG5, "shouldDispatch = true, dbOid = %d", dboid);
+
+        /* 
+		 * Dispatch the command to all primary segments.
+		 *
+		 * Doesn't wait for the QEs to finish execution.
+		 */
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR |
+									DF_NEED_TWO_PHASE |
+									DF_WITH_SNAPSHOT,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
 	/*
 	 * Now generate additional catalog entries associated with the new DB
 	 */
@@ -588,6 +646,16 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	/* Create pg_shdepend entries for objects within database */
 	copyTemplateDependencies(src_dboid, dboid);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackAddObject(DatabaseRelationId,
+						   dboid,
+						   GetUserId(),
+						   "CREATE", "DATABASE"
+				);
+
+	CHECK_FOR_INTERRUPTS();
 
 	/* Post creation hook for new database */
 	InvokeObjectPostCreateHook(DatabaseRelationId, dboid, 0);
@@ -654,11 +722,19 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 			dstpath = GetDatabasePath(dboid, dsttablespace);
 
 			/*
+			 * Register the database directory to PendingDBDelete link list
+			 * for cleanup in txn abort.
+			 */
+			ScheduleDbDirDelete(dboid, dsttablespace, false);
+
+			/*
 			 * Copy this subdirectory to the new location
 			 *
 			 * We don't need to copy subdirectories
 			 */
 			copydir(srcpath, dstpath, false);
+
+			SIMPLE_FAULT_INJECTOR("create_db_after_file_copy");
 
 			/* Record the filesystem change in XLOG */
 			{
@@ -676,6 +752,9 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 								  XLOG_DBASE_CREATE | XLR_SPECIAL_REL_UPDATE);
 			}
 		}
+
+		SIMPLE_FAULT_INJECTOR("after_xlog_create_database");
+
 		table_endscan(scan);
 		table_close(rel, AccessShareLock);
 
@@ -764,7 +843,7 @@ check_encoding_locale_matches(int encoding, const char *collate, const char *cty
 		  encoding == PG_UTF8 ||
 #endif
 		  (encoding == PG_SQL_ASCII && superuser())))
-		ereport(ERROR,
+		ereport(gp_encoding_check_locale_compatibility ? ERROR : WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("encoding \"%s\" does not match locale \"%s\"",
 						pg_encoding_to_char(encoding),
@@ -779,7 +858,7 @@ check_encoding_locale_matches(int encoding, const char *collate, const char *cty
 		  encoding == PG_UTF8 ||
 #endif
 		  (encoding == PG_SQL_ASCII && superuser())))
-		ereport(ERROR,
+		ereport(gp_encoding_check_locale_compatibility ? ERROR : WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("encoding \"%s\" does not match locale \"%s\"",
 						pg_encoding_to_char(encoding),
@@ -801,8 +880,10 @@ createdb_failure_callback(int code, Datum arg)
 	 */
 	UnlockSharedObject(DatabaseRelationId, fparms->src_dboid, 0, ShareLock);
 
+#if 0 /* Upstream code not applicable to GPDB */
 	/* Throw away any successfully copied subdirectories */
 	remove_dbtablespaces(fparms->dest_dboid);
+#endif
 }
 
 
@@ -812,8 +893,9 @@ createdb_failure_callback(int code, Datum arg)
 void
 dropdb(const char *dbname, bool missing_ok)
 {
-	Oid			db_id;
-	bool		db_istemplate;
+	Oid			db_id = InvalidOid;
+	bool		db_istemplate = true;
+	Oid			defaultTablespace = InvalidOid;
 	Relation	pgdbrel;
 	HeapTuple	tup;
 	int			notherbackends;
@@ -832,7 +914,7 @@ dropdb(const char *dbname, bool missing_ok)
 	pgdbrel = table_open(DatabaseRelationId, RowExclusiveLock);
 
 	if (!get_db_info(dbname, AccessExclusiveLock, &db_id, NULL, NULL,
-					 &db_istemplate, NULL, NULL, NULL, NULL, NULL, NULL, NULL))
+					 &db_istemplate, NULL, NULL, NULL, NULL, &defaultTablespace, NULL, NULL))
 	{
 		if (!missing_ok)
 		{
@@ -842,12 +924,27 @@ dropdb(const char *dbname, bool missing_ok)
 		}
 		else
 		{
-			/* Close pg_database, release the lock, since we changed nothing */
-			table_close(pgdbrel, RowExclusiveLock);
-			ereport(NOTICE,
-					(errmsg("database \"%s\" does not exist, skipping",
-							dbname)));
-			return;
+			if ( missing_ok && Gp_role == GP_ROLE_EXECUTE )
+			{
+				/* This branch exists just to facilitate cleanup of a failed
+				 * CREATE DATABASE.  Other callers will supply missing_ok as
+				 * FALSE.  The role check is just insurance. 
+				 */
+				elog(DEBUG1, "ignored request to drop non-existent "
+					 "database \"%s\"", dbname);
+				
+				table_close(pgdbrel, RowExclusiveLock);
+				return;
+			}
+			else
+			{
+				/* Close pg_database, release the lock, since we changed nothing */
+				table_close(pgdbrel, RowExclusiveLock);
+				ereport(NOTICE,
+						(errmsg("database \"%s\" does not exist, skipping",
+								dbname)));
+				return;
+			}
 		}
 	}
 
@@ -924,6 +1021,28 @@ dropdb(const char *dbname, bool missing_ok)
 								  nsubscriptions, nsubscriptions)));
 
 	/*
+	 * Free the database on the segDBs
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		StringInfoData buffer;
+
+		initStringInfo(&buffer);
+
+		appendStringInfo(&buffer, "DROP DATABASE IF EXISTS %s", quote_identifier(dbname));
+
+		/*
+		 * Do the DROP DATABASE as part of a distributed transaction.
+		 */
+		CdbDispatchCommand(buffer.data,
+							DF_CANCEL_ON_ERROR|
+							DF_NEED_TWO_PHASE|
+							DF_WITH_SNAPSHOT,
+							NULL);
+		pfree(buffer.data);
+	}
+
+	/*
 	 * Remove the database's tuple from pg_database.
 	 */
 	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(db_id));
@@ -966,6 +1085,15 @@ dropdb(const char *dbname, bool missing_ok)
 	 * Tell the stats collector to forget it immediately, too.
 	 */
 	pgstat_drop_database(db_id);
+	
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackDropObject(DatabaseRelationId, db_id);
+
+	/*
+	 * Tell the stats collector to forget it immediately, too.
+	 */
+	pgstat_drop_database(db_id);
 
 	/*
 	 * Tell checkpointer to forget any pending fsync and unlink requests for
@@ -989,6 +1117,12 @@ dropdb(const char *dbname, bool missing_ok)
 	remove_dbtablespaces(db_id);
 
 	/*
+	 * Remove all error logs belonging to the database.
+	 */
+	ErrorLogDelete(db_id, InvalidOid);
+	PersistentErrorLogDelete(db_id, InvalidOid, NULL);
+
+	/*
 	 * Close pg_database, but keep lock till commit.
 	 */
 	table_close(pgdbrel, NoLock);
@@ -1009,7 +1143,7 @@ dropdb(const char *dbname, bool missing_ok)
 ObjectAddress
 RenameDatabase(const char *oldname, const char *newname)
 {
-	Oid			db_id;
+	Oid			db_id = InvalidOid;
 	HeapTuple	newtup;
 	Relation	rel;
 	int			notherbackends;
@@ -1088,6 +1222,13 @@ RenameDatabase(const char *oldname, const char *newname)
 	namestrcpy(&(((Form_pg_database) GETSTRUCT(newtup))->datname), newname);
 	CatalogTupleUpdate(rel, &newtup->t_self, newtup);
 
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(DatabaseRelationId,
+						   db_id,
+						   GetUserId(),
+						   "ALTER", "RENAME"
+				);
 	InvokeObjectPostAlterHook(DatabaseRelationId, db_id, 0);
 
 	ObjectAddressSet(address, DatabaseRelationId, db_id);
@@ -1125,8 +1266,9 @@ movedb(const char *dbname, const char *tblspcname)
 	char	   *dst_dbpath;
 	DIR		   *dstdir;
 	struct dirent *xlde;
+#if 0
 	movedb_failure_params fparms;
-
+#endif
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
 	 * need this to ensure that no new backend starts up in the database while
@@ -1147,8 +1289,7 @@ movedb(const char *dbname, const char *tblspcname)
 	 * lock be released at commit, except that someone could try to move
 	 * relations of the DB back into the old directory while we rmtree() it.)
 	 */
-	LockSharedObjectForSession(DatabaseRelationId, db_id, 0,
-							   AccessExclusiveLock);
+	MoveDbSessionLockAcquire(db_id);
 
 	/*
 	 * Permission checks
@@ -1193,8 +1334,7 @@ movedb(const char *dbname, const char *tblspcname)
 	if (src_tblspcoid == dst_tblspcoid)
 	{
 		table_close(pgdbrel, NoLock);
-		UnlockSharedObjectForSession(DatabaseRelationId, db_id, 0,
-									 AccessExclusiveLock);
+		MoveDbSessionLockRelease();
 		return;
 	}
 
@@ -1281,7 +1421,13 @@ movedb(const char *dbname, const char *tblspcname)
 			elog(ERROR, "could not remove directory \"%s\": %m",
 				 dst_dbpath);
 	}
-
+	/*
+	 * GPDB: The failure callback mechanism below that is used upstream is
+	 * insufficient in guaranteeing cleanup throughout a two-phase commit/abort.
+	 * Instead, GPDB uses the pendingDbDeletes mechanism to clean the dboid dir
+	 * under the target tablespace.
+	 */
+#if 0
 	/*
 	 * Use an ENSURE block to make sure we remove the debris if the copy fails
 	 * (eg, due to out-of-disk-space).  This is not a 100% solution, because
@@ -1292,7 +1438,9 @@ movedb(const char *dbname, const char *tblspcname)
 	fparms.dest_tsoid = dst_tblspcoid;
 	PG_ENSURE_ERROR_CLEANUP(movedb_failure_callback,
 							PointerGetDatum(&fparms));
+#endif
 	{
+		ScheduleDbDirDelete(db_id, dst_tblspcoid, false);
 		/*
 		 * Copy files from the old tablespace to the new one
 		 */
@@ -1368,9 +1516,17 @@ movedb(const char *dbname, const char *tblspcname)
 		 */
 		table_close(pgdbrel, NoLock);
 	}
+#if 0
 	PG_END_ENSURE_ERROR_CLEANUP(movedb_failure_callback,
 								PointerGetDatum(&fparms));
-
+#endif
+	/*
+	 * GPDB: GPDB uses two phase commit and pending deletes, hence cannot locally
+	 * commit here. The rest of the logic related to the non-catalog changes from
+	 * this function is extracted into DropDatabaseDirectories() which is executed at
+	 * commit time.
+	 */
+#if 0
 	/*
 	 * Commit the transaction so that the pg_database update is committed. If
 	 * we crash while removing files, the database won't be corrupt, we'll
@@ -1387,36 +1543,30 @@ movedb(const char *dbname, const char *tblspcname)
 
 	/* Start new transaction for the remaining work; don't need a snapshot */
 	StartTransactionCommand();
+#endif
 
-	/*
-	 * Remove files from the old tablespace
-	 */
-	if (!rmtree(src_dbpath, true))
-		ereport(WARNING,
-				(errmsg("some useless files may be left behind in old database directory \"%s\"",
-						src_dbpath)));
-
-	/*
-	 * Record the filesystem change in XLOG
-	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		xl_dbase_drop_rec xlrec;
-
-		xlrec.db_id = db_id;
-		xlrec.tablespace_id = src_tblspcoid;
-
-		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, sizeof(xl_dbase_drop_rec));
-
-		(void) XLogInsert(RM_DBASE_ID,
-						  XLOG_DBASE_DROP | XLR_SPECIAL_REL_UPDATE);
+		/*
+		 * QE needs to release session level locks as can't Prepare Transaction
+		 * with session locks.
+		 */
+		MoveDbSessionLockRelease();
 	}
 
-	/* Now it's safe to release the database lock */
-	UnlockSharedObjectForSession(DatabaseRelationId, db_id, 0,
-								 AccessExclusiveLock);
+	/*
+	 * register the db_id with pending deletes list to schedule removing database
+	 * directory on transaction commit.
+	 */
+	ScheduleDbDirDelete(db_id, src_tblspcoid, true);
+
+	SIMPLE_FAULT_INJECTOR("inside_move_db_transaction");
 }
 
+/*
+ * GPDB: A different cleanup mechanism is used. Refer comment in movedb().
+ */
+#if 0
 /* Error cleanup callback for movedb */
 static void
 movedb_failure_callback(int code, Datum arg)
@@ -1429,7 +1579,7 @@ movedb_failure_callback(int code, Datum arg)
 
 	(void) rmtree(dstpath, true);
 }
-
+#endif
 
 /*
  * ALTER DATABASE name ...
@@ -1517,9 +1667,35 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 					 errmsg("option \"%s\" cannot be specified with other options",
 							dtablespace->defname),
 					 parser_errposition(pstate, dtablespace->location)));
-		/* this case isn't allowed within a transaction block */
-		PreventInTransactionBlock(isTopLevel, "ALTER DATABASE SET TABLESPACE");
+
+		if (Gp_role != GP_ROLE_EXECUTE)
+		{
+			/*
+			 * GPDB: allow this in query executor, as distributed transaction
+			 * participants. The QD already checked this, and should've prevented
+			 * running this in any genuine transaction block.
+			 */
+			/* this case isn't allowed within a transaction block */
+			PreventInTransactionBlock(isTopLevel, "ALTER DATABASE SET TABLESPACE");
+		}
 		movedb(stmt->dbname, defGetString(dtablespace));
+
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			char	*cmd;
+
+			cmd = psprintf("ALTER DATABASE %s SET TABLESPACE %s",
+							quote_identifier(stmt->dbname),
+							quote_identifier(strVal(dtablespace->arg)));
+
+			CdbDispatchCommand(cmd,
+								DF_CANCEL_ON_ERROR|
+								DF_NEED_TWO_PHASE|
+								DF_WITH_SNAPSHOT,
+								NULL);
+			pfree(cmd);
+		}
+
 		return InvalidOid;
 	}
 
@@ -1603,9 +1779,24 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 
 	systable_endscan(scan);
 
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(DatabaseRelationId,
+						   dboid,
+						   GetUserId(),
+						   "ALTER", "CONNECTION LIMIT");
+
 	/* Close pg_database, but keep lock till commit */
 	table_close(rel, NoLock);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_NEED_TWO_PHASE|
+									DF_WITH_SNAPSHOT,
+									NIL,
+									NULL);
+	}
 	return dboid;
 }
 
@@ -1737,6 +1928,14 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 
 		/* Update owner dependency reference */
 		changeDependencyOnOwner(DatabaseRelationId, db_id, newOwnerId);
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(DatabaseRelationId,
+							   db_id,
+							   GetUserId(),
+							   "ALTER", "OWNER"
+					);
 	}
 
 	InvokeObjectPostAlterHook(DatabaseRelationId, db_id, 0);
@@ -1777,6 +1976,8 @@ get_db_info(const char *name, LOCKMODE lockmode,
 
 	/* Caller may wish to grab a better lock on pg_database beforehand... */
 	relation = table_open(DatabaseRelationId, AccessShareLock);
+	/* XXX XXX: should this be RowExclusive, depending on lockmode? We
+	 * try to get a lock later... */
 
 	/*
 	 * Loop covers the rare case where the database is renamed before we can
@@ -2129,6 +2330,7 @@ dbase_redo(XLogReaderState *record)
 		xl_dbase_create_rec *xlrec = (xl_dbase_create_rec *) XLogRecGetData(record);
 		char	   *src_path;
 		char	   *dst_path;
+		char	   *parentdir;
 		struct stat st;
 
 		src_path = GetDatabasePath(xlrec->src_db_id, xlrec->src_tablespace_id);
@@ -2147,6 +2349,30 @@ dbase_redo(XLogReaderState *record)
 						(errmsg("some useless files may be left behind in old database directory \"%s\"",
 								dst_path)));
 		}
+
+		/*
+		 * It is possible that the tablespace was later dropped, but we are
+		 * re-redoing database create before that. In that case,
+		 * either src_path or dst_path is probably missing here and needs to
+		 * be created. We create directories here so that copy_dir() won't
+		 * fail, but do not bother to create the symlink under pg_tblspc
+		 * if the tablespace is not global/default.
+		 */
+		if (stat(src_path, &st) != 0 && pg_mkdir_p(src_path, S_IRWXU) != 0)
+		{
+			ereport(WARNING,
+					(errmsg("can not recursively create directory \"%s\"",
+							src_path)));
+		}
+		parentdir = pstrdup(dst_path);
+		get_parent_directory(parentdir);
+		if (stat(parentdir, &st) != 0 && pg_mkdir_p(parentdir, S_IRWXU) != 0)
+		{
+			ereport(WARNING,
+					(errmsg("can not recursively create directory \"%s\"",
+							parentdir)));
+		}
+		pfree(parentdir);
 
 		/*
 		 * Force dirty buffers out to disk, to ensure source database is

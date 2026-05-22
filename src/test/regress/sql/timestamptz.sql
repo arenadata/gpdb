@@ -242,6 +242,9 @@ SELECT '' AS to_char_8, to_char(d1, 'YYYYTH YYYYth Jth')
 SELECT '' AS to_char_9, to_char(d1, 'YYYY A.D. YYYY a.d. YYYY bc HH:MI:SS P.M. HH:MI:SS p.m. HH:MI:SS pm')
    FROM TIMESTAMPTZ_TBL;
 
+SELECT '' AS to_char_10, to_char(d1, 'YYYY WW IYYY IYY IY I IW') 
+   FROM TIMESTAMPTZ_TBL;
+
 SELECT '' AS to_char_10, to_char(d1, 'IYYY IYY IY I IW IDDD ID')
    FROM TIMESTAMPTZ_TBL;
 
@@ -279,7 +282,7 @@ INSERT INTO TIMESTAMPTZ_TST VALUES(3, '10000 Mar 12 23:58:48 IST');
 INSERT INTO TIMESTAMPTZ_TST VALUES(4, '100000312 23:58:48 IST');
 INSERT INTO TIMESTAMPTZ_TST VALUES(4, '1000000312 23:58:48 IST');
 --Verify data
-SELECT * FROM TIMESTAMPTZ_TST ORDER BY a;
+SELECT * FROM TIMESTAMPTZ_TST;
 --Cleanup
 DROP TABLE TIMESTAMPTZ_TST;
 
@@ -318,6 +321,20 @@ SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EDT');
 SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'PST8PDT');
 
 RESET TimeZone;
+
+-- MPP-18998
+create table dttm_com
+(id int primary key,
+t1 timestamp not null,
+t2 timestamp not null,
+d1 date not null,
+d2 date not null )
+distributed by (id);
+insert into dttm_com values
+     (1, now(), current_timestamp, now(), current_date),
+     (2, current_timestamp, localtimestamp::date, current_date::date, date_in(date_out(current_date))),
+     (3, now(), current_timestamp, now(), current_date);
+select id from dttm_com where d1 <> current_date;
 
 --
 -- Test behavior with a dynamic (time-varying) timezone abbreviation.

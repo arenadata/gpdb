@@ -4,8 +4,14 @@ subdir = contrib
 top_builddir = ..
 include $(top_builddir)/src/Makefile.global
 
+# Greenplum specific changes to the targetlist:
+# tsearch2 and postgres_fdw are currently disabled due to test failures.
+# cube and the related earthdistance are disabled since GPDB define CUBE
+# as a keyword. lo is disabled since large objects aren't supported.
+# adminpack is disabled since the functionality has been imported into
+# GPDB.
+
 SUBDIRS = \
-		adminpack	\
 		amcheck		\
 		auth_delay	\
 		auto_explain	\
@@ -13,18 +19,15 @@ SUBDIRS = \
 		btree_gin	\
 		btree_gist	\
 		citext		\
-		cube		\
 		dblink		\
 		dict_int	\
 		dict_xsyn	\
-		earthdistance	\
 		file_fdw	\
 		fuzzystrmatch	\
 		hstore		\
 		intagg		\
 		intarray	\
 		isn		\
-		lo		\
 		ltree		\
 		oid2name	\
 		pageinspect	\
@@ -39,7 +42,6 @@ SUBDIRS = \
 		pgrowlocks	\
 		pgstattuple	\
 		pg_visibility	\
-		postgres_fdw	\
 		seg		\
 		spi		\
 		tablefunc	\
@@ -49,6 +51,13 @@ SUBDIRS = \
 		tsm_system_time \
 		unaccent	\
 		vacuumlo
+
+# Greenplum-specific additions (to ease merge pain).
+SUBDIRS += \
+		formatter \
+		formatter_fixedwidth \
+		extprotocol \
+		indexscan
 
 ifeq ($(with_openssl),yes)
 SUBDIRS += sslinfo

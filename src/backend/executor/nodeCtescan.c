@@ -239,6 +239,7 @@ ExecInitCteScan(CteScan *node, EState *estate, int eflags)
 	else
 	{
 		/* Not the leader */
+		Assert(IsA(scanstate->leader, CteScanState));
 		/* Create my own read pointer, and ensure it is at start */
 		scanstate->readptr =
 			tuplestore_alloc_read_pointer(scanstate->leader->cte_table,

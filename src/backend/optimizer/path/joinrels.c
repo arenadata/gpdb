@@ -3,6 +3,8 @@
  * joinrels.c
  *	  Routines to determine which relations should be joined
  *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -70,6 +72,11 @@ join_search_one_level(PlannerInfo *root, int level)
 	ListCell   *r;
 	int			k;
 
+	/*
+	 * There should not be any joins on this level yet, unless we're retrying
+	 * with all plan types enabled, after failing to find any joins that
+	 * satisfy the current enable_*=false restrictions.
+	 */
 	Assert(joinrels[level] == NIL);
 
 	/* Set join_cur_level so that new joinrels are added to proper list */
@@ -523,7 +530,7 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 			/*
 			 * The proposed join could still be legal, but only if we're
 			 * allowed to associate it into the RHS of this SJ.  That means
-			 * this SJ must be a LEFT join (not SEMI or ANTI, and certainly
+			 * this SJ must be a LEFT join (not SEMI, ANTI or LASJ, and certainly
 			 * not FULL) and the proposed join must not overlap the LHS.
 			 */
 			if (sjinfo->jointype != JOIN_LEFT ||
@@ -688,6 +695,14 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	RelOptInfo *joinrel;
 	List	   *restrictlist;
 
+	/* This is a convenient place to check for query cancel. */
+	CHECK_FOR_INTERRUPTS();
+
+    Assert(rel1 &&
+           rel2 &&
+           rel1->cheapest_total_path &&
+           rel2->cheapest_total_path);
+
 	/* We should never try to join two overlapping sets of rels. */
 	Assert(!bms_overlap(rel1->relids, rel2->relids));
 
@@ -797,7 +812,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
 				restriction_is_constant_false(restrictlist, joinrel, false))
 			{
-				mark_dummy_rel(joinrel);
+				mark_dummy_rel(root, joinrel);
 				break;
 			}
 			add_paths_to_joinrel(root, joinrel, rel1, rel2,
@@ -811,12 +826,12 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			if (is_dummy_rel(rel1) ||
 				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
-				mark_dummy_rel(joinrel);
+				mark_dummy_rel(root, joinrel);
 				break;
 			}
 			if (restriction_is_constant_false(restrictlist, joinrel, false) &&
 				bms_is_subset(rel2->relids, sjinfo->syn_righthand))
-				mark_dummy_rel(rel2);
+				mark_dummy_rel(root, rel2);
 			add_paths_to_joinrel(root, joinrel, rel1, rel2,
 								 JOIN_LEFT, sjinfo,
 								 restrictlist);
@@ -828,7 +843,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			if ((is_dummy_rel(rel1) && is_dummy_rel(rel2)) ||
 				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
-				mark_dummy_rel(joinrel);
+				mark_dummy_rel(root, joinrel);
 				break;
 			}
 			add_paths_to_joinrel(root, joinrel, rel1, rel2,
@@ -864,11 +879,22 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 				if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
 					restriction_is_constant_false(restrictlist, joinrel, false))
 				{
-					mark_dummy_rel(joinrel);
+					mark_dummy_rel(root, joinrel);
 					break;
 				}
 				add_paths_to_joinrel(root, joinrel, rel1, rel2,
 									 JOIN_SEMI, sjinfo,
+									 restrictlist);
+
+				/*
+				 * In GPDB, also try a path, where we perform a normal inner
+				 * join, and eliminate duplicates afterwards.
+				 */
+				add_paths_to_joinrel(root, joinrel, rel1, rel2,
+									 JOIN_DEDUP_SEMI, sjinfo,
+									 restrictlist);
+				add_paths_to_joinrel(root, joinrel, rel2, rel1,
+									 JOIN_DEDUP_SEMI_REVERSE, sjinfo,
 									 restrictlist);
 			}
 
@@ -887,7 +913,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 				if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
 					restriction_is_constant_false(restrictlist, joinrel, false))
 				{
-					mark_dummy_rel(joinrel);
+					mark_dummy_rel(root, joinrel);
 					break;
 				}
 				add_paths_to_joinrel(root, joinrel, rel1, rel2,
@@ -899,17 +925,18 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			}
 			break;
 		case JOIN_ANTI:
+		case JOIN_LASJ_NOTIN:
 			if (is_dummy_rel(rel1) ||
 				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
-				mark_dummy_rel(joinrel);
+				mark_dummy_rel(root, joinrel);
 				break;
 			}
 			if (restriction_is_constant_false(restrictlist, joinrel, false) &&
 				bms_is_subset(rel2->relids, sjinfo->syn_righthand))
-				mark_dummy_rel(rel2);
+				mark_dummy_rel(root, rel2);
 			add_paths_to_joinrel(root, joinrel, rel1, rel2,
-								 JOIN_ANTI, sjinfo,
+								 sjinfo->jointype, sjinfo,
 								 restrictlist);
 			break;
 		default:
@@ -921,7 +948,6 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 	/* Apply partitionwise join technique, if possible. */
 	try_partitionwise_join(root, rel1, rel2, joinrel, sjinfo, restrictlist);
 }
-
 
 /*
  * have_join_order_restriction
@@ -957,6 +983,22 @@ have_join_order_restriction(PlannerInfo *root,
 	if (bms_overlap(rel1->relids, rel2->direct_lateral_relids) ||
 		bms_overlap(rel2->relids, rel1->direct_lateral_relids))
 		return true;
+
+	/*
+	 * Likewise, if both rels are needed to compute some PlaceHolderVar,
+	 * attempt the join regardless of outer-join considerations.  (This is not
+	 * very desirable, because a PHV with a large eval_at set will cause a lot
+	 * of probably-useless joins to be considered, but failing to do this can
+	 * cause us to fail to construct a plan at all.)
+	 */
+	foreach(l, root->placeholder_list)
+	{
+		PlaceHolderInfo *phinfo = (PlaceHolderInfo *) lfirst(l);
+
+		if (bms_is_subset(rel1->relids, phinfo->ph_eval_at) &&
+			bms_is_subset(rel2->relids, phinfo->ph_eval_at))
+			return true;
+	}
 
 	/*
 	 * Likewise, if both rels are needed to compute some PlaceHolderVar,
@@ -1026,13 +1068,13 @@ have_join_order_restriction(PlannerInfo *root,
 	}
 
 	/*
-	 * We do not force the join to occur if either input rel can legally be
-	 * joined to anything else using joinclauses.  This essentially means that
-	 * clauseless bushy joins are put off as long as possible. The reason is
-	 * that when there is a join order restriction high up in the join tree
-	 * (that is, with many rels inside the LHS or RHS), we would otherwise
-	 * expend lots of effort considering very stupid join combinations within
-	 * its LHS or RHS.
+	 * We do not force the join to occur if either input rel can legally
+	 * be joined to anything else using joinclauses.  This essentially
+	 * means that clauseless bushy joins are put off as long as possible.
+	 * The reason is that when there is a join order restriction high up
+	 * in the join tree (that is, with many rels inside the LHS or RHS),
+	 * we would otherwise expend lots of effort considering very stupid
+	 * join combinations within its LHS or RHS.
 	 */
 	if (result)
 	{
@@ -1254,7 +1296,7 @@ is_dummy_rel(RelOptInfo *rel)
  * context the given RelOptInfo is in.
  */
 void
-mark_dummy_rel(RelOptInfo *rel)
+mark_dummy_rel(PlannerInfo *root, RelOptInfo *rel)
 {
 	MemoryContext oldcontext;
 
@@ -1273,11 +1315,11 @@ mark_dummy_rel(RelOptInfo *rel)
 	rel->partial_pathlist = NIL;
 
 	/* Set up the dummy path */
-	add_path(rel, (Path *) create_append_path(NULL, rel, NIL, NIL,
+	add_path(rel, (Path *) create_append_path(root, rel, NIL, NIL,
 											  NIL, rel->lateral_relids,
 											  0, false, NIL, -1));
 
-	/* Set or update cheapest_total_path and related fields */
+	/* Set or update cheapest_total_path */
 	set_cheapest(rel);
 
 	MemoryContextSwitchTo(oldcontext);
@@ -1285,9 +1327,9 @@ mark_dummy_rel(RelOptInfo *rel)
 
 
 /*
- * restriction_is_constant_false --- is a restrictlist just FALSE?
+ * restriction_is_constant_false --- is a restrictlist just false?
  *
- * In cases where a qual is provably constant FALSE, eval_const_expressions
+ * In cases where a qual is provably constant false, eval_const_expressions
  * will generally have thrown away anything that's ANDed with it.  In outer
  * join situations this will leave us computing cartesian products only to
  * decide there's no match for an outer row, which is pretty stupid.  So,

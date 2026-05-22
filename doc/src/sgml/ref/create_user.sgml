@@ -41,6 +41,7 @@ CREATE USER <replaceable class="parameter">name</replaceable> [ [ WITH ] <replac
     | ADMIN <replaceable class="parameter">role_name</replaceable> [, ...]
     | USER <replaceable class="parameter">role_name</replaceable> [, ...]
     | SYSID <replaceable class="parameter">uid</replaceable>
+    | RESOURCE QUEUE <replaceable class="parameter">queuename</replaceable>
 </synopsis>
  </refsynopsisdiv>
 
@@ -76,3 +77,4 @@ CREATE USER <replaceable class="parameter">name</replaceable> [ [ WITH ] <replac
   </simplelist>
  </refsect1>
 </refentry>
+

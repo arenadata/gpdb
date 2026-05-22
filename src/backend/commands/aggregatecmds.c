@@ -25,6 +25,7 @@
 #include "access/htup_details.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/oid_dispatch.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -38,6 +39,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp_query.h"
 
 static char extractModify(DefElem *defel);
 
@@ -100,6 +103,7 @@ DefineAggregate(ParseState *pstate,
 	char		mtransTypeType = 0;
 	char		proparallel = PROPARALLEL_UNSAFE;
 	ListCell   *pl;
+	List	   *orig_args = args;
 
 	/* Convert list of names to a name and namespace */
 	aggNamespace = QualifiedNameGetCreationNamespace(name, &aggName);
@@ -138,6 +142,10 @@ DefineAggregate(ParseState *pstate,
 		else if (strcmp(defel->defname, "finalfunc") == 0)
 			finalfuncName = defGetQualifiedName(defel);
 		else if (strcmp(defel->defname, "combinefunc") == 0)
+			combinefuncName = defGetQualifiedName(defel);
+		/* Alias for COMBINEFUNC, for backwards-compatibility with
+		 * GPDB 5 and below */
+		else if (strcmp(defel->defname, "prefunc") == 0)
 			combinefuncName = defGetQualifiedName(defel);
 		else if (strcmp(defel->defname, "serialfunc") == 0)
 			serialfuncName = defGetQualifiedName(defel);
@@ -208,6 +216,14 @@ DefineAggregate(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("aggregate sfunc must be specified")));
+
+	/*
+	 * MPP: Ordered aggregates do not support combine functions.
+	 */
+	if (aggKind == AGGKIND_ORDERED_SET && combinefuncName != NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("ordered aggregate combine function is not supported")));
 
 	/*
 	 * if mtransType is given, mtransfuncName and minvtransfuncName must be as
@@ -439,7 +455,8 @@ DefineAggregate(ParseState *pstate,
 	/*
 	 * Most of the argument-checking is done inside of AggregateCreate
 	 */
-	return AggregateCreate(aggName, /* aggregate name */
+	ObjectAddress objAddr;
+	objAddr = AggregateCreate(aggName, /* aggregate name */
 						   aggNamespace,	/* namespace */
 						   replace,
 						   aggKind,
@@ -471,6 +488,25 @@ DefineAggregate(ParseState *pstate,
 						   initval, /* initial condition */
 						   minitval,	/* initial condition */
 						   proparallel);	/* parallel safe? */
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		DefineStmt * stmt = makeNode(DefineStmt);
+		stmt->kind = OBJECT_AGGREGATE;
+		stmt->oldstyle = oldstyle;
+		stmt->defnames = name;
+		stmt->args = orig_args;
+		stmt->definition = parameters;
+		stmt->replace = replace;
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
+	return objAddr;
 }
 
 /*

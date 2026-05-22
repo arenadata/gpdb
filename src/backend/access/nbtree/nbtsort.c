@@ -95,7 +95,7 @@
  */
 typedef struct BTSpool
 {
-	Tuplesortstate *sortstate;	/* state data for tuplesort.c */
+	void *sortstate;	/* state data for tuplesort.c */
 	Relation	heap;
 	Relation	index;
 	bool		isunique;
@@ -278,7 +278,7 @@ static void _bt_spooldestroy(BTSpool *btspool);
 static void _bt_spool(BTSpool *btspool, ItemPointer self,
 					  Datum *values, bool *isnull);
 static void _bt_leafbuild(BTSpool *btspool, BTSpool *btspool2);
-static void _bt_build_callback(Relation index, HeapTuple htup, Datum *values,
+static void _bt_build_callback(Relation index, ItemPointer tupleId, Datum *values,
 							   bool *isnull, bool tupleIsAlive, void *state);
 static Page _bt_blnewpage(uint32 level);
 static BTPageState *_bt_pagestate(BTWriteState *wstate, uint32 level);
@@ -594,7 +594,7 @@ _bt_leafbuild(BTSpool *btspool, BTSpool *btspool2)
  */
 static void
 _bt_build_callback(Relation index,
-				   HeapTuple htup,
+				   ItemPointer tupleId,
 				   Datum *values,
 				   bool *isnull,
 				   bool tupleIsAlive,
@@ -607,12 +607,12 @@ _bt_build_callback(Relation index,
 	 * processing
 	 */
 	if (tupleIsAlive || buildstate->spool2 == NULL)
-		_bt_spool(buildstate->spool, &htup->t_self, values, isnull);
+		_bt_spool(buildstate->spool, tupleId, values, isnull);
 	else
 	{
 		/* dead tuples are put into spool2 */
 		buildstate->havedead = true;
-		_bt_spool(buildstate->spool2, &htup->t_self, values, isnull);
+		_bt_spool(buildstate->spool2, tupleId, values, isnull);
 	}
 
 	buildstate->indtuples += 1;

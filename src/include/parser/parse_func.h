@@ -70,4 +70,6 @@ extern Oid	LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func,
 extern void check_srf_call_placement(ParseState *pstate, Node *last_srf,
 									 int location);
 
+extern void parseCheckTableFunctions(ParseState *pstate, Query *qry);
+
 #endif							/* PARSE_FUNC_H */

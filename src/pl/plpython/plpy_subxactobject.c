@@ -14,7 +14,7 @@
 #include "plpy_subxactobject.h"
 
 #include "plpy_elog.h"
-
+#include "plpy_main.h"
 
 List	   *explicit_subtransactions = NIL;
 
@@ -59,6 +59,7 @@ PyObject *
 PLy_subtransaction_new(PyObject *self, PyObject *unused)
 {
 	PLySubtransactionObject *ob;
+	PLy_enter_python_intepreter = false;
 
 	ob = PyObject_New(PLySubtransactionObject, &PLy_SubtransactionType);
 
@@ -68,6 +69,7 @@ PLy_subtransaction_new(PyObject *self, PyObject *unused)
 	ob->started = false;
 	ob->exited = false;
 
+	PLy_enter_python_intepreter = true;
 	return (PyObject *) ob;
 }
 

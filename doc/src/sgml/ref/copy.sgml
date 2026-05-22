@@ -26,10 +26,15 @@ COPY <replaceable class="parameter">table_name</replaceable> [ ( <replaceable cl
     FROM { '<replaceable class="parameter">filename</replaceable>' | PROGRAM '<replaceable class="parameter">command</replaceable>' | STDIN }
     [ [ WITH ] ( <replaceable class="parameter">option</replaceable> [, ...] ) ]
     [ WHERE <replaceable class="parameter">condition</replaceable> ]
+    [ ON SEGMENT ]
+    [ FILL MISSING FIELDS ]
+    [ [LOG ERRORS] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ [ROWS] | PERCENT ] ]
 
 COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ] | ( <replaceable class="parameter">query</replaceable> ) }
     TO { '<replaceable class="parameter">filename</replaceable>' | PROGRAM '<replaceable class="parameter">command</replaceable>' | STDOUT }
     [ [ WITH ] ( <replaceable class="parameter">option</replaceable> [, ...] ) ]
+    [ ON SEGMENT ]
+    [ IGNORE EXTERNAL PARTITIONS ]
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
@@ -40,6 +45,7 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
     HEADER [ <replaceable class="parameter">boolean</replaceable> ]
     QUOTE '<replaceable class="parameter">quote_character</replaceable>'
     ESCAPE '<replaceable class="parameter">escape_character</replaceable>'
+    NEWLINE '<replaceable class="parameter">newline_character</replaceable>'
     FORCE_QUOTE { ( <replaceable class="parameter">column_name</replaceable> [, ...] ) | * }
     FORCE_NOT_NULL ( <replaceable class="parameter">column_name</replaceable> [, ...] )
     FORCE_NULL ( <replaceable class="parameter">column_name</replaceable> [, ...] )
@@ -157,6 +163,25 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
       in it.
      </para>
     </listitem>
+   </varlistentry>
+
+   <varlistentry>
+     <term><literal>PROGRAM</literal></term>
+     <listitem>
+      <para>
+       A command to execute. In <command>COPY FROM</command>, the input is
+       read from standard output of the command, and in <command>COPY TO</>,
+       the output is written to the standard input of the command.
+      </para>
+      <para>
+       Note that the command is invoked by the shell, so if you need to pass
+       any arguments to shell command that come from an untrusted source, you
+       must be careful to strip or escape any special characters that might
+       have a special meaning for the shell. For security reasons, it is best
+       to use a fixed command string, or at least avoid passing any user input
+       in it.
+      </para>
+     </listitem>
    </varlistentry>
 
    <varlistentry>
@@ -297,6 +322,17 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
       the quoting character is doubled if it appears in the data).
       This must be a single one-byte character.
       This option is allowed only when using <literal>CSV</literal> format.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NEWLINE</literal></term>
+    <listitem>
+     <para>
+      Specifies the newline character to be used.
+      The default is 'LF'.
+      The option could be 'LF, 'CR' or 'CRLF'.
      </para>
     </listitem>
    </varlistentry>
@@ -1056,3 +1092,4 @@ COPY [ BINARY ] <replaceable class="parameter">table_name</replaceable>
 </synopsis></para>
  </refsect1>
 </refentry>
+

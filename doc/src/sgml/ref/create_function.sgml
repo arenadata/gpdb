@@ -31,6 +31,7 @@ CREATE [ OR REPLACE ] FUNCTION
     | CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT
     | [ EXTERNAL ] SECURITY INVOKER | [ EXTERNAL ] SECURITY DEFINER
     | PARALLEL { UNSAFE | RESTRICTED | SAFE }
+    | EXECUTE ON { ANY | MASTER | ALL SEGMENTS }
     | COST <replaceable class="parameter">execution_cost</replaceable>
     | ROWS <replaceable class="parameter">result_rows</replaceable>
     | SUPPORT <replaceable class="parameter">support_function</replaceable>
@@ -745,17 +746,28 @@ SELECT * FROM dup(42);
 CREATE FUNCTION check_password(uname TEXT, pass TEXT)
 RETURNS BOOLEAN AS $$
 DECLARE passed BOOLEAN;
+        old_path TEXT;
 BEGIN
+        -- Save old search_path; notice we must qualify current_setting
+        -- to ensure we invoke the right function
+        old_path := pg_catalog.current_setting('search_path');
+
+        -- Set a secure search_path: trusted schemas, then 'pg_temp'.
+        -- We set is_local = true so that the old value will be restored
+        -- in event of an error before we reach the function end.
+        PERFORM pg_catalog.set_config('search_path', 'admin, pg_temp', true);
+
+        -- Do whatever secure work we came for.
         SELECT  (pwd = $2) INTO passed
         FROM    pwds
         WHERE   username = $1;
 
+        -- Restore caller's search_path
+        PERFORM pg_catalog.set_config('search_path', old_path, true);
+
         RETURN passed;
 END;
-$$  LANGUAGE plpgsql
-    SECURITY DEFINER
-    -- Set a secure search_path: trusted schema(s), then 'pg_temp'.
-    SET search_path = admin, pg_temp;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 </programlisting>
 
     This function's intention is to access a table <literal>admin.pwds</literal>.

@@ -21,11 +21,9 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 
+#include "access/xact.h"
 #include "access/xlog_internal.h"
 #include "access/xlogutils.h"
-
-#include "access/xact.h"
-
 #include "catalog/pg_type.h"
 
 #include "nodes/makefuncs.h"
@@ -402,7 +400,6 @@ pg_logical_slot_peek_binary_changes(PG_FUNCTION_ARGS)
 {
 	return pg_logical_slot_get_changes_guts(fcinfo, false, true);
 }
-
 
 /*
  * SQL function for writing logical decoding message into WAL.

@@ -54,6 +54,9 @@ CREATE TYPE <replaceable class="parameter">name</replaceable> (
     [ , ELEMENT = <replaceable class="parameter">element</replaceable> ]
     [ , DELIMITER = <replaceable class="parameter">delimiter</replaceable> ]
     [ , COLLATABLE = <replaceable class="parameter">collatable</replaceable> ]
+    [, COMPRESSTYPE = compression_type]
+    [, COMPRESSLEVEL = compression_level]
+    [, BLOCKSIZE= blocksize]
 )
 
 CREATE TYPE <replaceable class="parameter">name</replaceable>

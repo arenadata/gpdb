@@ -13,7 +13,7 @@ my $node = get_new_node('main');
 $node->init;
 $node->start;
 
-$ENV{PGOPTIONS} = '--client-min-messages=WARNING';
+$ENV{PGOPTIONS} = '-c gp_role=utility --client-min-messages=WARNING';
 
 $node->issues_sql_like(
 	[ 'reindexdb', 'postgres' ],
@@ -44,6 +44,10 @@ $node->issues_sql_like(
 	'reindex with verbose output');
 
 # the same with --concurrently
+# GPDB: REINDEX CONCURRENTLY doesn't work on GPDB, skip.
+SKIP: {
+	skip "REINDEX CONCURRENTLY not implemented on GPDB", 9;
+
 $node->issues_sql_like(
 	[ 'reindexdb', '--concurrently', 'postgres' ],
 	qr/statement: REINDEX DATABASE CONCURRENTLY postgres;/,
@@ -63,6 +67,7 @@ $node->issues_sql_like(
 	'reindex specific schema concurrently');
 $node->command_fails([ 'reindexdb', '--concurrently', '-s', 'postgres' ],
 	'reindex system tables concurrently');
+} # end SKIP
 $node->issues_sql_like(
 	[ 'reindexdb', '-v', '-t', 'test1', 'postgres' ],
 	qr/statement: REINDEX \(VERBOSE\) TABLE public\.test1;/,

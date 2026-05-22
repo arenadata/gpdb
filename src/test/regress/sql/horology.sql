@@ -1,6 +1,188 @@
 --
 -- HOROLOGY
 --
+-- create needed tables
+
+CREATE TABLE INTERVAL_HOROLOGY_TBL (f1 interval);
+INSERT INTO INTERVAL_HOROLOGY_TBL (f1) VALUES ('@ 1 minute'),
+('@ 5 hour'),
+('@ 10 day'),
+('@ 34 year'),
+('@ 3 months'),
+('@ 14 seconds ago'),
+('1 day 2 hours 3 minutes 4 seconds'),
+('6 years'),
+('5 months'),
+('5 months 12 hours');
+
+CREATE TABLE TIME_HOROLOGY_TBL (f1 time(2));
+INSERT INTO TIME_HOROLOGY_TBL VALUES ('00:00'),
+('01:00'),
+('02:03 PST'),
+('11:59 EDT'),
+('12:00'),
+('12:01'),
+('23:59'),
+('11:59:59.99 PM'),
+('2003-03-07 15:36:39 America/New_York'),
+('2003-07-07 15:36:39 America/New_York');
+
+CREATE TABLE TIMETZ_HOROLOGY_TBL (f1 time(2) with time zone);
+INSERT INTO TIMETZ_HOROLOGY_TBL VALUES ('00:01 PDT'),
+('01:00 PDT'),
+('02:03 PDT'),
+('07:07 PST'),
+('08:08 EDT'),
+('11:59 PDT'),
+('12:00 PDT'),
+('12:01 PDT'),
+('23:59 PDT'),
+('11:59:59.99 PM PDT'),
+('2003-03-07 15:36:39 America/New_York'),
+('2003-07-07 15:36:39 America/New_York');
+
+CREATE TABLE TIMESTAMP_HOROLOGY_TBL (d1 timestamp(2) without time zone);
+INSERT INTO TIMESTAMP_HOROLOGY_TBL VALUES ('-infinity'),
+('infinity'),
+('epoch'),
+('Mon Feb 10 17:32:01 1997 PST'),
+('Mon Feb 10 17:32:01.000001 1997 PST'),
+('Mon Feb 10 17:32:01.999999 1997 PST'),
+('Mon Feb 10 17:32:01.4 1997 PST'),
+('Mon Feb 10 17:32:01.5 1997 PST'),
+('Mon Feb 10 17:32:01.6 1997 PST'),
+('1997-01-02'),
+('1997-01-02 03:04:05'),
+('1997-02-10 17:32:01-08'),
+('1997-02-10 17:32:01-0800'),
+('1997-02-10 17:32:01 -08:00'),
+('19970210 173201 -0800'),
+('1997-06-10 17:32:01 -07:00'),
+('2001-09-22T18:19:20'),
+('2000-03-15 08:14:01 GMT+8'),
+('2000-03-15 13:14:02 GMT-1'),
+('2000-03-15 12:14:03 GMT-2'),
+('2000-03-15 03:14:04 PST+8'),
+('2000-03-15 02:14:05 MST+7:00'),
+('Feb 10 17:32:01 1997 -0800'),
+('Feb 10 17:32:01 1997'),
+('Feb 10 5:32PM 1997'),
+('1997/02/10 17:32:01-0800'),
+('1997-02-10 17:32:01 PST'),
+('Feb-10-1997 17:32:01 PST'),
+('02-10-1997 17:32:01 PST'),
+('19970210 173201 PST'),
+('1997.041 17:32:01 UTC'),
+('19970210 173201 America/New_York'),
+('1997-06-10 18:32:01 PDT'),
+('Feb 10 17:32:01 1997'),
+('Feb 11 17:32:01 1997'),
+('Feb 12 17:32:01 1997'),
+('Feb 13 17:32:01 1997'),
+('Feb 14 17:32:01 1997'),
+('Feb 15 17:32:01 1997'),
+('Feb 16 17:32:01 1997'),
+('Feb 16 17:32:01 0097 BC'),
+('Feb 16 17:32:01 0097'),
+('Feb 16 17:32:01 0597'),
+('Feb 16 17:32:01 1097'),
+('Feb 16 17:32:01 1697'),
+('Feb 16 17:32:01 1797'),
+('Feb 16 17:32:01 1897'),
+('Feb 16 17:32:01 1997'),
+('Feb 16 17:32:01 2097'),
+('Feb 28 17:32:01 1996'),
+('Feb 29 17:32:01 1996'),
+('Mar 01 17:32:01 1996'),
+('Dec 30 17:32:01 1996'),
+('Dec 31 17:32:01 1996'),
+('Jan 01 17:32:01 1997'),
+('Feb 28 17:32:01 1997'),
+('Mar 01 17:32:01 1997'),
+('Dec 30 17:32:01 1997'),
+('Dec 31 17:32:01 1997'),
+('Dec 31 17:32:01 1999'),
+('Jan 01 17:32:01 2000'),
+('Dec 31 17:32:01 2000'),
+('Jan 01 17:32:01 2001');
+set datestyle to ymd;
+INSERT INTO TIMESTAMP_HOROLOGY_TBL VALUES ('97FEB10 5:32:01PM UTC'),
+('97/02/10 17:32:01 UTC');
+reset datestyle;
+
+CREATE TABLE TIMESTAMPTZ_HOROLOGY_TBL (d1 timestamp(2) with time zone);
+INSERT INTO TIMESTAMPTZ_HOROLOGY_TBL VALUES ('-infinity'),
+('infinity'),
+('epoch'),
+('Mon Feb 10 17:32:01 1997 PST'),
+('Mon Feb 10 17:32:01.000001 1997 PST'),
+('Mon Feb 10 17:32:01.999999 1997 PST'),
+('Mon Feb 10 17:32:01.4 1997 PST'),
+('Mon Feb 10 17:32:01.5 1997 PST'),
+('Mon Feb 10 17:32:01.6 1997 PST'),
+('1997-01-02'),
+('1997-01-02 03:04:05'),
+('1997-02-10 17:32:01-08'),
+('1997-02-10 17:32:01-0800'),
+('1997-02-10 17:32:01 -08:00'),
+('19970210 173201 -0800'),
+('1997-06-10 17:32:01 -07:00'),
+('2001-09-22T18:19:20'),
+('2000-03-15 08:14:01 GMT+8'),
+('2000-03-15 13:14:02 GMT-1'),
+('2000-03-15 12:14:03 GMT-2'),
+('2000-03-15 03:14:04 PST+8'),
+('2000-03-15 02:14:05 MST+7:00'),
+('Feb 10 17:32:01 1997 -0800'),
+('Feb 10 17:32:01 1997'),
+('Feb 10 5:32PM 1997'),
+('1997/02/10 17:32:01-0800'),
+('1997-02-10 17:32:01 PST'),
+('Feb-10-1997 17:32:01 PST'),
+('02-10-1997 17:32:01 PST'),
+('19970210 173201 PST'),
+('1997.041 17:32:01 UTC'),
+('19970210 173201 America/New_York'),
+('19970710 173201 America/New_York'),
+('1997-06-10 18:32:01 PDT'),
+('Feb 10 17:32:01 1997'),
+('Feb 11 17:32:01 1997'),
+('Feb 12 17:32:01 1997'),
+('Feb 13 17:32:01 1997'),
+('Feb 14 17:32:01 1997'),
+('Feb 15 17:32:01 1997'),
+('Feb 16 17:32:01 1997'),
+('Feb 16 17:32:01 0097 BC'),
+('Feb 16 17:32:01 0097'),
+('Feb 16 17:32:01 0597'),
+('Feb 16 17:32:01 1097'),
+('Feb 16 17:32:01 1697'),
+('Feb 16 17:32:01 1797'),
+('Feb 16 17:32:01 1897'),
+('Feb 16 17:32:01 1997'),
+('Feb 16 17:32:01 2097'),
+('Feb 28 17:32:01 1996'),
+('Feb 29 17:32:01 1996'),
+('Mar 01 17:32:01 1996'),
+('Dec 30 17:32:01 1996'),
+('Dec 31 17:32:01 1996'),
+('Jan 01 17:32:01 1997'),
+('Feb 28 17:32:01 1997'),
+('Mar 01 17:32:01 1997'),
+('Dec 30 17:32:01 1997'),
+('Dec 31 17:32:01 1997'),
+('Dec 31 17:32:01 1999'),
+('Jan 01 17:32:01 2000'),
+('Dec 31 17:32:01 2000'),
+('Jan 01 17:32:01 2001');
+set datestyle to ymd;
+INSERT INTO TIMESTAMPTZ_HOROLOGY_TBL VALUES ('97FEB10 5:32:01PM UTC'),
+('97/02/10 17:32:01 UTC');
+reset datestyle;
+
+--
+--
+--
 SET DateStyle = 'Postgres, MDY';
 
 --
@@ -108,8 +290,8 @@ SELECT date '1994-01-01' + time '10:00' AS "Jan_01_1994_10am";
 SELECT date '1994-01-01' + timetz '11:00-5' AS "Jan_01_1994_8am";
 SELECT timestamptz(date '1994-01-01', time with time zone '11:00-5') AS "Jan_01_1994_8am";
 
-SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL;
-SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL;
+SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
+SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
 
 SELECT timestamp with time zone '1996-03-01' - interval '1 second' AS "Feb 29";
 SELECT timestamp with time zone '1999-03-01' - interval '1 second' AS "Feb 28";
@@ -121,6 +303,7 @@ SELECT (timestamp with time zone 'today' = (timestamp with time zone 'tomorrow' 
 SELECT (timestamp with time zone 'tomorrow' = (timestamp with time zone 'yesterday' + interval '2 days')) as "True";
 SELECT (timestamp with time zone 'tomorrow' > 'now') as "True";
 
+
 -- timestamp with time zone, interval arithmetic around DST change
 SET TIME ZONE 'CST7CDT';
 SELECT timestamp with time zone '2005-04-02 12:00-07' + interval '1 day' as "Apr 3, 12:00";
@@ -128,7 +311,7 @@ SELECT timestamp with time zone '2005-04-02 12:00-07' + interval '24 hours' as "
 SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '1 day' as "Apr 2, 12:00";
 SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '24 hours' as "Apr 2, 11:00";
 RESET TIME ZONE;
-
+SET TIME ZONE 'PST8PDT';
 
 SELECT timestamptz(date '1994-01-01', time '11:00') AS "Jan_01_1994_10am";
 SELECT timestamptz(date '1994-01-01', time '10:00') AS "Jan_01_1994_9am";
@@ -136,8 +319,8 @@ SELECT timestamptz(date '1994-01-01', time with time zone '11:00-8') AS "Jan_01_
 SELECT timestamptz(date '1994-01-01', time with time zone '10:00-8') AS "Jan_01_1994_10am";
 SELECT timestamptz(date '1994-01-01', time with time zone '11:00-5') AS "Jan_01_1994_8am";
 
-SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
-SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
+SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_HOROLOGY_TBL ORDER BY 2;
+SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_HOROLOGY_TBL ORDER BY 2;
 
 --
 -- time, interval arithmetic
@@ -167,17 +350,17 @@ SELECT CAST(cast(date 'today' + time with time zone '03:30'
   + interval '1 month 04:01' as timestamp without time zone) AS time) AS "07:31:00";
 
 SELECT t.d1 AS t, i.f1 AS i, t.d1 + i.f1 AS "add", t.d1 - i.f1 AS "subtract"
-  FROM TIMESTAMP_TBL t, INTERVAL_TBL i
+  FROM TIMESTAMP_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i
   WHERE t.d1 BETWEEN '1990-01-01' AND '2001-01-01'
     AND i.f1 BETWEEN '00:00' AND '23:00'
   ORDER BY 1,2;
 
 SELECT t.f1 AS t, i.f1 AS i, t.f1 + i.f1 AS "add", t.f1 - i.f1 AS "subtract"
-  FROM TIME_TBL t, INTERVAL_TBL i
+  FROM TIME_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i
   ORDER BY 1,2;
 
 SELECT t.f1 AS t, i.f1 AS i, t.f1 + i.f1 AS "add", t.f1 - i.f1 AS "subtract"
-  FROM TIMETZ_TBL t, INTERVAL_TBL i
+  FROM TIMETZ_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i
   ORDER BY 1,2;
 
 -- SQL9x OVERLAPS operator
@@ -240,7 +423,7 @@ CREATE TABLE TEMP_TIMESTAMP (f1 timestamp with time zone);
 -- get some candidate input values
 
 INSERT INTO TEMP_TIMESTAMP (f1)
-  SELECT d1 FROM TIMESTAMP_TBL
+  SELECT d1 FROM TIMESTAMP_HOROLOGY_TBL
   WHERE d1 BETWEEN '13-jun-1957' AND '1-jan-1997'
    OR d1 BETWEEN '1-jan-1999' AND '1-jan-2010';
 
@@ -249,11 +432,11 @@ SELECT '' AS "16", f1 AS "timestamp"
   ORDER BY "timestamp";
 
 SELECT '' AS "160", d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
-  FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
+  FROM TEMP_TIMESTAMP d, INTERVAL_HOROLOGY_TBL t
   ORDER BY plus, "timestamp", "interval";
 
 SELECT '' AS "160", d.f1 AS "timestamp", t.f1 AS "interval", d.f1 - t.f1 AS minus
-  FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
+  FROM TEMP_TIMESTAMP d, INTERVAL_HOROLOGY_TBL t
   WHERE isfinite(d.f1)
   ORDER BY minus, "timestamp", "interval";
 
@@ -286,39 +469,39 @@ SET DateStyle TO 'US,Postgres';
 
 SHOW DateStyle;
 
-SELECT '' AS "64", d1 AS us_postgres FROM TIMESTAMP_TBL;
+SELECT '' AS "64", d1 AS us_postgres FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
 
 SET DateStyle TO 'US,ISO';
 
-SELECT '' AS "64", d1 AS us_iso FROM TIMESTAMP_TBL;
+SELECT '' AS "64", d1 AS us_iso FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
 
 SET DateStyle TO 'US,SQL';
 
 SHOW DateStyle;
 
-SELECT '' AS "64", d1 AS us_sql FROM TIMESTAMP_TBL;
+SELECT '' AS "64", d1 AS us_sql FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
 
 SET DateStyle TO 'European,Postgres';
 
 SHOW DateStyle;
 
-INSERT INTO TIMESTAMP_TBL VALUES('13/06/1957');
+INSERT INTO TIMESTAMP_HOROLOGY_TBL VALUES('13/06/1957');
 
-SELECT count(*) as one FROM TIMESTAMP_TBL WHERE d1 = 'Jun 13 1957';
+SELECT count(*) as one FROM TIMESTAMP_HOROLOGY_TBL WHERE d1 = 'Jun 13 1957';
 
-SELECT '' AS "65", d1 AS european_postgres FROM TIMESTAMP_TBL;
+SELECT '' AS "65", d1 AS european_postgres FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
 
 SET DateStyle TO 'European,ISO';
 
 SHOW DateStyle;
 
-SELECT '' AS "65", d1 AS european_iso FROM TIMESTAMP_TBL;
+SELECT '' AS "65", d1 AS european_iso FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
 
 SET DateStyle TO 'European,SQL';
 
 SHOW DateStyle;
 
-SELECT '' AS "65", d1 AS european_sql FROM TIMESTAMP_TBL;
+SELECT '' AS "65", d1 AS european_sql FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
 
 RESET DateStyle;
 
@@ -496,3 +679,10 @@ SELECT '2012-12-12 12:00 America/New_York'::timestamptz;
 SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZ');
 
 RESET TIME ZONE;
+
+-- Clean up
+DROP TABLE interval_horology_tbl;
+DROP TABLE time_horology_tbl;
+DROP TABLE timestamp_horology_tbl;
+DROP TABLE timestamptz_horology_tbl;
+DROP TABLE timetz_horology_tbl;

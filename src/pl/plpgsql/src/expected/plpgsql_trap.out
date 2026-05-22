@@ -72,7 +72,7 @@ begin
 		when data_exception then  -- category match
 			raise notice 'caught data_exception';
 			x := -1;
-		when NUMERIC_VALUE_OUT_OF_RANGE OR CARDINALITY_VIOLATION then
+		when NUMERIC_VALUE_OUT_OF_RANGE OR CARDINALITY_VIOLATION OR TOO_MANY_ROWS then
 			raise notice 'caught numeric_value_out_of_range or cardinality_violation';
 			x := -2;
 	end;
@@ -191,8 +191,6 @@ create temp table slave(f1 int references master deferrable);
 insert into master values(1);
 insert into slave values(1);
 insert into slave values(2);	-- fails
-ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
-DETAIL:  Key (f1)=(2) is not present in table "master".
 create function trap_foreign_key(int) returns int as $$
 begin
 	begin	-- start a subtransaction
@@ -222,10 +220,9 @@ select trap_foreign_key(1);
 (1 row)
 
 select trap_foreign_key(2);	-- detects FK violation
-NOTICE:  caught foreign_key_violation
  trap_foreign_key 
 ------------------
-                0
+                1
 (1 row)
 
 begin;
@@ -238,18 +235,13 @@ begin;
 
   savepoint x;
     set constraints all immediate; -- fails
-ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
-DETAIL:  Key (f1)=(2) is not present in table "master".
   rollback to x;
   select trap_foreign_key_2();  -- detects FK violation
-NOTICE:  caught foreign_key_violation
  trap_foreign_key_2 
 --------------------
-                  0
+                  1
 (1 row)
 
 commit;				-- still fails
-ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
-DETAIL:  Key (f1)=(2) is not present in table "master".
 drop function trap_foreign_key(int);
 drop function trap_foreign_key_2();

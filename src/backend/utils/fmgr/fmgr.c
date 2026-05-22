@@ -30,6 +30,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+
 /*
  * Hooks for function calls
  */
@@ -1680,6 +1682,11 @@ OidSendFunctionCall(Oid functionId, Datum val)
 }
 
 
+/*
+ * On GPDB, int64, float8 and float4 are always pass-by-value, and there are
+ * static inline functions in postgres.h to implement these.
+ */
+#if 0
 /*-------------------------------------------------------------------------
  *		Support routines for standard maybe-pass-by-reference datatypes
  *
@@ -1728,6 +1735,8 @@ Float8GetDatum(float8 X)
 	return PointerGetDatum(retval);
 }
 #endif
+
+#endif /* GPDB */
 
 
 /*-------------------------------------------------------------------------

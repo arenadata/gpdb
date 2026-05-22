@@ -36,6 +36,10 @@
 #include "utils/builtins.h"
 #include "utils/index_selfuncs.h"
 #include "utils/memutils.h"
+#include "utils/guc.h"
+
+#include "catalog/indexing.h"
+#include "catalog/pg_namespace.h"
 
 
 /* Working state needed by btvacuumpage */
@@ -184,6 +188,74 @@ btbuildempty(Relation index)
 }
 
 /*
+ * For a newly inserted heap tid, check if an entry with this tid
+ * already exists in a unique index.  If it does, abort the inserting
+ * transaction.
+ */
+static void
+_bt_validate_tid(Relation irel, ItemPointer h_tid)
+{
+	BlockNumber blkno;
+	BlockNumber num_pages;
+	Buffer buf;
+	Page page;
+	BTPageOpaque opaque;
+	IndexTuple itup;
+	OffsetNumber maxoff,
+			minoff,
+			offnum;
+
+	elog(DEBUG1, "validating tid (%d,%d) for index (%s)",
+		 ItemPointerGetBlockNumber(h_tid), ItemPointerGetOffsetNumber(h_tid),
+		 RelationGetRelationName(irel));
+
+	blkno = BTREE_METAPAGE + 1;
+	num_pages = RelationGetNumberOfBlocks(irel);
+
+	for (; blkno < num_pages; blkno++)
+	{
+		buf = ReadBuffer(irel, blkno);
+		page = BufferGetPage(buf);
+		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+		if (!PageIsNew(page))
+			_bt_checkpage(irel, buf);
+		if (P_ISLEAF(opaque))
+		{
+			minoff = P_FIRSTDATAKEY(opaque);
+			maxoff = PageGetMaxOffsetNumber(page);
+			for (offnum = minoff;
+				 offnum <= maxoff;
+				 offnum = OffsetNumberNext(offnum))
+			{
+				itup = (IndexTuple) PageGetItem(page,
+												PageGetItemId(page, offnum));
+				if (ItemPointerEquals(&itup->t_tid, h_tid))
+				{
+					Form_pg_attribute key_att = TupleDescAttr(RelationGetDescr(irel), 0);
+					Oid key = InvalidOid;
+					bool isnull;
+					if (key_att->atttypid == OIDOID)
+					{
+						key = DatumGetInt32(
+								index_getattr(itup, 1, RelationGetDescr(irel), &isnull));
+						elog(ERROR, "found tid (%d,%d), %s (%d) already in index (%s)",
+							 ItemPointerGetBlockNumber(h_tid), ItemPointerGetOffsetNumber(h_tid),
+							 NameStr(key_att->attname), key, RelationGetRelationName(irel));
+					}
+					else
+					{
+						elog(ERROR, "found tid (%d,%d) already in index (%s)",
+							 ItemPointerGetBlockNumber(h_tid), ItemPointerGetOffsetNumber(h_tid),
+							 RelationGetRelationName(irel));
+					}
+				}
+			}
+		}
+		ReleaseBuffer(buf);
+	}
+}
+
+/*
  *	btinsert() -- insert an index tuple into a btree.
  *
  *		Descend the tree recursively, find the appropriate location for our
@@ -197,6 +269,14 @@ btinsert(Relation rel, Datum *values, bool *isnull,
 {
 	bool		result;
 	IndexTuple	itup;
+
+	if (checkUnique && (
+				(gp_indexcheck_insert == INDEX_CHECK_ALL && RelationIsHeap(heapRel)) ||
+				(gp_indexcheck_insert == INDEX_CHECK_SYSTEM &&
+				 PG_CATALOG_NAMESPACE == RelationGetNamespace(heapRel))))
+	{
+		_bt_validate_tid(rel, ht_ctid);
+	}
 
 	/* generate an index tuple */
 	itup = index_form_tuple(RelationGetDescr(rel), values, isnull);
@@ -284,14 +364,32 @@ btgettuple(IndexScanDesc scan, ScanDirection dir)
 }
 
 /*
- * btgetbitmap() -- gets all matching tuples, and adds them to a bitmap
+ * btgetbitmap() -- construct a TIDBitmap.
  */
 int64
-btgetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
+btgetbitmap(IndexScanDesc scan, Node **bmNodeP)
 {
+	TIDBitmap  *tbm;
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
 	int64		ntids = 0;
 	ItemPointer heapTid;
+
+	/*
+	 * GPDB specific code. Since GPDB also support StreamBitmap
+	 * in bitmap index. So normally we need to create specific bitmap
+	 * node in the amgetbitmap AM.
+	 */
+	Assert(bmNodeP);
+	if (*bmNodeP == NULL)
+	{
+		/* XXX should we use less than work_mem for this? */
+		tbm = tbm_create(work_mem * 1024L, NULL);
+		*bmNodeP = (Node *) tbm;
+	}
+	else if (!IsA(*bmNodeP, TIDBitmap))
+		elog(ERROR, "non btree bitmap");
+	else
+		tbm = (TIDBitmap *)*bmNodeP;
 
 	/*
 	 * If we have any array keys, initialize them.
@@ -791,6 +889,10 @@ _bt_vacuum_needs_cleanup(IndexVacuumInfo *info)
 	Page		metapg;
 	BTMetaPageData *metad;
 	bool		result = false;
+
+	/* Return true directly on QE for stats collection from QD. */
+	if (gp_vacuum_needs_update_stats())
+		return true;
 
 	metabuf = _bt_getbuf(info->index, BTREE_METAPAGE, BT_READ);
 	metapg = BufferGetPage(metabuf);

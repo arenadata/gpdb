@@ -29,7 +29,7 @@ use Catalog;
 
 # We'll need this number.
 my $FirstGenbkiObjectId =
-  Catalog::FindDefinedSymbol('access/transam.h', '..', 'FirstGenbkiObjectId');
+  Catalog::FindDefinedSymbol('catalog/pg_magic_oid.h', '..', 'FirstGenbkiObjectId');
 
 # Process command line switches.
 my $output_path      = '';

@@ -13,6 +13,8 @@
 
 #include "pg_upgrade.h"
 
+#include "greenplum/pg_upgrade_greenplum.h"
+
 static void check_data_dir(ClusterInfo *cluster);
 static void check_bin_dir(ClusterInfo *cluster);
 static void get_bin_version(ClusterInfo *cluster);
@@ -46,7 +48,7 @@ get_bin_version(ClusterInfo *cluster)
 
 	pclose(output);
 
-	if (sscanf(cmd_output, "%*s %*s %d.%d", &v1, &v2) < 1)
+	if (sscanf(cmd_output, "%*s (Greenplum Database) %d.%d", &v1, &v2) < 1)
 		pg_fatal("could not get pg_ctl version output from %s\n", cmd);
 
 	if (v1 < 10)
@@ -110,7 +112,6 @@ exec_prog(const char *log_file, const char *opt_log_file,
 	pg_log(PG_VERBOSE, "%s\n", cmd);
 
 #ifdef WIN32
-
 	/*
 	 * For some reason, Windows issues a file-in-use error if we write data to
 	 * the log file from a non-primary thread just before we create a
@@ -192,7 +193,6 @@ exec_prog(const char *log_file, const char *opt_log_file,
 	}
 
 #ifndef WIN32
-
 	/*
 	 * We can't do this on Windows because it will keep the "pg_ctl start"
 	 * output filename open until the server stops, so we do the \n\n above on
@@ -258,8 +258,12 @@ verify_directories(void)
 
 	check_bin_dir(&old_cluster);
 	check_data_dir(&old_cluster);
-	check_bin_dir(&new_cluster);
-	check_data_dir(&new_cluster);
+
+	if(!is_skip_target_check())
+	{
+	  check_bin_dir(&new_cluster);
+	  check_data_dir(&new_cluster);
+	}
 }
 
 

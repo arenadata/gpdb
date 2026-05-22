@@ -114,6 +114,7 @@ heap_desc(StringInfo buf, XLogReaderState *record)
 		appendStringInfo(buf, "off %u", xlrec->offnum);
 	}
 }
+
 void
 heap2_desc(StringInfo buf, XLogReaderState *record)
 {

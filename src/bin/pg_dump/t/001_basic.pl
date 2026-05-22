@@ -129,7 +129,7 @@ command_fails_like(
 
 # pg_dumpall command-line argument checks
 command_fails_like(
-	[ 'pg_dumpall', '-g', '-r' ],
+	[ 'pg_dumpall', '-g', '--roles-only' ],
 	qr/\Qpg_dumpall: error: options -g\/--globals-only and -r\/--roles-only cannot be used together\E/,
 	'pg_dumpall: options -g/--globals-only and -r/--roles-only cannot be used together'
 );
@@ -141,7 +141,7 @@ command_fails_like(
 );
 
 command_fails_like(
-	[ 'pg_dumpall', '-r', '-t' ],
+	[ 'pg_dumpall', '--roles-only', '-t' ],
 	qr/\Qpg_dumpall: error: options -r\/--roles-only and -t\/--tablespaces-only cannot be used together\E/,
 	'pg_dumpall: options -r/--roles-only and -t/--tablespaces-only cannot be used together'
 );
