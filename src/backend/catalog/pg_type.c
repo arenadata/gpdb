@@ -14,14 +14,8 @@
  */
 #include "postgres.h"
 
-#include "access/genam.h"
-#include "access/heapam.h"
 #include "access/htup_details.h"
-<<<<<<< HEAD
-#include "access/reloptions.h"
-=======
 #include "access/relation.h"
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 #include "access/table.h"
 #include "access/xact.h"
 #include "catalog/binary_upgrade.h"
@@ -37,7 +31,6 @@
 #include "commands/typecmds.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
-#include "parser/parse_type.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -45,8 +38,12 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "access/genam.h"
+#include "access/heapam.h"
+#include "access/reloptions.h"
 #include "catalog/pg_type_encoding.h"
 #include "cdb/cdbvars.h"
+#include "parser/parse_type.h"
 
 /*
  * Record a type's default encoding clause in the catalog.
