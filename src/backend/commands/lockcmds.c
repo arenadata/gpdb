@@ -105,18 +105,7 @@ RangeVarCallbackForLockTable(const RangeVar *rv, Oid relid, Oid oldrelid,
 		return;					/* woops, concurrently dropped; no permissions
 								 * check */
 
-<<<<<<< HEAD
-	/* Currently, we only allow plain tables or views to be locked */
-	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
-		relkind != RELKIND_VIEW)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not a table or view",
-						rv->relname)));
-
 #if 0 /* Upstream code not applicable to GPDB */
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/*
 	 * Make note if a temporary relation has been accessed in this
 	 * transaction.
