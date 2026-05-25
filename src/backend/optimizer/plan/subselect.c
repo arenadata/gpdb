@@ -87,12 +87,8 @@ static List *generate_subquery_params(PlannerInfo *root, List *tlist,
 									  List **paramIds);
 static Node *convert_testexpr_mutator(Node *node,
 									  convert_testexpr_context *context);
-<<<<<<< HEAD
 static bool subplan_is_hashable(PlannerInfo *root, Plan *plan);
-=======
-static bool subplan_is_hashable(Plan *plan);
-static bool subpath_is_hashable(Path *path);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+static bool subpath_is_hashable(PlannerInfo *root, Path *path);
 static bool testexpr_is_hashable(Node *testexpr, List *param_ids);
 static bool test_opexpr_is_hashable(OpExpr *testexpr, List *param_ids);
 static bool hash_ok_operator(OpExpr *expr);
@@ -477,27 +473,20 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 			final_rel = fetch_upper_rel(subroot, UPPERREL_FINAL, NULL);
 			best_path = final_rel->cheapest_total_path;
 
-<<<<<<< HEAD
-			subroot->curSlice = palloc0(sizeof(PlanSlice));
-			subroot->curSlice->gangType = GANGTYPE_UNALLOCATED;
-
-			plan = create_plan(subroot, best_path, subroot->curSlice);
-			/* Decorate the top node of the plan with a Flow node. */
-			plan->flow = cdbpathtoplan_create_flow(subroot, best_path->locus);
-
 			/* Now we can check if it'll fit in hash_mem */
-			/* XXX can we check this at the Path stage? */
-			if (subplan_is_hashable(root, plan))
-=======
-			/* Now we can check if it'll fit in hash_mem */
-			if (subpath_is_hashable(best_path))
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+			if (subpath_is_hashable(root, best_path))
 			{
 				SubPlan    *hashplan;
 				AlternativeSubPlan *asplan;
 
+				subroot->curSlice = palloc0(sizeof(PlanSlice));
+				subroot->curSlice->gangType = GANGTYPE_UNALLOCATED;
+
 				/* OK, finish planning the ANY subquery */
-				plan = create_plan(subroot, best_path);
+				plan = create_plan(subroot, best_path, subroot->curSlice);
+				/* Decorate the top node of the plan with a Flow node. */
+				plan->flow = cdbpathtoplan_create_flow(subroot,
+													   best_path->locus);
 
 				/* ... and convert to SubPlan format */
 				hashplan = castNode(SubPlan,
@@ -984,10 +973,9 @@ subplan_is_hashable(PlannerInfo *root, Plan *plan)
  * Identical to subplan_is_hashable, but work from a Path for the subplan.
  */
 static bool
-subpath_is_hashable(Path *path)
+subpath_is_hashable(PlannerInfo *root, Path *path)
 {
 	double		subquery_size;
-	int			hash_mem = get_hash_mem();
 
 	/*
 	 * The estimated size of the subquery result must fit in hash_mem. (Note:
@@ -997,7 +985,7 @@ subpath_is_hashable(Path *path)
 	 */
 	subquery_size = path->rows *
 		(MAXALIGN(path->pathtarget->width) + MAXALIGN(SizeofHeapTupleHeader));
-	if (subquery_size > hash_mem * 1024L)
+	if (subquery_size > global_work_mem(root))
 		return false;
 
 	return true;
