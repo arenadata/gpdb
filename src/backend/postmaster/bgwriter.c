@@ -107,11 +107,7 @@ BackgroundWriterMain(void)
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
 	pqsignal(SIGINT, SIG_IGN);
 	pqsignal(SIGTERM, SignalHandlerForShutdownRequest);
-<<<<<<< HEAD
 	pqsignal(SIGQUIT, bg_quickdie);
-=======
-	/* SIGQUIT handler was already set up by InitPostmasterChild */
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	pqsignal(SIGALRM, SIG_IGN);
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
