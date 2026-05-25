@@ -1684,12 +1684,12 @@ lreplace:;
  */
 static TupleTableSlot *
 ExecSplitUpdate_Insert(ModifyTableState *mtstate,
+					   ResultRelInfo *resultRelInfo,
 					   TupleTableSlot *slot,
 					   TupleTableSlot *planSlot,
 					   EState *estate,
 					   bool canSetTag)
 {
-	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	bool		partition_constraint_failed;
 	TupleConversionMap *saved_tcs_map = NULL;
@@ -1700,7 +1700,6 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 	/*
 	 * get information on the (current) result relation
 	 */
-	resultRelInfo = estate->es_result_relation_info;
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
 	/* ensure slot is independent, consider e.g. EPQ */
@@ -1769,15 +1768,17 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 		 * into the root.
 		 */
 		Assert(mtstate->rootResultRelInfo != NULL);
+		ResultRelInfo *partRelInfo;
 		slot = ExecPrepareTupleRouting(mtstate, estate, proute,
-									   mtstate->rootResultRelInfo, slot);
+									   mtstate->rootResultRelInfo, slot,
+									   &partRelInfo);
+		resultRelInfo = partRelInfo;
 
-		slot = ExecInsert(mtstate, slot, planSlot,
+		slot = ExecInsert(mtstate, resultRelInfo, slot, planSlot,
 						  estate, mtstate->canSetTag,
 						  true /* splitUpdate */);
 
 		/* Revert ExecPrepareTupleRouting's node change. */
-		estate->es_result_relation_info = resultRelInfo;
 		if (mtstate->mt_transition_capture)
 		{
 			mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
@@ -1786,7 +1787,7 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 	}
 	else
 	{
-		slot = ExecInsert(mtstate, slot, planSlot,
+		slot = ExecInsert(mtstate, resultRelInfo, slot, planSlot,
 						  estate, mtstate->canSetTag,
 						  true /* splitUpdate */);
 	}
@@ -2275,12 +2276,11 @@ ExecModifyTable(PlanState *pstate)
 			node->mt_whichplan++;
 			if (node->mt_whichplan < node->mt_nplans)
 			{
-				estate->es_result_relation_info = estate->es_result_relations + node->mt_whichplan;
-				resultRelInfo = estate->es_result_relation_info;
+				resultRelInfo = estate->es_result_relations + node->mt_whichplan;
 				subplanstate = node->mt_plans[node->mt_whichplan];
-				junkfilter = estate->es_result_relation_info->ri_junkFilter;
-				action_attno = estate->es_result_relation_info->ri_action_attno;
-				segid_attno = estate->es_result_relation_info->ri_segid_attno;
+				junkfilter = resultRelInfo->ri_junkFilter;
+				action_attno = resultRelInfo->ri_action_attno;
+				segid_attno = resultRelInfo->ri_segid_attno;
 				EvalPlanQualSetPlan(&node->mt_epqstate, subplanstate->plan,
 									node->mt_arowmarks[node->mt_whichplan]);
 				continue;
@@ -2450,7 +2450,7 @@ ExecModifyTable(PlanState *pstate)
 				}
 				else if (DML_INSERT == action)
 				{
-					slot = ExecSplitUpdate_Insert(node, slot, planSlot,
+					slot = ExecSplitUpdate_Insert(node, resultRelInfo, slot, planSlot,
 												  estate, node->canSetTag);
 				}
 				else /* DML_DELETE */
