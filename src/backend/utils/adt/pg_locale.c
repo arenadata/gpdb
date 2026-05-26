@@ -59,11 +59,7 @@
 #include "catalog/pg_control.h"
 #include "catalog/pg_database.h"
 #include "mb/pg_wchar.h"
-<<<<<<< HEAD
-#include "utils/faultinjector.h"
-=======
 #include "miscadmin.h"
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 #include "utils/builtins.h"
 #include "utils/formatting.h"
 #include "utils/hsearch.h"
@@ -71,6 +67,8 @@
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/syscache.h"
+
+#include "utils/faultinjector.h"
 
 #ifdef USE_ICU
 #include <unicode/ucnv.h>
