@@ -12810,74 +12810,73 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	delqry = createPQExpBuffer();
 	asPart = createPQExpBuffer();
 
-<<<<<<< HEAD
 	if (!fout->is_prepared[PREPQUERY_DUMPFUNC])
 	{
 		/* Set up query for function-specific details */
 		appendPQExpBufferStr(query, "PREPARE dumpFunc(pg_catalog.oid) AS\n");
 
-		appendPQExpBuffer(query,
-							"SELECT\n"
-							"proretset,\n"
-							"prosrc,\n"
-							"probin,\n"
-							"provolatile,\n"
-							"proisstrict,\n"
-							"prosecdef,\n"
-							"(SELECT lanname FROM pg_catalog.pg_language WHERE oid = prolang) AS lanname,\n "
-							"proconfig,\n"
-							"procost,\n"
-							"prorows,\n"
-							"prodataaccess,\n"
-							"pg_catalog.pg_get_function_arguments(p.oid) AS funcargs,\n"
-							"pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs,\n"
-							"pg_catalog.pg_get_function_result(p.oid) AS funcresult,\n"
-							"(SELECT procallback FROM pg_catalog.pg_proc_callback WHERE profnoid::pg_catalog.oid = p.oid) as callbackfunc,\n");
+		appendPQExpBufferStr(query,
+							 "SELECT\n"
+							 "proretset,\n"
+							 "prosrc,\n"
+							 "probin,\n"
+							 "provolatile,\n"
+							 "proisstrict,\n"
+							 "prosecdef,\n"
+							 "(SELECT lanname FROM pg_catalog.pg_language WHERE oid = prolang) AS lanname,\n "
+							 "proconfig,\n"
+							 "procost,\n"
+							 "prorows,\n"
+							 "prodataaccess,\n"
+							 "pg_catalog.pg_get_function_arguments(p.oid) AS funcargs,\n"
+							 "pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs,\n"
+							 "pg_catalog.pg_get_function_result(p.oid) AS funcresult,\n"
+							 "(SELECT procallback FROM pg_catalog.pg_proc_callback WHERE profnoid::pg_catalog.oid = p.oid) as callbackfunc,\n");
 
 		if (fout->remoteVersion >= 90200)
-			appendPQExpBuffer(query,
-								"proleakproof,\n");
+			appendPQExpBufferStr(query,
+								 "proleakproof,\n");
 		else
-			appendPQExpBuffer(query,
-								"false AS proleakproof,\n");
+			appendPQExpBufferStr(query,
+								 "false AS proleakproof,\n");
 
 		/* GPDB6 added proexeclocation */
 		if (fout->remoteVersion >= GPDB6_MAJOR_PGVERSION)
-				appendPQExpBuffer(query,
-								"proexeclocation,\n");
+				appendPQExpBufferStr(query,
+									 "proexeclocation,\n");
 		else
-				appendPQExpBuffer(query,
-								"'a' as proexeclocation,\n");
+				appendPQExpBufferStr(query,
+									 "'a' as proexeclocation,\n");
 
 		if (fout->remoteVersion >= 90500)
-			appendPQExpBuffer(query,
-								"array_to_string(protrftypes, ' ') AS protrftypes,\n");
+			appendPQExpBufferStr(query,
+								 "array_to_string(protrftypes, ' ') AS protrftypes,\n");
 
 		if (fout->remoteVersion >= 90600)
-			appendPQExpBuffer(query,
-								"proparallel,\n");
+			appendPQExpBufferStr(query,
+								 "proparallel,\n");
 		else
-			appendPQExpBuffer(query,
-								"'u' AS proparallel,\n");
+			appendPQExpBufferStr(query,
+								 "'u' AS proparallel,\n");
 
 		if (fout->remoteVersion >= 110000)
-			appendPQExpBuffer(query,
-								"prokind,\n");
+			appendPQExpBufferStr(query,
+								 "prokind,\n");
 		else if (fout->remoteVersion >= 80400)
-			appendPQExpBuffer(query,
-								"CASE WHEN proiswindow THEN 'w' ELSE 'f' END AS prokind,\n");
+			appendPQExpBufferStr(query,
+								 "CASE WHEN proiswindow THEN 'w' ELSE 'f' END AS prokind,\n");
 		else
-			appendPQExpBuffer(query,
-								"CASE WHEN proiswin THEN 'w' ELSE 'f' END AS prokind,\n");
+			appendPQExpBufferStr(query,
+								 "CASE WHEN proiswin THEN 'w' ELSE 'f' END AS prokind,\n");
 
 		if (fout->remoteVersion >= 120000)
-			appendPQExpBuffer(query,
-								"prosupport\n");
+			appendPQExpBufferStr(query,
+								 "prosupport\n");
 		else
-			appendPQExpBuffer(query,
-								"'-' AS prosupport\n");
+			appendPQExpBufferStr(query,
+								 "'-' AS prosupport\n");
 
-		appendPQExpBuffer(query,
+		appendPQExpBufferStr(query,
 							 "FROM pg_catalog.pg_proc p, pg_catalog.pg_language l\n"
 							 "WHERE p.oid = $1 "
 							 "AND l.oid = p.prolang");
@@ -12890,90 +12889,6 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 
 	printfPQExpBuffer(query,
 					  "EXECUTE dumpFunc('%u')",
-=======
-	/* Fetch function-specific details */
-	appendPQExpBufferStr(query,
-						 "SELECT\n"
-						 "proretset,\n"
-						 "prosrc,\n"
-						 "probin,\n"
-						 "provolatile,\n"
-						 "proisstrict,\n"
-						 "prosecdef,\n"
-						 "(SELECT lanname FROM pg_catalog.pg_language WHERE oid = prolang) AS lanname,\n");
-
-	if (fout->remoteVersion >= 80300)
-		appendPQExpBufferStr(query,
-							 "proconfig,\n"
-							 "procost,\n"
-							 "prorows,\n");
-	else
-		appendPQExpBufferStr(query,
-							 "null AS proconfig,\n"
-							 "0 AS procost,\n"
-							 "0 AS prorows,\n");
-
-	if (fout->remoteVersion >= 80400)
-	{
-		/*
-		 * In 8.4 and up we rely on pg_get_function_arguments and
-		 * pg_get_function_result instead of examining proallargtypes etc.
-		 */
-		appendPQExpBufferStr(query,
-							 "pg_catalog.pg_get_function_arguments(oid) AS funcargs,\n"
-							 "pg_catalog.pg_get_function_identity_arguments(oid) AS funciargs,\n"
-							 "pg_catalog.pg_get_function_result(oid) AS funcresult,\n");
-	}
-	else if (fout->remoteVersion >= 80100)
-		appendPQExpBufferStr(query,
-							 "proallargtypes,\n"
-							 "proargmodes,\n"
-							 "proargnames,\n");
-	else
-		appendPQExpBufferStr(query,
-							 "null AS proallargtypes,\n"
-							 "null AS proargmodes,\n"
-							 "proargnames,\n");
-
-	if (fout->remoteVersion >= 90200)
-		appendPQExpBufferStr(query,
-							 "proleakproof,\n");
-	else
-		appendPQExpBufferStr(query,
-							 "false AS proleakproof,\n");
-
-	if (fout->remoteVersion >= 90500)
-		appendPQExpBufferStr(query,
-							 "array_to_string(protrftypes, ' ') AS protrftypes,\n");
-
-	if (fout->remoteVersion >= 90600)
-		appendPQExpBufferStr(query,
-							 "proparallel,\n");
-	else
-		appendPQExpBufferStr(query,
-							 "'u' AS proparallel,\n");
-
-	if (fout->remoteVersion >= 110000)
-		appendPQExpBufferStr(query,
-							 "prokind,\n");
-	else if (fout->remoteVersion >= 80400)
-		appendPQExpBufferStr(query,
-							 "CASE WHEN proiswindow THEN 'w' ELSE 'f' END AS prokind,\n");
-	else
-		appendPQExpBufferStr(query,
-							 "'f' AS prokind,\n");
-
-	if (fout->remoteVersion >= 120000)
-		appendPQExpBufferStr(query,
-							 "prosupport\n");
-	else
-		appendPQExpBufferStr(query,
-							 "'-' AS prosupport\n");
-
-	appendPQExpBuffer(query,
-					  "FROM pg_catalog.pg_proc "
-					  "WHERE oid = '%u'::pg_catalog.oid",
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					  finfo->dobj.catId.oid);
 
 	res = ExecuteSqlQueryForSingleRow(fout, query->data);
@@ -13693,14 +13608,11 @@ dumpOpr(Archive *fout, const OprInfo *oprinfo)
 	oprcanmerge = PQgetvalue(res, 0, i_oprcanmerge);
 	oprcanhash = PQgetvalue(res, 0, i_oprcanhash);
 
-<<<<<<< HEAD
-=======
 	/* In PG14 upwards postfix operator support does not exist anymore. */
 	if (strcmp(oprkind, "r") == 0)
 		pg_log_warning("postfix operators are not supported anymore (operator \"%s\")",
 					   oprcode);
 
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	oprregproc = convertRegProcReference(oprcode);
 	if (oprregproc)
 	{
@@ -14879,7 +14791,6 @@ dumpAgg(Archive *fout, const AggInfo *agginfo)
 	delq = createPQExpBuffer();
 	details = createPQExpBuffer();
 
-<<<<<<< HEAD
 	if (!fout->is_prepared[PREPQUERY_DUMPAGG])
 	{
 		/* Set up query for aggregate-specific details */
@@ -14942,74 +14853,6 @@ dumpAgg(Archive *fout, const AggInfo *agginfo)
 								 "'-' AS aggserialfn,\n"
 								 "'-' AS aggdeserialfn,\n"
 								 "'u' AS proparallel,\n");
-=======
-	/* Get aggregate-specific details */
-	appendPQExpBufferStr(query,
-						 "SELECT\n"
-						 "aggtransfn,\n"
-						 "aggfinalfn,\n"
-						 "aggtranstype::pg_catalog.regtype,\n"
-						 "agginitval,\n");
-
-	if (fout->remoteVersion >= 80100)
-		appendPQExpBufferStr(query,
-							 "aggsortop,\n");
-	else
-		appendPQExpBufferStr(query,
-							 "0 AS aggsortop,\n");
-
-	if (fout->remoteVersion >= 80400)
-		appendPQExpBufferStr(query,
-							 "pg_catalog.pg_get_function_arguments(p.oid) AS funcargs,\n"
-							 "pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs,\n");
-
-	if (fout->remoteVersion >= 90400)
-		appendPQExpBufferStr(query,
-							 "aggkind,\n"
-							 "aggmtransfn,\n"
-							 "aggminvtransfn,\n"
-							 "aggmfinalfn,\n"
-							 "aggmtranstype::pg_catalog.regtype,\n"
-							 "aggfinalextra,\n"
-							 "aggmfinalextra,\n"
-							 "aggtransspace,\n"
-							 "aggmtransspace,\n"
-							 "aggminitval,\n");
-	else
-		appendPQExpBufferStr(query,
-							 "'n' AS aggkind,\n"
-							 "'-' AS aggmtransfn,\n"
-							 "'-' AS aggminvtransfn,\n"
-							 "'-' AS aggmfinalfn,\n"
-							 "0 AS aggmtranstype,\n"
-							 "false AS aggfinalextra,\n"
-							 "false AS aggmfinalextra,\n"
-							 "0 AS aggtransspace,\n"
-							 "0 AS aggmtransspace,\n"
-							 "NULL AS aggminitval,\n");
-
-	if (fout->remoteVersion >= 90600)
-		appendPQExpBufferStr(query,
-							 "aggcombinefn,\n"
-							 "aggserialfn,\n"
-							 "aggdeserialfn,\n"
-							 "proparallel,\n");
-	else
-		appendPQExpBufferStr(query,
-							 "'-' AS aggcombinefn,\n"
-							 "'-' AS aggserialfn,\n"
-							 "'-' AS aggdeserialfn,\n"
-							 "'u' AS proparallel,\n");
-
-	if (fout->remoteVersion >= 110000)
-		appendPQExpBufferStr(query,
-							 "aggfinalmodify,\n"
-							 "aggmfinalmodify\n");
-	else
-		appendPQExpBufferStr(query,
-							 "'0' AS aggfinalmodify,\n"
-							 "'0' AS aggmfinalmodify\n");
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		if (fout->remoteVersion >= 110000)
 			appendPQExpBufferStr(query,
