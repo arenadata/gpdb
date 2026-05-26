@@ -914,34 +914,22 @@ BufFileSeek(BufFile *file, int fileno, off_t offset, int whence)
 			newOffset = (file->curOffset + file->pos) + offset;
 			break;
 		case SEEK_END:
-<<<<<<< HEAD
-=======
 
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			/*
 			 * The file size of the last file gives us the end offset of that
 			 * file.
 			 */
-<<<<<<< HEAD
 			if (file->curFile == file->numFiles - 1 && file->dirty)
 				BufFileFlush(file);
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			newFile = file->numFiles - 1;
 			newOffset = FileSize(file->files[file->numFiles - 1]);
 			if (newOffset < 0)
 				ereport(ERROR,
 						(errcode_for_file_access(),
 						 errmsg("could not determine size of temporary file \"%s\" from BufFile \"%s\": %m",
-<<<<<<< HEAD
-							 FilePathName(file->files[file->numFiles - 1]),
-							 file->name)));
-			break;	
-=======
 								FilePathName(file->files[file->numFiles - 1]),
 								file->name)));
 			break;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		default:
 			elog(ERROR, "invalid whence: %d", whence);
 			return EOF;
@@ -1160,7 +1148,6 @@ BufFileAppend(BufFile *target, BufFile *source)
 }
 
 /*
-<<<<<<< HEAD
  * Return filename of the underlying file.
  *
  * For debugging purposes only. Returns the filename of the
@@ -1509,7 +1496,8 @@ BufFileLoadCompressedBuffer(BufFile *file, void *buffer, size_t bufsize)
 }
 
 #endif		/* USE_ZSTD */
-=======
+
+/*
  * Truncate a BufFile created by BufFileCreateShared up to the given fileno and
  * the offset.
  */
@@ -1603,4 +1591,3 @@ BufFileTruncateShared(BufFile *file, int fileno, off_t offset)
 	}
 	/* Nothing to do, if the truncate point is beyond current file. */
 }
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
