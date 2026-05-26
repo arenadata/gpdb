@@ -4926,14 +4926,10 @@ GlobalVisUpdateApply(ComputeXidHorizonsResult *horizons)
 						  GetDistOldestXmin(horizons->catalog_oldest_nonremovable));
 	GlobalVisDataRels.maybe_needed =
 		FullXidRelativeTo(horizons->latest_completed,
-<<<<<<< HEAD
 						  GetDistOldestXmin(horizons->data_oldest_nonremovable));
-=======
-						  horizons->data_oldest_nonremovable);
 	GlobalVisTempRels.maybe_needed =
 		FullXidRelativeTo(horizons->latest_completed,
-						  horizons->temp_oldest_nonremovable);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+						  GetDistOldestXmin(horizons->temp_oldest_nonremovable));
 
 	/*
 	 * In longer running transactions it's possible that transactions we
