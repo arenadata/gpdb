@@ -193,13 +193,8 @@ static void expand_table_name_patterns(Archive *fout,
 									   SimpleOidList *oids,
 									   bool strict_names);
 static NamespaceInfo *findNamespace(Oid nsoid);
-<<<<<<< HEAD
 static void dumpTableData(Archive *fout, const TableDataInfo *tdinfo);
 static void refreshMatViewData(Archive *fout, const TableDataInfo *tdinfo);
-=======
-static void dumpTableData(Archive *fout, TableDataInfo *tdinfo);
-static void refreshMatViewData(Archive *fout, TableDataInfo *tdinfo);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 static void guessConstraintInheritance(TableInfo *tblinfo, int numTables);
 static void dumpComment(Archive *fout, const char *type, const char *name,
 						const char *namespace, const char *owner,
@@ -287,11 +282,7 @@ static void getTableDataFKConstraints(void);
 static char *format_function_arguments(const FuncInfo *finfo, const char *funcargs,
 									   bool is_agg);
 static char *format_function_signature(Archive *fout,
-<<<<<<< HEAD
 									   const FuncInfo *finfo, bool honor_quotes);
-=======
-									   FuncInfo *finfo, bool honor_quotes);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 static char *convertRegProcReference(const char *proc);
 static char *getFormattedOperatorName(const char *oproid);
 static char *convertTSFunction(Archive *fout, Oid funcOid);
@@ -871,11 +862,7 @@ main(int argc, char **argv)
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
 	 */
-<<<<<<< HEAD
-	ConnectDatabase(fout, dopt.dbname, dopt.pghost, dopt.pgport, dopt.username, prompt_password, dopt.binary_upgrade);
-=======
-	ConnectDatabase(fout, &dopt.cparams, false);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+	ConnectDatabase(fout, &dopt.cparams, false, dopt.binary_upgrade);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
 
 	/*
@@ -4456,12 +4443,8 @@ getSubscriptions(Archive *fout)
 	int			i_tableoid;
 	int			i_oid;
 	int			i_subname;
-<<<<<<< HEAD
 	int			i_subowner;
-=======
-	int			i_rolname;
 	int			i_substream;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	int			i_subconninfo;
 	int			i_subslotname;
 	int			i_subsynccommit;
@@ -5388,20 +5371,12 @@ getTypes(Archive *fout, int *numTypes)
 		tyinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_typname));
 		tyinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_typnamespace)));
-<<<<<<< HEAD
 		tyinfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_typacl));
 		tyinfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		tyinfo[i].dacl.privtype = 0;
 		tyinfo[i].dacl.initprivs = NULL;
 		tyinfo[i].ftypname = NULL;	/* may get filled later */
 		tyinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_typowner));
-=======
-		tyinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
-		tyinfo[i].typacl = pg_strdup(PQgetvalue(res, i, i_typacl));
-		tyinfo[i].rtypacl = pg_strdup(PQgetvalue(res, i, i_rtypacl));
-		tyinfo[i].inittypacl = pg_strdup(PQgetvalue(res, i, i_inittypacl));
-		tyinfo[i].initrtypacl = pg_strdup(PQgetvalue(res, i, i_initrtypacl));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		tyinfo[i].typelem = atooid(PQgetvalue(res, i, i_typelem));
 		tyinfo[i].typrelid = atooid(PQgetvalue(res, i, i_typrelid));
 		tyinfo[i].typrelkind = *PQgetvalue(res, i, i_typrelkind);
@@ -5543,11 +5518,7 @@ getOperators(Archive *fout, int *numOprs)
 		oprinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_oprname));
 		oprinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_oprnamespace)));
-<<<<<<< HEAD
 		oprinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_oprowner));
-=======
-		oprinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		oprinfo[i].oprkind = (PQgetvalue(res, i, i_oprkind))[0];
 		oprinfo[i].oprcode = atooid(PQgetvalue(res, i, i_oprcode));
 
@@ -5624,11 +5595,7 @@ getCollations(Archive *fout, int *numCollations)
 		collinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_collname));
 		collinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_collnamespace)));
-<<<<<<< HEAD
 		collinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_collowner));
-=======
-		collinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(collinfo[i].dobj), fout);
@@ -5696,11 +5663,7 @@ getConversions(Archive *fout, int *numConversions)
 		convinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_conname));
 		convinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_connamespace)));
-<<<<<<< HEAD
 		convinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_conowner));
-=======
-		convinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(convinfo[i].dobj), fout);
@@ -5837,11 +5800,7 @@ getOpclasses(Archive *fout, int *numOpclasses)
 		opcinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_opcname));
 		opcinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_opcnamespace)));
-<<<<<<< HEAD
 		opcinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_opcowner));
-=======
-		opcinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(opcinfo[i].dobj), fout);
@@ -5909,11 +5868,7 @@ getOpfamilies(Archive *fout, int *numOpfamilies)
 		opfinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_opfname));
 		opfinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_opfnamespace)));
-<<<<<<< HEAD
 		opfinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_opfowner));
-=======
-		opfinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(opfinfo[i].dobj), fout);
@@ -6061,18 +6016,11 @@ getAggregates(Archive *fout, int *numAggs)
 		agginfo[i].aggfn.dobj.name = pg_strdup(PQgetvalue(res, i, i_aggname));
 		agginfo[i].aggfn.dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_aggnamespace)));
-<<<<<<< HEAD
 		agginfo[i].aggfn.dacl.acl = pg_strdup(PQgetvalue(res, i, i_aggacl));
 		agginfo[i].aggfn.dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		agginfo[i].aggfn.dacl.privtype = 0;
 		agginfo[i].aggfn.dacl.initprivs = NULL;
 		agginfo[i].aggfn.rolname = getRoleName(PQgetvalue(res, i, i_proowner));
-=======
-		agginfo[i].aggfn.rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
-		if (strlen(agginfo[i].aggfn.rolname) == 0)
-			pg_log_warning("owner of aggregate function \"%s\" appears to be invalid",
-						   agginfo[i].aggfn.dobj.name);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		agginfo[i].aggfn.lang = InvalidOid; /* not currently interesting */
 		agginfo[i].aggfn.prorettype = InvalidOid;	/* not saved */
 		agginfo[i].aggfn.nargs = atoi(PQgetvalue(res, i, i_pronargs));
@@ -6402,15 +6350,11 @@ getFuncs(Archive *fout, int *numFuncs)
 		finfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_proname));
 		finfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_pronamespace)));
-<<<<<<< HEAD
 		finfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_proacl));
 		finfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		finfo[i].dacl.privtype = 0;
 		finfo[i].dacl.initprivs = NULL;
 		finfo[i].rolname = getRoleName(PQgetvalue(res, i, i_proowner));
-=======
-		finfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		finfo[i].lang = atooid(PQgetvalue(res, i, i_prolang));
 		finfo[i].prorettype = atooid(PQgetvalue(res, i, i_prorettype));
 		finfo[i].nargs = atoi(PQgetvalue(res, i, i_pronargs));
@@ -6861,18 +6805,10 @@ getTables(Archive *fout, int *numTables)
 		tblinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_relname));
 		tblinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_relnamespace)));
-<<<<<<< HEAD
 		tblinfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_relacl));
 		tblinfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		tblinfo[i].dacl.privtype = 0;
 		tblinfo[i].dacl.initprivs = NULL;
-=======
-		tblinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
-		tblinfo[i].relacl = pg_strdup(PQgetvalue(res, i, i_relacl));
-		tblinfo[i].rrelacl = pg_strdup(PQgetvalue(res, i, i_rrelacl));
-		tblinfo[i].initrelacl = pg_strdup(PQgetvalue(res, i, i_initrelacl));
-		tblinfo[i].initrrelacl = pg_strdup(PQgetvalue(res, i, i_initrrelacl));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		tblinfo[i].relkind = *(PQgetvalue(res, i, i_relkind));
 		tblinfo[i].reltype = atooid(PQgetvalue(res, i, i_reltype));
 		tblinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_relowner));
@@ -7009,29 +6945,11 @@ getTables(Archive *fout, int *numTables)
 		 * We only need to lock the relation for certain components; see
 		 * pg_dump.h
 		 *
-<<<<<<< HEAD
 		 * GPDB: Build a single LOCK TABLE statement to lock all interesting tables.
 		 * This is more performant than issuing a separate LOCK TABLE statement for each table,
 		 * with considerable savings in FE/BE overhead. It does come at the cost of some increased
 		 * memory usage in both FE and BE, which we will be able to tolerate.
 		 */
-=======
-		 * On server versions that support it, we lock all relations not just
-		 * plain tables.
-		 */
-		if (tblinfo[i].dobj.dump &&
-			(fout->hasGenericLockTable ||
-			 tblinfo[i].relkind == RELKIND_PARTITIONED_TABLE ||
-			 tblinfo[i].relkind == RELKIND_RELATION) &&
-			(tblinfo[i].dobj.dump & DUMP_COMPONENTS_REQUIRING_LOCK))
-		{
-			resetPQExpBuffer(query);
-			appendPQExpBuffer(query,
-							  "LOCK TABLE %s IN ACCESS SHARE MODE",
-							  fmtQualifiedDumpable(&tblinfo[i]));
-			ExecuteSqlStatement(fout, query->data);
-		}
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		if ((tblinfo[i].dobj.dump & DUMP_COMPONENTS_REQUIRING_LOCK) &&
 			(tblinfo[i].relkind == RELKIND_RELATION ||
@@ -7351,14 +7269,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 				i_tablespace,
 				i_indreloptions,
 				i_indstatcols,
-<<<<<<< HEAD
 				i_indstatvals;
-=======
-				i_indstatvals,
-				i_inddependcollnames,
-				i_inddependcollversions;
-	int			ntups;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/*
 	 * We want to perform just one query against pg_index.  However, we
@@ -7539,259 +7450,11 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 		 * Locate the associated TableInfo; we rely on tblinfo[] being in OID
 		 * order.
 		 */
-<<<<<<< HEAD
 		while (++curtblindx < numTables)
 		{
 			tbinfo = &tblinfo[curtblindx];
 			if (tbinfo->dobj.catId.oid == indrelid)
 				break;
-=======
-		resetPQExpBuffer(query);
-		if (fout->remoteVersion >= 140000)
-		{
-			appendPQExpBuffer(query,
-							  "SELECT t.tableoid, t.oid, "
-							  "t.relname AS indexname, "
-							  "inh.inhparent AS parentidx, "
-							  "pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
-							  "i.indnkeyatts AS indnkeyatts, "
-							  "i.indnatts AS indnatts, "
-							  "i.indkey, i.indisclustered, "
-							  "i.indisreplident, "
-							  "c.contype, c.conname, "
-							  "c.condeferrable, c.condeferred, "
-							  "c.tableoid AS contableoid, "
-							  "c.oid AS conoid, "
-							  "pg_catalog.pg_get_constraintdef(c.oid, false) AS condef, "
-							  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) AS tablespace, "
-							  "t.reloptions AS indreloptions, "
-							  "(SELECT pg_catalog.array_agg(attnum ORDER BY attnum) "
-							  "  FROM pg_catalog.pg_attribute "
-							  "  WHERE attrelid = i.indexrelid AND "
-							  "    attstattarget >= 0) AS indstatcols,"
-							  "(SELECT pg_catalog.array_agg(attstattarget ORDER BY attnum) "
-							  "  FROM pg_catalog.pg_attribute "
-							  "  WHERE attrelid = i.indexrelid AND "
-							  "    attstattarget >= 0) AS indstatvals, "
-							  "(SELECT pg_catalog.array_agg(quote_ident(ns.nspname) || '.' || quote_ident(c.collname) ORDER BY refobjid) "
-							  "  FROM pg_catalog.pg_depend d "
-							  "  JOIN pg_catalog.pg_collation c ON (c.oid = d.refobjid) "
-							  "  JOIN pg_catalog.pg_namespace ns ON (c.collnamespace = ns.oid) "
-							  "  WHERE d.classid = 'pg_catalog.pg_class'::regclass AND "
-							  "    d.objid = i.indexrelid AND "
-							  "    d.objsubid = 0 AND "
-							  "    d.refclassid = 'pg_catalog.pg_collation'::regclass AND "
-							  "    d.refobjversion IS NOT NULL) AS inddependcollnames, "
-							  "(SELECT pg_catalog.array_agg(quote_literal(refobjversion) ORDER BY refobjid) "
-							  "  FROM pg_catalog.pg_depend "
-							  "  WHERE classid = 'pg_catalog.pg_class'::regclass AND "
-							  "    objid = i.indexrelid AND "
-							  "    objsubid = 0 AND "
-							  "    refclassid = 'pg_catalog.pg_collation'::regclass AND "
-							  "    refobjversion IS NOT NULL) AS inddependcollversions "
-							  "FROM pg_catalog.pg_index i "
-							  "JOIN pg_catalog.pg_class t ON (t.oid = i.indexrelid) "
-							  "JOIN pg_catalog.pg_class t2 ON (t2.oid = i.indrelid) "
-							  "LEFT JOIN pg_catalog.pg_constraint c "
-							  "ON (i.indrelid = c.conrelid AND "
-							  "i.indexrelid = c.conindid AND "
-							  "c.contype IN ('p','u','x')) "
-							  "LEFT JOIN pg_catalog.pg_inherits inh "
-							  "ON (inh.inhrelid = indexrelid) "
-							  "WHERE i.indrelid = '%u'::pg_catalog.oid "
-							  "AND (i.indisvalid OR t2.relkind = 'p') "
-							  "AND i.indisready "
-							  "ORDER BY indexname",
-							  tbinfo->dobj.catId.oid);
-		}
-		else if (fout->remoteVersion >= 110000)
-		{
-			appendPQExpBuffer(query,
-							  "SELECT t.tableoid, t.oid, "
-							  "t.relname AS indexname, "
-							  "inh.inhparent AS parentidx, "
-							  "pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
-							  "i.indnkeyatts AS indnkeyatts, "
-							  "i.indnatts AS indnatts, "
-							  "i.indkey, i.indisclustered, "
-							  "i.indisreplident, "
-							  "c.contype, c.conname, "
-							  "c.condeferrable, c.condeferred, "
-							  "c.tableoid AS contableoid, "
-							  "c.oid AS conoid, "
-							  "pg_catalog.pg_get_constraintdef(c.oid, false) AS condef, "
-							  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) AS tablespace, "
-							  "t.reloptions AS indreloptions, "
-							  "(SELECT pg_catalog.array_agg(attnum ORDER BY attnum) "
-							  "  FROM pg_catalog.pg_attribute "
-							  "  WHERE attrelid = i.indexrelid AND "
-							  "    attstattarget >= 0) AS indstatcols,"
-							  "(SELECT pg_catalog.array_agg(attstattarget ORDER BY attnum) "
-							  "  FROM pg_catalog.pg_attribute "
-							  "  WHERE attrelid = i.indexrelid AND "
-							  "    attstattarget >= 0) AS indstatvals, "
-							  "'{}' AS inddependcollnames, "
-							  "'{}' AS inddependcollversions "
-							  "FROM pg_catalog.pg_index i "
-							  "JOIN pg_catalog.pg_class t ON (t.oid = i.indexrelid) "
-							  "JOIN pg_catalog.pg_class t2 ON (t2.oid = i.indrelid) "
-							  "LEFT JOIN pg_catalog.pg_constraint c "
-							  "ON (i.indrelid = c.conrelid AND "
-							  "i.indexrelid = c.conindid AND "
-							  "c.contype IN ('p','u','x')) "
-							  "LEFT JOIN pg_catalog.pg_inherits inh "
-							  "ON (inh.inhrelid = indexrelid) "
-							  "WHERE i.indrelid = '%u'::pg_catalog.oid "
-							  "AND (i.indisvalid OR t2.relkind = 'p') "
-							  "AND i.indisready "
-							  "ORDER BY indexname",
-							  tbinfo->dobj.catId.oid);
-		}
-		else if (fout->remoteVersion >= 90400)
-		{
-			/*
-			 * the test on indisready is necessary in 9.2, and harmless in
-			 * earlier/later versions
-			 */
-			appendPQExpBuffer(query,
-							  "SELECT t.tableoid, t.oid, "
-							  "t.relname AS indexname, "
-							  "0 AS parentidx, "
-							  "pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
-							  "i.indnatts AS indnkeyatts, "
-							  "i.indnatts AS indnatts, "
-							  "i.indkey, i.indisclustered, "
-							  "i.indisreplident, "
-							  "c.contype, c.conname, "
-							  "c.condeferrable, c.condeferred, "
-							  "c.tableoid AS contableoid, "
-							  "c.oid AS conoid, "
-							  "pg_catalog.pg_get_constraintdef(c.oid, false) AS condef, "
-							  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) AS tablespace, "
-							  "t.reloptions AS indreloptions, "
-							  "'' AS indstatcols, "
-							  "'' AS indstatvals, "
-							  "'{}' AS inddependcollnames, "
-							  "'{}' AS inddependcollversions "
-							  "FROM pg_catalog.pg_index i "
-							  "JOIN pg_catalog.pg_class t ON (t.oid = i.indexrelid) "
-							  "LEFT JOIN pg_catalog.pg_constraint c "
-							  "ON (i.indrelid = c.conrelid AND "
-							  "i.indexrelid = c.conindid AND "
-							  "c.contype IN ('p','u','x')) "
-							  "WHERE i.indrelid = '%u'::pg_catalog.oid "
-							  "AND i.indisvalid AND i.indisready "
-							  "ORDER BY indexname",
-							  tbinfo->dobj.catId.oid);
-		}
-		else if (fout->remoteVersion >= 90000)
-		{
-			/*
-			 * the test on indisready is necessary in 9.2, and harmless in
-			 * earlier/later versions
-			 */
-			appendPQExpBuffer(query,
-							  "SELECT t.tableoid, t.oid, "
-							  "t.relname AS indexname, "
-							  "0 AS parentidx, "
-							  "pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
-							  "i.indnatts AS indnkeyatts, "
-							  "i.indnatts AS indnatts, "
-							  "i.indkey, i.indisclustered, "
-							  "false AS indisreplident, "
-							  "c.contype, c.conname, "
-							  "c.condeferrable, c.condeferred, "
-							  "c.tableoid AS contableoid, "
-							  "c.oid AS conoid, "
-							  "pg_catalog.pg_get_constraintdef(c.oid, false) AS condef, "
-							  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) AS tablespace, "
-							  "t.reloptions AS indreloptions, "
-							  "'' AS indstatcols, "
-							  "'' AS indstatvals, "
-							  "'{}' AS inddependcollnames, "
-							  "'{}' AS inddependcollversions "
-							  "FROM pg_catalog.pg_index i "
-							  "JOIN pg_catalog.pg_class t ON (t.oid = i.indexrelid) "
-							  "LEFT JOIN pg_catalog.pg_constraint c "
-							  "ON (i.indrelid = c.conrelid AND "
-							  "i.indexrelid = c.conindid AND "
-							  "c.contype IN ('p','u','x')) "
-							  "WHERE i.indrelid = '%u'::pg_catalog.oid "
-							  "AND i.indisvalid AND i.indisready "
-							  "ORDER BY indexname",
-							  tbinfo->dobj.catId.oid);
-		}
-		else if (fout->remoteVersion >= 80200)
-		{
-			appendPQExpBuffer(query,
-							  "SELECT t.tableoid, t.oid, "
-							  "t.relname AS indexname, "
-							  "0 AS parentidx, "
-							  "pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
-							  "i.indnatts AS indnkeyatts, "
-							  "i.indnatts AS indnatts, "
-							  "i.indkey, i.indisclustered, "
-							  "false AS indisreplident, "
-							  "c.contype, c.conname, "
-							  "c.condeferrable, c.condeferred, "
-							  "c.tableoid AS contableoid, "
-							  "c.oid AS conoid, "
-							  "null AS condef, "
-							  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) AS tablespace, "
-							  "t.reloptions AS indreloptions, "
-							  "'' AS indstatcols, "
-							  "'' AS indstatvals, "
-							  "'{}' AS inddependcollnames, "
-							  "'{}' AS inddependcollversions "
-							  "FROM pg_catalog.pg_index i "
-							  "JOIN pg_catalog.pg_class t ON (t.oid = i.indexrelid) "
-							  "LEFT JOIN pg_catalog.pg_depend d "
-							  "ON (d.classid = t.tableoid "
-							  "AND d.objid = t.oid "
-							  "AND d.deptype = 'i') "
-							  "LEFT JOIN pg_catalog.pg_constraint c "
-							  "ON (d.refclassid = c.tableoid "
-							  "AND d.refobjid = c.oid) "
-							  "WHERE i.indrelid = '%u'::pg_catalog.oid "
-							  "AND i.indisvalid "
-							  "ORDER BY indexname",
-							  tbinfo->dobj.catId.oid);
-		}
-		else
-		{
-			appendPQExpBuffer(query,
-							  "SELECT t.tableoid, t.oid, "
-							  "t.relname AS indexname, "
-							  "0 AS parentidx, "
-							  "pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
-							  "t.relnatts AS indnkeyatts, "
-							  "t.relnatts AS indnatts, "
-							  "i.indkey, i.indisclustered, "
-							  "false AS indisreplident, "
-							  "c.contype, c.conname, "
-							  "c.condeferrable, c.condeferred, "
-							  "c.tableoid AS contableoid, "
-							  "c.oid AS conoid, "
-							  "null AS condef, "
-							  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) AS tablespace, "
-							  "null AS indreloptions, "
-							  "'' AS indstatcols, "
-							  "'' AS indstatvals, "
-							  "'{}' AS inddependcollnames, "
-							  "'{}' AS inddependcollversions "
-							  "FROM pg_catalog.pg_index i "
-							  "JOIN pg_catalog.pg_class t ON (t.oid = i.indexrelid) "
-							  "LEFT JOIN pg_catalog.pg_depend d "
-							  "ON (d.classid = t.tableoid "
-							  "AND d.objid = t.oid "
-							  "AND d.deptype = 'i') "
-							  "LEFT JOIN pg_catalog.pg_constraint c "
-							  "ON (d.refclassid = c.tableoid "
-							  "AND d.refobjid = c.oid) "
-							  "WHERE i.indrelid = '%u'::pg_catalog.oid "
-							  "ORDER BY indexname",
-							  tbinfo->dobj.catId.oid);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		}
 		if (curtblindx >= numTables)
 			fatal("unrecognized table OID %u", indrelid);
@@ -7805,42 +7468,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 		tbinfo->indexes = indxinfo + j;
 		tbinfo->numIndexes = numinds;
 
-<<<<<<< HEAD
 		for (int c = 0; c < numinds; c++, j++)
-=======
-		ntups = PQntuples(res);
-
-		i_tableoid = PQfnumber(res, "tableoid");
-		i_oid = PQfnumber(res, "oid");
-		i_indexname = PQfnumber(res, "indexname");
-		i_parentidx = PQfnumber(res, "parentidx");
-		i_indexdef = PQfnumber(res, "indexdef");
-		i_indnkeyatts = PQfnumber(res, "indnkeyatts");
-		i_indnatts = PQfnumber(res, "indnatts");
-		i_indkey = PQfnumber(res, "indkey");
-		i_indisclustered = PQfnumber(res, "indisclustered");
-		i_indisreplident = PQfnumber(res, "indisreplident");
-		i_contype = PQfnumber(res, "contype");
-		i_conname = PQfnumber(res, "conname");
-		i_condeferrable = PQfnumber(res, "condeferrable");
-		i_condeferred = PQfnumber(res, "condeferred");
-		i_contableoid = PQfnumber(res, "contableoid");
-		i_conoid = PQfnumber(res, "conoid");
-		i_condef = PQfnumber(res, "condef");
-		i_tablespace = PQfnumber(res, "tablespace");
-		i_indreloptions = PQfnumber(res, "indreloptions");
-		i_indstatcols = PQfnumber(res, "indstatcols");
-		i_indstatvals = PQfnumber(res, "indstatvals");
-		i_inddependcollnames = PQfnumber(res, "inddependcollnames");
-		i_inddependcollversions = PQfnumber(res, "inddependcollversions");
-
-		tbinfo->indexes = indxinfo =
-			(IndxInfo *) pg_malloc(ntups * sizeof(IndxInfo));
-		constrinfo = (ConstraintInfo *) pg_malloc(ntups * sizeof(ConstraintInfo));
-		tbinfo->numIndexes = ntups;
-
-		for (j = 0; j < ntups; j++)
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		{
 			char		contype;
 
@@ -7859,8 +7487,6 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			indxinfo[j].indreloptions = pg_strdup(PQgetvalue(res, j, i_indreloptions));
 			indxinfo[j].indstatcols = pg_strdup(PQgetvalue(res, j, i_indstatcols));
 			indxinfo[j].indstatvals = pg_strdup(PQgetvalue(res, j, i_indstatvals));
-			indxinfo[j].inddependcollnames = pg_strdup(PQgetvalue(res, j, i_inddependcollnames));
-			indxinfo[j].inddependcollversions = pg_strdup(PQgetvalue(res, j, i_inddependcollversions));
 			indxinfo[j].indkeys = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
 			parseOidArray(PQgetvalue(res, j, i_indkey),
 						  indxinfo[j].indkeys, indxinfo[j].indnattrs);
@@ -7980,11 +7606,7 @@ getExtendedStatistics(Archive *fout)
 		statsextinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_stxname));
 		statsextinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_stxnamespace)));
-<<<<<<< HEAD
 		statsextinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_stxowner));
-=======
-		statsextinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		statsextinfo[i].stattarget = atoi(PQgetvalue(res, i, i_stattarget));
 
 		/* Decide whether we want to dump it */
@@ -9309,17 +8931,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 				tbinfo->attencoding[j] = NULL;
 		}
 
-<<<<<<< HEAD
 		if (hasdefaults)
-=======
-		PQclear(res);
-
-		/*
-		 * Get info about column defaults.  This is skipped for a data-only
-		 * dump, as it is only needed for table schemas.
-		 */
-		if (!dopt->dataOnly && hasdefaults)
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		{
 			/* Collect OIDs of interesting tables that have defaults */
 			if (tbloids->len > 1)	/* do we have more than the '{'? */
@@ -9438,28 +9050,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 				 */
 				attrdefs[j].separate = true;
 			}
-<<<<<<< HEAD
 			else if (!shouldPrintColumn(dopt, tbinfo, adnum - 1))
-=======
-			PQclear(res);
-		}
-
-		/*
-		 * Get info about table CHECK constraints.  This is skipped for a
-		 * data-only dump, as it is only needed for table schemas.
-		 */
-		if (tbinfo->ncheck > 0 && !dopt->dataOnly)
-		{
-			ConstraintInfo *constrs;
-			int			numConstrs;
-
-			pg_log_info("finding check constraints for table \"%s.%s\"",
-						tbinfo->dobj.namespace->dobj.name,
-						tbinfo->dobj.name);
-
-			resetPQExpBuffer(q);
-			if (fout->remoteVersion >= 90200)
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			{
 				/* column will be suppressed, print default separately */
 				attrdefs[j].separate = true;
@@ -9807,11 +9398,7 @@ getTSDictionaries(Archive *fout, int *numTSDicts)
 		dictinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_dictname));
 		dictinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_dictnamespace)));
-<<<<<<< HEAD
 		dictinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_dictowner));
-=======
-		dictinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		dictinfo[i].dicttemplate = atooid(PQgetvalue(res, i, i_dicttemplate));
 		if (PQgetisnull(res, i, i_dictinitoption))
 			dictinfo[i].dictinitoption = NULL;
@@ -9945,11 +9532,7 @@ getTSConfigurations(Archive *fout, int *numTSConfigs)
 		cfginfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_cfgname));
 		cfginfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_cfgnamespace)));
-<<<<<<< HEAD
 		cfginfo[i].rolname = getRoleName(PQgetvalue(res, i, i_cfgowner));
-=======
-		cfginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		cfginfo[i].cfgparser = atooid(PQgetvalue(res, i, i_cfgparser));
 
 		/* Decide whether we want to dump it */
