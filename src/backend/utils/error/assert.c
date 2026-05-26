@@ -37,34 +37,22 @@ ExceptionalCondition(const char *conditionName,
 					 const char *fileName,
 					 int lineNumber)
 {
-<<<<<<< HEAD
     /* CDB: Try to tell the QD or client what happened. */
 	if (!PointerIsValid(conditionName)
 		|| !PointerIsValid(fileName)
 		|| !PointerIsValid(errorType))
 		ereport(FATAL,
 				errFatalReturn(gp_reraise_signal),
-				errmsg("TRAP: ExceptionalCondition: bad arguments"));
+				errmsg("TRAP: ExceptionalCondition: bad arguments in PID %d")),
+					   (int) getpid();
 	else
 		ereport(FATAL,
 				errFatalReturn(gp_reraise_signal),
 				errmsg("Unexpected internal error"),
-				errdetail("%s(\"%s\", File: \"%s\", Line: %d)\n",
-						  errorType, conditionName, fileName, lineNumber));
+				errdetail("%s(\"%s\", File: \"%s\", Line: %d, PID: %d)\n",
+						  errorType, conditionName, fileName, lineNumber,
+						  (int) getpid()));
 				
-=======
-	/* Report the failure on stderr (or local equivalent) */
-	if (!PointerIsValid(conditionName)
-		|| !PointerIsValid(fileName)
-		|| !PointerIsValid(errorType))
-		write_stderr("TRAP: ExceptionalCondition: bad arguments in PID %d\n",
-					 (int) getpid());
-	else
-		write_stderr("TRAP: %s(\"%s\", File: \"%s\", Line: %d, PID: %d)\n",
-					 errorType, conditionName,
-					 fileName, lineNumber, (int) getpid());
-
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/* Usually this shouldn't be needed, but make sure the msg went out */
 	fflush(stderr);
 
