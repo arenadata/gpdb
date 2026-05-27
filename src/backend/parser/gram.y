@@ -601,13 +601,9 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 %type <str>		RoleId opt_boolean_or_string
 %type <str>		QueueId
 %type <list>	var_list
-<<<<<<< HEAD
-%type <str>		ColId ColLabel ColLabelNoAs var_name type_function_name param_name
+%type <str>		ColId ColLabel ColLabelNoAs BareColLabel
 %type <keyword> PartitionIdentKeyword	
 %type <str>		PartitionColId
-=======
-%type <str>		ColId ColLabel BareColLabel
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 %type <str>		NonReservedWord NonReservedWord_or_Sconst
 %type <str>		var_name type_function_name param_name
 %type <str>		createdb_opt_name
@@ -616,11 +612,8 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 
 %type <keyword> unreserved_keyword type_func_name_keyword
 %type <keyword> col_name_keyword reserved_keyword
-<<<<<<< HEAD
 %type <keyword> keywords_ok_in_alias_no_as
-=======
 %type <keyword> bare_label_keyword
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 %type <node>	TableConstraint TableLikeClause
 %type <ival>	TableLikeOptionList TableLikeOption
@@ -917,9 +910,8 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
  * rather than reducing a conflicting rule that takes CUBE as a function name.
  * Using the same precedence as IDENT seems right for the reasons given above.
  */
-<<<<<<< HEAD
-%nonassoc	UNBOUNDED		/* ideally should have same precedence as IDENT */
-%nonassoc	IDENT GENERATED NULL_P PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
+%nonassoc	UNBOUNDED		/* ideally would have same precedence as IDENT */
+%nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
 
 /*
  * This is a bit ugly... To allow these to be column aliases without
@@ -1227,10 +1219,6 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 			%nonassoc UNKNOWN
 			%nonassoc ZONE
 
-=======
-%nonassoc	UNBOUNDED		/* ideally would have same precedence as IDENT */
-%nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -10825,17 +10813,12 @@ ReindexStmt:
 					n->relation = $4;
 					n->name = NULL;
 					n->options = 0;
-<<<<<<< HEAD
 
-					if (n->concurrent)
+					if ($3)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("REINDEX CONCURRENTLY is not supported")));
 
-=======
-					if ($3)
-						n->options |= REINDEXOPT_CONCURRENTLY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					$$ = (Node *)n;
 				}
 			| REINDEX reindex_target_multitable opt_concurrently name
@@ -10845,17 +10828,12 @@ ReindexStmt:
 					n->name = $4;
 					n->relation = NULL;
 					n->options = 0;
-<<<<<<< HEAD
 
-					if (n->concurrent)
+					if ($3)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("REINDEX CONCURRENTLY is not supported")));
 
-=======
-					if ($3)
-						n->options |= REINDEXOPT_CONCURRENTLY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					$$ = (Node *)n;
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_type opt_concurrently qualified_name
@@ -10865,17 +10843,12 @@ ReindexStmt:
 					n->relation = $7;
 					n->name = NULL;
 					n->options = $3;
-<<<<<<< HEAD
 
-					if (n->concurrent)
+					if ($6)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("REINDEX CONCURRENTLY is not supported")));
 
-=======
-					if ($6)
-						n->options |= REINDEXOPT_CONCURRENTLY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					$$ = (Node *)n;
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_multitable opt_concurrently name
@@ -10885,17 +10858,12 @@ ReindexStmt:
 					n->name = $7;
 					n->relation = NULL;
 					n->options = $3;
-<<<<<<< HEAD
 
-					if (n->concurrent)
+					if ($6)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("REINDEX CONCURRENTLY is not supported")));
 
-=======
-					if ($6)
-						n->options |= REINDEXOPT_CONCURRENTLY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					$$ = (Node *)n;
 				}
 		;
@@ -17635,7 +17603,6 @@ target_el:	a_expr AS ColLabel
 					$$->val = (Node *)$1;
 					$$->location = @1;
 				}
-<<<<<<< HEAD
 			/*
 			 * Postgres supports omitting AS only for column labels that aren't
 			 * any known keyword.  There is an ambiguity against postfix
@@ -17650,10 +17617,7 @@ target_el:	a_expr AS ColLabel
 			 * modifier suffixes (DAY, MONTH, YEAR, etc) and a few other
 			 * obscure cases.
 			 */
-			| a_expr IDENT
-=======
 			| a_expr BareColLabel
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 				{
 					$$ = makeNode(ResTarget);
 					$$->name = $2;
