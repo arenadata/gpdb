@@ -169,7 +169,6 @@ transfer_single_new_db(FileNameMap *maps, int size, char *old_tablespace)
 		{
 			RelType type = maps[mapnum].type;
 
-<<<<<<< HEAD
 			if (type == AO || type == AOCS)
 			{
 				transfer_ao(&maps[mapnum]);
@@ -179,25 +178,13 @@ transfer_single_new_db(FileNameMap *maps, int size, char *old_tablespace)
 				/* transfer primary file */
 				transfer_relfile(&maps[mapnum], "", vm_must_add_frozenbit);
 
-				/* fsm/vm files added in PG 8.4 */
-				if (GET_MAJOR_VERSION(old_cluster.major_version) >= 804)
-				{
-					/*
-					 * Copy/link any fsm and vm files, if they exist
-					 */
-					transfer_relfile(&maps[mapnum], "_fsm", vm_must_add_frozenbit);
-					if (vm_crashsafe_match)
-						transfer_relfile(&maps[mapnum], "_vm", vm_must_add_frozenbit);
-				}
+				/*
+				 * Copy/link any fsm and vm files, if they exist
+				 */
+				transfer_relfile(&maps[mapnum], "_fsm", vm_must_add_frozenbit);
+				if (vm_crashsafe_match)
+					transfer_relfile(&maps[mapnum], "_vm", vm_must_add_frozenbit);
 			}
-=======
-			/*
-			 * Copy/link any fsm and vm files, if they exist
-			 */
-			transfer_relfile(&maps[mapnum], "_fsm", vm_must_add_frozenbit);
-			if (vm_crashsafe_match)
-				transfer_relfile(&maps[mapnum], "_vm", vm_must_add_frozenbit);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		}
 	}
 }
