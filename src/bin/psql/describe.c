@@ -4650,11 +4650,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 	int			cols_so_far;
-<<<<<<< HEAD
-	bool		translate_columns[] = {false, false, true, false, false /* Storage */, false, false, false, false, false};
-=======
-	bool		translate_columns[] = {false, false, true, false, false, false, false, false, false};
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+	bool		translate_columns[] = {false, false, true, false, false /* Storage */, false, false, false, false, false, false};
 
 	/* If tabtypes is empty, we default to \dtvmsE (but see also command.c) */
 	if (!(showTables || showIndexes || showViews || showMatViews || showSeq || showForeign))
@@ -4710,7 +4706,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 		if (isGPDB7000OrLater())
 		{
 			/* In GPDB7, we can have user defined access method, display the access method name directly */
-			appendPQExpBuffer(&buf, ", a.amname as \"%s\"\n", gettext_noop("Storage"));
+			appendPQExpBuffer(&buf, ", am.amname as \"%s\"\n", gettext_noop("Storage"));
 		}
 		else
 		{
@@ -4788,18 +4784,15 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 	appendPQExpBufferStr(&buf,
 						 "\nFROM pg_catalog.pg_class c"
 						 "\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace");
-<<<<<<< HEAD
 	if (showTables && isGPDB7000OrLater())
 		appendPQExpBufferStr(&buf,
-							"\n     LEFT JOIN pg_catalog.pg_am a ON a.oid = c.relam");
-=======
-
+							 "\n     LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam");
+	else
 	if (pset.sversion >= 120000 && !pset.hide_tableam &&
 		(showTables || showMatViews || showIndexes))
 		appendPQExpBufferStr(&buf,
 							 "\n     LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam");
 
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	if (showIndexes)
 		appendPQExpBufferStr(&buf,
 							 "\n     LEFT JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid"
