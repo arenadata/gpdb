@@ -1779,7 +1779,17 @@ RemoveRelations(DropStmt *drop)
 		}
 
 		/*
-<<<<<<< HEAD
+		 * Concurrent index drop cannot be used with partitioned indexes,
+		 * either.
+		 */
+		if ((flags & PERFORM_DELETION_CONCURRENTLY) != 0 &&
+			get_rel_relkind(relOid) == RELKIND_PARTITIONED_INDEX)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot drop partitioned index \"%s\" concurrently",
+							rel->relname)));
+
+		/*
 		 * If we're told to drop a partitioned index, we must acquire lock on
 		 * all the children of its parent partitioned table before proceeding.
 		 * Otherwise we'd try to lock the child index partitions before their
@@ -1790,17 +1800,6 @@ RemoveRelations(DropStmt *drop)
 			(void) find_all_inheritors(state.heapOid,
 									   state.heap_lockmode,
 									   NULL);
-=======
-		 * Concurrent index drop cannot be used with partitioned indexes,
-		 * either.
-		 */
-		if ((flags & PERFORM_DELETION_CONCURRENTLY) != 0 &&
-			get_rel_relkind(relOid) == RELKIND_PARTITIONED_INDEX)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot drop partitioned index \"%s\" concurrently",
-							rel->relname)));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		/* OK, we're ready to delete this one */
 		obj.classId = RelationRelationId;
@@ -4687,7 +4686,10 @@ AlterTableGetLockLevel(List *cmds)
 				cmd_lockmode = AccessShareLock;
 				break;
 
-<<<<<<< HEAD
+			case AT_AlterCollationRefreshVersion:
+				cmd_lockmode = AccessExclusiveLock;
+				break;
+
 				/* GPDB additions */
 			case AT_ExpandTable:
 			case AT_ExpandPartitionTablePrepare:
@@ -4711,9 +4713,6 @@ AlterTableGetLockLevel(List *cmds)
 			case AT_PartRename:
 			case AT_PartExchange:
 			case AT_PartSetTemplate:
-=======
-			case AT_AlterCollationRefreshVersion:
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 				cmd_lockmode = AccessExclusiveLock;
 				break;
 
@@ -5531,18 +5530,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 lockmode);
 			break;
 		case AT_AddConstraint:	/* ADD CONSTRAINT */
-<<<<<<< HEAD
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context, &cmd->execStmts);
-			/* Might not have gotten AddConstraint back from parse transform */
-=======
 			/* Transform the command only during initial examination */
 			if (cur_pass == AT_PASS_ADD_CONSTR)
 				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd,
 										  false, lockmode,
-										  cur_pass, context);
+										  cur_pass, context, &cmd->execStmts);
 			/* Depending on constraint type, might be no more work to do now */
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			if (cmd != NULL)
 				address =
 					ATExecAddConstraint(wqueue, tab, rel,
@@ -5550,18 +5543,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 										false, false, lockmode);
 			break;
 		case AT_AddConstraintRecurse:	/* ADD CONSTRAINT with recursion */
-<<<<<<< HEAD
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, true, lockmode,
-									  cur_pass, context, &cmd->execStmts);
-			/* Might not have gotten AddConstraint back from parse transform */
-=======
 			/* Transform the command only during initial examination */
 			if (cur_pass == AT_PASS_ADD_CONSTR)
 				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd,
 										  true, lockmode,
-										  cur_pass, context);
+										  cur_pass, context, &cmd->execStmts);
 			/* Depending on constraint type, might be no more work to do now */
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			if (cmd != NULL)
 				address =
 					ATExecAddConstraint(wqueue, tab, rel,
@@ -5915,18 +5902,6 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 */
 		switch (cmd2->subtype)
 		{
-<<<<<<< HEAD
-			/* Found the transformed version of our subcommand */
-			cmd2->subtype = cmd->subtype;	/* copy recursion flag */
-			newcmd = cmd2;
-
-			/*
-			 * In the QD save transformed version of definition for executing
-			 * in the QE
-			 */
-			if (Gp_role == GP_ROLE_DISPATCH)
-				cmd->def = newcmd->def;
-=======
 			case AT_SetNotNull:
 				/* Need command-specific recursion decision */
 				ATPrepSetNotNull(wqueue, rel, cmd2,
@@ -5980,7 +5955,6 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		{
 			/* OK, queue it up for later */
 			tab->subcmds[pass] = lappend(tab->subcmds[pass], cmd2);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		}
 		else
 		{
@@ -5992,6 +5966,13 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			{
 				/* Found the transformed version of our subcommand */
 				newcmd = cmd2;
+
+				/*
+				 * In the QD save transformed version of definition for
+				 * executing in the QE
+				 */
+				if (Gp_role == GP_ROLE_DISPATCH)
+					cmd->def = newcmd->def;
 			}
 			else
 				elog(ERROR, "ALTER TABLE scheduling failure: bogus item for pass %d",
