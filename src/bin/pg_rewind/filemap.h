@@ -12,18 +12,6 @@
 #include "storage/block.h"
 #include "storage/relfilenode.h"
 
-<<<<<<< HEAD
-/*
- * For every file found in the local or remote system, we have a file entry
- * that contains information about the file on both systems.  For relation
- * files, there is also a page map that marks pages in the file that were
- * changed in the target after the last common checkpoint.  Each entry also
- * contains an 'action' field, which says what we are going to do with the
- * file.
- */
-
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 /* these enum values are sorted in the order we want actions to be processed */
 typedef enum
 {
@@ -61,13 +49,9 @@ typedef enum
  */
 typedef struct file_entry_t
 {
-<<<<<<< HEAD
-	char	   *path;
-=======
 	uint32		status;			/* hash status */
 
 	const char *path;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	bool		isrelfile;		/* is it a relation data file? */
 
 	/*
@@ -83,7 +67,6 @@ typedef struct file_entry_t
 	 * source.
 	 */
 	datapagemap_t target_pages_to_overwrite;
-<<<<<<< HEAD
 
 	/*
 	 * Status of the file in the source.
@@ -92,28 +75,13 @@ typedef struct file_entry_t
 	file_type_t source_type;
 	size_t		source_size;
 	char	   *source_link_target; /* for a symlink */
+
+	/*
+	 * What will we do to the file?
+	 */
+	file_action_t action;
 
 	bool 		is_gp_tablespace;
-
-	/*
-	 * What will we do to the file?
-	 */
-	file_action_t action;
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
-
-	/*
-	 * Status of the file in the source.
-	 */
-	bool		source_exists;
-	file_type_t source_type;
-	size_t		source_size;
-	char	   *source_link_target; /* for a symlink */
-
-	/*
-	 * What will we do to the file?
-	 */
-	file_action_t action;
 } file_entry_t;
 
 /*
@@ -127,26 +95,8 @@ typedef struct filemap_t
 	uint64		total_size;		/* total size of the source cluster */
 	uint64		fetch_size;		/* number of bytes that needs to be copied */
 
-<<<<<<< HEAD
-	/*
-	 * After processing all the remote files, the entries in the linked list
-	 * are moved to this array. After processing local files, too, all the
-	 * local entries are added to the array by decide_file_actions(), and
-	 * sorted in the final order. After decide_file_actions(), all the entries
-	 * are in the array, and the linked list is empty.
-	 */
-	file_entry_t **array;
-	int			narray;			/* current length of array */
-
-	/*
-	 * Summary information.
-	 */
-	uint64		total_size;		/* total size of the source cluster */
-	uint64		fetch_size;		/* number of bytes that needs to be copied */
-=======
 	int			nentries;		/* size of 'entries' array */
 	file_entry_t *entries[FLEXIBLE_ARRAY_MEMBER];
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 } filemap_t;
 
 /* Functions for populating the filemap */
@@ -155,15 +105,9 @@ extern void process_source_file(const char *path, file_type_t type,
 								size_t size, const char *link_target);
 extern void process_target_file(const char *path, file_type_t type,
 								size_t size, const char *link_target);
-<<<<<<< HEAD
 extern void process_target_wal_aofile_change(RelFileNode rnode,
 											 int segno,
 											 int64 offset);
-extern void process_target_wal_block_change(ForkNumber forknum,
-											RelFileNode rnode,
-											BlockNumber blkno);
-extern void decide_file_actions(void);
-=======
 extern void process_target_wal_block_change(ForkNumber forknum,
 											RelFileNode rnode,
 											BlockNumber blkno);
@@ -171,6 +115,5 @@ extern void process_target_wal_block_change(ForkNumber forknum,
 extern filemap_t *decide_file_actions(void);
 extern void calculate_totals(filemap_t *filemap);
 extern void print_filemap(filemap_t *filemap);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 #endif							/* FILEMAP_H */
