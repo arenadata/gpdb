@@ -105,7 +105,6 @@ check_and_dump_old_cluster(bool live_check, char **sequence_script_file_name)
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
 
 	/*
-<<<<<<< HEAD
 	 * Check for various Greenplum failure cases
 	 */
 	check_greenplum();
@@ -113,13 +112,13 @@ check_and_dump_old_cluster(bool live_check, char **sequence_script_file_name)
 	/* GPDB 7 removed support for SHA-256 hashed passwords */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 905)
 		old_GPDB6_check_for_unsupported_sha256_password_hashes();
-=======
+
+	/*
 	 * Pre-PG 14 allowed user defined postfix operators, which are not
 	 * supported anymore.  Verify there are none, iff applicable.
 	 */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1300)
 		check_for_user_defined_postfix_ops(&old_cluster);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/*
 	 * Pre-PG 12 allowed tables to be declared WITH OIDS, which is not
