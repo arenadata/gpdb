@@ -330,7 +330,7 @@ create_target_tablespace_layout(const char *path, const char *link)
  * in pg_rewind by running single mode postgres if needed and also we do not
  * copy an unsynchronized dababase without sync as the target base.
  */
-static void
+void
 sync_target_dir(filemap_t *filemap)
 {
 	if (!do_sync || dry_run)
