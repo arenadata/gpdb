@@ -5231,13 +5231,12 @@ PgstatCollectorMain(int argc, char *argv[])
 					pgstat_recv_bgwriter(&msg.msg_bgwriter, len);
 					break;
 
-<<<<<<< HEAD
 				case PGSTAT_MTYPE_QUEUESTAT:  /* GPDB */
 					pgstat_recv_queuestat((PgStat_MsgQueuestat *) &msg, len);
-=======
+					break;
+
 				case PGSTAT_MTYPE_WAL:
 					pgstat_recv_wal(&msg.msg_wal, len);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					break;
 
 				case PGSTAT_MTYPE_SLRU:
@@ -5556,7 +5555,6 @@ pgstat_write_statsfiles(bool permanent, bool allDbs)
 	}
 
 	/*
-<<<<<<< HEAD
 	 * Walk through resource queue stats.
 	 */
 	hash_seq_init(&qstat, pgStatQueueHash);
@@ -5564,7 +5562,9 @@ pgstat_write_statsfiles(bool permanent, bool allDbs)
 	{
 		fputc('Q', fpout);
 		fwrite(queueentry, sizeof(PgStat_StatQueueEntry), 1, fpout);
-=======
+	}
+
+	/*
 	 * Write replication slot stats struct
 	 */
 	for (i = 0; i < nReplSlotStats; i++)
@@ -5572,7 +5572,6 @@ pgstat_write_statsfiles(bool permanent, bool allDbs)
 		fputc('R', fpout);
 		rc = fwrite(&replSlotStats[i], sizeof(PgStat_ReplSlotStats), 1, fpout);
 		(void) rc;				/* we'll check for error with ferror */
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	}
 
 	/*
@@ -5803,7 +5802,6 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	dbhash = hash_create("Databases hash", PGSTAT_DB_HASH_SIZE, &hash_ctl,
 						 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
-<<<<<<< HEAD
 	/**
 	 ** Create the Queue hashtable
 	 **/
@@ -5815,11 +5813,10 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	queuehash = hash_create("Queues hash", PGSTAT_QUEUE_HASH_SIZE, &hash_ctl,
 						  HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 	pgStatQueueHash = queuehash;
-=======
+
 	/* Allocate the space for replication slot statistics */
 	replSlotStats = palloc0(max_replication_slots * sizeof(PgStat_ReplSlotStats));
 	nReplSlotStats = 0;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/*
 	 * Clear out global, archiver, WAL and SLRU statistics so they start from
@@ -6026,25 +6023,15 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 				break;
 
 				/*
-<<<<<<< HEAD
 				 * 'Q'	A PgStat_StatQueueEntry follows.  (GPDB)
 				 */
 			case 'Q':
 				if (fread(&queuebuf, 1, sizeof(PgStat_StatQueueEntry),
 						  fpin) != sizeof(PgStat_StatQueueEntry))
-=======
-				 * 'R'	A PgStat_ReplSlotStats struct describing a replication
-				 * slot follows.
-				 */
-			case 'R':
-				if (fread(&replSlotStats[nReplSlotStats], 1, sizeof(PgStat_ReplSlotStats), fpin)
-					!= sizeof(PgStat_ReplSlotStats))
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
 									statfile)));
-<<<<<<< HEAD
 					goto done;
 				}
 
@@ -6067,12 +6054,23 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 				}
 
 				memcpy(queueentry, &queuebuf, sizeof(PgStat_StatQueueEntry));
-=======
+				break;
+
+				/*
+				 * 'R'	A PgStat_ReplSlotStats struct describing a replication
+				 * slot follows.
+				 */
+			case 'R':
+				if (fread(&replSlotStats[nReplSlotStats], 1, sizeof(PgStat_ReplSlotStats), fpin)
+					!= sizeof(PgStat_ReplSlotStats))
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile)));
 					memset(&replSlotStats[nReplSlotStats], 0, sizeof(PgStat_ReplSlotStats));
 					goto done;
 				}
 				nReplSlotStats++;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 				break;
 
 			case 'E':
@@ -6403,30 +6401,32 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 				break;
 
 				/*
-<<<<<<< HEAD
 				 * 'Q'	A PgStat_StatQueueEntry follows.  (GPDB)
 				 */
 			case 'Q':
 				if (fread(&queuebuf, 1, sizeof(PgStat_StatQueueEntry),
 						  fpin) != sizeof(PgStat_StatQueueEntry))
-=======
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile)));
+					goto done;
+				}
+				break;
+
+				/*
 				 * 'R'	A PgStat_ReplSlotStats struct describing a replication
 				 * slot follows.
 				 */
 			case 'R':
 				if (fread(&myReplSlotStats, 1, sizeof(PgStat_ReplSlotStats), fpin)
 					!= sizeof(PgStat_ReplSlotStats))
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
 									statfile)));
-<<<<<<< HEAD
-					goto done;
-=======
 					FreeFile(fpin);
 					return false;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 				}
 				break;
 
