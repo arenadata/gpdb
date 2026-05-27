@@ -232,3 +232,20 @@ set enable_hashagg = off;
 explain select a, b, count(*) as res from t1 group by a, b;
 
 drop table t1;
+
+-- Rescan over incremental sort
+create table t (a int, b int, c int);
+insert into t select mod(i,30),mod(i,30),i from generate_series(1,30000) s(i);
+create index on t (a);
+analyze t;
+explain (costs off) with cte as (
+    select * from t order by a
+)
+select a, b from t where t.a = (select b from cte where cte.b >= t.b order by a, b limit 1) order by a limit 1;
+
+with cte as (
+    select * from t order by a
+)
+select a, b from t where t.a = (select b from cte where cte.b >= t.b order by a, b limit 1) order by a limit 1;
+
+drop table t;
