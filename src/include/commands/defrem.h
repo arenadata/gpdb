@@ -35,16 +35,10 @@ extern ObjectAddress DefineIndex(Oid relationId,
 								 bool check_rights,
 								 bool check_not_in_use,
 								 bool skip_build,
-<<<<<<< HEAD
 								 bool quiet,
 								 bool is_new_table);
 extern void ReindexIndex(ReindexStmt *stmt, bool isTopLevel);
 extern Oid	ReindexTable(ReindexStmt *stmt, bool isTopLevel);
-=======
-								 bool quiet);
-extern void ReindexIndex(RangeVar *indexRelation, int options, bool isTopLevel);
-extern Oid	ReindexTable(RangeVar *relation, int options, bool isTopLevel);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 extern void ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 								  int options);
 extern char *makeObjectName(const char *name1, const char *name2,
