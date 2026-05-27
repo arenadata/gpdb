@@ -165,14 +165,10 @@ create_target(file_entry_t *entry)
 			break;
 
 		case FILE_TYPE_SYMLINK:
-<<<<<<< HEAD
 			if (entry->is_gp_tablespace)
 				create_target_tablespace_layout(entry->path, entry->source_link_target);
 			else
 				create_target_symlink(entry->path, entry->source_link_target);
-=======
-			create_target_symlink(entry->path, entry->source_link_target);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			break;
 
 		case FILE_TYPE_REGULAR:
@@ -180,14 +176,11 @@ create_target(file_entry_t *entry)
 			pg_fatal("invalid action (CREATE) for regular file");
 			break;
 
-<<<<<<< HEAD
 		case FILE_TYPE_FIFO:
 			/* Only pgsql_tmp files are FIFO and they are ignored from source target. */
 			pg_fatal("invalid action (CREATE) for fifo file");
 			break;
 
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		case FILE_TYPE_UNDEFINED:
 			pg_fatal("undefined file type for \"%s\"", entry->path);
 			break;
@@ -296,7 +289,6 @@ remove_target_symlink(const char *path)
 				 dstpath);
 }
 
-<<<<<<< HEAD
 /* Create symlink for tablespace, create tablespace target dir */
 static void
 create_target_tablespace_layout(const char *path, const char *link)
@@ -322,7 +314,7 @@ create_target_tablespace_layout(const char *path, const char *link)
 
 	pfree(newlink);
 }
-=======
+
 /*
  * Sync target data directory to ensure that modifications are safely on disk.
  *
@@ -340,8 +332,6 @@ sync_target_dir(void)
 
 	fsync_pgdata(datadir_target, PG_VERSION_NUM);
 }
-
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 /*
  * Read a file into memory. The file to be read is <datadir>/<path>.
