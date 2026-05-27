@@ -27,12 +27,7 @@
 #include "pg_backup_utils.h"
 
 static void _check_database_version(ArchiveHandle *AH);
-<<<<<<< HEAD
-static PGconn *_connectDB(ArchiveHandle *AH, const char *newdbname, const char *newUser);
 static void notice_processor(void *arg pg_attribute_unused(), const char *message);
-=======
-static void notice_processor(void *arg, const char *message);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 static void
 _check_database_version(ArchiveHandle *AH)
@@ -117,17 +112,9 @@ ReconnectToServer(ArchiveHandle *AH, const char *dbname)
  */
 void
 ConnectDatabase(Archive *AHX,
-<<<<<<< HEAD
-				const char *dbname,
-				const char *pghost,
-				const char *pgport,
-				const char *username,
-				trivalue prompt_password,
-				bool binary_upgrade)
-=======
 				const ConnParams *cparams,
-				bool isReconnect)
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+				bool isReconnect,
+				bool binary_upgrade)
 {
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	trivalue	prompt_password;
@@ -149,28 +136,10 @@ ConnectDatabase(Archive *AHX,
 	 * Start the connection.  Loop until we have a password if requested by
 	 * backend.
 	 */
-	const char *keywords[8];
-	const char *values[8];
+	const char *keywords[9];
+	const char *values[9];
 	do
 	{
-<<<<<<< HEAD
-		keywords[0] = "host";
-		values[0] = pghost;
-		keywords[1] = "port";
-		values[1] = pgport;
-		keywords[2] = "user";
-		values[2] = username;
-		keywords[3] = "password";
-		values[3] = password;
-		keywords[4] = "dbname";
-		values[4] = dbname;
-		keywords[5] = "fallback_application_name";
-		values[5] = progname;
-		keywords[6] = NULL;
-		values[6] = NULL;
-=======
-		const char *keywords[8];
-		const char *values[8];
 		int			i = 0;
 
 		/*
@@ -198,7 +167,6 @@ ConnectDatabase(Archive *AHX,
 		keywords[i] = NULL;
 		values[i++] = NULL;
 		Assert(i <= lengthof(keywords));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		new_pass = false;
 		AH->connection = PQconnectdbParams(keywords, values, true);
@@ -259,11 +227,11 @@ ConnectDatabase(Archive *AHX,
 	 */
 	if (binary_upgrade)
 	{
-		keywords[6] = "options";
-		values[6] = AH->public.remoteVersion < GPDB7_MAJOR_PGVERSION ?
+		keywords[7] = "options";
+		values[7] = AH->public.remoteVersion < GPDB7_MAJOR_PGVERSION ?
 								"-c gp_session_role=utility" : "-c gp_role=utility";
-		keywords[7] = NULL;
-		values[7] = NULL;
+		keywords[8] = NULL;
+		values[8] = NULL;
 		AH->connection = PQconnectdbParams(keywords, values, true);
 	}
 	PQsetNoticeProcessor(AH->connection, notice_processor, NULL);

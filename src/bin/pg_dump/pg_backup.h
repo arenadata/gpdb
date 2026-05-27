@@ -61,7 +61,6 @@ typedef enum _teSection
 	SECTION_POST_DATA			/* stuff to be processed after data */
 } teSection;
 
-<<<<<<< HEAD
 /* We need one enum entry per prepared query in pg_dump */
 enum _dumpPreparedQueries
 {
@@ -79,8 +78,6 @@ enum _dumpPreparedQueries
 	NUM_PREP_QUERIES			/* must be last */
 };
 
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 /* Parameters needed by ConnectDatabase; same for dump and restore */
 typedef struct _connParams
 {
@@ -204,14 +201,11 @@ typedef struct _dumpOptions
 
 	int			sequence_data;	/* dump sequence data even in schema-only mode */
 	int			do_nothing;
-<<<<<<< HEAD
+	int			coll_unknown;
 
 	/* GPDB */
 	bool		dumpGpPolicy;
 	bool		isGPbackend;
-=======
-	int			coll_unknown;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 } DumpOptions;
 
 /*
@@ -294,19 +288,10 @@ typedef void (*SetupWorkerPtrType) (Archive *AH);
  * Main archiver interface.
  */
 
-<<<<<<< HEAD
-extern void ConnectDatabase(Archive *AH,
-							const char *dbname,
-							const char *pghost,
-							const char *pgport,
-							const char *username,
-							trivalue prompt_password,
-							bool binary_upgrade);
-=======
 extern void ConnectDatabase(Archive *AHX,
 							const ConnParams *cparams,
-							bool isReconnect);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+							bool isReconnect,
+							bool binary_upgrade);
 extern void DisconnectDatabase(Archive *AHX);
 extern PGconn *GetConnection(Archive *AHX);
 
