@@ -3777,16 +3777,10 @@ initCreateTables(PGconn *con)
 		else if (ddl->declare_fillfactor)
 		{
 			/* fillfactor is only expected on actual tables */
-<<<<<<< HEAD
-			append_fillfactor(opts, sizeof(opts));
-		else
-			snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
-					 " with (%s)",
-					 storage_clause);
-=======
 			appendPQExpBuffer(&query, " with (fillfactor=%d)", fillfactor);
 		}
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+		else
+			appendPQExpBuffer(&query, " with (%s)", storage_clause);
 
 		if (tablespace != NULL)
 		{
@@ -3810,22 +3804,6 @@ initCreateTables(PGconn *con)
 }
 
 /*
-<<<<<<< HEAD
- * add fillfactor percent option.
- *
- * XXX - As default is 100, it could be removed in this case.
- */
-static void
-append_fillfactor(char *opts, int len)
-{
-	snprintf(opts + strlen(opts), len - strlen(opts),
-			 " with (fillfactor=%d, %s)",
-			 fillfactor, storage_clause);
-}
-
-/*
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
  * Truncate away any old data, in one command in case there are foreign keys
  */
 static void
@@ -4070,17 +4048,12 @@ initCreatePKeys(PGconn *con)
 
 	for (i = 0; i < lengthof(DDLINDEXes); i++)
 	{
-<<<<<<< HEAD
-		char		buffer[256];
+		resetPQExpBuffer(&query);
 
 		if (use_unique_key)
-			strlcpy(buffer, DDLINDEXes[i], sizeof(buffer));
+			appendPQExpBufferStr(&query, DDLINDEXes[i]);
 		else
-			strlcpy(buffer, NON_UNIQUE_INDEX_DDLINDEXes[i], sizeof(buffer));
-=======
-		resetPQExpBuffer(&query);
-		appendPQExpBufferStr(&query, DDLINDEXes[i]);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+			appendPQExpBufferStr(&query, NON_UNIQUE_INDEX_DDLINDEXes[i]);
 
 		if (index_tablespace != NULL)
 		{
