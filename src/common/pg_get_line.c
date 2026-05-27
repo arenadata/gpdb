@@ -23,8 +23,6 @@
 
 
 /*
-<<<<<<< HEAD
-=======
  * pg_get_line()
  *
  * This is meant to be equivalent to fgets(), except that instead of
@@ -71,7 +69,6 @@ pg_get_line(FILE *stream)
 }
 
 /*
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
  * pg_get_line_buf()
  *
  * This has similar behavior to pg_get_line(), and thence to fgets(),
@@ -140,8 +137,4 @@ pg_get_line_append(FILE *stream, StringInfo buf)
 
 	/* No newline at EOF, but we did collect some data */
 	return true;
-<<<<<<< HEAD
- }
-=======
 }
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
