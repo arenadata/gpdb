@@ -1019,7 +1019,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 											   childplan_itlist, OUTER_VAR, rtoffset, 1);
 							pinfo->exec_pruning_steps = (List *)
 								fix_upper_expr(root, (Node *) pinfo->exec_pruning_steps,
-											   childplan_itlist, OUTER_VAR, rtoffset, 1);
+											   childplan_itlist, OUTER_VAR, rtoffset,
+											   NUM_EXEC_TLIST(plan));
 						}
 					}
 				}
@@ -1113,7 +1114,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					                                             (Node *)dqaExpr->agg_filter,
 					                                             subplan_itlist,
 					                                             OUTER_VAR,
-					                                             rtoffset, 1);
+					                                             rtoffset,
+																 NUM_EXEC_TLIST(plan));
 
 					lfirst(lc) = dqaExpr;
 				}
@@ -1353,7 +1355,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 
 				motion->hashExprs = (List *)
 					fix_upper_expr(root, (Node*) motion->hashExprs,
-								   childplan_itlist,  OUTER_VAR, rtoffset, 1);
+								   childplan_itlist,  OUTER_VAR, rtoffset,
+								   NUM_EXEC_TLIST(plan));
 
 				/* no need to fix targetlist and qual */
 				Assert(plan->qual == NIL);
