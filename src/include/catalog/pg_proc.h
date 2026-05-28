@@ -248,10 +248,10 @@ extern bool function_parse_error_transpose(const char *prosrc);
 
 extern List *oid_array_to_list(Datum datum);
 
-#define IS_MEDIAN_OID(x) ((x) == MEDIAN_FLOAT8_OID || \
-						  (x) == MEDIAN_INTERVAL_OID || \
-						  (x) == MEDIAN_TIMESTAMP_OID || \
-						  (x) == MEDIAN_TIMESTAMPTZ_OID)
+#define IS_MEDIAN_OID(x) ((x) == F_MEDIAN_FLOAT8_FLOAT8 || \
+						  (x) == F_MEDIAN_FLOAT8_INTERVAL || \
+						  (x) == F_MEDIAN_FLOAT8_TIMESTAMP || \
+						  (x) == F_MEDIAN_FLOAT8_TIMESTAMPTZ)
 
 
 #endif							/* PG_PROC_H */

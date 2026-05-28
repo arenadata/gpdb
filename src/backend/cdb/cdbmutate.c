@@ -1603,8 +1603,8 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			 * xlog which will also flush any xlog writes that the sequence
 			 * server might do.
 			 */
-			if (funcid == F_NEXTVAL_OID || funcid == F_CURRVAL_OID ||
-				funcid == F_SETVAL_OID)
+			if (funcid == F_NEXTVAL || funcid == F_CURRVAL ||
+				funcid == F_SETVAL_REGCLASS_INT8)
 			{
 				ExecutorMarkTransactionUsesSequences();
 				is_seq_func = true;
