@@ -2444,19 +2444,12 @@ coerceSetOpTypes(ParseState *pstate, Node *sop,
 			Node	   *rcolnode = (Node *) rtle->expr;
 			Oid			lcoltype = exprType(lcolnode);
 			Oid			rcoltype = exprType(rcolnode);
-<<<<<<< HEAD
-			int32		lcoltypmod = exprTypmod(lcolnode);
-			int32		rcoltypmod = exprTypmod(rcolnode);
 			Node       *bestexpr = NULL;
-=======
-			Node	   *bestexpr;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			int			bestlocation;
 			Oid			rescoltype = pct ? lfirst_oid(pct) : InvalidOid;
 			int32		rescoltypmod = pcm ? lfirst_int(pcm) : -1;
 			Oid			rescolcoll;
 
-<<<<<<< HEAD
 			/*
 			 * If the preprocessed coltype is InvalidOid, we fall back
 			 * to the old style type resolution for backward
@@ -2470,9 +2463,6 @@ coerceSetOpTypes(ParseState *pstate, Node *sop,
 												context,
 												&bestexpr);
 				bestlocation = exprLocation(bestexpr);
-				/* if same type and same typmod, use typmod; else default */
-				if (lcoltype == rcoltype && lcoltypmod == rcoltypmod)
-					rescoltypmod = lcoltypmod;
 			}
 			else
 			{
@@ -2483,14 +2473,6 @@ coerceSetOpTypes(ParseState *pstate, Node *sop,
 				bestexpr = lcolnode;
 				bestlocation = exprLocation(lcolnode);
 			}
-=======
-			/* select common type, same as CASE et al */
-			rescoltype = select_common_type(pstate,
-											list_make2(lcolnode, rcolnode),
-											context,
-											&bestexpr);
-			bestlocation = exprLocation(bestexpr);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 			/*
 			 * Verify the coercions are actually possible.  If not, we'd fail
