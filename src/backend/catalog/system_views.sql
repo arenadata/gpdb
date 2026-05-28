@@ -913,7 +913,6 @@ CREATE VIEW pg_stat_replication AS
         JOIN pg_stat_get_wal_senders() AS W ON (S.pid = W.pid)
         LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid);
 
-<<<<<<< HEAD
 CREATE FUNCTION gp_stat_get_master_replication() RETURNS SETOF RECORD AS
 $$
     SELECT pg_catalog.gp_execution_segment() AS gp_segment_id, *
@@ -970,7 +969,7 @@ CREATE VIEW gp_stat_replication AS
          sync_priority int4, sync_state text, reply_time timestamptz)
          ON G.gp_segment_id = R.gp_segment_id
     );
-=======
+
 CREATE VIEW pg_stat_replication_slots AS
     SELECT
             s.slot_name,
@@ -982,7 +981,6 @@ CREATE VIEW pg_stat_replication_slots AS
             s.stream_bytes,
             s.stats_reset
     FROM pg_stat_get_replication_slots() AS s;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 CREATE VIEW pg_stat_slru AS
     SELECT

@@ -221,11 +221,7 @@ copy_executeFileMap(filemap_t *map)
 
 	for (i = 0; i < map->nentries; i++)
 	{
-<<<<<<< HEAD
-		entry = map->array[i];
-=======
 		entry = map->entries[i];
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		execute_pagemap(&entry->target_pages_to_overwrite, entry->path);
 
 		switch (entry->action)

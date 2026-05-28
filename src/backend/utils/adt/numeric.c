@@ -484,7 +484,6 @@ static void dump_var(const char *str, NumericVar *var);
 		(v)->neg_digits = NULL; 	\
 	} while (0)
 
-<<<<<<< HEAD
 #define quick_init_var(v) \
 	do { \
 		(v)->buf = (v)->ndb;	\
@@ -530,9 +529,6 @@ static void dump_var(const char *str, NumericVar *var);
 		(v)->buf[0] = 0;	\
 		(v)->digits = (v)->buf + 1;	\
 	} while (0)
-=======
-#define init_var(v)		memset(v, 0, sizeof(NumericVar))
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 #define NUMERIC_DIGITS(num) (NUMERIC_HEADER_IS_SHORT(num) ? \
 	(num)->choice.n_short.n_data : (num)->choice.n_long.n_data)
@@ -4526,19 +4522,7 @@ int8_numeric(PG_FUNCTION_ARGS)
 {
 	int64		val = PG_GETARG_INT64(0);
 
-<<<<<<< HEAD
-	quick_init_var(&result);
-
-	int64_to_numericvar(val, &result);
-
-	res = make_result(&result);
-
-	free_var(&result);
-
-	PG_RETURN_NUMERIC(res);
-=======
 	PG_RETURN_NUMERIC(int64_to_numeric(val));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 }
 
 
@@ -4578,19 +4562,7 @@ int2_numeric(PG_FUNCTION_ARGS)
 {
 	int16		val = PG_GETARG_INT16(0);
 
-<<<<<<< HEAD
-	quick_init_var(&result);
-
-	int64_to_numericvar((int64) val, &result);
-
-	res = make_result(&result);
-
-	free_var(&result);
-
-	PG_RETURN_NUMERIC(res);
-=======
 	PG_RETURN_NUMERIC(int64_to_numeric(val));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 }
 
 

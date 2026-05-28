@@ -3911,20 +3911,9 @@ CopyFrom(CopyState cstate)
 	 * index-entry-making machinery.  (There used to be a huge amount of code
 	 * here that basically duplicated execUtils.c ...)
 	 */
-<<<<<<< HEAD
-	resultRelInfo = makeNode(ResultRelInfo);
-	InitResultRelInfo(resultRelInfo,
-					  cstate->rel,
-					  1,		/* must match rel's position in range_table */
-					  NULL,
-					  0);
-
-	target_resultRelInfo = resultRelInfo;
-=======
 	ExecInitRangeTable(estate, cstate->range_table);
 	resultRelInfo = target_resultRelInfo = makeNode(ResultRelInfo);
 	ExecInitResultRelation(estate, resultRelInfo, 1);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/* Verify the named relation is a valid target for INSERT */
 	CheckValidResultRel(resultRelInfo, CMD_INSERT);
@@ -4703,14 +4692,9 @@ CopyFrom(CopyState cstate)
 	if (insertMethod != CIM_SINGLE)
 		CopyMultiInsertInfoCleanup(&multiInsertInfo);
 
-<<<<<<< HEAD
-	ExecCloseIndices(target_resultRelInfo);
-
 	if (target_resultRelInfo->ri_RelationDesc->rd_tableam)
 		table_dml_finish(target_resultRelInfo->ri_RelationDesc);
 
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/* Close all the partitioned tables, leaf partitions, and their indices */
 	if (proute)
 		ExecCleanupTupleRouting(mtstate, proute);

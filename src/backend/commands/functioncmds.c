@@ -234,12 +234,7 @@ interpret_function_parameter_list(ParseState *pstate,
 	*allParameterTypes	= NULL;
 	*parameterModes		= NULL;
 
-<<<<<<< HEAD
-	/* Allocate local memory */
-	inTypes = (Oid *) palloc(parameterCount * sizeof(Oid));
-=======
 	sigArgTypes = (Oid *) palloc(parameterCount * sizeof(Oid));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	allTypes = (Datum *) palloc(parameterCount * sizeof(Datum));
 	paramModes = (Datum *) palloc(parameterCount * sizeof(Datum));
 	paramNames = (Datum *) palloc0(parameterCount * sizeof(Datum));
@@ -324,18 +319,12 @@ interpret_function_parameter_list(ParseState *pstate,
 			if (varCount > 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-<<<<<<< HEAD
-						 errmsg("VARIADIC parameter must be the last input parameter")));
-			inTypes[inCount++] = toid;
-			isinput = true;
+						 errmsg("VARIADIC parameter must be the last signature parameter")));
+			sigArgTypes[sigArgCount++] = toid;
 
 			/* Keep track of the number of anytable arguments */
 			if (toid == ANYTABLEOID)
 				multisetCount++;
-=======
-						 errmsg("VARIADIC parameter must be the last signature parameter")));
-			sigArgTypes[sigArgCount++] = toid;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		}
 
 		/* handle output parameters */
