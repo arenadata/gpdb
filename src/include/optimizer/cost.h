@@ -16,6 +16,8 @@
 #ifndef COST_H
 #define COST_H
 
+#include <math.h>
+
 #include "nodes/pathnodes.h"
 #include "nodes/plannodes.h"
 
