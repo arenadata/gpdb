@@ -5680,7 +5680,8 @@ get_foreign_key_join_selectivity(PlannerInfo *root,
 												(Node *) rinfo,
 												0,
 												jointype,
-												sjinfo);
+												sjinfo,
+												false /* use_damping */);
 						if (s0 > 0)
 							fkselec /= s0;
 					}
