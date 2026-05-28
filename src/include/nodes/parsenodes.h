@@ -3886,11 +3886,7 @@ typedef struct ReindexStmt
 	RangeVar   *relation;		/* Table or index to reindex */
 	const char *name;			/* name of database to reindex */
 	int			options;		/* Reindex options flags */
-<<<<<<< HEAD
-	bool		concurrent;		/* reindex concurrently? */
 	Oid			relid;			/* oid of table or index, used by QE */
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 } ReindexStmt;
 
 /* ----------------------
