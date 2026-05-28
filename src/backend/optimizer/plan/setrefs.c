@@ -821,11 +821,13 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				/* adjust for the new range table offset */
 				tplan->scan.scanrelid += rtoffset;
 				tplan->scan.plan.targetlist =
-					fix_scan_list(root, tplan->scan.plan.targetlist, rtoffset);
+					fix_scan_list(root, tplan->scan.plan.targetlist,
+								  rtoffset, NUM_EXEC_TLIST(plan));
 				tplan->scan.plan.qual =
-					fix_scan_list(root, tplan->scan.plan.qual, rtoffset);
+					fix_scan_list(root, tplan->scan.plan.qual,
+								  rtoffset, NUM_EXEC_QUAL(plan));
 				tplan->function = (RangeTblFunction *)
-					fix_scan_expr(root, (Node *) tplan->function, rtoffset);
+					fix_scan_expr(root, (Node *) tplan->function, rtoffset, 1);
 
 				return plan;
 			}
@@ -1014,10 +1016,10 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 
 							pinfo->initial_pruning_steps = (List *)
 								fix_upper_expr(root, (Node *) pinfo->initial_pruning_steps,
-											   childplan_itlist, OUTER_VAR, rtoffset);
+											   childplan_itlist, OUTER_VAR, rtoffset, 1);
 							pinfo->exec_pruning_steps = (List *)
 								fix_upper_expr(root, (Node *) pinfo->exec_pruning_steps,
-											   childplan_itlist, OUTER_VAR, rtoffset);
+											   childplan_itlist, OUTER_VAR, rtoffset, 1);
 						}
 					}
 				}
@@ -1111,7 +1113,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					                                             (Node *)dqaExpr->agg_filter,
 					                                             subplan_itlist,
 					                                             OUTER_VAR,
-					                                             rtoffset);
+					                                             rtoffset, 1);
 
 					lfirst(lc) = dqaExpr;
 				}
@@ -1350,7 +1352,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					build_tlist_index(plan->lefttree->targetlist);
 
 				motion->hashExprs = (List *)
-					fix_upper_expr(root, (Node*) motion->hashExprs, childplan_itlist,  OUTER_VAR, rtoffset);
+					fix_upper_expr(root, (Node*) motion->hashExprs,
+								   childplan_itlist,  OUTER_VAR, rtoffset, 1);
 
 				/* no need to fix targetlist and qual */
 				Assert(plan->qual == NIL);
@@ -2315,15 +2318,15 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 										outer_itlist,
 										inner_itlist,
 										(Index) 0,
-										rtoffset,
-										NUM_EXEC_QUAL((Plan *) join));
+										rtoffset);
 
 		hj->hashqualclauses = fix_join_expr(root,
 											hj->hashqualclauses,
 											outer_itlist,
 											inner_itlist,
 											(Index) 0,
-											rtoffset);
+											rtoffset,
+											NUM_EXEC_QUAL((Plan *) join));
 		/*
 		 * HashJoin's hashkeys are used to look for matching tuples from its
 		 * outer plan (not the Hash node!) in the hashtable.
