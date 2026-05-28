@@ -61,7 +61,6 @@ extern void DistributedLog_BootStrap(void);
 extern void DistributedLog_Startup(
 					   TransactionId oldestActiveXid,
 					   TransactionId nextXid);
-extern void DistributedLog_Shutdown(void);
 extern void DistributedLog_CheckPoint(void);
 extern void DistributedLog_Extend(TransactionId newestXid);
 extern bool DistributedLog_GetLowWaterXid(
