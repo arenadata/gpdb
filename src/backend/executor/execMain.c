@@ -1710,94 +1710,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	estate->es_plannedstmt = plannedstmt;
 
 	/*
-<<<<<<< HEAD
-	 * Initialize ResultRelInfo data structures, and open the result rels.
-	 *
-	 * CDB: Note that we need this info even if we aren't the slice that will be doing
-	 * the actual updating, since it's where we learn things, such as if the row needs to
-	 * contain OIDs or not.
-	 */
-	if (plannedstmt->resultRelations)
-	{
-		List	   *resultRelations = plannedstmt->resultRelations;
-		int			numResultRelations = list_length(resultRelations);
-		ResultRelInfo *resultRelInfos;
-		ResultRelInfo *resultRelInfo;
-
-		resultRelInfos = (ResultRelInfo *)
-			palloc(numResultRelations * sizeof(ResultRelInfo));
-		resultRelInfo = resultRelInfos;
-		foreach(l, plannedstmt->resultRelations)
-		{
-			Index		resultRelationIndex = lfirst_int(l);
-			Relation	resultRelation;
-
-			resultRelation = ExecGetRangeTableRelation(estate,
-													   resultRelationIndex);
-			InitResultRelInfo(resultRelInfo,
-							  resultRelation,
-							  resultRelationIndex,
-							  NULL,
-							  estate->es_instrument);
-			resultRelInfo++;
-		}
-		estate->es_result_relations = resultRelInfos;
-		estate->es_num_result_relations = numResultRelations;
-
-		/* es_result_relation_info is NULL except when within ModifyTable */
-		estate->es_result_relation_info = NULL;
-
-		/*
-		 * In the partitioned result relation case, also build ResultRelInfos
-		 * for all the partitioned table roots, because we will need them to
-		 * fire statement-level triggers, if any.
-		 */
-		if (plannedstmt->rootResultRelations)
-		{
-			int			num_roots = list_length(plannedstmt->rootResultRelations);
-
-			resultRelInfos = (ResultRelInfo *)
-				palloc(num_roots * sizeof(ResultRelInfo));
-			resultRelInfo = resultRelInfos;
-			foreach(l, plannedstmt->rootResultRelations)
-			{
-				Index		resultRelIndex = lfirst_int(l);
-				Relation	resultRelDesc;
-
-				resultRelDesc = ExecGetRangeTableRelation(estate,
-														  resultRelIndex);
-				InitResultRelInfo(resultRelInfo,
-								  resultRelDesc,
-								  resultRelIndex,
-								  NULL,
-								  estate->es_instrument);
-				resultRelInfo++;
-			}
-
-			estate->es_root_result_relations = resultRelInfos;
-			estate->es_num_root_result_relations = num_roots;
-		}
-		else
-		{
-			estate->es_root_result_relations = NULL;
-			estate->es_num_root_result_relations = 0;
-		}
-	}
-	else
-	{
-		/*
-		 * if no result relation, then set state appropriately
-		 */
-		estate->es_result_relations = NULL;
-		estate->es_num_result_relations = 0;
-		estate->es_result_relation_info = NULL;
-		estate->es_root_result_relations = NULL;
-		estate->es_num_root_result_relations = 0;
-	}
-
-	/*
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	 * Next, build the ExecRowMark array from the PlanRowMark(s), if any.
 	 */
 	if (plannedstmt->rowMarks)
@@ -2543,14 +2455,6 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	 * Close any Relations that have been opened for range table entries or
 	 * result relations.
 	 */
-<<<<<<< HEAD
-	resultRelInfo = estate->es_result_relations;
-	for (i = 0; i < estate->es_num_result_relations; i++)
-	{
-		ExecCloseIndices(resultRelInfo);
-		resultRelInfo++;
-	}
-=======
 	ExecCloseResultRelations(estate);
 	ExecCloseRangeTableRelations(estate);
 }
@@ -2562,7 +2466,6 @@ void
 ExecCloseResultRelations(EState *estate)
 {
 	ListCell   *l;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	/*
 	 * close indexes of result relation(s) if any.  (Rels themselves are
@@ -4116,14 +4019,15 @@ AdjustReplicatedTableCounts(EState *estate)
 	ResultRelInfo *resultRelInfo;
 	bool containReplicatedTable = false;
 	int			numsegments =  1;
+	ListCell   *l;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	/* check if result_relations contain replicated table*/
-	for (i = 0; i < estate->es_num_result_relations; i++)
+	foreach(l, estate->es_opened_result_relations)
 	{
-		resultRelInfo = estate->es_result_relations + i;
+		resultRelInfo = lfirst(l);
 
 		if (!resultRelInfo->ri_RelationDesc->rd_cdbpolicy)
 			continue;
