@@ -184,13 +184,14 @@ static List *fix_hashclauses(PlannerInfo *root,
 							 List *clauses,
 							 indexed_tlist *outer_itlist,
 							 indexed_tlist *inner_itlist,
-							 Index acceptable_rel, int rtoffset);
+							 Index acceptable_rel, int rtoffset,
+							 double num_exec);
 static List *fix_child_hashclauses(PlannerInfo *root,
 								   List *clauses,
 								   indexed_tlist *outer_itlist,
 								   indexed_tlist *inner_itlist,
 								   Index acceptable_rel, int rtoffset,
-								   Index child);
+								   Index child, double num_exec);
 static Node *fix_upper_expr(PlannerInfo *root,
 							Node *node,
 							indexed_tlist *subplan_itlist,
@@ -2321,7 +2322,8 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 										outer_itlist,
 										inner_itlist,
 										(Index) 0,
-										rtoffset);
+										rtoffset,
+										NUM_EXEC_QUAL((Plan *) join));
 
 		hj->hashqualclauses = fix_join_expr(root,
 											hj->hashqualclauses,
@@ -3058,7 +3060,9 @@ static List *fix_hashclauses(PlannerInfo *root,
                            List *clauses,
                            indexed_tlist *outer_itlist,
                            indexed_tlist *inner_itlist,
-                           Index acceptable_rel, int rtoffset)
+                           Index acceptable_rel,
+						   int rtoffset,
+						   double num_exec)
 {
     Assert(clauses);
     ListCell *lc = NULL;
@@ -3083,7 +3087,8 @@ static List *fix_hashclauses(PlannerInfo *root,
                 inner_itlist,
                 (Index) 0,
                 rtoffset,
-                OUTER_VAR);
+                OUTER_VAR,
+				num_exec);
         /*
          * for inner argument, we cannot refer to target entries
          * in join's outer child target list, otherwise hash table
@@ -3096,7 +3101,8 @@ static List *fix_hashclauses(PlannerInfo *root,
                 inner_itlist,
                 (Index) 0,
                 rtoffset,
-                INNER_VAR);
+                INNER_VAR,
+				num_exec);
         new_args = lappend(new_args, new_outer_arg);
         new_args = lappend(new_args, new_inner_arg);
         /* replace old arguments with the fixed arguments */
@@ -3129,7 +3135,8 @@ fix_child_hashclauses(PlannerInfo *root,
               indexed_tlist *inner_itlist,
               Index acceptable_rel,
               int rtoffset,
-              Index child)
+              Index child,
+			  double num_exec)
 {
     fix_join_expr_context context;
     context.root = root;
@@ -3137,6 +3144,7 @@ fix_child_hashclauses(PlannerInfo *root,
     context.inner_itlist = inner_itlist;
     context.acceptable_rel = acceptable_rel;
     context.rtoffset = rtoffset;
+    context.num_exec = num_exec;
     if (INNER_VAR == child)
     {
     	/* skips using outer target list when matching non-vars */
