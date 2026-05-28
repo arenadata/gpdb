@@ -601,7 +601,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 %type <str>		RoleId opt_boolean_or_string
 %type <str>		QueueId
 %type <list>	var_list
-%type <str>		ColId ColLabel ColLabelNoAs BareColLabel
+%type <str>		ColId ColLabel BareColLabel
 %type <keyword> PartitionIdentKeyword	
 %type <str>		PartitionColId
 %type <str>		NonReservedWord NonReservedWord_or_Sconst
@@ -612,7 +612,6 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 
 %type <keyword> unreserved_keyword type_func_name_keyword
 %type <keyword> col_name_keyword reserved_keyword
-%type <keyword> keywords_ok_in_alias_no_as
 %type <keyword> bare_label_keyword
 
 %type <node>	TableConstraint TableLikeClause
@@ -17625,14 +17624,6 @@ target_el:	a_expr AS ColLabel
 					$$->val = (Node *)$1;
 					$$->location = @1;
 				}
-			| a_expr ColLabelNoAs
-				{
-					$$ = makeNode(ResTarget);
-					$$->name = $2;
-					$$->indirection = NIL;
-					$$->val = (Node *)$1;
-					$$->location = @1;
-				}
 			| a_expr
 				{
 					$$ = makeNode(ResTarget);
@@ -18384,16 +18375,6 @@ unreserved_keyword:
  * the grammar.
  */
 
-ColLabelNoAs:   keywords_ok_in_alias_no_as   { $$=pstrdup($1); }
-				;
-
-keywords_ok_in_alias_no_as: PartitionIdentKeyword
-			| TABLESPACE
-			| ADD_P
-			| ALTER
-			| AT
-			;
-
 PartitionColId: PartitionIdentKeyword { $$ = pstrdup($1); }
 			| IDENT { $$ = pstrdup($1); }
 			;
@@ -19020,6 +19001,7 @@ bare_label_keyword:
 			| FOLLOWING
 			| FORCE
 			| FOREIGN
+			| FORMAT
 			| FORWARD
 			| FREEZE
 			| FULL
@@ -19137,7 +19119,7 @@ bare_label_keyword:
 			| PARALLEL
 			| PARSER
 			| PARTIAL
-			| PARTITION
+			| PARTITIONS
 			| PASSING
 			| PASSWORD
 			| PLACING
