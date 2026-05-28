@@ -18871,6 +18871,7 @@ bare_label_keyword:
 			| ABSOLUTE_P
 			| ACCESS
 			| ACTION
+			| ACTIVE
 			| ADD_P
 			| ADMIN
 			| AFTER
@@ -18925,17 +18926,22 @@ bare_label_keyword:
 			| COMMENTS
 			| COMMIT
 			| COMMITTED
+			| CONCURRENCY
 			| CONCURRENTLY
 			| CONFIGURATION
 			| CONFLICT
 			| CONNECTION
 			| CONSTRAINT
 			| CONSTRAINTS
+			| CONTAINS
 			| CONTENT_P
 			| CONTINUE_P
 			| CONVERSION_P
 			| COPY
 			| COST
+			| CPUSET
+			| CPU_RATE_LIMIT
+			| CREATEEXTTABLE
 			| CROSS
 			| CSV
 			| CUBE
@@ -18981,9 +18987,12 @@ bare_label_keyword:
 			| ENCODING
 			| ENCRYPTED
 			| END_P
+			| ENDPOINT
 			| ENUM_P
+			| ERRORS
 			| ESCAPE
 			| EVENT
+			| EXCHANGE
 			| EXCLUDE
 			| EXCLUDING
 			| EXCLUSIVE
@@ -18996,6 +19005,8 @@ bare_label_keyword:
 			| EXTRACT
 			| FALSE_P
 			| FAMILY
+			| FIELDS
+			| FILL
 			| FIRST_P
 			| FLOAT_P
 			| FOLLOWING
@@ -19014,8 +19025,10 @@ bare_label_keyword:
 			| GROUPING
 			| GROUPS
 			| HANDLER
+			| HASH
 			| HEADER_P
 			| HOLD
+			| HOST
 			| IDENTITY_P
 			| IF_P
 			| ILIKE
@@ -19026,6 +19039,7 @@ bare_label_keyword:
 			| IN_P
 			| INCLUDE
 			| INCLUDING
+			| INCLUSIVE
 			| INCREMENT
 			| INDEX
 			| INDEXES
@@ -19058,6 +19072,7 @@ bare_label_keyword:
 			| LEFT
 			| LEVEL
 			| LIKE
+			| LIST
 			| LISTEN
 			| LOAD
 			| LOCAL
@@ -19066,14 +19081,22 @@ bare_label_keyword:
 			| LOCATION
 			| LOCK_P
 			| LOCKED
+			| LOG_P
 			| LOGGED
 			| MAPPING
+			| MASTER
 			| MATCH
 			| MATERIALIZED
 			| MAXVALUE
+			| MEDIAN
+			| MEMORY_LIMIT
+			| MEMORY_SHARED_QUOTA
+			| MEMORY_SPILL_RATIO
 			| METHOD
 			| MINVALUE
+			| MISSING
 			| MODE
+			| MODIFIES
 			| MOVE
 			| NAME_P
 			| NAMES
@@ -19081,13 +19104,16 @@ bare_label_keyword:
 			| NATURAL
 			| NCHAR
 			| NEW
+			| NEWLINE
 			| NEXT
 			| NFC
 			| NFD
 			| NFKC
 			| NFKD
 			| NO
+			| NOCREATEEXTTABLE
 			| NONE
+			| NOOVERCOMMIT
 			| NORMALIZE
 			| NORMALIZED
 			| NOT
@@ -19112,6 +19138,7 @@ bare_label_keyword:
 			| OTHERS
 			| OUT_P
 			| OUTER_P
+			| OVERCOMMIT
 			| OVERLAY
 			| OVERRIDING
 			| OWNED
@@ -19122,6 +19149,8 @@ bare_label_keyword:
 			| PARTITIONS
 			| PASSING
 			| PASSWORD
+			| PERCENT
+			| PERSISTENTLY
 			| PLACING
 			| PLANS
 			| POLICY
@@ -19137,10 +19166,15 @@ bare_label_keyword:
 			| PROCEDURE
 			| PROCEDURES
 			| PROGRAM
+			| PROTOCOL
 			| PUBLICATION
+			| QUEUE
 			| QUOTE
+			| RANDOMLY
 			| RANGE
 			| READ
+			| READABLE
+			| READS
 			| REAL
 			| REASSIGN
 			| RECHECK
@@ -19150,6 +19184,7 @@ bare_label_keyword:
 			| REFERENCING
 			| REFRESH
 			| REINDEX
+			| REJECT_P
 			| RELATIVE_P
 			| RELEASE
 			| RENAME
@@ -19157,8 +19192,10 @@ bare_label_keyword:
 			| REPLACE
 			| REPLICA
 			| RESET
+			| RESOURCE
 			| RESTART
 			| RESTRICT
+			| RETRIEVE
 			| RETURNS
 			| REVOKE
 			| RIGHT
@@ -19176,6 +19213,8 @@ bare_label_keyword:
 			| SCROLL
 			| SEARCH
 			| SECURITY
+			| SEGMENT
+			| SEGMENTS
 			| SELECT
 			| SEQUENCE
 			| SEQUENCES
@@ -19194,6 +19233,7 @@ bare_label_keyword:
 			| SMALLINT
 			| SNAPSHOT
 			| SOME
+			| SPLIT
 			| SQL_P
 			| STABLE
 			| STANDALONE_P
@@ -19206,6 +19246,7 @@ bare_label_keyword:
 			| STORED
 			| STRICT_P
 			| STRIP_P
+			| SUBPARTITION
 			| SUBSCRIPTION
 			| SUBSTRING
 			| SUPPORT
@@ -19221,6 +19262,7 @@ bare_label_keyword:
 			| TEMPORARY
 			| TEXT_P
 			| THEN
+			| THRESHOLD
 			| TIES
 			| TIME
 			| TIMESTAMP
@@ -19250,6 +19292,7 @@ bare_label_keyword:
 			| VACUUM
 			| VALID
 			| VALIDATE
+			| VALIDATION
 			| VALIDATOR
 			| VALUE_P
 			| VALUES
@@ -19260,10 +19303,12 @@ bare_label_keyword:
 			| VIEW
 			| VIEWS
 			| VOLATILE
+			| WEB
 			| WHEN
 			| WHITESPACE_P
 			| WORK
 			| WRAPPER
+			| WRITABLE
 			| WRITE
 			| XML_P
 			| XMLATTRIBUTES
