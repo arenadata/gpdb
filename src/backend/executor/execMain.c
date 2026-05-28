@@ -4019,14 +4019,15 @@ AdjustReplicatedTableCounts(EState *estate)
 	ResultRelInfo *resultRelInfo;
 	bool containReplicatedTable = false;
 	int			numsegments =  1;
+	ListCell   *l;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	/* check if result_relations contain replicated table*/
-	for (i = 0; i < estate->es_num_result_relations; i++)
+	foreach(l, estate->es_opened_result_relations)
 	{
-		resultRelInfo = estate->es_result_relations + i;
+		resultRelInfo = lfirst(l);
 
 		if (!resultRelInfo->ri_RelationDesc->rd_cdbpolicy)
 			continue;

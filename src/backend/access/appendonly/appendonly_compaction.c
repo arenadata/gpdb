@@ -445,8 +445,6 @@ AppendOnlySegmentFileFullCompaction(Relation aorel,
 	resultRelInfo->ri_TrigDesc = NULL;	/* we don't fire triggers */
 	ExecOpenIndices(resultRelInfo, false);
 	estate->es_result_relations = resultRelInfo;
-	estate->es_num_result_relations = 1;
-	estate->es_result_relation_info = resultRelInfo;
 
 	/*
 	 * We don't want uniqueness checks to be performed while "insert"ing tuples
