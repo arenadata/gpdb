@@ -670,11 +670,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	Assert(glob->finalrtable == NIL);
 	Assert(glob->finalrowmarks == NIL);
 	Assert(glob->resultRelations == NIL);
-<<<<<<< HEAD
 	Assert(parse == root->parse);
-	Assert(glob->rootResultRelations == NIL);
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	Assert(glob->appendRelations == NIL);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -848,16 +844,13 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->minmax_aggs = NIL;
 	root->qual_security_level = 0;
 	root->inhTargetKind = INHKIND_NONE;
-<<<<<<< HEAD
 	root->upd_del_replicated_table = 0;
 
 	Assert(config);
 	root->config = config;
 
-=======
 	root->hasPseudoConstantQuals = false;
 	root->hasAlternativeSubPlans = false;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	root->hasRecursion = hasRecursion;
 	if (hasRecursion)
 		root->wt_param_id = assign_special_exec_param(root);
@@ -5253,14 +5246,15 @@ create_one_window_path(PlannerInfo *root,
 	{
 		WindowClause *wc = lfirst_node(WindowClause, l);
 		List	   *window_pathkeys;
+#if 0 /* GPDB_14_MERGE_FIXME: enable incremental sort */
 		int			presorted_keys;
 		bool		is_sorted;
+#endif
 
 		window_pathkeys = make_pathkeys_for_window(root,
 												   wc,
 												   root->processed_tlist);
 
-<<<<<<< HEAD
 		/*
 		 * Unless the PARTITION BY in the window happens to match the
 		 * current distribution, we need a motion. Each partition
@@ -5282,7 +5276,7 @@ create_one_window_path(PlannerInfo *root,
 											   -1.0,
 											   wc->partitionClause,
 											   NIL);
-=======
+#if 0 /* GPDB_14_MERGE_FIXME: enable incremental sort */
 		is_sorted = pathkeys_count_contained_in(window_pathkeys,
 												path->pathkeys,
 												&presorted_keys);
@@ -5313,7 +5307,7 @@ create_one_window_path(PlannerInfo *root,
 															 -1.0);
 			}
 		}
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+#endif
 
 		if (lnext(activeWindows, l))
 		{
