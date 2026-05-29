@@ -2532,6 +2532,7 @@ subxact_info_write(Oid subid, TransactionId xid)
 	if (ent->subxact_fileset == NULL)
 	{
 		MemoryContext oldctx;
+		workfile_set	*work_set;
 
 		/*
 		 * We need to maintain shared fileset across multiple stream
@@ -2542,7 +2543,8 @@ subxact_info_write(Oid subid, TransactionId xid)
 		SharedFileSetInit(ent->subxact_fileset, NULL);
 		MemoryContextSwitchTo(oldctx);
 
-		fd = BufFileCreateShared(ent->subxact_fileset, path);
+		work_set = workfile_mgr_create_set("SubxactInfo", path, false /* hold pin */);
+		fd = BufFileCreateShared(ent->subxact_fileset, path, work_set);
 	}
 	else
 		fd = BufFileOpenShared(ent->subxact_fileset, path, O_RDWR);
@@ -2814,6 +2816,7 @@ stream_open_file(Oid subid, TransactionId xid, bool first_segment)
 	{
 		MemoryContext savectx;
 		SharedFileSet *fileset;
+		workfile_set	*work_set;
 
 		/*
 		 * We need to maintain shared fileset across multiple stream
@@ -2825,7 +2828,8 @@ stream_open_file(Oid subid, TransactionId xid, bool first_segment)
 		SharedFileSetInit(fileset, NULL);
 		MemoryContextSwitchTo(savectx);
 
-		stream_fd = BufFileCreateShared(fileset, path);
+		work_set = workfile_mgr_create_set("ChangeInfo", path, false /* hold pin */);
+		stream_fd = BufFileCreateShared(fileset, path, work_set);
 
 		/* Remember the fileset for the next stream of the same transaction */
 		ent->xid = xid;
