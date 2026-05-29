@@ -94,7 +94,7 @@ ReconnectToServer(ArchiveHandle *AH, const char *dbname)
 	 */
 	AH->connection = NULL;		/* dodge error check in ConnectDatabase */
 
-	ConnectDatabase((Archive *) AH, &ropt->cparams, true);
+	ConnectDatabase((Archive *) AH, &ropt->cparams, true, false);
 
 	PQfinish(oldConn);
 }
