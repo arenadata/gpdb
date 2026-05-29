@@ -380,7 +380,7 @@ process_target_wal_aofile_change(RelFileNode rnode, int segno, int64 offset)
 	file_entry_t *entry;
 
 	path = datasegpath(rnode, MAIN_FORKNUM, segno);
-	entry = insert_filehash_entry(path);
+	entry = lookup_filehash_entry(path);
 	pfree(path);
 
 	if (entry && entry->target_exists)
