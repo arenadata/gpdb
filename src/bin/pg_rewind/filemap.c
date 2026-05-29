@@ -220,67 +220,6 @@ lookup_filehash_entry(const char *path)
 	return filehash_lookup(filehash, path);
 }
 
-/* Look up or create entry for 'path' */
-static file_entry_t *
-get_filemap_entry(const char *path, bool create)
-{
-	filemap_t  *map = filemap;
-	file_entry_t *entry;
-	file_entry_t **e;
-	file_entry_t key;
-	file_entry_t *key_ptr;
-
-	if (map->array)
-	{
-		key.path = (char *) path;
-		key_ptr = &key;
-		e = bsearch(&key_ptr, map->array, map->narray, sizeof(file_entry_t *),
-					path_cmp);
-	}
-	else
-		e = NULL;
-
-	if (e)
-		entry = *e;
-	else if (!create)
-		entry = NULL;
-	else
-	{
-		/* Create a new entry for this file */
-		entry = pg_malloc(sizeof(file_entry_t));
-		entry->path = pg_strdup(path);
-		entry->isrelfile = isRelDataFile(path);
-		entry->action = FILE_ACTION_UNDECIDED;
-
-		entry->target_exists = false;
-		entry->target_type = FILE_TYPE_UNDEFINED;
-		entry->target_size = 0;
-		entry->target_link_target = NULL;
-		entry->target_pages_to_overwrite.bitmap = NULL;
-		entry->target_pages_to_overwrite.bitmapsize = 0;
-
-		entry->source_exists = false;
-		entry->source_type = FILE_TYPE_UNDEFINED;
-		entry->source_size = 0;
-		entry->source_link_target = NULL;
-
-		entry->is_gp_tablespace = false;
-
-		entry->next = NULL;
-
-		if (map->last)
-		{
-			map->last->next = entry;
-			map->last = entry;
-		}
-		else
-			map->first = map->last = entry;
-		map->nlist++;
-	}
-
-	return entry;
-}
-
 /*
  * Callback for processing source file list.
  *
@@ -440,10 +379,8 @@ process_target_wal_aofile_change(RelFileNode rnode, int segno, int64 offset)
 	char	   *path;
 	file_entry_t *entry;
 
-	Assert(filemap->array);
-
 	path = datasegpath(rnode, MAIN_FORKNUM, segno);
-	entry = get_filemap_entry(path, false);
+	entry = insert_filehash_entry(path);
 	pfree(path);
 
 	if (entry && entry->target_exists)
