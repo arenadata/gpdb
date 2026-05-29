@@ -161,13 +161,6 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	int			mode;
 
 	/*
-	 * This should be called while holding interrupts during a transaction
-	 * commit to prevent the follow-up shared memory queue cleanups to be
-	 * influenced by external interruptions.
-	 */
-	Assert(InterruptHoldoffCount > 0);
-
-	/*
 	 * Fast exit if user has not requested sync replication, or there are no
 	 * sync replication standby names defined.
 	 *
