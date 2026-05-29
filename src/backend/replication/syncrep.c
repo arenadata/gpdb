@@ -160,15 +160,6 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	const char *old_status;
 	int			mode;
 
-<<<<<<< HEAD
-=======
-	/*
-	 * This should be called while holding interrupts during a transaction
-	 * commit to prevent the follow-up shared memory queue cleanups to be
-	 * influenced by external interruptions.
-	 */
-	Assert(InterruptHoldoffCount > 0);
-
 	/*
 	 * Fast exit if user has not requested sync replication, or there are no
 	 * sync replication standby names defined.
@@ -187,27 +178,17 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 		!((volatile WalSndCtlData *) WalSndCtl)->sync_standbys_defined)
 		return;
 
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/* Cap the level for anything other than commit to remote flush only. */
 	if (commit)
 		mode = SyncRepWaitMode;
 	else
 		mode = Min(SyncRepWaitMode, SYNC_REP_WAIT_FLUSH);
 
-<<<<<<< HEAD
 	Assert(!am_walsender);
 	elogif(debug_walrepl_syncrep, LOG,
 			"syncrep wait -- This backend's commit LSN for syncrep is %X/%X.",
 		   (uint32) (lsn >> 32), (uint32) lsn);
 
-	/*
-	 * Fast exit if user has not requested sync replication.
-	 */
-	if (!SyncRepRequested())
-		return;
-
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	Assert(SHMQueueIsDetached(&(MyProc->syncRepLinks)));
 	Assert(WalSndCtl != NULL);
 
