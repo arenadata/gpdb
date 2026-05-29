@@ -1177,7 +1177,7 @@ ldelete:;
 static bool
 ExecCrossPartitionUpdate(ModifyTableState *mtstate,
 						 ResultRelInfo *resultRelInfo,
-						 ItemPointer tupleid, HeapTuple oldtuple,
+						 ItemPointer tupleid, int32 segid, HeapTuple oldtuple,
 						 TupleTableSlot *slot, TupleTableSlot *planSlot,
 						 EPQState *epqstate, bool canSetTag,
 						 TupleTableSlot **retry_slot,
@@ -1466,6 +1466,7 @@ lreplace:;
 			 * the tuple we're trying to move has been concurrently updated.
 			 */
 			retry = !ExecCrossPartitionUpdate(mtstate, resultRelInfo, tupleid,
+											  segid,
 											  oldtuple, slot, planSlot,
 											  epqstate, canSetTag,
 											  &retry_slot, &inserted_tuple);
@@ -1692,7 +1693,6 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 {
 	Relation	resultRelationDesc;
 	bool		partition_constraint_failed;
-	TupleConversionMap *saved_tcs_map = NULL;
 	PartitionTupleRouting *proute = mtstate->mt_partition_tuple_routing;
 	int			map_index;
 	TupleConversionMap *tupconv_map;
@@ -1713,7 +1713,7 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 	 * row.  So skip the WCO checks if the partition constraint fails.
 	 */
 	partition_constraint_failed =
-		resultRelInfo->ri_PartitionCheck &&
+		resultRelInfo->ri_RelationDesc->rd_rel->relispartition &&
 		!ExecPartitionCheck(resultRelInfo, slot, estate, false);
 
 	if (!partition_constraint_failed &&
@@ -1726,16 +1726,6 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 		ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK,
 							 resultRelInfo, slot, estate);
 	}
-
-	/*
-	 * Updates set the transition capture map only when a new subplan
-	 * is chosen.  But for inserts, it is set for each row. So after
-	 * INSERT, we need to revert back to the map created for UPDATE;
-	 * otherwise the next UPDATE will incorrectly use the one created
-	 * for INSERT.  So first save the one created for UPDATE.
-	 */
-	if (mtstate->mt_transition_capture)
-		saved_tcs_map = mtstate->mt_transition_capture->tcs_map;
 
 	if (partition_constraint_failed)
 	{
@@ -1757,7 +1747,7 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 		 */
 		map_index = resultRelInfo - mtstate->resultRelInfo;
 		Assert(map_index >= 0 && map_index < mtstate->mt_nplans);
-		tupconv_map = tupconv_map_for_subplan(mtstate, map_index);
+		tupconv_map = resultRelInfo->ri_ChildToRootMap;
 		if (tupconv_map != NULL)
 			slot = execute_attr_map_slot(tupconv_map->attrMap,
 										 slot,
@@ -1780,10 +1770,7 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 
 		/* Revert ExecPrepareTupleRouting's node change. */
 		if (mtstate->mt_transition_capture)
-		{
 			mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
-			mtstate->mt_transition_capture->tcs_map = saved_tcs_map;
-		}
 	}
 	else
 	{
@@ -2276,7 +2263,7 @@ ExecModifyTable(PlanState *pstate)
 			node->mt_whichplan++;
 			if (node->mt_whichplan < node->mt_nplans)
 			{
-				resultRelInfo = estate->es_result_relations + node->mt_whichplan;
+				resultRelInfo = estate->es_result_relations[node->mt_whichplan];
 				subplanstate = node->mt_plans[node->mt_whichplan];
 				junkfilter = resultRelInfo->ri_junkFilter;
 				action_attno = resultRelInfo->ri_action_attno;
