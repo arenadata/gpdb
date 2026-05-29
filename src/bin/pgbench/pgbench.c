@@ -3790,9 +3790,7 @@ initCreateTables(PGconn *con)
 			appendPQExpBuffer(&query, " tablespace %s", escape_tablespace);
 			PQfreemem(escape_tablespace);
 		}
-		snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
-				 " distributed by (%s)",
-				 ddl->distributed_col);
+		appendPQExpBuffer(&query, " distributed by (%s)", ddl->distributed_col);
 
 		executeStatement(con, query.data);
 	}
