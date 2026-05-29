@@ -191,7 +191,7 @@ AOCSMoveTuple(TupleTableSlot *slot,
 	/* insert index' tuples if needed */
 	if (resultRelInfo->ri_NumIndices > 0)
 	{
-		ExecInsertIndexTuples(slot, estate, false, false, NIL);
+		ExecInsertIndexTuples(resultRelInfo, slot, estate, false, false, NIL);
 		ResetPerTupleExprContext(estate);
 	}
 
@@ -263,7 +263,10 @@ AOCSSegmentFileFullCompaction(Relation aorel,
 	resultRelInfo->ri_RelationDesc = aorel;
 	resultRelInfo->ri_TrigDesc = NULL;	/* we don't fire triggers */
 	ExecOpenIndices(resultRelInfo, false);
-	estate->es_result_relations = resultRelInfo;
+	if (estate->es_result_relations == NULL)
+		estate->es_result_relations = (ResultRelInfo **)
+			palloc0(estate->es_range_table_size * sizeof(ResultRelInfo *));
+	estate->es_result_relations[resultRelInfo->ri_RangeTableIndex - 1] = resultRelInfo;
 
 	/*
 	 * We don't want uniqueness checks to be performed while "insert"ing tuples
