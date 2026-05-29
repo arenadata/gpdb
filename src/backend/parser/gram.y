@@ -601,13 +601,9 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 %type <str>		RoleId opt_boolean_or_string
 %type <str>		QueueId
 %type <list>	var_list
-<<<<<<< HEAD
-%type <str>		ColId ColLabel ColLabelNoAs var_name type_function_name param_name
+%type <str>		ColId ColLabel BareColLabel
 %type <keyword> PartitionIdentKeyword	
 %type <str>		PartitionColId
-=======
-%type <str>		ColId ColLabel BareColLabel
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 %type <str>		NonReservedWord NonReservedWord_or_Sconst
 %type <str>		var_name type_function_name param_name
 %type <str>		createdb_opt_name
@@ -616,11 +612,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 
 %type <keyword> unreserved_keyword type_func_name_keyword
 %type <keyword> col_name_keyword reserved_keyword
-<<<<<<< HEAD
-%type <keyword> keywords_ok_in_alias_no_as
-=======
 %type <keyword> bare_label_keyword
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 %type <node>	TableConstraint TableLikeClause
 %type <ival>	TableLikeOptionList TableLikeOption
@@ -917,9 +909,8 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
  * rather than reducing a conflicting rule that takes CUBE as a function name.
  * Using the same precedence as IDENT seems right for the reasons given above.
  */
-<<<<<<< HEAD
-%nonassoc	UNBOUNDED		/* ideally should have same precedence as IDENT */
-%nonassoc	IDENT GENERATED NULL_P PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
+%nonassoc	UNBOUNDED		/* ideally would have same precedence as IDENT */
+%nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
 
 /*
  * This is a bit ugly... To allow these to be column aliases without
@@ -1227,10 +1218,6 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 			%nonassoc UNKNOWN
 			%nonassoc ZONE
 
-=======
-%nonassoc	UNBOUNDED		/* ideally would have same precedence as IDENT */
-%nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -10825,17 +10812,12 @@ ReindexStmt:
 					n->relation = $4;
 					n->name = NULL;
 					n->options = 0;
-<<<<<<< HEAD
 
-					if (n->concurrent)
+					if ($3)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("REINDEX CONCURRENTLY is not supported")));
 
-=======
-					if ($3)
-						n->options |= REINDEXOPT_CONCURRENTLY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					$$ = (Node *)n;
 				}
 			| REINDEX reindex_target_multitable opt_concurrently name
@@ -10845,17 +10827,12 @@ ReindexStmt:
 					n->name = $4;
 					n->relation = NULL;
 					n->options = 0;
-<<<<<<< HEAD
 
-					if (n->concurrent)
+					if ($3)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("REINDEX CONCURRENTLY is not supported")));
 
-=======
-					if ($3)
-						n->options |= REINDEXOPT_CONCURRENTLY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					$$ = (Node *)n;
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_type opt_concurrently qualified_name
@@ -10865,17 +10842,12 @@ ReindexStmt:
 					n->relation = $7;
 					n->name = NULL;
 					n->options = $3;
-<<<<<<< HEAD
 
-					if (n->concurrent)
+					if ($6)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("REINDEX CONCURRENTLY is not supported")));
 
-=======
-					if ($6)
-						n->options |= REINDEXOPT_CONCURRENTLY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					$$ = (Node *)n;
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_multitable opt_concurrently name
@@ -10885,17 +10857,12 @@ ReindexStmt:
 					n->name = $7;
 					n->relation = NULL;
 					n->options = $3;
-<<<<<<< HEAD
 
-					if (n->concurrent)
+					if ($6)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("REINDEX CONCURRENTLY is not supported")));
 
-=======
-					if ($6)
-						n->options |= REINDEXOPT_CONCURRENTLY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 					$$ = (Node *)n;
 				}
 		;
@@ -17635,7 +17602,6 @@ target_el:	a_expr AS ColLabel
 					$$->val = (Node *)$1;
 					$$->location = @1;
 				}
-<<<<<<< HEAD
 			/*
 			 * Postgres supports omitting AS only for column labels that aren't
 			 * any known keyword.  There is an ambiguity against postfix
@@ -17643,25 +17609,8 @@ target_el:	a_expr AS ColLabel
 			 * expression and a column label?  We prefer to resolve this
 			 * as an infix expression, which we accomplish by assigning
 			 * IDENT a precedence higher than POSTFIXOP.
-			 *
-			 * In GPDB, we extend this to allow most unreserved_keywords by
-			 * also assigning them a precedence.  There are certain keywords
-			 * that can't work without the as: reserved_keywords, the date
-			 * modifier suffixes (DAY, MONTH, YEAR, etc) and a few other
-			 * obscure cases.
 			 */
-			| a_expr IDENT
-=======
 			| a_expr BareColLabel
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
-				{
-					$$ = makeNode(ResTarget);
-					$$->name = $2;
-					$$->indirection = NIL;
-					$$->val = (Node *)$1;
-					$$->location = @1;
-				}
-			| a_expr ColLabelNoAs
 				{
 					$$ = makeNode(ResTarget);
 					$$->name = $2;
@@ -18420,16 +18369,6 @@ unreserved_keyword:
  * the grammar.
  */
 
-ColLabelNoAs:   keywords_ok_in_alias_no_as   { $$=pstrdup($1); }
-				;
-
-keywords_ok_in_alias_no_as: PartitionIdentKeyword
-			| TABLESPACE
-			| ADD_P
-			| ALTER
-			| AT
-			;
-
 PartitionColId: PartitionIdentKeyword { $$ = pstrdup($1); }
 			| IDENT { $$ = pstrdup($1); }
 			;
@@ -18926,6 +18865,7 @@ bare_label_keyword:
 			| ABSOLUTE_P
 			| ACCESS
 			| ACTION
+			| ACTIVE
 			| ADD_P
 			| ADMIN
 			| AFTER
@@ -18980,17 +18920,22 @@ bare_label_keyword:
 			| COMMENTS
 			| COMMIT
 			| COMMITTED
+			| CONCURRENCY
 			| CONCURRENTLY
 			| CONFIGURATION
 			| CONFLICT
 			| CONNECTION
 			| CONSTRAINT
 			| CONSTRAINTS
+			| CONTAINS
 			| CONTENT_P
 			| CONTINUE_P
 			| CONVERSION_P
 			| COPY
 			| COST
+			| CPUSET
+			| CPU_RATE_LIMIT
+			| CREATEEXTTABLE
 			| CROSS
 			| CSV
 			| CUBE
@@ -19036,9 +18981,12 @@ bare_label_keyword:
 			| ENCODING
 			| ENCRYPTED
 			| END_P
+			| ENDPOINT
 			| ENUM_P
+			| ERRORS
 			| ESCAPE
 			| EVENT
+			| EXCHANGE
 			| EXCLUDE
 			| EXCLUDING
 			| EXCLUSIVE
@@ -19051,11 +18999,14 @@ bare_label_keyword:
 			| EXTRACT
 			| FALSE_P
 			| FAMILY
+			| FIELDS
+			| FILL
 			| FIRST_P
 			| FLOAT_P
 			| FOLLOWING
 			| FORCE
 			| FOREIGN
+			| FORMAT
 			| FORWARD
 			| FREEZE
 			| FULL
@@ -19068,8 +19019,10 @@ bare_label_keyword:
 			| GROUPING
 			| GROUPS
 			| HANDLER
+			| HASH
 			| HEADER_P
 			| HOLD
+			| HOST
 			| IDENTITY_P
 			| IF_P
 			| ILIKE
@@ -19080,6 +19033,7 @@ bare_label_keyword:
 			| IN_P
 			| INCLUDE
 			| INCLUDING
+			| INCLUSIVE
 			| INCREMENT
 			| INDEX
 			| INDEXES
@@ -19112,6 +19066,7 @@ bare_label_keyword:
 			| LEFT
 			| LEVEL
 			| LIKE
+			| LIST
 			| LISTEN
 			| LOAD
 			| LOCAL
@@ -19120,14 +19075,22 @@ bare_label_keyword:
 			| LOCATION
 			| LOCK_P
 			| LOCKED
+			| LOG_P
 			| LOGGED
 			| MAPPING
+			| MASTER
 			| MATCH
 			| MATERIALIZED
 			| MAXVALUE
+			| MEDIAN
+			| MEMORY_LIMIT
+			| MEMORY_SHARED_QUOTA
+			| MEMORY_SPILL_RATIO
 			| METHOD
 			| MINVALUE
+			| MISSING
 			| MODE
+			| MODIFIES
 			| MOVE
 			| NAME_P
 			| NAMES
@@ -19135,13 +19098,16 @@ bare_label_keyword:
 			| NATURAL
 			| NCHAR
 			| NEW
+			| NEWLINE
 			| NEXT
 			| NFC
 			| NFD
 			| NFKC
 			| NFKD
 			| NO
+			| NOCREATEEXTTABLE
 			| NONE
+			| NOOVERCOMMIT
 			| NORMALIZE
 			| NORMALIZED
 			| NOT
@@ -19166,6 +19132,7 @@ bare_label_keyword:
 			| OTHERS
 			| OUT_P
 			| OUTER_P
+			| OVERCOMMIT
 			| OVERLAY
 			| OVERRIDING
 			| OWNED
@@ -19173,9 +19140,11 @@ bare_label_keyword:
 			| PARALLEL
 			| PARSER
 			| PARTIAL
-			| PARTITION
+			| PARTITIONS
 			| PASSING
 			| PASSWORD
+			| PERCENT
+			| PERSISTENTLY
 			| PLACING
 			| PLANS
 			| POLICY
@@ -19191,10 +19160,15 @@ bare_label_keyword:
 			| PROCEDURE
 			| PROCEDURES
 			| PROGRAM
+			| PROTOCOL
 			| PUBLICATION
+			| QUEUE
 			| QUOTE
+			| RANDOMLY
 			| RANGE
 			| READ
+			| READABLE
+			| READS
 			| REAL
 			| REASSIGN
 			| RECHECK
@@ -19204,6 +19178,7 @@ bare_label_keyword:
 			| REFERENCING
 			| REFRESH
 			| REINDEX
+			| REJECT_P
 			| RELATIVE_P
 			| RELEASE
 			| RENAME
@@ -19211,8 +19186,10 @@ bare_label_keyword:
 			| REPLACE
 			| REPLICA
 			| RESET
+			| RESOURCE
 			| RESTART
 			| RESTRICT
+			| RETRIEVE
 			| RETURNS
 			| REVOKE
 			| RIGHT
@@ -19230,6 +19207,8 @@ bare_label_keyword:
 			| SCROLL
 			| SEARCH
 			| SECURITY
+			| SEGMENT
+			| SEGMENTS
 			| SELECT
 			| SEQUENCE
 			| SEQUENCES
@@ -19248,6 +19227,7 @@ bare_label_keyword:
 			| SMALLINT
 			| SNAPSHOT
 			| SOME
+			| SPLIT
 			| SQL_P
 			| STABLE
 			| STANDALONE_P
@@ -19260,6 +19240,7 @@ bare_label_keyword:
 			| STORED
 			| STRICT_P
 			| STRIP_P
+			| SUBPARTITION
 			| SUBSCRIPTION
 			| SUBSTRING
 			| SUPPORT
@@ -19275,6 +19256,7 @@ bare_label_keyword:
 			| TEMPORARY
 			| TEXT_P
 			| THEN
+			| THRESHOLD
 			| TIES
 			| TIME
 			| TIMESTAMP
@@ -19304,6 +19286,7 @@ bare_label_keyword:
 			| VACUUM
 			| VALID
 			| VALIDATE
+			| VALIDATION
 			| VALIDATOR
 			| VALUE_P
 			| VALUES
@@ -19314,10 +19297,12 @@ bare_label_keyword:
 			| VIEW
 			| VIEWS
 			| VOLATILE
+			| WEB
 			| WHEN
 			| WHITESPACE_P
 			| WORK
 			| WRAPPER
+			| WRITABLE
 			| WRITE
 			| XML_P
 			| XMLATTRIBUTES
