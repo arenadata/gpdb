@@ -43,8 +43,8 @@ ExceptionalCondition(const char *conditionName,
 		|| !PointerIsValid(errorType))
 		ereport(FATAL,
 				errFatalReturn(gp_reraise_signal),
-				errmsg("TRAP: ExceptionalCondition: bad arguments in PID %d")),
-					   (int) getpid();
+				errmsg("TRAP: ExceptionalCondition: bad arguments in PID %d"),
+					   (int) getpid());
 	else
 		ereport(FATAL,
 				errFatalReturn(gp_reraise_signal),
