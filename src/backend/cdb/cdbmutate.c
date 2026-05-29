@@ -1133,7 +1133,7 @@ makeSegmentFilterExpr(int segid)
 		make_opclause(Int4EqualOperator,
 					  BOOLOID,
 					  false,	/* opretset */
-					  (Expr *) makeFuncExpr(F_MPP_EXECUTION_SEGMENT,
+					  (Expr *) makeFuncExpr(F_GP_EXECUTION_SEGMENT,
 											INT4OID,
 											NIL,	/* args */
 											InvalidOid,
