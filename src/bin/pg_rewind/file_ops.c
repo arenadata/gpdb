@@ -345,9 +345,9 @@ sync_target_dir(filemap_t *filemap)
 		exit(1);
 	}
 
-	for (i = 0; i < filemap->narray; i++)
+	for (i = 0; i < filemap->nentries; i++)
 	{
-		entry = filemap->array[i];
+		entry = filemap->entries[i];
 
 		if (entry->target_pages_to_overwrite.bitmapsize > 0)
 			fsync_fname(entry->path, false);
