@@ -50,16 +50,8 @@ try:
     from gppylib.util import ssh_utils
     from gppylib.commands import unix
     from gppylib.commands.base import *
-    from gppylib import gpsubprocess
 except ImportError as e:
     sys.exit('Error: unable to import module: ' + str(e))
-
-if sys.version_info[0] == 3:
-    import io
-    StringIO = io.StringIO
-else:
-    import StringIO
-    StringIO = BytesIO = StringIO.StringIO
 
 GPHOME = os.getenv('GPHOME')
 if GPHOME is None:
@@ -115,10 +107,10 @@ def gpssh(cmd, verbose):
 
     if GV.opt['-v']:
         print('[Info]', strcmd(c))
-    p = gpsubprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out = p.stdout.read(-1)
     rc = p.wait()
-    return not rc, out
+    return not rc, out.decode('utf-8')
 
 
 def gpscp(src, dst):
@@ -136,8 +128,8 @@ def gpscp(src, dst):
     c.append(dst)
     if GV.opt['-v']:
         print('[Info]', strcmd(c))
-    p = gpsubprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    out = p.stdout.read(-1)
+    p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    out = p.stdout.read(-1).decode('utf-8')
     rc = p.wait()
     if rc:
         sys.exit('[Error] command failed: gpscp {0} =:{1} with output: {2}'.format(src, dst, out))
@@ -147,7 +139,7 @@ def run_cmd(cmd, peer):
     """
     To create subprocess on specified host with given command
     """
-    proc = gpsubprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     proc.x_cmd = cmd
     proc.x_peer = peer
     return proc
@@ -174,7 +166,7 @@ def gpsync(src, dst):
 
     for p in proc:
         for line in p.stdout.readlines():
-            print('[Out {0}] {1}' .format(p.x_peer, line))
+            print('[Out {0}] {1}' .format(p.x_peer, line.decode('utf-8')))
         rc = p.wait()
         if rc:
             sys.exit('[Error] command failed for host:{0} cmd:{1} with status:{2} error: "{3}"'
@@ -360,8 +352,8 @@ def run(cmd):
     try:
         if GV.opt['-v']:
             print('[Info]', cmd)
-        p = gpsubprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-        out = p.stdout.read(-1)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+        out = p.stdout.read(-1).decode('utf-8')
         ok = p.wait()
     except KeyboardInterrupt:
         raise
@@ -479,7 +471,7 @@ def copyExecOver(fname):
 
 def parseMultiDDResult(out):
     # parse output of "time -p"
-    out = StringIO(out)
+    out = io.StringIO(out)
     result = {}
     bytes = 0
     for line in out:
@@ -555,7 +547,7 @@ def runStreamTest():
     (ok, out) = gpssh(cmd, GV.opt['-V'])
     if not ok:
         sys.exit('[Error] command failed: %s with output: %s' % (cmd, out))
-    out = StringIO(out)
+    out = io.StringIO(out)
     result = {}
     for line in out:
         i = line.find(']')
@@ -612,7 +604,7 @@ def spawnNetperfTestBetween(x, y, netperf_path, netserver_port, sec=5):
     try:
         if GV.opt['-v']:
             print('[Info]', strcmd(c))
-        proc = gpsubprocess.Popen(c, stdout=subprocess.PIPE)
+        proc = subprocess.Popen(c, stdout=subprocess.PIPE)
     except KeyboardInterrupt:
         killProc(proc)
         raise
@@ -629,7 +621,7 @@ def reapNetperfTest(proc, x, y):
     if proc:
         try:
             rc = proc.wait()
-            out = proc.stdout.read(-1)
+            out = proc.stdout.read(-1).decode('utf-8')
             ok = not killProc(proc)
             proc = None
         except KeyboardInterrupt as ki:
@@ -651,7 +643,7 @@ def reapNetperfTest(proc, x, y):
         print('[Warning] netperf failed on %s -> %s' % (x, y))
         return []
 
-    for line in StringIO(out):
+    for line in io.StringIO(out):
         line = line.split()
         if len(line) != 5:
             continue
@@ -835,8 +827,8 @@ def get_host_map(hostlist):
         proc = None
         try:
             if GV.opt['-v']: print('[Info]', strcmd(cmd))
-            proc = gpsubprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            out = proc.stdout.read(-1)
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            out = proc.stdout.read(-1).decode('utf-8')
             rc = proc.wait()
             if rc:
                 raise Exception('ssh error with the following command:\n%s with output: %s' % (cmd, out))

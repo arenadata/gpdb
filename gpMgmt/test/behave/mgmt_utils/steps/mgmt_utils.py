@@ -1,7 +1,5 @@
 from __future__ import print_function
 from __future__ import division
-
-import sys
 from builtins import next
 from builtins import filter
 from builtins import map
@@ -23,10 +21,10 @@ import _thread
 import time
 from contextlib import closing
 try:
-    from subprocess32 import PIPE
+    from subprocess32 import check_output, Popen, PIPE
 except:
-    from subprocess import PIPE
-from gppylib.gpsubprocess import Popen, check_output
+    from subprocess import check_output, Popen, PIPE
+import subprocess
 from collections import defaultdict
 
 import psutil
@@ -2122,8 +2120,6 @@ def impl(context, filename, contain, output):
         cmd.run(validateAfter=True)
 
         actual = cmd.get_stdout()
-        if sys.version_info[0] == 2:
-            actual = actual.decode('utf-8')
         if valuesShouldExist and (output not in actual):
                 raise Exception('File %s on host %s does not contain "%s"' % (filepath, host, output))
         if (not valuesShouldExist) and (output in actual):
@@ -4105,7 +4101,7 @@ def impl(context, command, input):
     if input == "no mode but presses enter":
         input = os.linesep
     p = Popen(command.split(), stdout=PIPE, stdin=PIPE, stderr=PIPE)
-    stdout, stderr = p.communicate(input=input)
+    stdout, stderr = p.communicate(input=input.encode('utf-8'))
 
     p.stdin.close()
 
@@ -4116,16 +4112,12 @@ def impl(context, command, input):
 @when('the user runs {command}, selects {input} and interrupt the process')
 def impl(context, command, input):
     p = Popen(command.split(), stdout=PIPE, stdin=PIPE, stderr=PIPE)
-
-    if sys.version_info[0] == 2:
-        input = input.encode('utf-8')
-
-    p.stdin.write(input)
+    p.stdin.write(input.encode())
     p.stdin.flush()
     time.sleep(120)
     # interrupt the process.
     p.terminate()
-    p.communicate(input=input)
+    p.communicate(input=input.encode())
 
 
 def are_on_different_subnets(primary_hostname, mirror_hostname):

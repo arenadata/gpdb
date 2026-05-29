@@ -7,10 +7,10 @@ import traceback
 import base64
 
 if sys.version_info[0] == 2:
-    stdin = sys.stdin.read()
+    stdin = sys.stdin
     stdout = sys.stdout
 else:
-    stdin = sys.stdin.buffer.read()
+    stdin = sys.stdin.buffer
     stdout = sys.stdout.buffer
 
 class NullDevice(object):
@@ -32,10 +32,11 @@ from gppylib.commands import unix
 
 hostname = unix.getLocalHostname()
 username = unix.getUserName()
-execname, operation = pickle.loads(base64.urlsafe_b64decode(stdin))
+execname = pickle.load(stdin)
 gplog.setup_tool_logging(execname, hostname, username)
 logger = gplog.get_default_logger()
 
+operation = pickle.load(stdin)
 
 try:
     ret = operation.run()

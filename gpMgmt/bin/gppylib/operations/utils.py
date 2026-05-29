@@ -46,9 +46,10 @@ class RemoteOperation(Operation):
         
     def execute(self):
         execname = os.path.split(sys.argv[0])[-1]
-        pickled_data = base64.urlsafe_b64encode(pickle.dumps((execname, self.operation))).decode('ascii')
+        pickled_execname = pickle.dumps(execname) 
+        pickled_operation = pickle.dumps(self.operation)
         cmd = Command('pickling an operation', 'echo "START_CMD_OUTPUT"; $GPHOME/sbin/gpoperation.py',
-                      ctxt=REMOTE, remoteHost=self.host, stdin = pickled_data)
+                      ctxt=REMOTE, remoteHost=self.host, stdin = pickled_execname + pickled_operation)
         cmd.run(validateAfter=True)
         msg =  "Output on host %s: %s" % (self.host, cmd.get_results().stdout)
         if self.msg_ctx:

@@ -28,7 +28,6 @@ from gppylib.commands.base import *
 from .unix import *
 from gppylib import pgconf
 from gppylib.utils import writeLinesToFile, createFromSingleHostFile, shellEscape
-from gppylib import gpsubprocess
 
 
 logger = get_default_logger()
@@ -1680,7 +1679,7 @@ class IfAddrs(object):
         else:
             args = cmd
 
-        result = gpsubprocess.check_output(args)
+        result = subprocess.check_output(args).decode('utf-8')
         return result.split('START_CMD_OUTPUT\n')[1].splitlines()
 
 if __name__ == '__main__':
