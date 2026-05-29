@@ -213,16 +213,6 @@ typedef struct ReindexErrorInfo
 } ReindexErrorInfo;
 
 /*
- * callback arguments for reindex_error_callback()
- */
-typedef struct ReindexErrorInfo
-{
-	char	   *relname;
-	char	   *relnamespace;
-	char		relkind;
-} ReindexErrorInfo;
-
-/*
  * CheckIndexCompatible
  *		Determine whether an existing index definition is compatible with a
  *		prospective index definition, such that the existing index storage
