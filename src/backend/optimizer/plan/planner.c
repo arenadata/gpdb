@@ -4822,7 +4822,7 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 
 static double
-estimage_num_groups(Path *path, double dNumGroupsTotal)
+calculate_num_groups(Path *path, double dNumGroupsTotal)
 {
 	/*
 	 * dNumGroupsTotal is the total number of groups across all segments. If the
@@ -4884,7 +4884,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 											   gd->rollups);
 
 
-		dNumGroups = estimage_num_groups(path, dNumGroupsTotal);
+		dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 
 		srd = make_new_rollups_for_hash_grouping_set(root, path, gd);
 
@@ -4948,7 +4948,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 										   parse->groupClause,
 										   gd->rollups);
 
-	dNumGroups = estimage_num_groups(path, dNumGroupsTotal);
+	dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 
 	/*
 	 * Given sorted input, we try and make two paths: one sorted and one mixed
@@ -5248,11 +5248,47 @@ create_one_window_path(PlannerInfo *root,
 	{
 		WindowClause *wc = lfirst_node(WindowClause, l);
 		List	   *window_pathkeys;
+#if 0
+		int			presorted_keys;
+		bool		is_sorted;
+#endif
 
 		window_pathkeys = make_pathkeys_for_window(root,
 												   wc,
 												   root->processed_tlist);
+#if 0
 
+		is_sorted = pathkeys_count_contained_in(window_pathkeys,
+												path->pathkeys,
+												&presorted_keys);
+
+		/* Sort if necessary */
+		if (!is_sorted)
+		{
+			/*
+			 * No presorted keys or incremental sort disabled, just perform a
+			 * complete sort.
+			 */
+			if (presorted_keys == 0 || !enable_incremental_sort)
+				path = (Path *) create_sort_path(root, window_rel,
+												 path,
+												 window_pathkeys,
+												 -1.0);
+			else
+			{
+				/*
+				 * Since we have presorted keys and incremental sort is
+				 * enabled, just use incremental sort.
+				 */
+				path = (Path *) create_incremental_sort_path(root,
+															 window_rel,
+															 path,
+															 window_pathkeys,
+															 presorted_keys,
+															 -1.0);
+			}
+		}
+#endif
 		/*
 		 * Unless the PARTITION BY in the window happens to match the
 		 * current distribution, we need a motion. Each partition
@@ -5457,7 +5493,13 @@ create_distinct_paths(PlannerInfo *root,
 			needed_pathkeys = root->distinct_pathkeys;
 
 		path = cheapest_input_path;
-
+#if 0
+		if (!pathkeys_contained_in(needed_pathkeys, path->pathkeys))
+			path = (Path *) create_sort_path(root, distinct_rel,
+											 path,
+											 needed_pathkeys,
+											 -1.0);
+#endif
 		path = cdb_prepare_path_for_sorted_agg(root,
 											   pathkeys_contained_in(needed_pathkeys, cheapest_input_path->pathkeys),
 											   distinct_rel,
@@ -7354,8 +7396,15 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 
 			if (path == cheapest_path || is_sorted)
 			{
-				double		dNumGroups;
-
+#if 0
+				/* Sort the cheapest-total path if it isn't already sorted */
+				if (!is_sorted)
+					path = (Path *) create_sort_path(root,
+													 grouped_rel,
+													 path,
+													 root->group_pathkeys,
+													 -1.0);
+#endif
 				/*
 				 * Sort the cheapest-total path if it isn't already sorted.
 				 * This also adds a Motion to redistribute it if needed.
@@ -7371,7 +7420,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 													   parse->groupClause,
 													   gd ? gd->rollups : NIL);
 
-				dNumGroups = estimage_num_groups(path, dNumGroupsTotal);
+				dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 
 				/* Now decide what to stick atop it */
 				if (parse->groupingSets)
@@ -7470,7 +7519,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 												   parse->groupClause,
 												   gd ? gd->rollups : NIL);
 
-			dNumGroups = estimage_num_groups(path, dNumGroupsTotal);
+			dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 
 			/* Now decide what to stick atop it */
 			if (parse->groupingSets)
@@ -7549,6 +7598,13 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				{
 					if (path != partially_grouped_rel->cheapest_total_path)
 						continue;
+#if 0
+					path = (Path *) create_sort_path(root,
+													 grouped_rel,
+													 path,
+													 root->group_pathkeys,
+													 -1.0);
+#endif
 				}
 
 				path = cdb_prepare_path_for_sorted_agg(root,
@@ -7562,7 +7618,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 													   parse->groupClause,
 													   NIL);
 
-				dNumGroups = estimage_num_groups(path, dNumGroupsTotal);
+				dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 
 				//if (parse->hasAggs)
 				{
@@ -7634,7 +7690,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 													   parse->groupClause,
 													   NIL);
 
-				dNumGroups = estimage_num_groups(path, dNumGroupsTotal);
+				dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 
 				if (parse->hasAggs)
 					add_path(grouped_rel, (Path *)
@@ -7687,7 +7743,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 												   parse->groupClause,
 												   NIL);
 
-			dNumGroups = estimage_num_groups(path, dNumGroupsTotal);
+			dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 			/*
 			 * Generate a HashAgg Path.  We just need an Agg over the
 			 * cheapest-total input path, since input order won't matter.
@@ -7720,7 +7776,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 												   parse->groupClause,
 												   NIL);
 
-			dNumGroups = estimage_num_groups(path, dNumGroupsTotal);
+			dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 
 			add_path(grouped_rel, (Path *)
 					 create_agg_path(root,
