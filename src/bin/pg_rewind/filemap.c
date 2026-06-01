@@ -59,15 +59,9 @@ static filehash_hash *filehash;
 static bool isRelDataFile(const char *path);
 static char *datasegpath(RelFileNode rnode, ForkNumber forknum,
 						 BlockNumber segno);
-<<<<<<< HEAD
-static int	path_cmp(const void *a, const void *b);
-
-static file_entry_t *get_filemap_entry(const char *path, bool create);
-=======
 
 static file_entry_t *insert_filehash_entry(const char *path);
 static file_entry_t *lookup_filehash_entry(const char *path);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 static int	final_filemap_cmp(const void *a, const void *b);
 static bool check_file_excluded(const char *path, bool is_source);
 
@@ -226,67 +220,6 @@ lookup_filehash_entry(const char *path)
 	return filehash_lookup(filehash, path);
 }
 
-/* Look up or create entry for 'path' */
-static file_entry_t *
-get_filemap_entry(const char *path, bool create)
-{
-	filemap_t  *map = filemap;
-	file_entry_t *entry;
-	file_entry_t **e;
-	file_entry_t key;
-	file_entry_t *key_ptr;
-
-	if (map->array)
-	{
-		key.path = (char *) path;
-		key_ptr = &key;
-		e = bsearch(&key_ptr, map->array, map->narray, sizeof(file_entry_t *),
-					path_cmp);
-	}
-	else
-		e = NULL;
-
-	if (e)
-		entry = *e;
-	else if (!create)
-		entry = NULL;
-	else
-	{
-		/* Create a new entry for this file */
-		entry = pg_malloc(sizeof(file_entry_t));
-		entry->path = pg_strdup(path);
-		entry->isrelfile = isRelDataFile(path);
-		entry->action = FILE_ACTION_UNDECIDED;
-
-		entry->target_exists = false;
-		entry->target_type = FILE_TYPE_UNDEFINED;
-		entry->target_size = 0;
-		entry->target_link_target = NULL;
-		entry->target_pages_to_overwrite.bitmap = NULL;
-		entry->target_pages_to_overwrite.bitmapsize = 0;
-
-		entry->source_exists = false;
-		entry->source_type = FILE_TYPE_UNDEFINED;
-		entry->source_size = 0;
-		entry->source_link_target = NULL;
-
-		entry->is_gp_tablespace = false;
-
-		entry->next = NULL;
-
-		if (map->last)
-		{
-			map->last->next = entry;
-			map->last = entry;
-		}
-		else
-			map->first = map->last = entry;
-		map->nlist++;
-	}
-
-	return entry;
-}
-
 /*
  * Callback for processing source file list.
  *
@@ -300,11 +233,6 @@ process_source_file(const char *path, file_type_t type, size_t size,
 {
 	file_entry_t *entry;
 
-<<<<<<< HEAD
-	Assert(filemap->array == NULL);
-
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	/*
 	 * Pretend that pg_wal is a directory, even if it's really a symlink. We
 	 * don't want to mess with the symlink itself, nor complain if it's a
@@ -321,13 +249,9 @@ process_source_file(const char *path, file_type_t type, size_t size,
 		pg_fatal("data file \"%s\" in source is not a regular file", path);
 
 	/* Remember this source file */
-<<<<<<< HEAD
-	entry = get_filemap_entry(path, true);
-=======
 	entry = insert_filehash_entry(path);
 	if (entry->source_exists)
 		pg_fatal("duplicate source file \"%s\"", path);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	entry->source_exists = true;
 	entry->source_type = type;
 	entry->source_size = size;
@@ -337,22 +261,12 @@ process_source_file(const char *path, file_type_t type, size_t size,
 /*
  * Callback for processing target file list.
  *
-<<<<<<< HEAD
- * All source files must be already processed before calling this.  We record
- * the type and size of file, so that decide_file_action() can later decide
- * what to do with it.
-=======
  * Record the type and size of the file, like process_source_file() does.
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
  */
 void
 process_target_file(const char *path, file_type_t type, size_t size,
 					const char *link_target)
 {
-<<<<<<< HEAD
-	filemap_t  *map = filemap;
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	file_entry_t *entry;
 
 	/*
@@ -366,7 +280,6 @@ process_target_file(const char *path, file_type_t type, size_t size,
 	 * should not be copied but also should not be removed, then a separate
 	 * function for those would be better.
 	 */
-<<<<<<< HEAD
 	{
 		const char *filename = last_dir_separator(path);
 		if (filename == NULL)
@@ -382,24 +295,6 @@ process_target_file(const char *path, file_type_t type, size_t size,
 			return;
 	}
 
-	if (map->array == NULL)
-	{
-		/* on first call, initialize lookup array */
-		if (map->nlist == 0)
-		{
-			/* should not happen */
-			pg_fatal("source file list is empty");
-		}
-
-		filemap_list_to_array(map);
-
-		Assert(map->array != NULL);
-
-		qsort(map->array, map->narray, sizeof(file_entry_t *), path_cmp);
-	}
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
-
 	/*
 	 * Like in process_source_file, pretend that pg_wal is always a directory.
 	 */
@@ -407,13 +302,9 @@ process_target_file(const char *path, file_type_t type, size_t size,
 		type = FILE_TYPE_DIRECTORY;
 
 	/* Remember this target file */
-<<<<<<< HEAD
-	entry = get_filemap_entry(path, true);
-=======
 	entry = insert_filehash_entry(path);
 	if (entry->target_exists)
 		pg_fatal("duplicate source file \"%s\"", path);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	entry->target_exists = true;
 	entry->target_type = type;
 	entry->target_size = size;
@@ -427,11 +318,7 @@ process_target_file(const char *path, file_type_t type, size_t size,
  * if so, records it in 'target_pages_to_overwrite' bitmap.
  *
  * NOTE: All the files on both systems must have already been added to the
-<<<<<<< HEAD
- * file map!
-=======
  * hash table!
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
  */
 void
 process_target_wal_block_change(ForkNumber forknum, RelFileNode rnode,
@@ -441,22 +328,11 @@ process_target_wal_block_change(ForkNumber forknum, RelFileNode rnode,
 	file_entry_t *entry;
 	BlockNumber blkno_inseg;
 	int			segno;
-<<<<<<< HEAD
-
-	Assert(filemap->array);
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 	segno = blkno / RELSEG_SIZE;
 	blkno_inseg = blkno % RELSEG_SIZE;
 
 	path = datasegpath(rnode, forknum, segno);
-<<<<<<< HEAD
-	entry = get_filemap_entry(path, false);
-	pfree(path);
-
-	if (entry && entry->target_exists)
-=======
 	entry = lookup_filehash_entry(path);
 	pfree(path);
 
@@ -477,7 +353,6 @@ process_target_wal_block_change(ForkNumber forknum, RelFileNode rnode,
 	 * the source. Either way, we can safely ignore it.
 	 */
 	if (entry)
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 	{
 		int64		end_offset;
 
@@ -486,32 +361,6 @@ process_target_wal_block_change(ForkNumber forknum, RelFileNode rnode,
 		if (entry->target_type != FILE_TYPE_REGULAR)
 			pg_fatal("unexpected page modification for non-regular file \"%s\"",
 					 entry->path);
-<<<<<<< HEAD
-
-		/*
-		 * If the block beyond the EOF in the source system, no need to
-		 * remember it now, because we're going to truncate it away from the
-		 * target anyway. Also no need to remember the block if it's beyond
-		 * the current EOF in the target system; we will copy it over with the
-		 * "tail" from the source system, anyway.
-		 */
-		end_offset = (blkno_inseg + 1) * BLCKSZ;
-		if (end_offset <= entry->source_size &&
-			end_offset <= entry->target_size)
-			datapagemap_add(&entry->target_pages_to_overwrite, blkno_inseg);
-	}
-	else
-	{
-		/*
-		 * If we don't have any record of this file in the file map, it means
-		 * that it's a relation that doesn't exist in the source system.  It
-		 * could exist in the target system; we haven't moved the target-only
-		 * entries from the linked list to the array yet!  But in any case, if
-		 * it doesn't exist in the source it will be removed from the target
-		 * too, and we can safely ignore it.
-		 */
-	}
-=======
 
 		if (entry->target_exists && entry->source_exists)
 		{
@@ -522,7 +371,6 @@ process_target_wal_block_change(ForkNumber forknum, RelFileNode rnode,
 				datapagemap_add(&entry->target_pages_to_overwrite, blkno_inseg);
 		}
 	}
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 }
 
 void
@@ -531,10 +379,8 @@ process_target_wal_aofile_change(RelFileNode rnode, int segno, int64 offset)
 	char	   *path;
 	file_entry_t *entry;
 
-	Assert(filemap->array);
-
 	path = datasegpath(rnode, MAIN_FORKNUM, segno);
-	entry = get_filemap_entry(path, false);
+	entry = lookup_filehash_entry(path);
 	pfree(path);
 
 	if (entry && entry->target_exists)
@@ -642,37 +488,6 @@ check_file_excluded(const char *path, bool is_source)
 	return false;
 }
 
-<<<<<<< HEAD
-/*
- * Convert the linked list of entries in map->first/last to the array,
- * map->array.
- */
-static void
-filemap_list_to_array(filemap_t *map)
-{
-	int			narray;
-	file_entry_t *entry,
-			   *next;
-
-	map->array = (file_entry_t **)
-		pg_realloc(map->array,
-				   (map->nlist + map->narray) * sizeof(file_entry_t *));
-
-	narray = map->narray;
-	for (entry = map->first; entry != NULL; entry = next)
-	{
-		map->array[narray++] = entry;
-		next = entry->next;
-		entry->next = NULL;
-	}
-	Assert(narray == map->nlist + map->narray);
-	map->narray = narray;
-	map->nlist = 0;
-	map->first = map->last = NULL;
-}
-
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 static const char *
 action_to_str(file_action_t action)
 {
@@ -715,28 +530,16 @@ calculate_totals(filemap_t *filemap)
 		if (entry->source_type != FILE_TYPE_REGULAR)
 			continue;
 
-<<<<<<< HEAD
-		map->total_size += entry->source_size;
-
-		if (entry->action == FILE_ACTION_COPY)
-		{
-			map->fetch_size += entry->source_size;
-=======
 		filemap->total_size += entry->source_size;
 
 		if (entry->action == FILE_ACTION_COPY)
 		{
 			filemap->fetch_size += entry->source_size;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			continue;
 		}
 
 		if (entry->action == FILE_ACTION_COPY_TAIL)
-<<<<<<< HEAD
-			map->fetch_size += (entry->source_size - entry->target_size);
-=======
 			filemap->fetch_size += (entry->source_size - entry->target_size);
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 
 		if (entry->target_pages_to_overwrite.bitmapsize > 0)
 		{
@@ -949,18 +752,12 @@ decide_file_action(file_entry_t *entry)
 		{
 			case FILE_TYPE_DIRECTORY:
 			case FILE_TYPE_SYMLINK:
-<<<<<<< HEAD
 				entry->is_gp_tablespace = strncmp(entry->path, "pg_tblspc/", strlen("pg_tblspc/")) == 0;
 				return FILE_ACTION_CREATE;
 			case FILE_TYPE_REGULAR:
 				return FILE_ACTION_COPY;
 			case FILE_TYPE_FIFO:
 				return FILE_ACTION_NONE;
-=======
-				return FILE_ACTION_CREATE;
-			case FILE_TYPE_REGULAR:
-				return FILE_ACTION_COPY;
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 			case FILE_TYPE_UNDEFINED:
 				pg_fatal("unknown file type for \"%s\"", entry->path);
 				break;
@@ -1055,12 +852,9 @@ decide_file_action(file_entry_t *entry)
 			}
 			break;
 
-<<<<<<< HEAD
 		case FILE_TYPE_FIFO:
 			return FILE_ACTION_NONE;
 
-=======
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 		case FILE_TYPE_UNDEFINED:
 			pg_fatal("unknown file type for \"%s\"", path);
 			break;
@@ -1072,26 +866,6 @@ decide_file_action(file_entry_t *entry)
 
 /*
  * Decide what to do with each file.
-<<<<<<< HEAD
- */
-void
-decide_file_actions(void)
-{
-	int			i;
-
-	filemap_list_to_array(filemap);
-
-	for (i = 0; i < filemap->narray; i++)
-	{
-		file_entry_t *entry = filemap->array[i];
-
-		entry->action = decide_file_action(entry);
-	}
-
-	/* Sort the actions to the order that they should be performed */
-	qsort(filemap->array, filemap->narray, sizeof(file_entry_t *),
-		  final_filemap_cmp);
-=======
  *
  * Returns a 'filemap' with the entries in the order that their actions
  * should be executed.
@@ -1140,5 +914,4 @@ hash_string_pointer(const char *s)
 	unsigned char *ss = (unsigned char *) s;
 
 	return hash_bytes(ss, strlen(s));
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
 }
