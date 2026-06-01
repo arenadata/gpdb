@@ -1758,13 +1758,8 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 		 * into the root.
 		 */
 		Assert(mtstate->rootResultRelInfo != NULL);
-		ResultRelInfo *partRelInfo;
-		slot = ExecPrepareTupleRouting(mtstate, estate, proute,
-									   mtstate->rootResultRelInfo, slot,
-									   &partRelInfo);
-		resultRelInfo = partRelInfo;
 
-		slot = ExecInsert(mtstate, resultRelInfo, slot, planSlot,
+		slot = ExecInsert(mtstate, mtstate->rootResultRelInfo, slot, planSlot,
 						  estate, mtstate->canSetTag,
 						  true /* splitUpdate */);
 
