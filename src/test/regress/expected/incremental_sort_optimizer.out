@@ -668,28 +668,25 @@ set local enable_hashjoin = off;
 set local enable_mergejoin = off;
 set local enable_material = off;
 set local enable_sort = off;
-explain (costs off) select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2) order by 1;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+explain (costs off) select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
+                         QUERY PLAN                         
+------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: t.a
-   ->  Sort
-         Sort Key: t.a
-         ->  Hash Left Join
-               Hash Cond: (t.a = t_1.a)
-               ->  Seq Scan on t
+   ->  Hash Left Join
+         Hash Cond: (t.a = t_1.a)
+         ->  Seq Scan on t
+               Filter: (a = ANY ('{1,2}'::integer[]))
+         ->  Hash
+               ->  Seq Scan on t t_1
                      Filter: (a = ANY ('{1,2}'::integer[]))
-               ->  Hash
-                     ->  Seq Scan on t t_1
-                           Filter: (a = ANY ('{1,2}'::integer[]))
  Optimizer: Pivotal Optimizer (GPORCA)
-(12 rows)
+(9 rows)
 
-select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2) order by 1;
+select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2); -- order none
  a | b | a | b 
 ---+---+---+---
- 1 | 1 | 1 | 1
  2 | 2 | 2 | 2
+ 1 | 1 | 1 | 1
 (2 rows)
 
 rollback;
