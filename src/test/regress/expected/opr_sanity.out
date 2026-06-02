@@ -2109,7 +2109,6 @@ ORDER BY 1, 2, 3;
        4000 |           26 | >>
        4000 |           27 | >>=
        4000 |           28 | ^@
-<<<<<<< HEAD
        7013 |            1 | *<
        7013 |            1 | <
        7013 |            1 | <<
@@ -2128,10 +2127,7 @@ ORDER BY 1, 2, 3;
        7013 |            5 | >
        7013 |            5 | >>
        7013 |            5 | ~>~
-(147 rows)
-=======
-(123 rows)
->>>>>>> f81e97d0475cd4bc597adc23b665bd84fbf79a0d
+(145 rows)
 
 -- Check that all opclass search operators have selectivity estimators.
 -- This is not absolutely required, but it seems a reasonable thing
