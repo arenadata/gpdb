@@ -2302,6 +2302,12 @@ fetch_single_dqa_info(PlannerInfo *root,
  * is already sorted, we prefer to gather it to a single node to make
  * use of the pre-existing order, instead of redistributing and resorting
  * it.
+ * 
+ * The presorted_keys parameter is the number of keys by which the input path 
+ * is known to be sorted. 
+ * If this parameter is greater than 0 (NO_INCREMENTAL_SORT), the input is 
+ * considered to be partially sorted and incremental sort is applied.
+ * Otherwise, a full sort is used. 
  */
 Path *
 cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
