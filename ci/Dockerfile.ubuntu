@@ -48,6 +48,8 @@ RUN set -eux; \
     rm pytest_requirement.txt && \
 # ADCC extension dependencies
     $adb_python3_bin -m pip install --no-cache-dir protobuf==3.20.0 && \
+# Install isolation2 tests dependencies
+    $adb_python3_bin -m pip install --no-cache-dir psutil==5.7.0 wheel installer && \
 # Cleanup to reduce image size
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/man/
@@ -75,9 +77,8 @@ RUN set -eux; \
     source /usr/local/greengage-db-devel/greengage_path.sh; \
     unset PYTHONPATH; \
     export PYTHON_SRC="/home/gpadmin/gpdb_src/gpMgmt/bin/pythonSrc/"; \
-    apt update && apt install -y python3-pip; \
-    python3 -m pip wheel $PYTHON_SRC/PyGreSQL-5.2.5 -w bin_gpdb/; \
-    python3 -m pip wheel $PYTHON_SRC/PyGreSQL-compat -w bin_gpdb/;
+    $adb_python3_bin -m pip wheel $PYTHON_SRC/PyGreSQL-5.2.5 -w bin_gpdb/; \
+    $adb_python3_bin -m pip wheel $PYTHON_SRC/PyGreSQL-compat -w bin_gpdb/;
 
 FROM base AS code
 # Use --exclude, when it will be available in stable syntax.
@@ -91,7 +92,7 @@ COPY --from=build /home/gpadmin/bin_gpdb bin_gpdb
 COPY --from=build /home/gpadmin/gpdb_src/VERSION gpdb_src
 
 # Install pygresql for python3
-RUN find bin_gpdb -name "PyGreSQL*.whl" -exec python3 \
+RUN find bin_gpdb -name "PyGreSQL*.whl" -exec $adb_python3_bin \
     -m installer {} \;
 
 # Install entab used by pgindent utility.
