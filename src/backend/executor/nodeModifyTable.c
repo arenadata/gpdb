@@ -1758,13 +1758,8 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 		 * into the root.
 		 */
 		Assert(mtstate->rootResultRelInfo != NULL);
-		ResultRelInfo *partRelInfo;
-		slot = ExecPrepareTupleRouting(mtstate, estate, proute,
-									   mtstate->rootResultRelInfo, slot,
-									   &partRelInfo);
-		resultRelInfo = partRelInfo;
 
-		slot = ExecInsert(mtstate, resultRelInfo, slot, planSlot,
+		slot = ExecInsert(mtstate, mtstate->rootResultRelInfo, slot, planSlot,
 						  estate, mtstate->canSetTag,
 						  true /* splitUpdate */);
 
@@ -2263,7 +2258,7 @@ ExecModifyTable(PlanState *pstate)
 			node->mt_whichplan++;
 			if (node->mt_whichplan < node->mt_nplans)
 			{
-				resultRelInfo = estate->es_result_relations[node->mt_whichplan];
+				resultRelInfo = &node->resultRelInfo[node->mt_whichplan];
 				subplanstate = node->mt_plans[node->mt_whichplan];
 				junkfilter = resultRelInfo->ri_junkFilter;
 				action_attno = resultRelInfo->ri_action_attno;
