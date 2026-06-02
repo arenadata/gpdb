@@ -2345,7 +2345,7 @@ cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
 	{
 		if (!is_sorted)
 		{
-			if (presorted_keys == 0)
+			if (presorted_keys == NO_INCREMENTAL_SORT)
 			{
 				subpath = (Path *) create_sort_path(root,
 													rel,
@@ -2395,7 +2395,7 @@ cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
 		if (CdbPathLocus_IsPartitioned(locus))
 		{
 			Path *motion_path = cdbpath_create_motion_path(root, subpath, subpath->pathkeys,
-												 presorted_keys != 0, locus);
+												 presorted_keys != NO_INCREMENTAL_SORT, locus);
 
 			
 			/*
@@ -2404,7 +2404,7 @@ cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
 			 */
 			if (motion_path == NULL) 
 			{
-				presorted_keys = 0;
+				presorted_keys = NO_INCREMENTAL_SORT;
 				motion_path = cdbpath_create_motion_path(root, subpath, NIL,
 													false, locus);
 			}
@@ -2412,7 +2412,7 @@ cdb_prepare_path_for_sorted_agg(PlannerInfo *root,
 			subpath = motion_path;
 		}
 
-		if (presorted_keys == 0)
+		if (presorted_keys == NO_INCREMENTAL_SORT)
 		{
 			subpath = (Path *) create_sort_path(root,
 												rel,

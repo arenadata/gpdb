@@ -4831,10 +4831,9 @@ calculate_num_groups(Path *path, double dNumGroupsTotal)
 	 */
 
 	if (CdbPathLocus_IsPartitioned(path->locus))
-		return clamp_row_est(dNumGroupsTotal /
-									CdbPathLocus_NumSegments(path->locus));
-	else
-		return dNumGroupsTotal;	
+		return clamp_row_est(dNumGroupsTotal / 
+			CdbPathLocus_NumSegments(path->locus));
+	return dNumGroupsTotal;	
 }
 
 /*
@@ -4882,7 +4881,6 @@ consider_groupingsets_paths(PlannerInfo *root,
 											   path->pathtarget,
 											   parse->groupClause,
 											   gd->rollups);
-
 
 		dNumGroups = calculate_num_groups(path, dNumGroupsTotal);
 
@@ -5248,7 +5246,7 @@ create_one_window_path(PlannerInfo *root,
 	{
 		WindowClause *wc = lfirst_node(WindowClause, l);
 		List	   *window_pathkeys;
-#if 0
+#if 0 /* PostgreSQL */
 		int			presorted_keys;
 		bool		is_sorted;
 #endif
@@ -5256,7 +5254,7 @@ create_one_window_path(PlannerInfo *root,
 		window_pathkeys = make_pathkeys_for_window(root,
 												   wc,
 												   root->processed_tlist);
-#if 0
+#if 0 /* PostgreSQL */
 
 		is_sorted = pathkeys_count_contained_in(window_pathkeys,
 												path->pathkeys,
@@ -5493,7 +5491,7 @@ create_distinct_paths(PlannerInfo *root,
 			needed_pathkeys = root->distinct_pathkeys;
 
 		path = cheapest_input_path;
-#if 0
+#if 0 /* PostgreSQL */
 		if (!pathkeys_contained_in(needed_pathkeys, path->pathkeys))
 			path = (Path *) create_sort_path(root, distinct_rel,
 											 path,
@@ -7396,7 +7394,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 
 			if (path == cheapest_path || is_sorted)
 			{
-#if 0
+#if 0 /* PostgreSQL */
 				/* Sort the cheapest-total path if it isn't already sorted */
 				if (!is_sorted)
 					path = (Path *) create_sort_path(root,
@@ -7598,7 +7596,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				{
 					if (path != partially_grouped_rel->cheapest_total_path)
 						continue;
-#if 0
+#if 0 /* PostgreSQL */
 					path = (Path *) create_sort_path(root,
 													 grouped_rel,
 													 path,
