@@ -228,11 +228,11 @@ select * from trigtest;
 
 drop table trigtest;
 -- Check behavior with an implicit column default, too (bug #16644)
-create table trigtest (id integer, a integer) distributed by (id);
+create table trigtest (a integer, id integer default 0) distributed by (id);
 create trigger trigger_return_old
 	before insert or delete or update on trigtest
 	for each row execute procedure trigger_return_old();
-insert into trigtest values(1, 1);
+insert into trigtest values(1);
 select a from trigtest;
  a 
 ---
