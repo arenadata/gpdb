@@ -1694,7 +1694,6 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 	Relation	resultRelationDesc;
 	bool		partition_constraint_failed;
 	PartitionTupleRouting *proute = mtstate->mt_partition_tuple_routing;
-	int			map_index;
 	TupleConversionMap *tupconv_map;
 
 	/*
@@ -1745,8 +1744,6 @@ ExecSplitUpdate_Insert(ModifyTableState *mtstate,
 		 * retrieve the one for this resultRel, we need to know the
 		 * position of the resultRel in mtstate->resultRelInfo[].
 		 */
-		map_index = resultRelInfo - mtstate->resultRelInfo;
-		Assert(map_index >= 0 && map_index < mtstate->mt_nplans);
 		tupconv_map = resultRelInfo->ri_ChildToRootMap;
 		if (tupconv_map != NULL)
 			slot = execute_attr_map_slot(tupconv_map->attrMap,
@@ -2161,6 +2158,7 @@ ExecModifyTable(PlanState *pstate)
 	EState	   *estate = node->ps.state;
 	CmdType		operation = node->operation;
 	ResultRelInfo *resultRelInfo;
+	ResultRelInfo *routedResultRelInfo;
 	PlanState  *subplanstate;
 	JunkFilter *junkfilter;
 	AttrNumber  action_attno;
@@ -2412,32 +2410,34 @@ ExecModifyTable(PlanState *pstate)
 								  estate, node->canSetTag, false /* splitUpdate */);
 				break;
 			case CMD_UPDATE:
-				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
+				/* INSERT part of split update handles the routing by itself, no need to force it */
+				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting && DML_INSERT != action)
 				{
 					PartitionTupleRouting *proute = node->mt_partition_tuple_routing;
-					ResultRelInfo *partRelInfo;
 
 					slot = ExecPrepareTupleRouting(node, estate, proute,
 												   resultRelInfo, slot,
-												   &partRelInfo);
-					resultRelInfo = partRelInfo;
+												   &routedResultRelInfo);
 				}
+				else
+					routedResultRelInfo = resultRelInfo;
+
 				if (!AttributeNumberIsValid(action_attno))
 				{
 					/* normal non-split UPDATE */
-					slot = ExecUpdate(node, resultRelInfo, tupleid, oldtuple,
+					slot = ExecUpdate(node, routedResultRelInfo, tupleid, oldtuple,
 									  slot, planSlot, segid,
 									  &node->mt_epqstate, estate,
 									  node->canSetTag);
 				}
 				else if (DML_INSERT == action)
 				{
-					slot = ExecSplitUpdate_Insert(node, resultRelInfo, slot, planSlot,
+					slot = ExecSplitUpdate_Insert(node, routedResultRelInfo, slot, planSlot,
 												  estate, node->canSetTag);
 				}
 				else /* DML_DELETE */
 				{
-					slot = ExecDelete(node, resultRelInfo, tupleid, segid,
+					slot = ExecDelete(node, routedResultRelInfo, tupleid, segid,
 									  oldtuple, planSlot,
 									  &node->mt_epqstate, estate,
 									  false, /* processReturning */
@@ -2451,14 +2451,15 @@ ExecModifyTable(PlanState *pstate)
 				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting)
 				{
 					PartitionTupleRouting *proute = node->mt_partition_tuple_routing;
-					ResultRelInfo *partRelInfo;
 
 					planSlot = ExecPrepareTupleRouting(node, estate, proute,
 													   resultRelInfo, slot,
-													   &partRelInfo);
-					resultRelInfo = partRelInfo;
+													   &routedResultRelInfo);
 				}
-				slot = ExecDelete(node, resultRelInfo, tupleid, segid, oldtuple,
+				else
+					routedResultRelInfo = resultRelInfo;
+
+				slot = ExecDelete(node, routedResultRelInfo, tupleid, segid, oldtuple,
 								  planSlot, &node->mt_epqstate, estate,
 								  true, /* processReturning */
 								  node->canSetTag,
