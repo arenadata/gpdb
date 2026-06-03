@@ -2410,7 +2410,11 @@ ExecModifyTable(PlanState *pstate)
 								  estate, node->canSetTag, false /* splitUpdate */);
 				break;
 			case CMD_UPDATE:
-				/* INSERT part of split update handles the routing by itself, no need to force it */
+
+				/*
+				 * INSERT part of split update handles the routing by itself,
+				 * no need to force it
+				 */
 				if (castNode(ModifyTable, node->ps.plan)->forceTupleRouting && DML_INSERT != action)
 				{
 					PartitionTupleRouting *proute = node->mt_partition_tuple_routing;
