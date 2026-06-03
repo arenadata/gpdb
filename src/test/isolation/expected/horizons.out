@@ -18,6 +18,7 @@ step pruner_query_plan:
 QUERY PLAN     
 
 Index Only Scan using horizons_tst_data_key on horizons_tst
+Optimizer: Postgres query optimizer
 step pruner_query: 
     SELECT explain_json($$
         EXPLAIN (FORMAT json, BUFFERS, ANALYZE)
@@ -76,6 +77,7 @@ step pruner_query_plan:
 QUERY PLAN     
 
 Index Only Scan using horizons_tst_data_key on horizons_tst
+Optimizer: Postgres query optimizer
 step pruner_query: 
     SELECT explain_json($$
         EXPLAIN (FORMAT json, BUFFERS, ANALYZE)
