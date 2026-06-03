@@ -653,7 +653,6 @@ DefineIndex(Oid relationId,
 		shouldDispatch = false;
 	}
 
-
 	/*
 	 * Also don't dispatch this if it's part of an ALTER TABLE. We will dispatch
 	 * the whole ALTER TABLE command later.
