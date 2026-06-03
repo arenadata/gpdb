@@ -654,13 +654,6 @@ DefineIndex(Oid relationId,
 	}
 
 	/*
-	 * Also don't dispatch this if it's part of an ALTER TABLE. We will dispatch
-	 * the whole ALTER TABLE command later.
-	 */
-	if (is_alter_table)
-		shouldDispatch = false;
-
-	/*
 	 * Some callers need us to run with an empty default_tablespace; this is a
 	 * necessary hack to be able to reproduce catalog state accurately when
 	 * recreating indexes after table-rewriting ALTER TABLE.
