@@ -422,8 +422,13 @@ cancel_before_shmem_exit(pg_on_exit_callback function, Datum arg)
 		before_shmem_exit_list[before_shmem_exit_index - 1].arg == arg)
 		--before_shmem_exit_index;
 	else
+	{
+		for (int i = before_shmem_exit_index; i >= 0; i--)
+			elog(WARNING, "before_shmem_exit callback (%p,0x%llx)",
+				 before_shmem_exit_list[i].function, (long long) before_shmem_exit_list[i].arg);
 		elog(ERROR, "before_shmem_exit callback (%p,0x%llx) is not the latest entry",
 			 function, (long long) arg);
+	}
 }
 
 /* ----------------------------------------------------------------

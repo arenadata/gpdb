@@ -172,6 +172,8 @@ static Oid	namespaceUser = InvalidOid;
 /* The above four values are valid only if baseSearchPathValid */
 static bool baseSearchPathValid = true;
 
+static bool before_shmem_exit_callback_registered = false;
+
 /* Override requests are remembered in a stack of OverrideStackEntry structs */
 
 typedef struct
@@ -4305,10 +4307,14 @@ ResetTempNamespace(void)
 
 	/*
 	 * MPP-19973: The shmem exit callback to remove a temp
-	 * namespace is registered. We need to remove it here as the
+	 * namespace may be registered. We need to remove it here as the
 	 * namespace has already been reseted. 
 	 */
-	cancel_before_shmem_exit(RemoveTempRelationsCallback, 0);
+	if (before_shmem_exit_callback_registered)
+	{
+		before_shmem_exit_callback_registered = false;
+		cancel_before_shmem_exit(RemoveTempRelationsCallback, 0);
+	}
 
 	myTempNamespace = InvalidOid;
 	myTempToastNamespace = InvalidOid;
@@ -4335,7 +4341,10 @@ AtEOXact_Namespace(bool isCommit, bool parallel)
 	if (myTempNamespaceSubID != InvalidSubTransactionId && !parallel)
 	{
 		if (isCommit)
+		{
 			before_shmem_exit(RemoveTempRelationsCallback, 0);
+			before_shmem_exit_callback_registered = true;
+		}
 		else
 		{
 			myTempNamespace = InvalidOid;
@@ -4518,6 +4527,8 @@ RemoveSchemaById(Oid schemaOid)
 static void
 RemoveTempRelationsCallback(int code, Datum arg)
 {
+	before_shmem_exit_callback_registered = false;
+
 	if (DistributedTransactionContext == DTX_CONTEXT_QE_PREPARED)
 	{
 		/*
