@@ -681,7 +681,7 @@ cdb_estimate_partitioned_numtuples(Relation rel)
 
 		childtuples = childrel->rd_rel->reltuples;
 
-		if (gp_enable_relsize_collection && childtuples == 0)
+		if (gp_enable_relsize_collection && childtuples <= 0)
 		{
 			RelOptInfo *dummy_reloptinfo;
 			BlockNumber	numpages;
@@ -698,11 +698,18 @@ cdb_estimate_partitioned_numtuples(Relation rel)
 								  &allvisfrac);
 			pfree(dummy_reloptinfo);
 		}
-		if (childtuples == 0 && rel_is_external_table(RelationGetRelid(childrel)))
+		if (childtuples <= 0 && rel_is_external_table(RelationGetRelid(childrel)))
 		{
 			childtuples = DEFAULT_EXTERNAL_TABLE_TUPLES;
 		}
-		totaltuples += childtuples;
+
+		
+		/*
+		 * reltuples of -1 indicates the relation was never analyzed.
+		 * Treat this the same way as an empty relation.
+		 */
+		if (childtuples > 0)
+			totaltuples += childtuples;
 
 		if (childrel != rel)
 			table_close(childrel, NoLock);
