@@ -271,7 +271,8 @@ DETAIL:  Key (xx)=(10) already exists.
 DROP TABLE inhg;
 /* Multiple primary keys creation should fail */
 CREATE TABLE inhg (x text, LIKE inhx INCLUDING INDEXES, PRIMARY KEY(x)); /* fails */
-ERROR:  multiple primary keys for table "inhg" are not allowed
+ERROR:  UNIQUE or PRIMARY KEY definitions are incompatible with each other
+HINT:  When there are multiple PRIMARY KEY / UNIQUE constraints, they must have at least one column in common.
 CREATE TABLE inhz (xx text DEFAULT 'text', yy int UNIQUE);
 CREATE UNIQUE INDEX inhz_xx_idx on inhz (xx) WHERE xx <> 'test';
 ERROR:  UNIQUE index must contain all columns in the table's distribution key
