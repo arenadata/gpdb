@@ -64,7 +64,7 @@ BEGIN
   RAISE NOTICE '_a: %, _b: %', _a, _b;
 END
 $$;
-NOTICE:  a: 10, b: 
+NOTICE:  a: 10, b:
 NOTICE:  _a: 10, _b: 20
 DROP PROCEDURE test_proc1;
 DROP PROCEDURE test_proc2;
