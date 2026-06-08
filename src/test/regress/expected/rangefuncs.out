@@ -2094,17 +2094,20 @@ select * from testrngfunc();
 ----------------------------------------------------------
  Subquery Scan on "*SELECT*"
    Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1"
-   ->  Unique
+   ->  Sort
          Output: (1), (2)
-         ->  Sort
+         Sort Key: (1)
+         ->  HashAggregate
                Output: (1), (2)
-               Sort Key: (1), (2)
+               Group Key: (1), (2)
                ->  Append
                      ->  Result
                            Output: 1, 2
                      ->  Result
                            Output: 3, 4
-(12 rows)
+ Optimizer: Postgres query optimizer
+ Settings: optimizer = 'off'
+(15 rows)
 
 select * from testrngfunc();
     f1    |  f2  
