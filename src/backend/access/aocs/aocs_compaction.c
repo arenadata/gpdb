@@ -263,10 +263,6 @@ AOCSSegmentFileFullCompaction(Relation aorel,
 	resultRelInfo->ri_RelationDesc = aorel;
 	resultRelInfo->ri_TrigDesc = NULL;	/* we don't fire triggers */
 	ExecOpenIndices(resultRelInfo, false);
-	if (estate->es_result_relations == NULL)
-		estate->es_result_relations = (ResultRelInfo **)
-			palloc0(estate->es_range_table_size * sizeof(ResultRelInfo *));
-	estate->es_result_relations[resultRelInfo->ri_RangeTableIndex - 1] = resultRelInfo;
 
 	/*
 	 * We don't want uniqueness checks to be performed while "insert"ing tuples
