@@ -3292,19 +3292,25 @@ SELECT * FROM
           row_number() OVER (PARTITION BY depname ORDER BY enroll_date DESC) AS last_emp
    FROM empsalary) emp
 WHERE first_emp = 1 OR last_emp = 1;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
  Subquery Scan on emp
    Filter: ((emp.first_emp = 1) OR (emp.last_emp = 1))
-   ->  WindowAgg
-         ->  Incremental Sort
-               Sort Key: empsalary.depname, empsalary.enroll_date
-               Presorted Key: empsalary.depname
-               ->  WindowAgg
-                     ->  Sort
-                           Sort Key: empsalary.depname, empsalary.enroll_date DESC
-                           ->  Seq Scan on empsalary
-(10 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: empsalary.depname, empsalary.enroll_date
+         ->  WindowAgg
+               Partition By: empsalary.depname
+               Order By: empsalary.enroll_date
+               ->  Sort
+                     Sort Key: empsalary.depname, empsalary.enroll_date
+                     ->  WindowAgg
+                           Partition By: empsalary.depname
+                           Order By: empsalary.enroll_date
+                           ->  Sort
+                                 Sort Key: empsalary.depname, empsalary.enroll_date DESC
+                                 ->  Seq Scan on empsalary
+ Optimizer: Postgres query optimizer
+(16 rows)
 
 SELECT * FROM
   (SELECT depname,
