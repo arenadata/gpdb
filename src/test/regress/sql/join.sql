@@ -2043,6 +2043,9 @@ drop table join_ut1;
 
 begin;
 
+-- GPDB: persuade the planner to choose same plan as in upstream.
+set local enable_nestloop=on;
+
 create table fkest (x integer, x10 integer, x10b integer, x100 integer);
 insert into fkest select x, x/10, x/10, x/100 from generate_series(1,1000) x;
 create unique index on fkest(x, x10, x100);

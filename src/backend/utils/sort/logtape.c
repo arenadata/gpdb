@@ -86,6 +86,9 @@
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
 
+/* GPDB */
+#include "miscadmin.h"
+
 /*
  * A TapeBlockTrailer is stored at the end of each BLCKSZ block.
  *
@@ -1281,10 +1284,17 @@ long
 LogicalTapeSetBlocks(LogicalTapeSet *lts)
 {
 #ifdef USE_ASSERT_CHECKING
-	for (int i = 0; i < lts->nTapes; i++)
+	/*
+	 * GPDB interrupts the sort and set QueryFinishPending on purpose in the
+	 * test query_finish_pending.sql, skipping the assertion for that case.
+	 */
+	if (!QueryFinishPending)
 	{
-		LogicalTape *lt = &lts->tapes[i];
-		Assert(!lt->writing || lt->buffer == NULL);
+		for (int i = 0; i < lts->nTapes; i++)
+		{
+			LogicalTape *lt = &lts->tapes[i];
+			Assert(!lt->writing || lt->buffer == NULL);
+		}
 	}
 #endif
 	return lts->nBlocksWritten - lts->nHoleBlocks;
