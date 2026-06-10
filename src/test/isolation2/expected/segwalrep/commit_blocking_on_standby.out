@@ -21,6 +21,11 @@ select gp_inject_fault_infinite('walrecv_skip_flush', 'skip', dbid) from gp_segm
 --------------------------
  Success:                 
 (1 row)
+select gp_inject_fault_infinite('syncrep_skip_return', 'skip', dbid) from gp_segment_configuration where content=-1 and role='p';
+ gp_inject_fault_infinite 
+--------------------------
+ Success:                 
+(1 row)
 
 begin;
 BEGIN
@@ -54,6 +59,11 @@ select datname, wait_event, query from pg_stat_activity where wait_event = 'Sync
  isolation2test | SyncRep    | create table commit_blocking_on_standby_t1 (a int) distributed by (a); 
 (1 row)
 
+select gp_inject_fault('syncrep_skip_return', 'reset', dbid) from gp_segment_configuration where content=-1 and role='p';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
 select gp_inject_fault('walrecv_skip_flush', 'reset', dbid) from gp_segment_configuration where content=-1 and role='m';
  gp_inject_fault 
 -----------------
@@ -93,6 +103,11 @@ select gp_inject_fault_infinite('wal_sender_loop', 'infinite_loop', dbid) from g
 
 -- Inject fault on standby to skip WAL flush.
 select gp_inject_fault_infinite('walrecv_skip_flush', 'skip', dbid) from gp_segment_configuration where content=-1 and role='m';
+ gp_inject_fault_infinite 
+--------------------------
+ Success:                 
+(1 row)
+select gp_inject_fault_infinite('syncrep_skip_return', 'skip', dbid) from gp_segment_configuration where content=-1 and role='p';
  gp_inject_fault_infinite 
 --------------------------
  Success:                 
