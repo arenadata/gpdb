@@ -4,13 +4,12 @@
  *	  This file provides some definitions to support indexing
  *	  on system catalogs
  *
- * Caution: all #define's with numeric values in this file had better be
- * object OIDs, else renumber_oids.pl might change them inappropriately.
  *
  *
  * Portions Copyright (c) 2007-2010, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/indexing.h
@@ -30,6 +29,12 @@
  * to decouple callers from that fact.
  */
 typedef struct ResultRelInfo *CatalogIndexState;
+
+/*
+ * Cap the maximum amount of bytes allocated for multi-inserts with system
+ * catalogs, limiting the number of slots used.
+ */
+#define MAX_CATALOG_MULTI_INSERT_BYTES 65535
 
 /*
  * indexing.c prototypes
@@ -412,6 +417,8 @@ DECLARE_UNIQUE_INDEX(pg_compression_compname_index, 7059, on pg_compression usin
 #define CompressionCompnameIndexId	7059
 DECLARE_UNIQUE_INDEX(pg_range_rngtypid_index, 3542, on pg_range using btree(rngtypid oid_ops));
 #define RangeTypidIndexId					3542
+DECLARE_UNIQUE_INDEX(pg_range_rngmultitypid_index, 2228, on pg_range using btree(rngmultitypid oid_ops));
+#define RangeMultirangeTypidIndexId			2228
 
 DECLARE_UNIQUE_INDEX(pg_policy_oid_index, 3257, on pg_policy using btree(oid oid_ops));
 #define PolicyOidIndexId				3257
@@ -452,4 +459,4 @@ DECLARE_UNIQUE_INDEX(pg_subscription_rel_srrelid_srsubid_index, 6117, on pg_subs
 DECLARE_UNIQUE_INDEX(gp_partition_template_relid_level_index, 8023, on gp_partition_template using btree(relid oid_ops, level int2_ops));
 #define GpPartitionTemplateRelidLevelIndexId  8023
 
-#endif							/* INDEXING_H */
+#endif						/* INDEXING_H */

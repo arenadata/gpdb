@@ -68,8 +68,8 @@ CATALOG_HEADERS := \
 	pg_attrdef.h pg_constraint.h pg_inherits.h pg_index.h pg_operator.h \
 	pg_opfamily.h pg_opclass.h pg_am.h pg_amop.h pg_amproc.h \
 	pg_language.h pg_largeobject_metadata.h pg_largeobject.h pg_aggregate.h \
-	pg_statistic_ext.h pg_statistic_ext_data.h \
-	pg_statistic.h pg_rewrite.h pg_trigger.h pg_event_trigger.h pg_description.h \
+	pg_statistic.h pg_statistic_ext.h pg_statistic_ext_data.h \
+	pg_rewrite.h pg_trigger.h pg_event_trigger.h pg_description.h \
 	pg_cast.h pg_enum.h pg_namespace.h pg_conversion.h pg_depend.h \
 	pg_database.h pg_db_role_setting.h pg_tablespace.h \
 	pg_authid.h pg_auth_members.h pg_shdepend.h pg_shdescription.h \
@@ -94,7 +94,7 @@ CATALOG_HEADERS := \
 	pg_sequence.h pg_publication.h pg_publication_rel.h pg_subscription.h \
 	pg_subscription_rel.h gp_partition_template.h
 
-GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h) schemapg.h
+GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h) schemapg.h system_fk_info.h
 
 # In the list of headers used to assemble postgres.bki, indexing.h needs
 # be last, and toasting.h just before it.  This ensures we don't try to
@@ -162,6 +162,7 @@ $(top_builddir)/src/include/catalog/header-stamp: bki-stamp
 .PHONY: install-data
 install-data: bki-stamp installdirs
 	$(INSTALL_DATA) $(call vpathsearch,postgres.bki) '$(DESTDIR)$(datadir)/postgres.bki'
+	$(INSTALL_DATA) $(srcdir)/system_functions.sql '$(DESTDIR)$(datadir)/system_functions.sql'
 	$(INSTALL_DATA) $(srcdir)/system_views.sql '$(DESTDIR)$(datadir)/system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
 	$(INSTALL_DATA) $(call vpathsearch,cdb_schema.sql) '$(DESTDIR)$(datadir)/cdb_init.d/cdb_schema.sql'
@@ -174,7 +175,7 @@ installdirs:
 
 .PHONY: uninstall-data
 uninstall-data:
-	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki system_views.sql information_schema.sql cdb_init.d/cdb_schema.sql sql_features.txt)
+	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki system_functions.sql system_views.sql information_schema.sql cdb_init.d/cdb_schema.sql sql_features.txt)
 
 # postgres.bki and the generated headers are in the distribution tarball,
 # so they are not cleaned here.

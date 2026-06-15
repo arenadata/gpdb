@@ -382,6 +382,7 @@ _readSelectStmt(void)
 	READ_NODE_FIELD(fromClause);
 	READ_NODE_FIELD(whereClause);
 	READ_NODE_FIELD(groupClause);
+	READ_BOOL_FIELD(groupDistinct);
 	READ_NODE_FIELD(havingClause);
 	READ_NODE_FIELD(windowClause);
 	READ_NODE_FIELD(valuesLists);
@@ -400,6 +401,16 @@ _readSelectStmt(void)
 	READ_DONE();
 }
 
+static ParamRef *
+_readParamRef(void)
+{
+	READ_LOCALS(ParamRef);
+
+	READ_INT_FIELD(number);
+	READ_LOCATION_FIELD(location);
+	READ_DONE();
+}
+
 static InsertStmt *
 _readInsertStmt(void)
 {
@@ -408,8 +419,10 @@ _readInsertStmt(void)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(cols);
 	READ_NODE_FIELD(selectStmt);
+	READ_NODE_FIELD(onConflictClause);
 	READ_NODE_FIELD(returningList);
 	READ_NODE_FIELD(withClause);
+	READ_ENUM_FIELD(override, OverridingKind);
 	READ_DONE();
 }
 
@@ -520,7 +533,7 @@ _readAExpr(void)
 
 	READ_ENUM_FIELD(kind, A_Expr_Kind);
 
-	Assert(local_node->kind <= AEXPR_PAREN);
+	Assert(local_node->kind <= AEXPR_NOT_BETWEEN_SYM);
 
 	switch (local_node->kind)
 	{
@@ -539,6 +552,10 @@ _readAExpr(void)
 
 			break;
 		case AEXPR_DISTINCT:
+
+			READ_NODE_FIELD(name);
+			break;
+		case AEXPR_NOT_DISTINCT:
 
 			READ_NODE_FIELD(name);
 			break;
@@ -579,10 +596,6 @@ _readAExpr(void)
 			READ_NODE_FIELD(name);
 			break;
 		case AEXPR_NOT_BETWEEN_SYM:
-
-			READ_NODE_FIELD(name);
-			break;
-		case AEXPR_PAREN:
 
 			READ_NODE_FIELD(name);
 			break;
@@ -1554,6 +1567,64 @@ _readLockingClause(void)
 
 	READ_NODE_FIELD(lockedRels);
 	READ_ENUM_FIELD(strength, LockClauseStrength);
+	READ_ENUM_FIELD(waitPolicy, LockWaitPolicy);
+
+	READ_DONE();
+}
+
+static WindowDef *
+_readWindowDef(void)
+{
+	READ_LOCALS(WindowDef);
+
+	READ_STRING_FIELD(name);
+	READ_STRING_FIELD(refname);
+	READ_NODE_FIELD(partitionClause);
+	READ_NODE_FIELD(orderClause);
+	READ_INT_FIELD(frameOptions);
+	READ_NODE_FIELD(startOffset);
+	READ_NODE_FIELD(endOffset);
+	READ_LOCATION_FIELD(location);
+
+	READ_DONE();
+}
+
+static RangeFunction *
+_readRangeFunction(void)
+{
+	READ_LOCALS(RangeFunction);
+
+	READ_BOOL_FIELD(lateral);
+	READ_BOOL_FIELD(ordinality);
+	READ_BOOL_FIELD(is_rowsfrom);
+	READ_NODE_FIELD(functions);
+	READ_NODE_FIELD(alias);
+	READ_NODE_FIELD(coldeflist);
+
+	READ_DONE();
+}
+
+static XmlSerialize *
+_readXmlSerialize(void)
+{
+	READ_LOCALS(XmlSerialize);
+
+	READ_ENUM_FIELD(xmloption, XmlOptionType);
+	READ_NODE_FIELD(expr);
+	READ_NODE_FIELD(typeName);
+	READ_LOCATION_FIELD(location);
+
+	READ_DONE();
+}
+
+static TableLikeClause *
+_readTableLikeClause(void)
+{
+	READ_LOCALS(TableLikeClause);
+
+	READ_NODE_FIELD(relation);
+	READ_UINT_FIELD(options);
+	READ_OID_FIELD(relationOid);
 
 	READ_DONE();
 }
@@ -2151,6 +2222,12 @@ readNodeBinary(void)
 			case T_CreateFunctionStmt:
 				return_value = _readCreateFunctionStmt();
 				break;
+			case T_ReturnStmt:
+				return_value = _readReturnStmt();
+				break;
+			case T_RawStmt:
+				return_value = _readRawStmt();
+				break;
 			case T_FunctionParameter:
 				return_value = _readFunctionParameter();
 				break;
@@ -2312,6 +2389,9 @@ readNodeBinary(void)
 			case T_InsertStmt:
 				return_value = _readInsertStmt();
 				break;
+			case T_ParamRef:
+				return_value = _readParamRef();
+				break;
 			case T_DeleteStmt:
 				return_value = _readDeleteStmt();
 				break;
@@ -2336,6 +2416,12 @@ readNodeBinary(void)
 			case T_IndexElem:
 				return_value = _readIndexElem();
 				break;
+			case T_StatsElem:
+				return_value = _readStatsElem();
+				break;
+			case T_CreateStatsStmt:
+				return_value = _readCreateStatsStmt();
+				break;
 			case T_Query:
 				return_value = _readQuery();
 				break;
@@ -2359,6 +2445,12 @@ readNodeBinary(void)
 				break;
 			case T_WithClause:
 				return_value = _readWithClause();
+				break;
+			case T_CTESearchClause:
+				return_value = _readCTESearchClause();
+				break;
+			case T_CTECycleClause:
+				return_value = _readCTECycleClause();
 				break;
 			case T_CommonTableExpr:
 				return_value = _readCommonTableExpr();
@@ -2483,6 +2575,9 @@ readNodeBinary(void)
 			case T_AlterTypeStmtSetDefaultEnc:
 				return_value = _readAlterTypeStmtSetDefaultEnc();
 				break;
+			case T_AlterTypeStmt:
+				return_value = _readAlterTypeStmt();
+				break;
 			case T_AlterExtensionStmt:
 				return_value = _readAlterExtensionStmt();
 				break;
@@ -2575,6 +2670,27 @@ readNodeBinary(void)
 				break;
 			case T_CreateAmStmt:
 				return_value = _readCreateAmStmt();
+				break;
+			case T_WindowDef:
+				return_value = _readWindowDef();
+				break;
+			case T_RangeSubselect:
+				return_value = _readRangeSubselect();
+				break;
+			case T_InferClause:
+				return_value = _readInferClause();
+				break;
+			case T_OnConflictClause:
+				return_value = _readOnConflictClause();
+				break;
+			case T_RangeFunction:
+				return_value = _readRangeFunction();
+				break;
+			case T_XmlSerialize:
+				return_value = _readXmlSerialize();
+				break;
+			case T_TableLikeClause:
+				return_value = _readTableLikeClause();
 				break;
 			case T_LockingClause:
 				return_value = _readLockingClause();

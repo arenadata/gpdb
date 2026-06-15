@@ -4,7 +4,7 @@
  *	  definition of the "replication origin" system catalog
  *	  (pg_replication_origin)
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_replication_origin.h
@@ -53,5 +53,11 @@ CATALOG(pg_replication_origin,6000,ReplicationOriginRelationId) BKI_SHARED_RELAT
 } FormData_pg_replication_origin;
 
 typedef FormData_pg_replication_origin *Form_pg_replication_origin;
+
+#define PgReplicationOriginToastTable 4181
+#define PgReplicationOriginToastIndex 4182
+
+#define ReplicationOriginIdentIndex 6001
+#define ReplicationOriginNameIndex 6002
 
 #endif							/* PG_REPLICATION_ORIGIN_H */

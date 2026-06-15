@@ -7,7 +7,7 @@
  * --- ie, rule names are only unique among the rules of a given table.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_rewrite.h
@@ -33,7 +33,7 @@ CATALOG(pg_rewrite,2618,RewriteRelationId)
 {
 	Oid			oid;			/* oid */
 	NameData	rulename;
-	Oid			ev_class;
+	Oid			ev_class BKI_LOOKUP(pg_class);
 	char		ev_type;
 	char		ev_enabled;
 	bool		is_instead;
@@ -53,5 +53,9 @@ FOREIGN_KEY(ev_class REFERENCES pg_class(oid));
  * ----------------
  */
 typedef FormData_pg_rewrite *Form_pg_rewrite;
+
+
+#define RewriteOidIndexId  2692
+#define RewriteRelRulenameIndexId  2693
 
 #endif							/* PG_REWRITE_H */

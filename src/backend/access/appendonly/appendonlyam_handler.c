@@ -1806,6 +1806,7 @@ appendonly_index_validate_scan(Relation heapRelation,
 						 heapRelation,
 						 indexInfo->ii_Unique ?
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
+						 false,
 						 indexInfo);
 
 			state->tups_inserted += 1;
@@ -2088,6 +2089,8 @@ appendonly_scan_bitmap_next_tuple(TableScanDesc scan,
 		if(appendonly_fetch(aoscan->aofetch, &aoTid, slot))
 		{
 			/* OK to return this tuple */
+			/* GPDB: see aoco_scan_bitmap_next_tuple -- keep tableOid valid */
+			slot->tts_tableOid = RelationGetRelid(aoscan->aos_rd);
 			pgstat_count_heap_fetch(aoscan->aos_rd);
 
 			return true;
@@ -2168,7 +2171,7 @@ static const TableAmRoutine ao_row_methods = {
 	.tuple_get_latest_tid = appendonly_get_latest_tid,
 	.tuple_tid_valid = appendonly_tuple_tid_valid,
 	.tuple_satisfies_snapshot = appendonly_tuple_satisfies_snapshot,
-	.compute_xid_horizon_for_tuples = appendonly_compute_xid_horizon_for_tuples,
+	.index_delete_tuples = NULL,
 
 	.relation_set_new_filenode = appendonly_relation_set_new_filenode,
 	.relation_nontransactional_truncate = appendonly_relation_nontransactional_truncate,

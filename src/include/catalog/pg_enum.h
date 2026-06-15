@@ -4,7 +4,7 @@
  *	  definition of the "enum" system catalog (pg_enum)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_enum.h
@@ -31,7 +31,7 @@
 CATALOG(pg_enum,3501,EnumRelationId)
 {
 	Oid			oid;			/* oid */
-	Oid			enumtypid;		/* OID of owning enum type */
+	Oid			enumtypid BKI_LOOKUP(pg_type);	/* OID of owning enum type */
 	float4		enumsortorder;	/* sort position of this enum value */
 	NameData	enumlabel;		/* text representation of enum value */
 } FormData_pg_enum;
@@ -46,6 +46,10 @@ FOREIGN_KEY(enumtypid REFERENCES pg_type(oid));
  */
 typedef FormData_pg_enum *Form_pg_enum;
 
+#define EnumOidIndexId	3502
+#define EnumTypIdLabelIndexId 3503
+#define EnumTypIdSortOrderIndexId 3534
+
 /*
  * prototypes for functions in pg_enum.c
  */
@@ -56,10 +60,10 @@ extern void AddEnumLabel(Oid enumTypeOid, const char *newVal,
 						 bool skipIfExists);
 extern void RenameEnumLabel(Oid enumTypeOid,
 							const char *oldVal, const char *newVal);
-extern bool EnumBlacklisted(Oid enum_id);
-extern Size EstimateEnumBlacklistSpace(void);
-extern void SerializeEnumBlacklist(void *space, Size size);
-extern void RestoreEnumBlacklist(void *space);
+extern bool EnumUncommitted(Oid enum_id);
+extern Size EstimateUncommittedEnumsSpace(void);
+extern void SerializeUncommittedEnums(void *space, Size size);
+extern void RestoreUncommittedEnums(void *space);
 extern void AtEOXact_Enum(void);
 
 #endif							/* PG_ENUM_H */

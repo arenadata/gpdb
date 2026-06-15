@@ -29,7 +29,7 @@
  * intentional denormalization of the catalogs to buy lookup speed.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_amop.h
@@ -77,7 +77,7 @@ CATALOG(pg_amop,2602,AccessMethodOperatorRelationId)
 	Oid			amopmethod BKI_LOOKUP(pg_am);
 
 	/* ordering opfamily OID, or 0 if search op */
-	Oid			amopsortfamily BKI_DEFAULT(0) BKI_LOOKUP(pg_opfamily);
+	Oid			amopsortfamily BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_opfamily);
 } FormData_pg_amop;
 
 /* GPDB added foreign key definitions for gpcheckcat. */
@@ -93,6 +93,10 @@ FOREIGN_KEY(amopmethod REFERENCES pg_am(oid));
  * ----------------
  */
 typedef FormData_pg_amop *Form_pg_amop;
+
+#define AccessMethodStrategyIndexId  2653
+#define AccessMethodOperatorIndexId  2654
+#define AccessMethodOperatorOidIndexId	2756
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

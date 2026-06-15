@@ -16,6 +16,8 @@ VALUES
    ('v0','h4','dbl', -3, '2014-12-15'),
    ('v0',NULL,'qux', 5, '2014-07-15'),
    ('v1','h2','quux',7, '2015-04-04');
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'column1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- make plans more stable
 ANALYZE ctv_data;
 -- running \crosstabview after query uses query in buffer
@@ -23,12 +25,12 @@ SELECT v, EXTRACT(year FROM d), count(*)
  FROM ctv_data
  GROUP BY 1, 2
  ORDER BY 1, 2;
- v  | date_part | count 
-----+-----------+-------
- v0 |      2014 |     2
- v0 |      2015 |     1
- v1 |      2015 |     3
- v2 |      2015 |     1
+ v  | extract | count 
+----+---------+-------
+ v0 |    2014 |     2
+ v0 |    2015 |     1
+ v1 |    2015 |     3
+ v2 |    2015 |     1
 (4 rows)
 
 -- basic usage with 3 columns
@@ -209,6 +211,8 @@ SELECT 1 \crosstabview
 DROP TABLE ctv_data;
 -- check error reporting (bug #14476)
 CREATE TABLE ctv_data (x int, y int, v text);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'x' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO ctv_data SELECT 1, x, '*' || x FROM generate_series(1,10) x;
 SELECT * FROM ctv_data \crosstabview
  x | 1  | 2  | 3  | 4  | 5  | 6  | 7  | 8  | 9  | 10  

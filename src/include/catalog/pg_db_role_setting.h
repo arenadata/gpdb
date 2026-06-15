@@ -5,7 +5,7 @@
  *	  configuration settings (pg_db_role_setting)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_db_role_setting.h
@@ -33,8 +33,11 @@
  */
 CATALOG(pg_db_role_setting,2964,DbRoleSettingRelationId) BKI_SHARED_RELATION
 {
-	Oid			setdatabase;	/* database */
-	Oid			setrole;		/* role */
+	/* database, or 0 for a role-specific setting */
+	Oid			setdatabase BKI_LOOKUP_OPT(pg_database);
+
+	/* role, or 0 for a database-specific setting */
+	Oid			setrole BKI_LOOKUP_OPT(pg_authid);
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	text		setconfig[1];	/* GUC settings to apply at login */
@@ -46,6 +49,11 @@ FOREIGN_KEY(setdatabase REFERENCES pg_database(oid));
 FOREIGN_KEY(setrole REFERENCES pg_authid(oid));
 
 typedef FormData_pg_db_role_setting * Form_pg_db_role_setting;
+
+#define PgDbRoleSettingToastTable 2966
+#define PgDbRoleSettingToastIndex 2967
+
+#define DbRoleSettingDatidRolidIndexId	2965
 
 /*
  * prototypes for functions in pg_db_role_setting.h

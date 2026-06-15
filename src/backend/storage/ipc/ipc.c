@@ -8,7 +8,7 @@
  * exit-time cleanup for either a postmaster or a backend.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -408,9 +408,9 @@ on_shmem_exit(pg_on_exit_callback function, Datum arg)
  *		cancel_before_shmem_exit
  *
  *		this function removes a previously-registered before_shmem_exit
- *		callback.  For simplicity, only the latest entry can be
- *		removed.  (We could work harder but there is no need for
- *		current uses.)
+ *		callback.  We only look at the latest entry for removal, as we
+ * 		expect callers to add and remove temporary before_shmem_exit
+ * 		callbacks in strict LIFO order.
  * ----------------------------------------------------------------
  */
 void
@@ -421,6 +421,41 @@ cancel_before_shmem_exit(pg_on_exit_callback function, Datum arg)
 		== function &&
 		before_shmem_exit_list[before_shmem_exit_index - 1].arg == arg)
 		--before_shmem_exit_index;
+	else
+		elog(ERROR, "before_shmem_exit callback (%p,0x%llx) is not the latest entry",
+			 function, (long long) arg);
+}
+
+/* ----------------------------------------------------------------
+ *		cancel_before_shmem_exit_if_latest
+ *
+ *		Like cancel_before_shmem_exit(), but instead of raising an error when
+ *		the requested callback is not the latest entry (or is not registered
+ *		at all), it leaves the list unchanged and returns false.  Returns true
+ *		if the callback was the latest entry and was removed.
+ *
+ *		GPDB: this restores the pre-PG14 lenient behavior for callers that may
+ *		legitimately try to cancel a callback out of strict LIFO order or that
+ *		may not have been registered.  ResetTempNamespace() uses it during
+ *		gang-loss recovery: the temp-namespace cleanup callback may be absent
+ *		(temp namespace not yet committed) or no longer the latest entry, and
+ *		it is harmless to leave registered (RemoveTempRelationsCallback() is a
+ *		no-op once myTempNamespace is reset).  Throwing here would turn a
+ *		recoverable gang loss into a PANIC during transaction abort.
+ * ----------------------------------------------------------------
+ */
+bool
+cancel_before_shmem_exit_if_latest(pg_on_exit_callback function, Datum arg)
+{
+	if (before_shmem_exit_index > 0 &&
+		before_shmem_exit_list[before_shmem_exit_index - 1].function
+		== function &&
+		before_shmem_exit_list[before_shmem_exit_index - 1].arg == arg)
+	{
+		--before_shmem_exit_index;
+		return true;
+	}
+	return false;
 }
 
 /* ----------------------------------------------------------------
@@ -439,4 +474,21 @@ on_exit_reset(void)
 	on_shmem_exit_index = 0;
 	on_proc_exit_index = 0;
 	reset_on_dsm_detach();
+}
+
+/* ----------------------------------------------------------------
+ *		check_on_shmem_exit_lists_are_empty
+ *
+ *		Debugging check that no shmem cleanup handlers have been registered
+ *		prematurely in the current process.
+ * ----------------------------------------------------------------
+ */
+void
+check_on_shmem_exit_lists_are_empty(void)
+{
+	if (before_shmem_exit_index)
+		elog(FATAL, "before_shmem_exit has been called prematurely");
+	if (on_shmem_exit_index)
+		elog(FATAL, "on_shmem_exit has been called prematurely");
+	/* Checking DSM detach state seems unnecessary given the above */
 }

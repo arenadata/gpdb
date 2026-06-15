@@ -16,7 +16,7 @@
  * convenient to find from the contents of other catalogs.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_depend.h
@@ -45,14 +45,16 @@ CATALOG(pg_depend,2608,DependRelationId)
 	 *
 	 * These fields are all zeroes for a DEPENDENCY_PIN entry.
 	 */
-	Oid			classid;		/* OID of table containing object */
+	Oid			classid BKI_LOOKUP_OPT(pg_class);	/* OID of table containing
+													 * object */
 	Oid			objid;			/* OID of object itself */
 	int32		objsubid;		/* column number, or 0 if not used */
 
 	/*
 	 * Identification of the independent (referenced) object.
 	 */
-	Oid			refclassid;		/* OID of table containing object */
+	Oid			refclassid BKI_LOOKUP(pg_class);	/* OID of table containing
+													 * object */
 	Oid			refobjid;		/* OID of object itself */
 	int32		refobjsubid;	/* column number, or 0 if not used */
 
@@ -73,5 +75,8 @@ FOREIGN_KEY(refclassid REFERENCES pg_class(oid));
  * ----------------
  */
 typedef FormData_pg_depend *Form_pg_depend;
+
+#define DependDependerIndexId  2673
+#define DependReferenceIndexId	2674
 
 #endif							/* PG_DEPEND_H */

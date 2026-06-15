@@ -5,7 +5,7 @@
  *
  * See plancache.c for comments.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/plancache.h
@@ -223,10 +223,10 @@ extern List *CachedPlanGetTargetList(CachedPlanSource *plansource,
 
 extern CachedPlan *GetCachedPlan(CachedPlanSource *plansource,
 								 ParamListInfo boundParams,
-								 bool useResOwner,
+								 ResourceOwner owner,
 								 QueryEnvironment *queryEnv,
 								 IntoClause *intoClause);
-extern void ReleaseCachedPlan(CachedPlan *plan, bool useResOwner);
+extern void ReleaseCachedPlan(CachedPlan *plan, ResourceOwner owner);
 
 extern bool CachedPlanAllowsSimpleValidityCheck(CachedPlanSource *plansource,
 												CachedPlan *plan,

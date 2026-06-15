@@ -7,7 +7,7 @@
  * accessed via the extended FE/BE query protocol.
  *
  *
- * Copyright (c) 2002-2020, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2021, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/commands/prepare.c
@@ -79,12 +79,9 @@ PrepareQuery(ParseState *pstate, PrepareStmt *stmt,
 	/*
 	 * Need to wrap the contained statement in a RawStmt node to pass it to
 	 * parse analysis.
-	 *
-	 * Because parse analysis scribbles on the raw querytree, we must make a
-	 * copy to ensure we don't modify the passed-in tree.  FIXME someday.
 	 */
 	rawstmt = makeNode(RawStmt);
-	rawstmt->stmt = (Node *) copyObject(stmt->query);
+	rawstmt->stmt = stmt->query;
 	rawstmt->stmt_location = stmt_location;
 	rawstmt->stmt_len = stmt_len;
 
@@ -239,14 +236,30 @@ ExecuteQuery(ParseState *pstate,
 									   entry->plansource->query_string);
 
 	/* Replan if needed, and increment plan refcount for portal */
-	cplan = GetCachedPlan(entry->plansource, paramLI, false, NULL, intoClause);
+	cplan = GetCachedPlan(entry->plansource, paramLI, NULL, NULL, intoClause);
 	plan_list = cplan->stmt_list;
 
 	/*
-	 * For CREATE TABLE / AS EXECUTE, we must make a copy of the stored query
-	 * so that we can modify its destination (yech, but this has always been
-	 * ugly).  For regular EXECUTE we can just use the cached query, since the
-	 * executor is read-only.
+	 * DO NOT add any logic that could possibly throw an error between
+	 * GetCachedPlan and PortalDefineQuery, or you'll leak the plan refcount.
+	 */
+	PortalDefineQuery(portal,
+					  NULL,
+					  query_string,
+					  entry->plansource->sourceTag,
+					  entry->plansource->commandTag,
+					  plan_list,
+					  cplan);
+
+	/*
+	 * For CREATE TABLE ... AS EXECUTE, we must verify that the prepared
+	 * statement is one that produces tuples.  Currently we insist that it be
+	 * a plain old SELECT.  In future we might consider supporting other
+	 * things such as INSERT ... RETURNING, but there are a couple of issues
+	 * to be settled first, notably how WITH NO DATA should be handled in such
+	 * a case (do we really want to suppress execution?) and how to pass down
+	 * the OID-determining eflags (PortalStart won't handle them in such a
+	 * case, and for that matter it's not clear the executor will either).
 	 *
 	 * In GPDB, we use the current parameter values in the planning, because
 	 * that potentially gives a better plan. It also means that we have to
@@ -295,16 +308,10 @@ ExecuteQuery(ParseState *pstate,
 		count = FETCH_ALL;
 	}
 
-	PortalDefineQuery(portal,
-					  NULL,
-					  query_string,
-					  entry->plansource->sourceTag,
-					  entry->plansource->commandTag,
-					  plan_list,
-					  cplan);
-
 	/*
-	 * Run the portal as appropriate.
+	 * Run the portal as appropriate.  (Note: PortalDefineQuery was already
+	 * called above, right after GetCachedPlan; the GPDB into-clause handling
+	 * mutates the plan in place, so it needs no second PortalDefineQuery.)
 	 */
 	PortalStart(portal, paramLI, eflags, GetActiveSnapshot(), NULL);
 
@@ -426,15 +433,13 @@ InitQueryHashTable(void)
 {
 	HASHCTL		hash_ctl;
 
-	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
-
 	hash_ctl.keysize = NAMEDATALEN;
 	hash_ctl.entrysize = sizeof(PreparedStatement);
 
 	prepared_queries = hash_create("Prepared Queries",
 								   32,
 								   &hash_ctl,
-								   HASH_ELEM);
+								   HASH_ELEM | HASH_STRINGS);
 }
 
 /*
@@ -698,7 +703,8 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	}
 
 	/* Replan if needed, and acquire a transient refcount */
-	cplan = GetCachedPlan(entry->plansource, paramLI, true, queryEnv, into);
+	cplan = GetCachedPlan(entry->plansource, paramLI,
+						  CurrentResourceOwner, queryEnv, into);
 
 	INSTR_TIME_SET_CURRENT(planduration);
 	INSTR_TIME_SUBTRACT(planduration, planstart);
@@ -718,8 +724,28 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 		PlannedStmt *pstmt = lfirst_node(PlannedStmt, p);
 
 		if (pstmt->commandType != CMD_UTILITY)
+		{
+			/*
+			 * GPDB: CREATE TABLE AS / SELECT INTO ... EXECUTE creates the
+			 * target relation in intorel_initplan(), which is driven off
+			 * PlannedStmt->intoClause (see execMain.c).  Unlike the
+			 * freshly-planned path (ExplainOneQuery), the cached plan reached
+			 * here does not carry the IntoClause, so without it intorel_initplan
+			 * is skipped, the DestReceiver's rel stays NULL and the executor
+			 * SIGSEGVs in intorel_startup_dummy.  Set the IntoClause -- on a
+			 * copy, since the PlannedStmt belongs to the shared cached plan and
+			 * a stale IntoClause would make a later plain EXECUTE create a
+			 * table.
+			 */
+			if (into != NULL)
+			{
+				pstmt = copyObject(pstmt);
+				pstmt->intoClause = copyObject(into);
+			}
+
 			ExplainOnePlan(pstmt, into, es, query_string, paramLI, queryEnv,
 						   &planduration, (es->buffers ? &bufusage : NULL), 0);
+		}
 		else
 			ExplainOneUtility(pstmt->utilityStmt, into, es, query_string,
 							  paramLI, queryEnv);
@@ -734,7 +760,7 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	if (estate)
 		FreeExecutorState(estate);
 
-	ReleaseCachedPlan(cplan, true);
+	ReleaseCachedPlan(cplan, CurrentResourceOwner);
 }
 
 /*

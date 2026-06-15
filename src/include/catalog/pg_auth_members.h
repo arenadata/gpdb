@@ -5,7 +5,7 @@
  *	  (pg_auth_members).
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_auth_members.h
@@ -29,9 +29,9 @@
  */
 CATALOG(pg_auth_members,1261,AuthMemRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(2843,AuthMemRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
-	Oid			roleid;			/* ID of a role */
-	Oid			member;			/* ID of a member of that role */
-	Oid			grantor;		/* who granted the membership */
+	Oid			roleid BKI_LOOKUP(pg_authid);	/* ID of a role */
+	Oid			member BKI_LOOKUP(pg_authid);	/* ID of a member of that role */
+	Oid			grantor BKI_LOOKUP(pg_authid);	/* who granted the membership */
 	bool		admin_option;	/* granted with admin option? */
 } FormData_pg_auth_members;
 
@@ -49,5 +49,8 @@ FOREIGN_KEY(member  REFERENCES pg_authid(oid));
  * ----------------
  */
 typedef FormData_pg_auth_members *Form_pg_auth_members;
+
+#define AuthMemRoleMemIndexId	2694
+#define AuthMemMemRoleIndexId	2695
 
 #endif							/* PG_AUTH_MEMBERS_H */

@@ -19,7 +19,7 @@
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -357,6 +357,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 				*pNumGroups = estimate_num_groups(subroot,
 												  get_tlist_exprs(subquery->targetList, false),
 												  subpath->rows,
+												  NULL,
 												  NULL);
 		}
 	}
@@ -496,12 +497,24 @@ generate_recursion_path(SetOperationStmt *setOp, PlannerInfo *root,
 	 * merge, and things seem to be working with this much simpler thing, but
 	 * I'm not sure if the logic is 100% correct now.
 	 */
-	if (CdbPathLocus_IsSegmentGeneral(lpath->locus))
+	if (CdbPathLocus_IsSegmentGeneral(lpath->locus) ||
+		CdbPathLocus_IsGeneral(lpath->locus) ||
+		!setOp->all)
 	{
+		/*
+		 * GPDB: also force General loci to one segment (otherwise every
+		 * segment would seed its own copy of the worktable and the gathered
+		 * result would be duplicated), and recursive UNION DISTINCT too:
+		 * the RecursiveUnion node deduplicates locally in one process, which
+		 * is only global when the whole recursion runs in one process.
+		 */
 		CdbPathLocus gather_locus;
 
-		CdbPathLocus_MakeSingleQE(&gather_locus, lpath->locus.numsegments);
+		CdbPathLocus_MakeSingleQE(&gather_locus,
+								  CdbPathLocus_NumSegments(lpath->locus));
 		lpath = cdbpath_create_motion_path(root, lpath, NIL, false, gather_locus);
+		if (!lpath)
+			elog(ERROR, "could not gather non-recursive term of recursive UNION");
 	}
 
 	/* The right path will want to look at the left one ... */
@@ -559,6 +572,22 @@ generate_recursion_path(SetOperationStmt *setOp, PlannerInfo *root,
 	/*
 	 * And make the plan node.
 	 */
+	/*
+	 * GPDB: if the recursive term ended up in a single process but the
+	 * anchor is distributed, gather the anchor there too; the
+	 * RecursiveUnion node executes both inputs in one slice.  (A motion on
+	 * top of the recursive term itself would be wrong: that side is
+	 * re-executed for every iteration, and Motions cannot be rescanned.)
+	 */
+	if (CdbPathLocus_IsBottleneck(rpath->locus) &&
+		!CdbPathLocus_IsBottleneck(lpath->locus))
+	{
+		lpath = cdbpath_create_motion_path(root, lpath, NIL, false,
+										   rpath->locus);
+		if (!lpath)
+			elog(ERROR, "could not gather non-recursive term of recursive UNION");
+	}
+
 	path = (Path *) create_recursiveunion_path(root,
 											   result_rel,
 											   lpath,
@@ -567,6 +596,18 @@ generate_recursion_path(SetOperationStmt *setOp, PlannerInfo *root,
 											   groupList,
 											   root->wt_param_id,
 											   dNumGroups);
+
+	/*
+	 * GPDB: label the result locus.  In one process it is just that locus;
+	 * otherwise the anchor rows sit on their hash segments while
+	 * recursively-produced rows sit wherever they were computed, so the
+	 * honest description is Strewn.
+	 */
+	if (CdbPathLocus_IsBottleneck(lpath->locus))
+		path->locus = lpath->locus;
+	else
+		CdbPathLocus_MakeStrewn(&path->locus,
+								CdbPathLocus_NumSegments(lpath->locus));
 	path->locus = rpath->locus;
 
 	add_path(result_rel, path);
@@ -661,7 +702,7 @@ generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
 	 * Append the child results together.
 	 */
 	path = (Path *) create_append_path(root, result_rel, pathlist, NIL,
-									   NIL, NULL, 0, false, NIL, -1);
+									   NIL, NULL, 0, false, -1);
 
 	/*
 	 * For UNION ALL, we just need the Append path.  For UNION, need to add
@@ -725,7 +766,7 @@ generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
 			create_append_path(root, result_rel, NIL, partial_pathlist,
 							   NIL, NULL,
 							   parallel_workers, enable_parallel_append,
-							   NIL, -1);
+							   -1);
 		ppath = (Path *)
 			create_gather_path(root, result_rel, ppath,
 							   result_rel->reltarget, NULL, NULL);
@@ -887,7 +928,7 @@ generate_nonunion_paths(SetOperationStmt *op, PlannerInfo *root,
 	 * Append the child results together.
 	 */
 	path = (Path *) create_append_path(root, result_rel, pathlist, NIL,
-									   NIL, NULL, 0, false, NIL, -1);
+									   NIL, NULL, 0, false, -1);
 	mark_append_locus(path, optype); /* CDB: Mark the plan result locus. */
 
 	/* Identify the grouping semantics */

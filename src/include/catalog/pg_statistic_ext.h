@@ -8,7 +8,7 @@
  * objects, created by CREATE STATISTICS, but not the actual statistical data,
  * created by running ANALYZE.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_statistic_ext.h
@@ -34,13 +34,15 @@ CATALOG(pg_statistic_ext,3381,StatisticExtRelationId)
 {
 	Oid			oid;			/* oid */
 
-	Oid			stxrelid;		/* relation containing attributes */
+	Oid			stxrelid BKI_LOOKUP(pg_class);	/* relation containing
+												 * attributes */
 
 	/* These two fields form the unique key for the entry: */
 	NameData	stxname;		/* statistics object name */
-	Oid			stxnamespace;	/* OID of statistics object's namespace */
+	Oid			stxnamespace BKI_LOOKUP(pg_namespace);	/* OID of statistics
+														 * object's namespace */
 
-	Oid			stxowner;		/* statistics object's owner */
+	Oid			stxowner BKI_LOOKUP(pg_authid); /* statistics object's owner */
 	int32		stxstattarget BKI_DEFAULT(-1);	/* statistics target */
 
 	/*
@@ -52,6 +54,9 @@ CATALOG(pg_statistic_ext,3381,StatisticExtRelationId)
 #ifdef CATALOG_VARLEN
 	char		stxkind[1] BKI_FORCE_NOT_NULL;	/* statistics kinds requested
 												 * to build */
+	pg_node_tree stxexprs;		/* A list of expression trees for stats
+								 * attributes that are not simple column
+								 * references. */
 #endif
 
 } FormData_pg_statistic_ext;
@@ -63,11 +68,18 @@ CATALOG(pg_statistic_ext,3381,StatisticExtRelationId)
  */
 typedef FormData_pg_statistic_ext *Form_pg_statistic_ext;
 
+
+#define StatisticExtOidIndexId	3380
+#define StatisticExtNameIndexId 3997
+#define StatisticExtRelidIndexId 3379
+
+
 #ifdef EXPOSE_TO_CLIENT_CODE
 
 #define STATS_EXT_NDISTINCT			'd'
 #define STATS_EXT_DEPENDENCIES		'f'
 #define STATS_EXT_MCV				'm'
+#define STATS_EXT_EXPRESSIONS		'e'
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 

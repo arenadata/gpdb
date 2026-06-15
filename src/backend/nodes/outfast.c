@@ -393,6 +393,7 @@ _outJoinExpr(StringInfo str, JoinExpr *node)
 	WRITE_NODE_FIELD(larg);
 	WRITE_NODE_FIELD(rarg);
 	WRITE_NODE_FIELD(usingClause);
+	WRITE_NODE_FIELD(join_using_alias);
 	WRITE_NODE_FIELD(quals);
 	WRITE_NODE_FIELD(alias);
 	WRITE_INT_FIELD(rtindex);
@@ -560,6 +561,10 @@ _outAExpr(StringInfo str, A_Expr *node)
 
 			WRITE_NODE_FIELD(name);
 			break;
+		case AEXPR_NOT_DISTINCT:
+
+			WRITE_NODE_FIELD(name);
+			break;
 		case AEXPR_NULLIF:
 
 			WRITE_NODE_FIELD(name);
@@ -600,10 +605,6 @@ _outAExpr(StringInfo str, A_Expr *node)
 
 			WRITE_NODE_FIELD(name);
 			break;
-		case AEXPR_PAREN:
-
-			break;
-
 		default:
 
 			break;
@@ -1356,6 +1357,9 @@ _outNode(StringInfo str, void *obj)
 			case T_CreateFunctionStmt:
 				_outCreateFunctionStmt(str, obj);
 				break;
+			case T_ReturnStmt:
+				_outReturnStmt(str, obj);
+				break;
 			case T_FunctionParameter:
 				_outFunctionParameter(str, obj);
 				break;
@@ -1544,6 +1548,21 @@ _outNode(StringInfo str, void *obj)
 			case T_IndexElem:
 				_outIndexElem(str, obj);
 				break;
+			case T_StatsElem:
+				_outStatsElem(str, obj);
+				break;
+			case T_WindowDef:
+				_outWindowDef(str, obj);
+				break;
+			case T_RangeSubselect:
+				_outRangeSubselect(str, obj);
+				break;
+			case T_InferClause:
+				_outInferClause(str, obj);
+				break;
+			case T_OnConflictClause:
+				_outOnConflictClause(str, obj);
+				break;
 			case T_Query:
 				_outQuery(str, obj);
 				break;
@@ -1564,6 +1583,12 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_WithClause:
 				_outWithClause(str, obj);
+				break;
+			case T_CTESearchClause:
+				_outCTESearchClause(str, obj);
+				break;
+			case T_CTECycleClause:
+				_outCTECycleClause(str, obj);
 				break;
 			case T_CommonTableExpr:
 				_outCommonTableExpr(str, obj);
@@ -1735,6 +1760,9 @@ _outNode(StringInfo str, void *obj)
 
 			case T_AlterTypeStmtSetDefaultEnc:
 				_outAlterTypeStmtSetDefaultEnc(str, obj);
+				break;
+			case T_AlterTypeStmt:
+				_outAlterTypeStmt(str, obj);
 				break;
 			case T_AlterExtensionStmt:
 				_outAlterExtensionStmt(str, obj);

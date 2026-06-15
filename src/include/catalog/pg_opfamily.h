@@ -4,7 +4,7 @@
  *	  definition of the "operator family" system catalog (pg_opfamily)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_opfamily.h
@@ -37,10 +37,10 @@ CATALOG(pg_opfamily,2753,OperatorFamilyRelationId)
 	NameData	opfname;
 
 	/* namespace of this opfamily */
-	Oid			opfnamespace BKI_DEFAULT(PGNSP);
+	Oid			opfnamespace BKI_DEFAULT(pg_catalog) BKI_LOOKUP(pg_namespace);
 
 	/* opfamily owner */
-	Oid			opfowner BKI_DEFAULT(PGUID);
+	Oid			opfowner BKI_DEFAULT(POSTGRES) BKI_LOOKUP(pg_authid);
 } FormData_pg_opfamily;
 
 /* GPDB added foreign key definitions for gpcheckcat. */
@@ -54,6 +54,9 @@ FOREIGN_KEY(opfowner REFERENCES pg_authid(oid));
  * ----------------
  */
 typedef FormData_pg_opfamily *Form_pg_opfamily;
+
+#define OpfamilyAmNameNspIndexId  2754
+#define OpfamilyOidIndexId	2755
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

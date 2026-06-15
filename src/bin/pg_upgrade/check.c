@@ -258,20 +258,12 @@ issue_warnings_and_set_wal_level(char *sequence_script_file_name)
 
 
 void
-output_completion_banner(char *analyze_script_file_name,
-						 char *deletion_script_file_name)
+output_completion_banner(char *deletion_script_file_name)
 {
-	/* Did we copy the free space files? */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) >= 804)
-		pg_log(PG_REPORT,
-			   "Optimizer statistics are not transferred by pg_upgrade so,\n"
-			   "once you start the new server, consider running:\n"
-			   "    %s\n\n", analyze_script_file_name);
-	else
-		pg_log(PG_REPORT,
-			   "Optimizer statistics and free space information are not transferred\n"
-			   "by pg_upgrade so, once you start the new server, consider running:\n"
-			   "    %s\n\n", analyze_script_file_name);
+	pg_log(PG_REPORT,
+		   "Optimizer statistics are not transferred by pg_upgrade so,\n"
+		   "once you start the new server, consider running:\n"
+		   "    vacuumdb --all --analyze-in-stages\n\n");
 
 
 	if (deletion_script_file_name)

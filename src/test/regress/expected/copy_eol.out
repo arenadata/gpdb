@@ -11,6 +11,8 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 COPY copy_eol FROM '/tmp/copy_lf.file' (FORMAT 'text', DELIMITER E'\x1e' , NULL E'\x1b\x4e',  ESCAPE E'\x1b', NEWLINE 'LF');
 COPY copy_eol FROM '/tmp/copy_lf.file' (FORMAT 'text', DELIMITER E'\x1e' , NULL E'\x1b\x4e',  ESCAPE E'\x1b'); 
 SELECT * FROM copy_eol ORDER BY id ASC;
+NOTICE:  One or more columns in the following table(s) do not have statistics: copy_eol
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  id | seq 
 ----+-----
   1 | s1\
@@ -29,6 +31,8 @@ TRUNCATE copy_eol;
 COPY copy_eol FROM '/tmp/copy_cr.file' (FORMAT 'text', DELIMITER E'\x1e' , NULL E'\x1b\x4e',  ESCAPE E'\x1b', NEWLINE 'CR');
 COPY copy_eol FROM '/tmp/copy_cr.file' (FORMAT 'text', DELIMITER E'\x1e' , NULL E'\x1b\x4e',  ESCAPE E'\x1b');
 SELECT * FROM copy_eol ORDER BY id ASC;
+NOTICE:  One or more columns in the following table(s) do not have statistics: copy_eol
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  id | seq 
 ----+-----
   1 | s1\
@@ -43,6 +47,8 @@ TRUNCATE copy_eol;
 COPY copy_eol FROM '/tmp/copy_crlf.file' (FORMAT 'text', DELIMITER E'\x1e' , NULL E'\x1b\x4e',  ESCAPE E'\x1b', NEWLINE 'CRLF');
 COPY copy_eol FROM '/tmp/copy_crlf.file' (FORMAT 'text', DELIMITER E'\x1e' , NULL E'\x1b\x4e',  ESCAPE E'\x1b');
 SELECT * FROM copy_eol ORDER BY id ASC;
+NOTICE:  One or more columns in the following table(s) do not have statistics: copy_eol
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  id | seq 
 ----+-----
   1 | s1\
@@ -57,6 +63,8 @@ TRUNCATE copy_eol;
 COPY copy_eol FROM '/tmp/copy_crlf_1.file' (FORMAT 'text', DELIMITER E'\x1e' , NULL E'\x1b\x4e',  ESCAPE E'\x1b', NEWLINE 'CRLF');
 COPY copy_eol FROM '/tmp/copy_crlf_1.file' (FORMAT 'text', DELIMITER E'\x1e' , NULL E'\x1b\x4e',  ESCAPE E'\x1b');
 SELECT * FROM copy_eol ORDER BY id ASC;
+NOTICE:  One or more columns in the following table(s) do not have statistics: copy_eol
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  id |  seq  
 ----+-------
   1 | s1\

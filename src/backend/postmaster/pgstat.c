@@ -11,7 +11,7 @@
  *			- Add a pgstat config column to pg_database, so this
  *			  entire thing can be enabled/disabled on a per db basis.
  *
- *	Copyright (c) 2001-2020, PostgreSQL Global Development Group
+ *	Copyright (c) 2001-2021, PostgreSQL Global Development Group
  *
  *	src/backend/postmaster/pgstat.c
  * ----------
@@ -39,20 +39,21 @@
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
 #include "access/xlog.h"
+#include "catalog/partition.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_proc.h"
-#include "executor/instrument.h"
 #include "common/ip.h"
+#include "executor/instrument.h"
 #include "libpq/libpq.h"
 #include "libpq/pqsignal.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
-#include "pg_trace.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/fork_process.h"
 #include "postmaster/interrupt.h"
 #include "postmaster/postmaster.h"
+#include "replication/slot.h"
 #include "replication/walsender.h"
 #include "storage/backendid.h"
 #include "storage/dsm.h"
@@ -61,9 +62,9 @@
 #include "storage/latch.h"
 #include "storage/lmgr.h"
 #include "storage/pg_shmem.h"
+#include "storage/proc.h"
 #include "storage/procsignal.h"
-#include "storage/sinvaladt.h"
-#include "utils/ascii.h"
+#include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -116,28 +117,15 @@
 #define PGSTAT_TAB_HASH_SIZE	512
 #define PGSTAT_QUEUE_HASH_SIZE	8
 #define PGSTAT_FUNCTION_HASH_SIZE	512
-
-
-/* ----------
- * Total number of backends including auxiliary
- *
- * We reserve a slot for each possible BackendId, plus one for each
- * possible auxiliary process type.  (This scheme assumes there is not
- * more than one of any auxiliary process type at a time.) MaxBackends
- * includes autovacuum workers and background workers as well.
- * ----------
- */
-#define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)
+#define PGSTAT_REPLSLOT_HASH_SIZE	32
 
 
 /* ----------
  * GUC parameters
  * ----------
  */
-bool		pgstat_track_activities = false;
 bool		pgstat_track_counts = false;
 int			pgstat_track_functions = TRACK_FUNC_OFF;
-int			pgstat_track_activity_query_size = 1024;
 
 bool		pgstat_collect_queuelevel = false;
 
@@ -150,11 +138,20 @@ char	   *pgstat_stat_filename = NULL;
 char	   *pgstat_stat_tmpname = NULL;
 
 /*
- * BgWriter global statistics counters (unused in other processes).
- * Stored directly in a stats message structure so it can be sent
- * without needing to copy things around.  We assume this inits to zeroes.
+ * BgWriter and WAL global statistics counters.
+ * Stored directly in a stats message structure so they can be sent
+ * without needing to copy things around.  We assume these init to zeroes.
  */
 PgStat_MsgBgWriter BgWriterStats;
+PgStat_MsgWal WalStats;
+
+/*
+ * WAL usage counters saved from pgWALUsage at the previous call to
+ * pgstat_send_wal(). This is used to calculate how much WAL usage
+ * happens between pgstat_send_wal() calls, by substracting
+ * the previous counters from the current ones.
+ */
+static WalUsage prevWalUsage;
 
 /*
  * List of SLRU names that we keep stats for.  There is no central registry of
@@ -262,6 +259,9 @@ static int	pgStatXactCommit = 0;
 static int	pgStatXactRollback = 0;
 PgStat_Counter pgStatBlockReadTime = 0;
 PgStat_Counter pgStatBlockWriteTime = 0;
+PgStat_Counter pgStatActiveTime = 0;
+PgStat_Counter pgStatTransactionIdleTime = 0;
+SessionEndType pgStatSessionEndCause = DISCONNECT_NORMAL;
 
 /* Record that's written to 2PC state file when pgstat state is persisted */
 typedef struct TwoPhasePgStatRecord
@@ -305,7 +305,9 @@ static int	localNumBackends = 0;
  */
 static PgStat_ArchiverStats archiverStats;
 static PgStat_GlobalStats globalStats;
+static PgStat_WalStats walStats;
 static PgStat_SLRUStats slruStats[SLRU_NUM_ELEMENTS];
+static HTAB *replSlotStatHash = NULL;
 
 /*
  * List of OIDs of databases we need to write out.  If an entry is InvalidOid,
@@ -313,13 +315,6 @@ static PgStat_SLRUStats slruStats[SLRU_NUM_ELEMENTS];
  * will write both that DB's data and the shared stats.
  */
 static List *pending_write_requests = NIL;
-
-/*
- * Total time charged to functions so far in the current backend.
- * We use this to help separate "self" and "other" time charges.
- * (We assume this initializes to zero.)
- */
-static instr_time total_func_time;
 
 /*
  * Total time charged to functions so far in the current backend.
@@ -338,7 +333,6 @@ static pid_t pgstat_forkexec(void);
 #endif
 
 NON_EXEC_STATIC void PgstatCollectorMain(int argc, char *argv[]) pg_attribute_noreturn();
-static void pgstat_beshutdown_hook(int code, Datum arg);
 
 static PgStat_StatDBEntry *pgstat_get_db_entry(Oid databaseid, bool create);
 static PgStat_StatTabEntry *pgstat_get_tab_entry(PgStat_StatDBEntry *dbentry,
@@ -350,25 +344,22 @@ static void pgstat_write_db_statsfile(PgStat_StatDBEntry *dbentry, bool permanen
 static HTAB *pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep);
 static void pgstat_read_db_statsfile(Oid databaseid, HTAB *tabhash, HTAB *funchash, bool permanent);
 static void backend_read_statsfile(void);
-static void pgstat_read_current_status(void);
 
 static bool pgstat_write_statsfile_needed(void);
 static bool pgstat_db_requested(Oid databaseid);
+
+static PgStat_StatReplSlotEntry *pgstat_get_replslot_entry(NameData name, bool create_it);
+static void pgstat_reset_replslot(PgStat_StatReplSlotEntry *slotstats, TimestampTz ts);
 
 static void pgstat_send_tabstat(PgStat_MsgTabstat *tsmsg);
 static void pgstat_send_funcstats(void);
 static void pgstat_send_slru(void);
 static HTAB *pgstat_collect_oids(Oid catalogid, AttrNumber anum_oid);
+static void pgstat_send_connstats(bool disconnect, TimestampTz last_report);
 
 static PgStat_TableStatus *get_tabstat_entry(Oid rel_id, bool isshared);
 
 static void pgstat_setup_memcxt(void);
-
-static const char *pgstat_get_wait_activity(WaitEventActivity w);
-static const char *pgstat_get_wait_client(WaitEventClient w);
-static const char *pgstat_get_wait_ipc(WaitEventIPC w);
-static const char *pgstat_get_wait_timeout(WaitEventTimeout w);
-static const char *pgstat_get_wait_io(WaitEventIO w);
 
 static void pgstat_setheader(PgStat_MsgHdr *hdr, StatMsgType mtype);
 static void pgstat_send(void *msg, int len);
@@ -381,18 +372,23 @@ static void pgstat_recv_resetcounter(PgStat_MsgResetcounter *msg, int len);
 static void pgstat_recv_resetsharedcounter(PgStat_MsgResetsharedcounter *msg, int len);
 static void pgstat_recv_resetsinglecounter(PgStat_MsgResetsinglecounter *msg, int len);
 static void pgstat_recv_resetslrucounter(PgStat_MsgResetslrucounter *msg, int len);
+static void pgstat_recv_resetreplslotcounter(PgStat_MsgResetreplslotcounter *msg, int len);
 static void pgstat_recv_autovac(PgStat_MsgAutovacStart *msg, int len);
 static void pgstat_recv_vacuum(PgStat_MsgVacuum *msg, int len);
 static void pgstat_recv_analyze(PgStat_MsgAnalyze *msg, int len);
+static void pgstat_recv_anl_ancestors(PgStat_MsgAnlAncestors *msg, int len);
 static void pgstat_recv_archiver(PgStat_MsgArchiver *msg, int len);
 static void pgstat_recv_queuestat(PgStat_MsgQueuestat *msg, int len); /* GPDB */
 static void pgstat_recv_bgwriter(PgStat_MsgBgWriter *msg, int len);
+static void pgstat_recv_wal(PgStat_MsgWal *msg, int len);
 static void pgstat_recv_slru(PgStat_MsgSLRU *msg, int len);
 static void pgstat_recv_funcstat(PgStat_MsgFuncstat *msg, int len);
 static void pgstat_recv_funcpurge(PgStat_MsgFuncpurge *msg, int len);
 static void pgstat_recv_recoveryconflict(PgStat_MsgRecoveryConflict *msg, int len);
 static void pgstat_recv_deadlock(PgStat_MsgDeadlock *msg, int len);
 static void pgstat_recv_checksum_failure(PgStat_MsgChecksumFailure *msg, int len);
+static void pgstat_recv_connstat(PgStat_MsgConn *msg, int len);
+static void pgstat_recv_replslot(PgStat_MsgReplSlot *msg, int len);
 static void pgstat_recv_tempfile(PgStat_MsgTempFile *msg, int len);
 
 /* ------------------------------------------------------------
@@ -650,7 +646,8 @@ retry2:
 		if (getsockopt(pgStatSock, SOL_SOCKET, SO_RCVBUF,
 					   (char *) &old_rcvbuf, &rcvbufsize) < 0)
 		{
-			elog(LOG, "getsockopt(SO_RCVBUF) failed: %m");
+			ereport(LOG,
+					(errmsg("%s(%s) failed: %m", "getsockopt", "SO_RCVBUF")));
 			/* if we can't get existing size, always try to set it */
 			old_rcvbuf = 0;
 		}
@@ -660,7 +657,8 @@ retry2:
 		{
 			if (setsockopt(pgStatSock, SOL_SOCKET, SO_RCVBUF,
 						   (char *) &new_rcvbuf, sizeof(new_rcvbuf)) < 0)
-				elog(LOG, "setsockopt(SO_RCVBUF) failed: %m");
+				ereport(LOG,
+						(errmsg("%s(%s) failed: %m", "setsockopt", "SO_RCVBUF")));
 		}
 	}
 
@@ -868,10 +866,14 @@ allow_immediate_pgstat_restart(void)
  *	per-table and function usage statistics to the collector.  Note that this
  *	is called only when not within a transaction, so it is fair to use
  *	transaction stop time as an approximation of current time.
+ *
+ *	"disconnect" is "true" only for the last call before the backend
+ *	exits.  This makes sure that no data is lost and that interrupted
+ *	sessions are reported correctly.
  * ----------
  */
 void
-pgstat_report_stat(bool force)
+pgstat_report_stat(bool disconnect)
 {
 	/* we assume this inits to all zeroes: */
 	static const PgStat_TableCounts all_zeroes;
@@ -883,20 +885,35 @@ pgstat_report_stat(bool force)
 	TabStatusArray *tsa;
 	int			i;
 
-	/* Don't expend a clock check if nothing to do */
+	/*
+	 * Don't expend a clock check if nothing to do.
+	 *
+	 * To determine whether any WAL activity has occurred since last time, not
+	 * only the number of generated WAL records but also the numbers of WAL
+	 * writes and syncs need to be checked. Because even transaction that
+	 * generates no WAL records can write or sync WAL data when flushing the
+	 * data pages.
+	 */
 	if ((pgStatTabList == NULL || pgStatTabList->tsa_used == 0) &&
 		pgStatXactCommit == 0 && pgStatXactRollback == 0 &&
-		!have_function_stats)
+		pgWalUsage.wal_records == prevWalUsage.wal_records &&
+		WalStats.m_wal_write == 0 && WalStats.m_wal_sync == 0 &&
+		!have_function_stats && !disconnect)
 		return;
 
 	/*
 	 * Don't send a message unless it's been at least PGSTAT_STAT_INTERVAL
-	 * msec since we last sent one, or the caller wants to force stats out.
+	 * msec since we last sent one, or the backend is about to exit.
 	 */
 	now = GetCurrentTransactionStopTimestamp();
-	if (!force &&
+	if (!disconnect &&
 		!TimestampDifferenceExceeds(last_report, now, PGSTAT_STAT_INTERVAL))
 		return;
+
+	/* for backends, send connection statistics */
+	if (MyBackendType == B_BACKEND)
+		pgstat_send_connstats(disconnect, last_report);
+
 	last_report = now;
 
 	/*
@@ -972,6 +989,9 @@ pgstat_report_stat(bool force)
 
 	/* Now, send function statistics */
 	pgstat_send_funcstats();
+
+	/* Send WAL statistics */
+	pgstat_send_wal(true);
 
 	/* Finally send SLRU statistics */
 	pgstat_send_slru();
@@ -1130,6 +1150,24 @@ pgstat_vacuum_stat(void)
 	hash_destroy(htab);
 
 	/*
+	 * Search for all the dead replication slots in stats hashtable and tell
+	 * the stats collector to drop them.
+	 */
+	if (replSlotStatHash)
+	{
+		PgStat_StatReplSlotEntry *slotentry;
+
+		hash_seq_init(&hstat, replSlotStatHash);
+		while ((slotentry = (PgStat_StatReplSlotEntry *) hash_seq_search(&hstat)) != NULL)
+		{
+			CHECK_FOR_INTERRUPTS();
+
+			if (SearchNamedReplicationSlot(NameStr(slotentry->slotname), true) == NULL)
+				pgstat_report_replslot_drop(NameStr(slotentry->slotname));
+		}
+	}
+
+	/*
 	 * Lookup our own database entry; if not found, nothing more to do.
 	 */
 	dbentry = (PgStat_StatDBEntry *) hash_search(pgStatDBHash,
@@ -1275,7 +1313,6 @@ pgstat_collect_oids(Oid catalogid, AttrNumber anum_oid)
 	HeapTuple	tup;
 	Snapshot	snapshot;
 
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(Oid);
 	hash_ctl.entrysize = sizeof(Oid);
 	hash_ctl.hcxt = CurrentMemoryContext;
@@ -1363,6 +1400,48 @@ pgstat_drop_relation(Oid relid)
 
 
 /* ----------
+ * pgstat_send_connstats() -
+ *
+ *	Tell the collector about session statistics.
+ *	The parameter "disconnect" will be true when the backend exits.
+ *	"last_report" is the last time we were called (0 if never).
+ * ----------
+ */
+static void
+pgstat_send_connstats(bool disconnect, TimestampTz last_report)
+{
+	PgStat_MsgConn msg;
+	long		secs;
+	int			usecs;
+
+	if (pgStatSock == PGINVALID_SOCKET || !pgstat_track_counts)
+		return;
+
+	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_CONNECTION);
+	msg.m_databaseid = MyDatabaseId;
+
+	/* session time since the last report */
+	TimestampDifference(((last_report == 0) ? MyStartTimestamp : last_report),
+						GetCurrentTimestamp(),
+						&secs, &usecs);
+	msg.m_session_time = secs * 1000000 + usecs;
+
+	msg.m_disconnect = disconnect ? pgStatSessionEndCause : DISCONNECT_NOT_YET;
+
+	msg.m_active_time = pgStatActiveTime;
+	pgStatActiveTime = 0;
+
+	msg.m_idle_in_xact_time = pgStatTransactionIdleTime;
+	pgStatTransactionIdleTime = 0;
+
+	/* report a new session only the first time */
+	msg.m_count = (last_report == 0) ? 1 : 0;
+
+	pgstat_send(&msg, sizeof(PgStat_MsgConn));
+}
+
+
+/* ----------
  * pgstat_reset_counters() -
  *
  *	Tell the statistics collector to reset counters for our database.
@@ -1405,11 +1484,13 @@ pgstat_reset_shared_counters(const char *target)
 		msg.m_resettarget = RESET_ARCHIVER;
 	else if (strcmp(target, "bgwriter") == 0)
 		msg.m_resettarget = RESET_BGWRITER;
+	else if (strcmp(target, "wal") == 0)
+		msg.m_resettarget = RESET_WAL;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("unrecognized reset target: \"%s\"", target),
-				 errhint("Target must be \"archiver\" or \"bgwriter\".")));
+				 errhint("Target must be \"archiver\", \"bgwriter\", or \"wal\".")));
 
 	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_RESETSHAREDCOUNTER);
 	pgstat_send(&msg, sizeof(msg));
@@ -1460,6 +1541,37 @@ pgstat_reset_slru_counter(const char *name)
 
 	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_RESETSLRUCOUNTER);
 	msg.m_index = (name) ? pgstat_slru_index(name) : -1;
+
+	pgstat_send(&msg, sizeof(msg));
+}
+
+/* ----------
+ * pgstat_reset_replslot_counter() -
+ *
+ *	Tell the statistics collector to reset a single replication slot
+ *	counter, or all replication slots counters (when name is null).
+ *
+ *	Permission checking for this function is managed through the normal
+ *	GRANT system.
+ * ----------
+ */
+void
+pgstat_reset_replslot_counter(const char *name)
+{
+	PgStat_MsgResetreplslotcounter msg;
+
+	if (pgStatSock == PGINVALID_SOCKET)
+		return;
+
+	if (name)
+	{
+		namestrcpy(&msg.m_slotname, name);
+		msg.clearall = false;
+	}
+	else
+		msg.clearall = true;
+
+	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_RESETREPLSLOTCOUNTER);
 
 	pgstat_send(&msg, sizeof(msg));
 }
@@ -1520,6 +1632,9 @@ pgstat_report_vacuum(Oid tableoid, bool shared,
  *
  * Caller must provide new live- and dead-tuples estimates, as well as a
  * flag indicating whether to reset the changes_since_analyze counter.
+ * Exceptional support only changes_since_analyze for partitioned tables,
+ * though they don't have any data.  This counter will tell us whether
+ * partitioned tables need autoanalyze or not.
  * --------
  */
 void
@@ -1541,21 +1656,31 @@ pgstat_report_analyze(Relation rel,
 	 * be double-counted after commit.  (This approach also ensures that the
 	 * collector ends up with the right numbers if we abort instead of
 	 * committing.)
+	 *
+	 * For partitioned tables, we don't report live and dead tuples, because
+	 * such tables don't have any data.
 	 */
 	if (rel->pgstat_info != NULL)
 	{
 		PgStat_TableXactStatus *trans;
 
-		for (trans = rel->pgstat_info->trans; trans; trans = trans->upper)
+		if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+			/* If this rel is partitioned, skip modifying */
+			livetuples = deadtuples = 0;
+		else
 		{
-			livetuples -= trans->tuples_inserted - trans->tuples_deleted;
-			deadtuples -= trans->tuples_updated + trans->tuples_deleted;
+			for (trans = rel->pgstat_info->trans; trans; trans = trans->upper)
+			{
+				livetuples -= trans->tuples_inserted - trans->tuples_deleted;
+				deadtuples -= trans->tuples_updated + trans->tuples_deleted;
+			}
+			/* count stuff inserted by already-aborted subxacts, too */
+			deadtuples -= rel->pgstat_info->t_counts.t_delta_dead_tuples;
+			/* Since ANALYZE's counts are estimates, we could have underflowed */
+			livetuples = Max(livetuples, 0);
+			deadtuples = Max(deadtuples, 0);
 		}
-		/* count stuff inserted by already-aborted subxacts, too */
-		deadtuples -= rel->pgstat_info->t_counts.t_delta_dead_tuples;
-		/* Since ANALYZE's counts are estimates, we could have underflowed */
-		livetuples = Max(livetuples, 0);
-		deadtuples = Max(deadtuples, 0);
+
 	}
 
 	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_ANALYZE);
@@ -1567,6 +1692,48 @@ pgstat_report_analyze(Relation rel,
 	msg.m_live_tuples = livetuples;
 	msg.m_dead_tuples = deadtuples;
 	pgstat_send(&msg, sizeof(msg));
+
+}
+
+/*
+ * pgstat_report_anl_ancestors
+ *
+ *	Send list of partitioned table ancestors of the given partition to the
+ *	collector.  The collector is in charge of propagating the analyze tuple
+ *	counts from the partition to its ancestors.  This is necessary so that
+ *	other processes can decide whether to analyze the partitioned tables.
+ */
+void
+pgstat_report_anl_ancestors(Oid relid)
+{
+	PgStat_MsgAnlAncestors msg;
+	List	   *ancestors;
+	ListCell   *lc;
+
+	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_ANL_ANCESTORS);
+	msg.m_databaseid = MyDatabaseId;
+	msg.m_tableoid = relid;
+	msg.m_nancestors = 0;
+
+	ancestors = get_partition_ancestors(relid);
+	foreach(lc, ancestors)
+	{
+		Oid			ancestor = lfirst_oid(lc);
+
+		msg.m_ancestors[msg.m_nancestors] = ancestor;
+		if (++msg.m_nancestors >= PGSTAT_NUM_ANCESTORENTRIES)
+		{
+			pgstat_send(&msg, offsetof(PgStat_MsgAnlAncestors, m_ancestors[0]) +
+						msg.m_nancestors * sizeof(Oid));
+			msg.m_nancestors = 0;
+		}
+	}
+
+	if (msg.m_nancestors > 0)
+		pgstat_send(&msg, offsetof(PgStat_MsgAnlAncestors, m_ancestors[0]) +
+					msg.m_nancestors * sizeof(Oid));
+
+	list_free(ancestors);
 }
 
 /* --------
@@ -1664,6 +1831,70 @@ pgstat_report_tempfile(size_t filesize)
 	pgstat_send(&msg, sizeof(msg));
 }
 
+/* ----------
+ * pgstat_report_replslot() -
+ *
+ *	Tell the collector about replication slot statistics.
+ * ----------
+ */
+void
+pgstat_report_replslot(const PgStat_StatReplSlotEntry *repSlotStat)
+{
+	PgStat_MsgReplSlot msg;
+
+	/*
+	 * Prepare and send the message
+	 */
+	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_REPLSLOT);
+	namestrcpy(&msg.m_slotname, NameStr(repSlotStat->slotname));
+	msg.m_create = false;
+	msg.m_drop = false;
+	msg.m_spill_txns = repSlotStat->spill_txns;
+	msg.m_spill_count = repSlotStat->spill_count;
+	msg.m_spill_bytes = repSlotStat->spill_bytes;
+	msg.m_stream_txns = repSlotStat->stream_txns;
+	msg.m_stream_count = repSlotStat->stream_count;
+	msg.m_stream_bytes = repSlotStat->stream_bytes;
+	msg.m_total_txns = repSlotStat->total_txns;
+	msg.m_total_bytes = repSlotStat->total_bytes;
+	pgstat_send(&msg, sizeof(PgStat_MsgReplSlot));
+}
+
+/* ----------
+ * pgstat_report_replslot_create() -
+ *
+ *	Tell the collector about creating the replication slot.
+ * ----------
+ */
+void
+pgstat_report_replslot_create(const char *slotname)
+{
+	PgStat_MsgReplSlot msg;
+
+	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_REPLSLOT);
+	namestrcpy(&msg.m_slotname, slotname);
+	msg.m_create = true;
+	msg.m_drop = false;
+	pgstat_send(&msg, sizeof(PgStat_MsgReplSlot));
+}
+
+/* ----------
+ * pgstat_report_replslot_drop() -
+ *
+ *	Tell the collector about dropping the replication slot.
+ * ----------
+ */
+void
+pgstat_report_replslot_drop(const char *slotname)
+{
+	PgStat_MsgReplSlot msg;
+
+	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_REPLSLOT);
+	namestrcpy(&msg.m_slotname, slotname);
+	msg.m_create = false;
+	msg.m_drop = true;
+	pgstat_send(&msg, sizeof(PgStat_MsgReplSlot));
+}
 
 /* ----------
  * pgstat_ping() -
@@ -1725,7 +1956,6 @@ pgstat_init_function_usage(FunctionCallInfo fcinfo,
 		/* First time through - initialize function stat table */
 		HASHCTL		hash_ctl;
 
-		memset(&hash_ctl, 0, sizeof(hash_ctl));
 		hash_ctl.keysize = sizeof(Oid);
 		hash_ctl.entrysize = sizeof(PgStat_BackendFunctionEntry);
 		pgStatFunctions = hash_create("Function stat entries",
@@ -1842,7 +2072,8 @@ pgstat_initstats(Relation rel)
 	char		relkind = rel->rd_rel->relkind;
 
 	/* We only count stats for things that have storage */
-	if (!RELKIND_HAS_STORAGE(relkind))
+	if (!RELKIND_HAS_STORAGE(relkind) &&
+		relkind != RELKIND_PARTITIONED_TABLE)
 	{
 		rel->pgstat_info = NULL;
 		return;
@@ -1885,7 +2116,6 @@ get_tabstat_entry(Oid rel_id, bool isshared)
 	{
 		HASHCTL		ctl;
 
-		memset(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(Oid);
 		ctl.entrysize = sizeof(TabStatHashEntry);
 
@@ -2617,65 +2847,6 @@ pgstat_fetch_stat_funcentry(Oid func_id)
 }
 
 
-/* ----------
- * pgstat_fetch_stat_beentry() -
- *
- *	Support function for the SQL-callable pgstat* functions. Returns
- *	our local copy of the current-activity entry for one backend.
- *
- *	NB: caller is responsible for a check if the user is permitted to see
- *	this info (especially the querystring).
- * ----------
- */
-PgBackendStatus *
-pgstat_fetch_stat_beentry(int beid)
-{
-	pgstat_read_current_status();
-
-	if (beid < 1 || beid > localNumBackends)
-		return NULL;
-
-	return &localBackendStatusTable[beid - 1].backendStatus;
-}
-
-
-/* ----------
- * pgstat_fetch_stat_local_beentry() -
- *
- *	Like pgstat_fetch_stat_beentry() but with locally computed additions (like
- *	xid and xmin values of the backend)
- *
- *	NB: caller is responsible for a check if the user is permitted to see
- *	this info (especially the querystring).
- * ----------
- */
-LocalPgBackendStatus *
-pgstat_fetch_stat_local_beentry(int beid)
-{
-	pgstat_read_current_status();
-
-	if (beid < 1 || beid > localNumBackends)
-		return NULL;
-
-	return &localBackendStatusTable[beid - 1];
-}
-
-
-/* ----------
- * pgstat_fetch_stat_numbackends() -
- *
- *	Support function for the SQL-callable pgstat* functions. Returns
- *	the maximum current backend id.
- * ----------
- */
-int
-pgstat_fetch_stat_numbackends(void)
-{
-	pgstat_read_current_status();
-
-	return localNumBackends;
-}
-
 /*
  * ---------
  * pgstat_fetch_stat_archiver() -
@@ -2709,6 +2880,21 @@ pgstat_fetch_global(void)
 	return &globalStats;
 }
 
+/*
+ * ---------
+ * pgstat_fetch_stat_wal() -
+ *
+ *	Support function for the SQL-callable pgstat* functions. Returns
+ *	a pointer to the WAL statistics struct.
+ * ---------
+ */
+PgStat_WalStats *
+pgstat_fetch_stat_wal(void)
+{
+	backend_read_statsfile();
+
+	return &walStats;
+}
 
 /*
  * ---------
@@ -2726,402 +2912,20 @@ pgstat_fetch_slru(void)
 	return slruStats;
 }
 
-
-/* ------------------------------------------------------------
- * Functions for management of the shared-memory PgBackendStatus array
- * ------------------------------------------------------------
- */
-
-static PgBackendStatus *BackendStatusArray = NULL;
-static PgBackendStatus *MyBEEntry = NULL;
-static char *BackendAppnameBuffer = NULL;
-static char *BackendClientHostnameBuffer = NULL;
-static char *BackendActivityBuffer = NULL;
-static Size BackendActivityBufferSize = 0;
-#ifdef USE_SSL
-static PgBackendSSLStatus *BackendSslStatusBuffer = NULL;
-#endif
-#ifdef ENABLE_GSS
-static PgBackendGSSStatus *BackendGssStatusBuffer = NULL;
-#endif
-
-
 /*
- * Report shared-memory space needed by CreateSharedBackendStatus.
- */
-Size
-BackendStatusShmemSize(void)
-{
-	Size		size;
-
-	/* BackendStatusArray: */
-	size = mul_size(sizeof(PgBackendStatus), NumBackendStatSlots);
-	/* BackendAppnameBuffer: */
-	size = add_size(size,
-					mul_size(NAMEDATALEN, NumBackendStatSlots));
-	/* BackendClientHostnameBuffer: */
-	size = add_size(size,
-					mul_size(NAMEDATALEN, NumBackendStatSlots));
-	/* BackendActivityBuffer: */
-	size = add_size(size,
-					mul_size(pgstat_track_activity_query_size, NumBackendStatSlots));
-#ifdef USE_SSL
-	/* BackendSslStatusBuffer: */
-	size = add_size(size,
-					mul_size(sizeof(PgBackendSSLStatus), NumBackendStatSlots));
-#endif
-	return size;
-}
-
-/*
- * Initialize the shared status array and several string buffers
- * during postmaster startup.
- */
-void
-CreateSharedBackendStatus(void)
-{
-	Size		size;
-	bool		found;
-	int			i;
-	char	   *buffer;
-
-	/* Create or attach to the shared array */
-	size = mul_size(sizeof(PgBackendStatus), NumBackendStatSlots);
-	BackendStatusArray = (PgBackendStatus *)
-		ShmemInitStruct("Backend Status Array", size, &found);
-
-	if (!found)
-	{
-		/*
-		 * We're the first - initialize.
-		 */
-		MemSet(BackendStatusArray, 0, size);
-	}
-
-	/* Create or attach to the shared appname buffer */
-	size = mul_size(NAMEDATALEN, NumBackendStatSlots);
-	BackendAppnameBuffer = (char *)
-		ShmemInitStruct("Backend Application Name Buffer", size, &found);
-
-	if (!found)
-	{
-		MemSet(BackendAppnameBuffer, 0, size);
-
-		/* Initialize st_appname pointers. */
-		buffer = BackendAppnameBuffer;
-		for (i = 0; i < NumBackendStatSlots; i++)
-		{
-			BackendStatusArray[i].st_appname = buffer;
-			buffer += NAMEDATALEN;
-		}
-	}
-
-	/* Create or attach to the shared client hostname buffer */
-	size = mul_size(NAMEDATALEN, NumBackendStatSlots);
-	BackendClientHostnameBuffer = (char *)
-		ShmemInitStruct("Backend Client Host Name Buffer", size, &found);
-
-	if (!found)
-	{
-		MemSet(BackendClientHostnameBuffer, 0, size);
-
-		/* Initialize st_clienthostname pointers. */
-		buffer = BackendClientHostnameBuffer;
-		for (i = 0; i < NumBackendStatSlots; i++)
-		{
-			BackendStatusArray[i].st_clienthostname = buffer;
-			buffer += NAMEDATALEN;
-		}
-	}
-
-	/* Create or attach to the shared activity buffer */
-	BackendActivityBufferSize = mul_size(pgstat_track_activity_query_size,
-										 NumBackendStatSlots);
-	BackendActivityBuffer = (char *)
-		ShmemInitStruct("Backend Activity Buffer",
-						BackendActivityBufferSize,
-						&found);
-
-	if (!found)
-	{
-		MemSet(BackendActivityBuffer, 0, BackendActivityBufferSize);
-
-		/* Initialize st_activity pointers. */
-		buffer = BackendActivityBuffer;
-		for (i = 0; i < NumBackendStatSlots; i++)
-		{
-			BackendStatusArray[i].st_activity_raw = buffer;
-			buffer += pgstat_track_activity_query_size;
-		}
-	}
-
-#ifdef USE_SSL
-	/* Create or attach to the shared SSL status buffer */
-	size = mul_size(sizeof(PgBackendSSLStatus), NumBackendStatSlots);
-	BackendSslStatusBuffer = (PgBackendSSLStatus *)
-		ShmemInitStruct("Backend SSL Status Buffer", size, &found);
-
-	if (!found)
-	{
-		PgBackendSSLStatus *ptr;
-
-		MemSet(BackendSslStatusBuffer, 0, size);
-
-		/* Initialize st_sslstatus pointers. */
-		ptr = BackendSslStatusBuffer;
-		for (i = 0; i < NumBackendStatSlots; i++)
-		{
-			BackendStatusArray[i].st_sslstatus = ptr;
-			ptr++;
-		}
-	}
-#endif
-
-#ifdef ENABLE_GSS
-	/* Create or attach to the shared GSSAPI status buffer */
-	size = mul_size(sizeof(PgBackendGSSStatus), NumBackendStatSlots);
-	BackendGssStatusBuffer = (PgBackendGSSStatus *)
-		ShmemInitStruct("Backend GSS Status Buffer", size, &found);
-
-	if (!found)
-	{
-		PgBackendGSSStatus *ptr;
-
-		MemSet(BackendGssStatusBuffer, 0, size);
-
-		/* Initialize st_gssstatus pointers. */
-		ptr = BackendGssStatusBuffer;
-		for (i = 0; i < NumBackendStatSlots; i++)
-		{
-			BackendStatusArray[i].st_gssstatus = ptr;
-			ptr++;
-		}
-	}
-#endif
-}
-
-
-/* ----------
- * pgstat_initialize() -
+ * ---------
+ * pgstat_fetch_replslot() -
  *
- *	Initialize pgstats state, and set up our on-proc-exit hook.
- *	Called from InitPostgres and AuxiliaryProcessMain. For auxiliary process,
- *	MyBackendId is invalid. Otherwise, MyBackendId must be set,
- *	but we must not have started any transaction yet (since the
- *	exit hook must run after the last transaction exit).
- *	NOTE: MyDatabaseId isn't set yet; so the shutdown hook has to be careful.
- * ----------
+ *	Support function for the SQL-callable pgstat* functions. Returns
+ *	a pointer to the replication slot statistics struct.
+ * ---------
  */
-void
-pgstat_initialize(void)
+PgStat_StatReplSlotEntry *
+pgstat_fetch_replslot(NameData slotname)
 {
-	/* Initialize MyBEEntry */
-	if (MyBackendId != InvalidBackendId)
-	{
-		Assert(MyBackendId >= 1 && MyBackendId <= MaxBackends);
-		MyBEEntry = &BackendStatusArray[MyBackendId - 1];
-	}
-	else
-	{
-		/* Must be an auxiliary process */
-		Assert(MyAuxProcType != NotAnAuxProcess);
+	backend_read_statsfile();
 
-		/*
-		 * Assign the MyBEEntry for an auxiliary process.  Since it doesn't
-		 * have a BackendId, the slot is statically allocated based on the
-		 * auxiliary process type (MyAuxProcType).  Backends use slots indexed
-		 * in the range from 1 to MaxBackends (inclusive), so we use
-		 * MaxBackends + AuxBackendType + 1 as the index of the slot for an
-		 * auxiliary process.
-		 */
-		MyBEEntry = &BackendStatusArray[MaxBackends + MyAuxProcType];
-	}
-
-	/* Set up a process-exit hook to clean up */
-	on_shmem_exit(pgstat_beshutdown_hook, 0);
-}
-
-/* ----------
- * pgstat_bestart() -
- *
- *	Initialize this backend's entry in the PgBackendStatus array.
- *	Called from InitPostgres.
- *
- *	Apart from auxiliary processes, MyBackendId, MyDatabaseId,
- *	session userid, and application_name must be set for a
- *	backend (hence, this cannot be combined with pgstat_initialize).
- *	Note also that we must be inside a transaction if this isn't an aux
- *	process, as we may need to do encoding conversion on some strings.
- * ----------
- */
-void
-pgstat_bestart(void)
-{
-	volatile PgBackendStatus *vbeentry = MyBEEntry;
-	PgBackendStatus lbeentry;
-#ifdef USE_SSL
-	PgBackendSSLStatus lsslstatus;
-#endif
-#ifdef ENABLE_GSS
-	PgBackendGSSStatus lgssstatus;
-#endif
-
-	/* pgstats state must be initialized from pgstat_initialize() */
-	Assert(vbeentry != NULL);
-
-	/*
-	 * To minimize the time spent modifying the PgBackendStatus entry, and
-	 * avoid risk of errors inside the critical section, we first copy the
-	 * shared-memory struct to a local variable, then modify the data in the
-	 * local variable, then copy the local variable back to shared memory.
-	 * Only the last step has to be inside the critical section.
-	 *
-	 * Most of the data we copy from shared memory is just going to be
-	 * overwritten, but the struct's not so large that it's worth the
-	 * maintenance hassle to copy only the needful fields.
-	 */
-	memcpy(&lbeentry,
-		   unvolatize(PgBackendStatus *, vbeentry),
-		   sizeof(PgBackendStatus));
-
-	/* These structs can just start from zeroes each time, though */
-#ifdef USE_SSL
-	memset(&lsslstatus, 0, sizeof(lsslstatus));
-#endif
-#ifdef ENABLE_GSS
-	memset(&lgssstatus, 0, sizeof(lgssstatus));
-#endif
-
-	/*
-	 * Now fill in all the fields of lbeentry, except for strings that are
-	 * out-of-line data.  Those have to be handled separately, below.
-	 */
-	lbeentry.st_procpid = MyProcPid;
-	lbeentry.st_backendType = MyBackendType;
-	lbeentry.st_proc_start_timestamp = MyStartTimestamp;
-	lbeentry.st_activity_start_timestamp = 0;
-	lbeentry.st_state_start_timestamp = 0;
-	lbeentry.st_xact_start_timestamp = 0;
-	lbeentry.st_databaseid = MyDatabaseId;
-
-	/* We have userid for client-backends, wal-sender and bgworker processes */
-	if (lbeentry.st_backendType == B_BACKEND
-		|| lbeentry.st_backendType == B_WAL_SENDER
-		|| lbeentry.st_backendType == B_BG_WORKER)
-		lbeentry.st_userid = GetSessionUserId();
-	else
-		lbeentry.st_userid = InvalidOid;
-
-	lbeentry.st_session_id = gp_session_id;  /* GPDB only */
-
-	/*
-	 * We may not have a MyProcPort (eg, if this is the autovacuum process).
-	 * If so, use all-zeroes client address, which is dealt with specially in
-	 * pg_stat_get_backend_client_addr and pg_stat_get_backend_client_port.
-	 */
-	if (MyProcPort)
-		memcpy(&lbeentry.st_clientaddr, &MyProcPort->raddr,
-			   sizeof(lbeentry.st_clientaddr));
-	else
-		MemSet(&lbeentry.st_clientaddr, 0, sizeof(lbeentry.st_clientaddr));
-
-#ifdef USE_SSL
-	if (MyProcPort && MyProcPort->ssl_in_use)
-	{
-		lbeentry.st_ssl = true;
-		lsslstatus.ssl_bits = be_tls_get_cipher_bits(MyProcPort);
-		lsslstatus.ssl_compression = be_tls_get_compression(MyProcPort);
-		strlcpy(lsslstatus.ssl_version, be_tls_get_version(MyProcPort), NAMEDATALEN);
-		strlcpy(lsslstatus.ssl_cipher, be_tls_get_cipher(MyProcPort), NAMEDATALEN);
-		be_tls_get_peer_subject_name(MyProcPort, lsslstatus.ssl_client_dn, NAMEDATALEN);
-		be_tls_get_peer_serial(MyProcPort, lsslstatus.ssl_client_serial, NAMEDATALEN);
-		be_tls_get_peer_issuer_name(MyProcPort, lsslstatus.ssl_issuer_dn, NAMEDATALEN);
-	}
-	else
-	{
-		lbeentry.st_ssl = false;
-	}
-#else
-	lbeentry.st_ssl = false;
-#endif
-
-#ifdef ENABLE_GSS
-	if (MyProcPort && MyProcPort->gss != NULL)
-	{
-		lbeentry.st_gss = true;
-		lgssstatus.gss_auth = be_gssapi_get_auth(MyProcPort);
-		lgssstatus.gss_enc = be_gssapi_get_enc(MyProcPort);
-
-		if (lgssstatus.gss_auth)
-			strlcpy(lgssstatus.gss_princ, be_gssapi_get_princ(MyProcPort), NAMEDATALEN);
-	}
-	else
-	{
-		lbeentry.st_gss = false;
-	}
-#else
-	lbeentry.st_gss = false;
-#endif
-
-	lbeentry.st_state = STATE_UNDEFINED;
-	lbeentry.st_progress_command = PROGRESS_COMMAND_INVALID;
-	lbeentry.st_progress_command_target = InvalidOid;
-	lbeentry.st_rsgid = InvalidOid;
-
-	/*
-	 * we don't zero st_progress_param here to save cycles; nobody should
-	 * examine it until st_progress_command has been set to something other
-	 * than PROGRESS_COMMAND_INVALID
-	 */
-
-	/*
-	 * We're ready to enter the critical section that fills the shared-memory
-	 * status entry.  We follow the protocol of bumping st_changecount before
-	 * and after; and make sure it's even afterwards.  We use a volatile
-	 * pointer here to ensure the compiler doesn't try to get cute.
-	 */
-	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
-
-	/* make sure we'll memcpy the same st_changecount back */
-	lbeentry.st_changecount = vbeentry->st_changecount;
-
-	memcpy(unvolatize(PgBackendStatus *, vbeentry),
-		   &lbeentry,
-		   sizeof(PgBackendStatus));
-
-	/*
-	 * We can write the out-of-line strings and structs using the pointers
-	 * that are in lbeentry; this saves some de-volatilizing messiness.
-	 */
-	lbeentry.st_appname[0] = '\0';
-	if (MyProcPort && MyProcPort->remote_hostname)
-		strlcpy(lbeentry.st_clienthostname, MyProcPort->remote_hostname,
-				NAMEDATALEN);
-	else
-		lbeentry.st_clienthostname[0] = '\0';
-	lbeentry.st_activity_raw[0] = '\0';
-	/* Also make sure the last byte in each string area is always 0 */
-	lbeentry.st_appname[NAMEDATALEN - 1] = '\0';
-	lbeentry.st_clienthostname[NAMEDATALEN - 1] = '\0';
-	lbeentry.st_activity_raw[pgstat_track_activity_query_size - 1] = '\0';
-
-#ifdef USE_SSL
-	memcpy(lbeentry.st_sslstatus, &lsslstatus, sizeof(PgBackendSSLStatus));
-#endif
-#ifdef ENABLE_GSS
-	memcpy(lbeentry.st_gssstatus, &lgssstatus, sizeof(PgBackendGSSStatus));
-#endif
-
-	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
-
-	/*
-	 * GPDB: Initialize per-portal statistics hash for resource queues.
-	 */
-	pgstat_init_localportalhash();
-
-	/* Update app name to current GUC setting */
-	if (application_name)
-		pgstat_report_appname(application_name);
+	return pgstat_get_replslot_entry(slotname, false);
 }
 
 /*
@@ -3130,14 +2934,10 @@ pgstat_bestart(void)
  * Flush any remaining statistics counts out to the collector.
  * Without this, operations triggered during backend exit (such as
  * temp table deletions) won't be counted.
- *
- * Lastly, clear out our entry in the PgBackendStatus array.
  */
 static void
-pgstat_beshutdown_hook(int code, Datum arg)
+pgstat_shutdown_hook(int code, Datum arg)
 {
-	volatile PgBackendStatus *beentry = MyBEEntry;
-
 	/*
 	 * If we got as far as discovering our own database ID, we can report what
 	 * we did to the collector.  Otherwise, we'd be sending an invalid
@@ -3146,1302 +2946,29 @@ pgstat_beshutdown_hook(int code, Datum arg)
 	 */
 	if (OidIsValid(MyDatabaseId))
 		pgstat_report_stat(true);
+}
 
+/* ----------
+ * pgstat_initialize() -
+ *
+ *	Initialize pgstats state, and set up our on-proc-exit hook.
+ *	Called from InitPostgres and AuxiliaryProcessMain.
+ *
+ *	NOTE: MyDatabaseId isn't set yet; so the shutdown hook has to be careful.
+ * ----------
+ */
+void
+pgstat_initialize(void)
+{
 	/*
-	 * Clear my status entry, following the protocol of bumping st_changecount
-	 * before and after.  We use a volatile pointer here to ensure the
-	 * compiler doesn't try to get cute.
+	 * Initialize prevWalUsage with pgWalUsage so that pgstat_send_wal() can
+	 * calculate how much pgWalUsage counters are increased by substracting
+	 * prevWalUsage from pgWalUsage.
 	 */
-	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
+	prevWalUsage = pgWalUsage;
 
-	beentry->st_procpid = 0;	/* mark invalid */
-	beentry->st_session_id = 0;
-
-	PGSTAT_END_WRITE_ACTIVITY(beentry);
-}
-
-
-/* ----------
- * pgstat_report_activity() -
- *
- *	Called from tcop/postgres.c to report what the backend is actually doing
- *	(but note cmd_str can be NULL for certain cases).
- *
- * All updates of the status entry follow the protocol of bumping
- * st_changecount before and after.  We use a volatile pointer here to
- * ensure the compiler doesn't try to get cute.
- * ----------
- */
-void
-pgstat_report_activity(BackendState state, const char *cmd_str)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-	TimestampTz start_timestamp;
-	TimestampTz current_timestamp;
-	int			len = 0;
-
-	TRACE_POSTGRESQL_STATEMENT_STATUS(cmd_str);
-
-	if (!beentry)
-		return;
-
-	if (!pgstat_track_activities)
-	{
-		if (beentry->st_state != STATE_DISABLED)
-		{
-			volatile PGPROC *proc = MyProc;
-
-			/*
-			 * track_activities is disabled, but we last reported a
-			 * non-disabled state.  As our final update, change the state and
-			 * clear fields we will not be updating anymore.
-			 */
-			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-			beentry->st_state = STATE_DISABLED;
-			beentry->st_state_start_timestamp = 0;
-			beentry->st_activity_raw[0] = '\0';
-			beentry->st_activity_start_timestamp = 0;
-			/* st_xact_start_timestamp and wait_event_info are also disabled */
-			beentry->st_xact_start_timestamp = 0;
-			proc->wait_event_info = 0;
-			PGSTAT_END_WRITE_ACTIVITY(beentry);
-		}
-		return;
-	}
-
-	/*
-	 * To minimize the time spent modifying the entry, and avoid risk of
-	 * errors inside the critical section, fetch all the needed data first.
-	 */
-	start_timestamp = GetCurrentStatementStartTimestamp();
-	if (cmd_str != NULL)
-	{
-		/*
-		 * Compute length of to-be-stored string unaware of multi-byte
-		 * characters. For speed reasons that'll get corrected on read, rather
-		 * than computed every write.
-		 */
-		len = Min(strlen(cmd_str), pgstat_track_activity_query_size - 1);
-	}
-	current_timestamp = GetCurrentTimestamp();
-
-	/*
-	 * Now update the status entry
-	 */
-	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-
-	beentry->st_state = state;
-	beentry->st_state_start_timestamp = current_timestamp;
-
-	if (cmd_str != NULL)
-	{
-		memcpy((char *) beentry->st_activity_raw, cmd_str, len);
-		beentry->st_activity_raw[len] = '\0';
-		beentry->st_activity_start_timestamp = start_timestamp;
-	}
-
-	PGSTAT_END_WRITE_ACTIVITY(beentry);
-}
-
-/*-----------
- * pgstat_progress_start_command() -
- *
- * Set st_progress_command (and st_progress_command_target) in own backend
- * entry.  Also, zero-initialize st_progress_param array.
- *-----------
- */
-void
-pgstat_progress_start_command(ProgressCommandType cmdtype, Oid relid)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-
-	if (!beentry || !pgstat_track_activities)
-		return;
-
-	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-	beentry->st_progress_command = cmdtype;
-	beentry->st_progress_command_target = relid;
-	MemSet(&beentry->st_progress_param, 0, sizeof(beentry->st_progress_param));
-	PGSTAT_END_WRITE_ACTIVITY(beentry);
-}
-
-/*-----------
- * pgstat_progress_update_param() -
- *
- * Update index'th member in st_progress_param[] of own backend entry.
- *-----------
- */
-void
-pgstat_progress_update_param(int index, int64 val)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-
-	Assert(index >= 0 && index < PGSTAT_NUM_PROGRESS_PARAM);
-
-	if (!beentry || !pgstat_track_activities)
-		return;
-
-	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-	beentry->st_progress_param[index] = val;
-	PGSTAT_END_WRITE_ACTIVITY(beentry);
-}
-
-/*-----------
- * pgstat_progress_update_multi_param() -
- *
- * Update multiple members in st_progress_param[] of own backend entry.
- * This is atomic; readers won't see intermediate states.
- *-----------
- */
-void
-pgstat_progress_update_multi_param(int nparam, const int *index,
-								   const int64 *val)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-	int			i;
-
-	if (!beentry || !pgstat_track_activities || nparam == 0)
-		return;
-
-	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-
-	for (i = 0; i < nparam; ++i)
-	{
-		Assert(index[i] >= 0 && index[i] < PGSTAT_NUM_PROGRESS_PARAM);
-
-		beentry->st_progress_param[index[i]] = val[i];
-	}
-
-	PGSTAT_END_WRITE_ACTIVITY(beentry);
-}
-
-/*-----------
- * pgstat_progress_end_command() -
- *
- * Reset st_progress_command (and st_progress_command_target) in own backend
- * entry.  This signals the end of the command.
- *-----------
- */
-void
-pgstat_progress_end_command(void)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-
-	if (!beentry || !pgstat_track_activities)
-		return;
-
-	if (beentry->st_progress_command == PROGRESS_COMMAND_INVALID)
-		return;
-
-	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-	beentry->st_progress_command = PROGRESS_COMMAND_INVALID;
-	beentry->st_progress_command_target = InvalidOid;
-	PGSTAT_END_WRITE_ACTIVITY(beentry);
-}
-
-/* ----------
- * pgstat_report_appname() -
- *
- *	Called to update our application name.
- * ----------
- */
-void
-pgstat_report_appname(const char *appname)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-	int			len;
-
-	if (!beentry)
-		return;
-
-	/* This should be unnecessary if GUC did its job, but be safe */
-	len = pg_mbcliplen(appname, strlen(appname), NAMEDATALEN - 1);
-
-	/*
-	 * Update my status entry, following the protocol of bumping
-	 * st_changecount before and after.  We use a volatile pointer here to
-	 * ensure the compiler doesn't try to get cute.
-	 */
-	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-
-	memcpy((char *) beentry->st_appname, appname, len);
-	beentry->st_appname[len] = '\0';
-
-	PGSTAT_END_WRITE_ACTIVITY(beentry);
-}
-
-/*
- * Report current transaction start timestamp as the specified value.
- * Zero means there is no active transaction.
- */
-void
-pgstat_report_xact_timestamp(TimestampTz tstamp)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-
-	if (!pgstat_track_activities || !beentry)
-		return;
-
-	/*
-	 * Update my status entry, following the protocol of bumping
-	 * st_changecount before and after.  We use a volatile pointer here to
-	 * ensure the compiler doesn't try to get cute.
-	 */
-	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-
-	beentry->st_xact_start_timestamp = tstamp;
-
-	PGSTAT_END_WRITE_ACTIVITY(beentry);
-}
-
-/*
- * Report the timestamp of transaction start queueing on the resource group.
- */
-void
-pgstat_report_resgroup(Oid groupid)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-
-	if (!beentry)
-		return;
-
-	/*
-	 * Update my status entry, following the protocol of bumping
-	 * st_changecount before and after.  We use a volatile pointer here to
-	 * ensure the compiler doesn't try to get cute.
-	 */
-	beentry->st_changecount++;
-
-	beentry->st_rsgid = groupid;
-	beentry->st_changecount++;
-	Assert((beentry->st_changecount & 1) == 0);
-}
-
-/* ----------
- * pgstat_report_sessionid() -
- *
- * 	Called from cdbgang to report a session is reset.
- *
- * ----------
- */
-void
-pgstat_report_sessionid(int new_sessionid)
-{
-	volatile PgBackendStatus *beentry = MyBEEntry;
-
-	if (!beentry)
-		return;
-
-	beentry->st_changecount++;
-	beentry->st_session_id = new_sessionid;
-	beentry->st_changecount++;
-	Assert((beentry->st_changecount & 1) == 0);
-}
-
-/* ----------
- * pgstat_read_current_status() -
- *
- *	Copy the current contents of the PgBackendStatus array to local memory,
- *	if not already done in this transaction.
- * ----------
- */
-static void
-pgstat_read_current_status(void)
-{
-	volatile PgBackendStatus *beentry;
-	LocalPgBackendStatus *localtable;
-	LocalPgBackendStatus *localentry;
-	char	   *localappname,
-			   *localclienthostname,
-			   *localactivity;
-#ifdef USE_SSL
-	PgBackendSSLStatus *localsslstatus;
-#endif
-#ifdef ENABLE_GSS
-	PgBackendGSSStatus *localgssstatus;
-#endif
-	int			i;
-
-	Assert(!pgStatRunningInCollector);
-	if (localBackendStatusTable)
-		return;					/* already done */
-
-	pgstat_setup_memcxt();
-
-	/*
-	 * Allocate storage for local copy of state data.  We can presume that
-	 * none of these requests overflow size_t, because we already calculated
-	 * the same values using mul_size during shmem setup.  However, with
-	 * probably-silly values of pgstat_track_activity_query_size and
-	 * max_connections, the localactivity buffer could exceed 1GB, so use
-	 * "huge" allocation for that one.
-	 */
-	localtable = (LocalPgBackendStatus *)
-		MemoryContextAlloc(pgStatLocalContext,
-						   sizeof(LocalPgBackendStatus) * NumBackendStatSlots);
-	localappname = (char *)
-		MemoryContextAlloc(pgStatLocalContext,
-						   NAMEDATALEN * NumBackendStatSlots);
-	localclienthostname = (char *)
-		MemoryContextAlloc(pgStatLocalContext,
-						   NAMEDATALEN * NumBackendStatSlots);
-	localactivity = (char *)
-		MemoryContextAllocHuge(pgStatLocalContext,
-							   pgstat_track_activity_query_size * NumBackendStatSlots);
-#ifdef USE_SSL
-	localsslstatus = (PgBackendSSLStatus *)
-		MemoryContextAlloc(pgStatLocalContext,
-						   sizeof(PgBackendSSLStatus) * NumBackendStatSlots);
-#endif
-#ifdef ENABLE_GSS
-	localgssstatus = (PgBackendGSSStatus *)
-		MemoryContextAlloc(pgStatLocalContext,
-						   sizeof(PgBackendGSSStatus) * NumBackendStatSlots);
-#endif
-
-	localNumBackends = 0;
-
-	beentry = BackendStatusArray;
-	localentry = localtable;
-	for (i = 1; i <= NumBackendStatSlots; i++)
-	{
-		/*
-		 * Follow the protocol of retrying if st_changecount changes while we
-		 * copy the entry, or if it's odd.  (The check for odd is needed to
-		 * cover the case where we are able to completely copy the entry while
-		 * the source backend is between increment steps.)	We use a volatile
-		 * pointer here to ensure the compiler doesn't try to get cute.
-		 */
-		for (;;)
-		{
-			int			before_changecount;
-			int			after_changecount;
-
-			pgstat_begin_read_activity(beentry, before_changecount);
-
-			localentry->backendStatus.st_procpid = beentry->st_procpid;
-			/* Skip all the data-copying work if entry is not in use */
-			if (localentry->backendStatus.st_procpid > 0)
-			{
-				memcpy(&localentry->backendStatus, unvolatize(PgBackendStatus *, beentry), sizeof(PgBackendStatus));
-
-				/*
-				 * For each PgBackendStatus field that is a pointer, copy the
-				 * pointed-to data, then adjust the local copy of the pointer
-				 * field to point at the local copy of the data.
-				 *
-				 * strcpy is safe even if the string is modified concurrently,
-				 * because there's always a \0 at the end of the buffer.
-				 */
-				strcpy(localappname, (char *) beentry->st_appname);
-				localentry->backendStatus.st_appname = localappname;
-				strcpy(localclienthostname, (char *) beentry->st_clienthostname);
-				localentry->backendStatus.st_clienthostname = localclienthostname;
-				strcpy(localactivity, (char *) beentry->st_activity_raw);
-				localentry->backendStatus.st_activity_raw = localactivity;
-#ifdef USE_SSL
-				if (beentry->st_ssl)
-				{
-					memcpy(localsslstatus, beentry->st_sslstatus, sizeof(PgBackendSSLStatus));
-					localentry->backendStatus.st_sslstatus = localsslstatus;
-				}
-#endif
-#ifdef ENABLE_GSS
-				if (beentry->st_gss)
-				{
-					memcpy(localgssstatus, beentry->st_gssstatus, sizeof(PgBackendGSSStatus));
-					localentry->backendStatus.st_gssstatus = localgssstatus;
-				}
-#endif
-			}
-
-			pgstat_end_read_activity(beentry, after_changecount);
-
-			if (pgstat_read_activity_complete(before_changecount,
-											  after_changecount))
-				break;
-
-			/* Make sure we can break out of loop if stuck... */
-			CHECK_FOR_INTERRUPTS();
-		}
-
-		beentry++;
-		/* Only valid entries get included into the local array */
-		if (localentry->backendStatus.st_procpid > 0)
-		{
-			BackendIdGetTransactionIds(i,
-									   &localentry->backend_xid,
-									   &localentry->backend_xmin);
-
-			localentry++;
-			localappname += NAMEDATALEN;
-			localclienthostname += NAMEDATALEN;
-			localactivity += pgstat_track_activity_query_size;
-#ifdef USE_SSL
-			localsslstatus++;
-#endif
-#ifdef ENABLE_GSS
-			localgssstatus++;
-#endif
-			localNumBackends++;
-		}
-	}
-
-	/* Set the pointer only after completion of a valid table */
-	localBackendStatusTable = localtable;
-}
-
-/* ----------
- * pgstat_get_wait_event_type() -
- *
- *	Return a string representing the current wait event type, backend is
- *	waiting on.
- */
-const char *
-pgstat_get_wait_event_type(uint32 wait_event_info)
-{
-	uint32		classId;
-	const char *event_type;
-
-	/* report process as not waiting. */
-	if (wait_event_info == 0)
-		return NULL;
-
-	classId = wait_event_info & 0xFF000000;
-
-	switch (classId)
-	{
-		case PG_WAIT_LWLOCK:
-			event_type = "LWLock";
-			break;
-		case PG_WAIT_LOCK:
-			event_type = "Lock";
-			break;
-		case PG_WAIT_BUFFER_PIN:
-			event_type = "BufferPin";
-			break;
-		case PG_WAIT_ACTIVITY:
-			event_type = "Activity";
-			break;
-		case PG_WAIT_CLIENT:
-			event_type = "Client";
-			break;
-		case PG_WAIT_EXTENSION:
-			event_type = "Extension";
-			break;
-		case PG_WAIT_IPC:
-			event_type = "IPC";
-			break;
-		case PG_WAIT_TIMEOUT:
-			event_type = "Timeout";
-			break;
-		case PG_WAIT_IO:
-			event_type = "IO";
-			break;
-		case PG_WAIT_RESOURCE_GROUP:
-			event_type = "ResourceGroup";
-			break;
-		case PG_WAIT_RESOURCE_QUEUE:
-			event_type = "ResourceQueue";
-			break;
-		case PG_WAIT_REPLICATION:
-			event_type = "Replication";
-			break;
-		default:
-			event_type = "???";
-			break;
-	}
-
-	return event_type;
-}
-
-/* ----------
- * pgstat_get_wait_event() -
- *
- *	Return a string representing the current wait event, backend is
- *	waiting on.
- */
-const char *
-pgstat_get_wait_event(uint32 wait_event_info)
-{
-	uint32		classId;
-	uint16		eventId;
-	const char *event_name;
-
-	/* report process as not waiting. */
-	if (wait_event_info == 0)
-		return NULL;
-
-	classId = wait_event_info & 0xFF000000;
-	eventId = wait_event_info & 0x0000FFFF;
-
-	switch (classId)
-	{
-		case PG_WAIT_LWLOCK:
-			event_name = GetLWLockIdentifier(classId, eventId);
-			break;
-		case PG_WAIT_LOCK:
-			event_name = GetLockNameFromTagType(eventId);
-			break;
-		case PG_WAIT_BUFFER_PIN:
-			event_name = "BufferPin";
-			break;
-		case PG_WAIT_ACTIVITY:
-			{
-				WaitEventActivity w = (WaitEventActivity) wait_event_info;
-
-				event_name = pgstat_get_wait_activity(w);
-				break;
-			}
-		case PG_WAIT_CLIENT:
-			{
-				WaitEventClient w = (WaitEventClient) wait_event_info;
-
-				event_name = pgstat_get_wait_client(w);
-				break;
-			}
-		case PG_WAIT_EXTENSION:
-			event_name = "Extension";
-			break;
-		case PG_WAIT_IPC:
-			{
-				WaitEventIPC w = (WaitEventIPC) wait_event_info;
-
-				event_name = pgstat_get_wait_ipc(w);
-				break;
-			}
-		case PG_WAIT_TIMEOUT:
-			{
-				WaitEventTimeout w = (WaitEventTimeout) wait_event_info;
-
-				event_name = pgstat_get_wait_timeout(w);
-				break;
-			}
-		case PG_WAIT_IO:
-			{
-				WaitEventIO w = (WaitEventIO) wait_event_info;
-
-				event_name = pgstat_get_wait_io(w);
-				break;
-			}
-		case PG_WAIT_RESOURCE_GROUP:
-			/*
-			 * We don't pass details for resource groups via event id, since
-			 * it's an uint16 and resource group id is an Oid.
-			 *
-			 * Here should be never used, pg_stat_get_activity() will get the
-			 * information from backend entry.
-			 */
-			event_name = "ResourceGroup";
-			break;
-		case PG_WAIT_RESOURCE_QUEUE:
-			event_name = "ResourceQueue";
-			break;
-		case PG_WAIT_REPLICATION:
-			event_name = "Replication";
-			break;
-		default:
-			event_name = "unknown wait event";
-			break;
-	}
-
-	return event_name;
-}
-
-/* ----------
- * pgstat_get_wait_activity() -
- *
- * Convert WaitEventActivity to string.
- * ----------
- */
-static const char *
-pgstat_get_wait_activity(WaitEventActivity w)
-{
-	const char *event_name = "unknown wait event";
-
-	switch (w)
-	{
-		case WAIT_EVENT_ARCHIVER_MAIN:
-			event_name = "ArchiverMain";
-			break;
-		case WAIT_EVENT_AUTOVACUUM_MAIN:
-			event_name = "AutoVacuumMain";
-			break;
-		case WAIT_EVENT_BGWRITER_HIBERNATE:
-			event_name = "BgWriterHibernate";
-			break;
-		case WAIT_EVENT_BGWRITER_MAIN:
-			event_name = "BgWriterMain";
-			break;
-		case WAIT_EVENT_CHECKPOINTER_MAIN:
-			event_name = "CheckpointerMain";
-			break;
-		case WAIT_EVENT_LOGICAL_APPLY_MAIN:
-			event_name = "LogicalApplyMain";
-			break;
-		case WAIT_EVENT_LOGICAL_LAUNCHER_MAIN:
-			event_name = "LogicalLauncherMain";
-			break;
-		case WAIT_EVENT_PGSTAT_MAIN:
-			event_name = "PgStatMain";
-			break;
-		case WAIT_EVENT_RECOVERY_WAL_STREAM:
-			event_name = "RecoveryWalStream";
-			break;
-		case WAIT_EVENT_SYSLOGGER_MAIN:
-			event_name = "SysLoggerMain";
-			break;
-		case WAIT_EVENT_WAL_RECEIVER_MAIN:
-			event_name = "WalReceiverMain";
-			break;
-		case WAIT_EVENT_WAL_SENDER_MAIN:
-			event_name = "WalSenderMain";
-			break;
-		case WAIT_EVENT_WAL_WRITER_MAIN:
-			event_name = "WalWriterMain";
-			break;
-
-		case WAIT_EVENT_BACKOFF_MAIN:
-			event_name = "BackoffSweeperMain";
-			break;
-		case WAIT_EVENT_FTS_PROBE_MAIN:
-			event_name = "FtsProbeMain";
-			break;
-		case WAIT_EVENT_GLOBAL_DEADLOCK_DETECTOR_MAIN:
-			event_name = "GlobalDeadLockDetectorMain";
-			break;
-			/* no default case, so that compiler will warn */
-	}
-
-	return event_name;
-}
-
-/* ----------
- * pgstat_get_wait_client() -
- *
- * Convert WaitEventClient to string.
- * ----------
- */
-static const char *
-pgstat_get_wait_client(WaitEventClient w)
-{
-	const char *event_name = "unknown wait event";
-
-	switch (w)
-	{
-		case WAIT_EVENT_CLIENT_READ:
-			event_name = "ClientRead";
-			break;
-		case WAIT_EVENT_CLIENT_WRITE:
-			event_name = "ClientWrite";
-			break;
-		case WAIT_EVENT_GSS_OPEN_SERVER:
-			event_name = "GSSOpenServer";
-			break;
-		case WAIT_EVENT_LIBPQWALRECEIVER_CONNECT:
-			event_name = "LibPQWalReceiverConnect";
-			break;
-		case WAIT_EVENT_LIBPQWALRECEIVER_RECEIVE:
-			event_name = "LibPQWalReceiverReceive";
-			break;
-		case WAIT_EVENT_SSL_OPEN_SERVER:
-			event_name = "SSLOpenServer";
-			break;
-		case WAIT_EVENT_WAL_RECEIVER_WAIT_START:
-			event_name = "WalReceiverWaitStart";
-			break;
-		case WAIT_EVENT_WAL_SENDER_WAIT_WAL:
-			event_name = "WalSenderWaitForWAL";
-			break;
-		case WAIT_EVENT_WAL_SENDER_WRITE_DATA:
-			event_name = "WalSenderWriteData";
-			break;
-			/* no default case, so that compiler will warn */
-	}
-
-	return event_name;
-}
-
-/* ----------
- * pgstat_get_wait_ipc() -
- *
- * Convert WaitEventIPC to string.
- * ----------
- */
-static const char *
-pgstat_get_wait_ipc(WaitEventIPC w)
-{
-	const char *event_name = "unknown wait event";
-
-	switch (w)
-	{
-		case WAIT_EVENT_BACKUP_WAIT_WAL_ARCHIVE:
-			event_name = "BackupWaitWalArchive";
-			break;
-		case WAIT_EVENT_BGWORKER_SHUTDOWN:
-			event_name = "BgWorkerShutdown";
-			break;
-		case WAIT_EVENT_BGWORKER_STARTUP:
-			event_name = "BgWorkerStartup";
-			break;
-		case WAIT_EVENT_BTREE_PAGE:
-			event_name = "BtreePage";
-			break;
-		case WAIT_EVENT_CHECKPOINT_DONE:
-			event_name = "CheckpointDone";
-			break;
-		case WAIT_EVENT_CHECKPOINT_START:
-			event_name = "CheckpointStart";
-			break;
-		case WAIT_EVENT_EXECUTE_GATHER:
-			event_name = "ExecuteGather";
-			break;
-		case WAIT_EVENT_HASH_BATCH_ALLOCATE:
-			event_name = "HashBatchAllocate";
-			break;
-		case WAIT_EVENT_HASH_BATCH_ELECT:
-			event_name = "HashBatchElect";
-			break;
-		case WAIT_EVENT_HASH_BATCH_LOAD:
-			event_name = "HashBatchLoad";
-			break;
-		case WAIT_EVENT_HASH_BUILD_ALLOCATE:
-			event_name = "HashBuildAllocate";
-			break;
-		case WAIT_EVENT_HASH_BUILD_ELECT:
-			event_name = "HashBuildElect";
-			break;
-		case WAIT_EVENT_HASH_BUILD_HASH_INNER:
-			event_name = "HashBuildHashInner";
-			break;
-		case WAIT_EVENT_HASH_BUILD_HASH_OUTER:
-			event_name = "HashBuildHashOuter";
-			break;
-		case WAIT_EVENT_HASH_GROW_BATCHES_ALLOCATE:
-			event_name = "HashGrowBatchesAllocate";
-			break;
-		case WAIT_EVENT_HASH_GROW_BATCHES_DECIDE:
-			event_name = "HashGrowBatchesDecide";
-			break;
-		case WAIT_EVENT_HASH_GROW_BATCHES_ELECT:
-			event_name = "HashGrowBatchesElect";
-			break;
-		case WAIT_EVENT_HASH_GROW_BATCHES_FINISH:
-			event_name = "HashGrowBatchesFinish";
-			break;
-		case WAIT_EVENT_HASH_GROW_BATCHES_REPARTITION:
-			event_name = "HashGrowBatchesRepartition";
-			break;
-		case WAIT_EVENT_HASH_GROW_BUCKETS_ALLOCATE:
-			event_name = "HashGrowBucketsAllocate";
-			break;
-		case WAIT_EVENT_HASH_GROW_BUCKETS_ELECT:
-			event_name = "HashGrowBucketsElect";
-			break;
-		case WAIT_EVENT_HASH_GROW_BUCKETS_REINSERT:
-			event_name = "HashGrowBucketsReinsert";
-			break;
-		case WAIT_EVENT_LOGICAL_SYNC_DATA:
-			event_name = "LogicalSyncData";
-			break;
-		case WAIT_EVENT_LOGICAL_SYNC_STATE_CHANGE:
-			event_name = "LogicalSyncStateChange";
-			break;
-		case WAIT_EVENT_MQ_INTERNAL:
-			event_name = "MessageQueueInternal";
-			break;
-		case WAIT_EVENT_MQ_PUT_MESSAGE:
-			event_name = "MessageQueuePutMessage";
-			break;
-		case WAIT_EVENT_MQ_RECEIVE:
-			event_name = "MessageQueueReceive";
-			break;
-		case WAIT_EVENT_MQ_SEND:
-			event_name = "MessageQueueSend";
-			break;
-		case WAIT_EVENT_PARALLEL_BITMAP_SCAN:
-			event_name = "ParallelBitmapScan";
-			break;
-		case WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN:
-			event_name = "ParallelCreateIndexScan";
-			break;
-		case WAIT_EVENT_PARALLEL_FINISH:
-			event_name = "ParallelFinish";
-			break;
-		case WAIT_EVENT_PROCARRAY_GROUP_UPDATE:
-			event_name = "ProcArrayGroupUpdate";
-			break;
-		case WAIT_EVENT_PROC_SIGNAL_BARRIER:
-			event_name = "ProcSignalBarrier";
-			break;
-		case WAIT_EVENT_PROMOTE:
-			event_name = "Promote";
-			break;
-		case WAIT_EVENT_RECOVERY_CONFLICT_SNAPSHOT:
-			event_name = "RecoveryConflictSnapshot";
-			break;
-		case WAIT_EVENT_RECOVERY_CONFLICT_TABLESPACE:
-			event_name = "RecoveryConflictTablespace";
-			break;
-		case WAIT_EVENT_RECOVERY_PAUSE:
-			event_name = "RecoveryPause";
-			break;
-		case WAIT_EVENT_REPLICATION_ORIGIN_DROP:
-			event_name = "ReplicationOriginDrop";
-			break;
-		case WAIT_EVENT_REPLICATION_SLOT_DROP:
-			event_name = "ReplicationSlotDrop";
-			break;
-		case WAIT_EVENT_SAFE_SNAPSHOT:
-			event_name = "SafeSnapshot";
-			break;
-		case WAIT_EVENT_SYNC_REP:
-			event_name = "SyncRep";
-			break;
-		case WAIT_EVENT_XACT_GROUP_UPDATE:
-			event_name = "XactGroupUpdate";
-			break;
-
-		case WAIT_EVENT_INTERCONNECT:
-			event_name = "Interconnect";
-			break;
-		case WAIT_EVENT_SHAREINPUT_SCAN:
-			event_name = "ShareInputScan";
-			break;
-		case WAIT_EVENT_GANG_ASSIGN:
-			event_name = "Dispatch/Gang-Assign";
-			break;
-		case WAIT_EVENT_DISP_FINISH:
-			event_name = "Dispatch/Finish";
-			break;
-		case WAIT_EVENT_DISP_RESULT:
-			event_name = "Dispatch/Result";
-			break;
-		case WAIT_EVENT_DTX_RECOVERY:
-			event_name = "DtxRecovery";
-			break;
-			/* no default case, so that compiler will warn */
-	}
-
-	return event_name;
-}
-
-/* ----------
- * pgstat_get_wait_timeout() -
- *
- * Convert WaitEventTimeout to string.
- * ----------
- */
-static const char *
-pgstat_get_wait_timeout(WaitEventTimeout w)
-{
-	const char *event_name = "unknown wait event";
-
-	switch (w)
-	{
-		case WAIT_EVENT_BASE_BACKUP_THROTTLE:
-			event_name = "BaseBackupThrottle";
-			break;
-		case WAIT_EVENT_PG_SLEEP:
-			event_name = "PgSleep";
-			break;
-		case WAIT_EVENT_RECOVERY_APPLY_DELAY:
-			event_name = "RecoveryApplyDelay";
-			break;
-		case WAIT_EVENT_RECOVERY_RETRIEVE_RETRY_INTERVAL:
-			event_name = "RecoveryRetrieveRetryInterval";
-			break;
-		case WAIT_EVENT_VACUUM_DELAY:
-			event_name = "VacuumDelay";
-			break;
-			/* no default case, so that compiler will warn */
-	}
-
-	return event_name;
-}
-
-/* ----------
- * pgstat_get_wait_io() -
- *
- * Convert WaitEventIO to string.
- * ----------
- */
-static const char *
-pgstat_get_wait_io(WaitEventIO w)
-{
-	const char *event_name = "unknown wait event";
-
-	switch (w)
-	{
-		case WAIT_EVENT_BASEBACKUP_READ:
-			event_name = "BaseBackupRead";
-			break;
-		case WAIT_EVENT_BUFFILE_READ:
-			event_name = "BufFileRead";
-			break;
-		case WAIT_EVENT_BUFFILE_WRITE:
-			event_name = "BufFileWrite";
-			break;
-		case WAIT_EVENT_CONTROL_FILE_READ:
-			event_name = "ControlFileRead";
-			break;
-		case WAIT_EVENT_CONTROL_FILE_SYNC:
-			event_name = "ControlFileSync";
-			break;
-		case WAIT_EVENT_CONTROL_FILE_SYNC_UPDATE:
-			event_name = "ControlFileSyncUpdate";
-			break;
-		case WAIT_EVENT_CONTROL_FILE_WRITE:
-			event_name = "ControlFileWrite";
-			break;
-		case WAIT_EVENT_CONTROL_FILE_WRITE_UPDATE:
-			event_name = "ControlFileWriteUpdate";
-			break;
-		case WAIT_EVENT_COPY_FILE_READ:
-			event_name = "CopyFileRead";
-			break;
-		case WAIT_EVENT_COPY_FILE_WRITE:
-			event_name = "CopyFileWrite";
-			break;
-		case WAIT_EVENT_DATA_FILE_EXTEND:
-			event_name = "DataFileExtend";
-			break;
-		case WAIT_EVENT_DATA_FILE_FLUSH:
-			event_name = "DataFileFlush";
-			break;
-		case WAIT_EVENT_DATA_FILE_IMMEDIATE_SYNC:
-			event_name = "DataFileImmediateSync";
-			break;
-		case WAIT_EVENT_DATA_FILE_PREFETCH:
-			event_name = "DataFilePrefetch";
-			break;
-		case WAIT_EVENT_DATA_FILE_READ:
-			event_name = "DataFileRead";
-			break;
-		case WAIT_EVENT_DATA_FILE_SYNC:
-			event_name = "DataFileSync";
-			break;
-		case WAIT_EVENT_DATA_FILE_TRUNCATE:
-			event_name = "DataFileTruncate";
-			break;
-		case WAIT_EVENT_DATA_FILE_WRITE:
-			event_name = "DataFileWrite";
-			break;
-		case WAIT_EVENT_DSM_FILL_ZERO_WRITE:
-			event_name = "DSMFillZeroWrite";
-			break;
-		case WAIT_EVENT_LOCK_FILE_ADDTODATADIR_READ:
-			event_name = "LockFileAddToDataDirRead";
-			break;
-		case WAIT_EVENT_LOCK_FILE_ADDTODATADIR_SYNC:
-			event_name = "LockFileAddToDataDirSync";
-			break;
-		case WAIT_EVENT_LOCK_FILE_ADDTODATADIR_WRITE:
-			event_name = "LockFileAddToDataDirWrite";
-			break;
-		case WAIT_EVENT_LOCK_FILE_CREATE_READ:
-			event_name = "LockFileCreateRead";
-			break;
-		case WAIT_EVENT_LOCK_FILE_CREATE_SYNC:
-			event_name = "LockFileCreateSync";
-			break;
-		case WAIT_EVENT_LOCK_FILE_CREATE_WRITE:
-			event_name = "LockFileCreateWrite";
-			break;
-		case WAIT_EVENT_LOCK_FILE_RECHECKDATADIR_READ:
-			event_name = "LockFileReCheckDataDirRead";
-			break;
-		case WAIT_EVENT_LOGICAL_REWRITE_CHECKPOINT_SYNC:
-			event_name = "LogicalRewriteCheckpointSync";
-			break;
-		case WAIT_EVENT_LOGICAL_REWRITE_MAPPING_SYNC:
-			event_name = "LogicalRewriteMappingSync";
-			break;
-		case WAIT_EVENT_LOGICAL_REWRITE_MAPPING_WRITE:
-			event_name = "LogicalRewriteMappingWrite";
-			break;
-		case WAIT_EVENT_LOGICAL_REWRITE_SYNC:
-			event_name = "LogicalRewriteSync";
-			break;
-		case WAIT_EVENT_LOGICAL_REWRITE_TRUNCATE:
-			event_name = "LogicalRewriteTruncate";
-			break;
-		case WAIT_EVENT_LOGICAL_REWRITE_WRITE:
-			event_name = "LogicalRewriteWrite";
-			break;
-		case WAIT_EVENT_RELATION_MAP_READ:
-			event_name = "RelationMapRead";
-			break;
-		case WAIT_EVENT_RELATION_MAP_SYNC:
-			event_name = "RelationMapSync";
-			break;
-		case WAIT_EVENT_RELATION_MAP_WRITE:
-			event_name = "RelationMapWrite";
-			break;
-		case WAIT_EVENT_REORDER_BUFFER_READ:
-			event_name = "ReorderBufferRead";
-			break;
-		case WAIT_EVENT_REORDER_BUFFER_WRITE:
-			event_name = "ReorderBufferWrite";
-			break;
-		case WAIT_EVENT_REORDER_LOGICAL_MAPPING_READ:
-			event_name = "ReorderLogicalMappingRead";
-			break;
-		case WAIT_EVENT_REPLICATION_SLOT_READ:
-			event_name = "ReplicationSlotRead";
-			break;
-		case WAIT_EVENT_REPLICATION_SLOT_RESTORE_SYNC:
-			event_name = "ReplicationSlotRestoreSync";
-			break;
-		case WAIT_EVENT_REPLICATION_SLOT_SYNC:
-			event_name = "ReplicationSlotSync";
-			break;
-		case WAIT_EVENT_REPLICATION_SLOT_WRITE:
-			event_name = "ReplicationSlotWrite";
-			break;
-		case WAIT_EVENT_SLRU_FLUSH_SYNC:
-			event_name = "SLRUFlushSync";
-			break;
-		case WAIT_EVENT_SLRU_READ:
-			event_name = "SLRURead";
-			break;
-		case WAIT_EVENT_SLRU_SYNC:
-			event_name = "SLRUSync";
-			break;
-		case WAIT_EVENT_SLRU_WRITE:
-			event_name = "SLRUWrite";
-			break;
-		case WAIT_EVENT_SNAPBUILD_READ:
-			event_name = "SnapbuildRead";
-			break;
-		case WAIT_EVENT_SNAPBUILD_SYNC:
-			event_name = "SnapbuildSync";
-			break;
-		case WAIT_EVENT_SNAPBUILD_WRITE:
-			event_name = "SnapbuildWrite";
-			break;
-		case WAIT_EVENT_TIMELINE_HISTORY_FILE_SYNC:
-			event_name = "TimelineHistoryFileSync";
-			break;
-		case WAIT_EVENT_TIMELINE_HISTORY_FILE_WRITE:
-			event_name = "TimelineHistoryFileWrite";
-			break;
-		case WAIT_EVENT_TIMELINE_HISTORY_READ:
-			event_name = "TimelineHistoryRead";
-			break;
-		case WAIT_EVENT_TIMELINE_HISTORY_SYNC:
-			event_name = "TimelineHistorySync";
-			break;
-		case WAIT_EVENT_TIMELINE_HISTORY_WRITE:
-			event_name = "TimelineHistoryWrite";
-			break;
-		case WAIT_EVENT_TWOPHASE_FILE_READ:
-			event_name = "TwophaseFileRead";
-			break;
-		case WAIT_EVENT_TWOPHASE_FILE_SYNC:
-			event_name = "TwophaseFileSync";
-			break;
-		case WAIT_EVENT_TWOPHASE_FILE_WRITE:
-			event_name = "TwophaseFileWrite";
-			break;
-		case WAIT_EVENT_WALSENDER_TIMELINE_HISTORY_READ:
-			event_name = "WALSenderTimelineHistoryRead";
-			break;
-		case WAIT_EVENT_WAL_BOOTSTRAP_SYNC:
-			event_name = "WALBootstrapSync";
-			break;
-		case WAIT_EVENT_WAL_BOOTSTRAP_WRITE:
-			event_name = "WALBootstrapWrite";
-			break;
-		case WAIT_EVENT_WAL_COPY_READ:
-			event_name = "WALCopyRead";
-			break;
-		case WAIT_EVENT_WAL_COPY_SYNC:
-			event_name = "WALCopySync";
-			break;
-		case WAIT_EVENT_WAL_COPY_WRITE:
-			event_name = "WALCopyWrite";
-			break;
-		case WAIT_EVENT_WAL_INIT_SYNC:
-			event_name = "WALInitSync";
-			break;
-		case WAIT_EVENT_WAL_INIT_WRITE:
-			event_name = "WALInitWrite";
-			break;
-		case WAIT_EVENT_WAL_READ:
-			event_name = "WALRead";
-			break;
-		case WAIT_EVENT_WAL_SYNC:
-			event_name = "WALSync";
-			break;
-		case WAIT_EVENT_WAL_SYNC_METHOD_ASSIGN:
-			event_name = "WALSyncMethodAssign";
-			break;
-		case WAIT_EVENT_WAL_WRITE:
-			event_name = "WALWrite";
-			break;
-
-			/* no default case, so that compiler will warn */
-	}
-
-	return event_name;
-}
-
-
-/* ----------
- * pgstat_get_backend_current_activity() -
- *
- *	Return a string representing the current activity of the backend with
- *	the specified PID.  This looks directly at the BackendStatusArray,
- *	and so will provide current information regardless of the age of our
- *	transaction's snapshot of the status array.
- *
- *	It is the caller's responsibility to invoke this only for backends whose
- *	state is expected to remain stable while the result is in use.  The
- *	only current use is in deadlock reporting, where we can expect that
- *	the target backend is blocked on a lock.  (There are corner cases
- *	where the target's wait could get aborted while we are looking at it,
- *	but the very worst consequence is to return a pointer to a string
- *	that's been changed, so we won't worry too much.)
- *
- *	Note: return strings for special cases match pg_stat_get_backend_activity.
- * ----------
- */
-const char *
-pgstat_get_backend_current_activity(int pid, bool checkUser)
-{
-	PgBackendStatus *beentry;
-	int			i;
-
-	beentry = BackendStatusArray;
-	for (i = 1; i <= MaxBackends; i++)
-	{
-		/*
-		 * Although we expect the target backend's entry to be stable, that
-		 * doesn't imply that anyone else's is.  To avoid identifying the
-		 * wrong backend, while we check for a match to the desired PID we
-		 * must follow the protocol of retrying if st_changecount changes
-		 * while we examine the entry, or if it's odd.  (This might be
-		 * unnecessary, since fetching or storing an int is almost certainly
-		 * atomic, but let's play it safe.)  We use a volatile pointer here to
-		 * ensure the compiler doesn't try to get cute.
-		 */
-		volatile PgBackendStatus *vbeentry = beentry;
-		bool		found;
-
-		for (;;)
-		{
-			int			before_changecount;
-			int			after_changecount;
-
-			pgstat_begin_read_activity(vbeentry, before_changecount);
-
-			found = (vbeentry->st_procpid == pid);
-
-			pgstat_end_read_activity(vbeentry, after_changecount);
-
-			if (pgstat_read_activity_complete(before_changecount,
-											  after_changecount))
-				break;
-
-			/* Make sure we can break out of loop if stuck... */
-			CHECK_FOR_INTERRUPTS();
-		}
-
-		if (found)
-		{
-			/* Now it is safe to use the non-volatile pointer */
-			if (checkUser && !superuser() && beentry->st_userid != GetUserId())
-				return "<insufficient privilege>";
-			else if (*(beentry->st_activity_raw) == '\0')
-				return "<command string not enabled>";
-			else
-			{
-				/* this'll leak a bit of memory, but that seems acceptable */
-				return pgstat_clip_activity(beentry->st_activity_raw);
-			}
-		}
-
-		beentry++;
-	}
-
-	/* If we get here, caller is in error ... */
-	return "<backend information not available>";
-}
-
-/* ----------
- * pgstat_get_crashed_backend_activity() -
- *
- *	Return a string representing the current activity of the backend with
- *	the specified PID.  Like the function above, but reads shared memory with
- *	the expectation that it may be corrupt.  On success, copy the string
- *	into the "buffer" argument and return that pointer.  On failure,
- *	return NULL.
- *
- *	This function is only intended to be used by the postmaster to report the
- *	query that crashed a backend.  In particular, no attempt is made to
- *	follow the correct concurrency protocol when accessing the
- *	BackendStatusArray.  But that's OK, in the worst case we'll return a
- *	corrupted message.  We also must take care not to trip on ereport(ERROR).
- * ----------
- */
-const char *
-pgstat_get_crashed_backend_activity(int pid, char *buffer, int buflen)
-{
-	volatile PgBackendStatus *beentry;
-	int			i;
-
-	beentry = BackendStatusArray;
-
-	/*
-	 * We probably shouldn't get here before shared memory has been set up,
-	 * but be safe.
-	 */
-	if (beentry == NULL || BackendActivityBuffer == NULL)
-		return NULL;
-
-	for (i = 1; i <= MaxBackends; i++)
-	{
-		if (beentry->st_procpid == pid)
-		{
-			/* Read pointer just once, so it can't change after validation */
-			const char *activity = beentry->st_activity_raw;
-			const char *activity_last;
-
-			/*
-			 * We mustn't access activity string before we verify that it
-			 * falls within the BackendActivityBuffer. To make sure that the
-			 * entire string including its ending is contained within the
-			 * buffer, subtract one activity length from the buffer size.
-			 */
-			activity_last = BackendActivityBuffer + BackendActivityBufferSize
-				- pgstat_track_activity_query_size;
-
-			if (activity < BackendActivityBuffer ||
-				activity > activity_last)
-				return NULL;
-
-			/* If no string available, no point in a report */
-			if (activity[0] == '\0')
-				return NULL;
-
-			/*
-			 * Copy only ASCII-safe characters so we don't run into encoding
-			 * problems when reporting the message; and be sure not to run off
-			 * the end of memory.  As only ASCII characters are reported, it
-			 * doesn't seem necessary to perform multibyte aware clipping.
-			 */
-			ascii_safe_strlcpy(buffer, activity,
-							   Min(buflen, pgstat_track_activity_query_size));
-
-			return buffer;
-		}
-
-		beentry++;
-	}
-
-	/* PID not found */
-	return NULL;
+	/* Set up a process-exit hook to clean up */
+	on_shmem_exit(pgstat_shutdown_hook, 0);
 }
 
 /* ------------------------------------------------------------
@@ -4490,6 +3017,50 @@ pgstat_send(void *msg, int len)
 	if (rc < 0)
 		elog(LOG, "could not send to statistics collector: %m");
 #endif
+}
+
+/*
+ * Report the timestamp of transaction start queueing on the resource group.
+ */
+void
+pgstat_report_resgroup(Oid groupid)
+{
+	volatile PgBackendStatus *beentry = MyBEEntry;
+
+	if (!beentry)
+		return;
+
+	/*
+	 * Update my status entry, following the protocol of bumping
+	 * st_changecount before and after.  We use a volatile pointer here to
+	 * ensure the compiler doesn't try to get cute.
+	 */
+	beentry->st_changecount++;
+
+	beentry->st_rsgid = groupid;
+	beentry->st_changecount++;
+	Assert((beentry->st_changecount & 1) == 0);
+}
+
+/* ----------
+ * pgstat_report_sessionid() -
+ *
+ * 	Called from cdbgang to report a session is reset.
+ *
+ * ----------
+ */
+void
+pgstat_report_sessionid(int new_sessionid)
+{
+	volatile PgBackendStatus *beentry = MyBEEntry;
+
+	if (!beentry)
+		return;
+
+	beentry->st_changecount++;
+	beentry->st_session_id = new_sessionid;
+	beentry->st_changecount++;
+	Assert((beentry->st_changecount & 1) == 0);
 }
 
 /* ----------
@@ -4795,6 +3366,100 @@ pgstat_combine_from_qe(CdbDispatchResults *results, int writerSliceIndex)
 }
 
 /* ----------
+ * pgstat_send_wal() -
+ *
+ *	Send WAL statistics to the collector.
+ *
+ * If 'force' is not set, WAL stats message is only sent if enough time has
+ * passed since last one was sent to reach PGSTAT_STAT_INTERVAL.
+ * ----------
+ */
+void
+pgstat_send_wal(bool force)
+{
+	static TimestampTz sendTime = 0;
+
+	/*
+	 * This function can be called even if nothing at all has happened. In
+	 * this case, avoid sending a completely empty message to the stats
+	 * collector.
+	 *
+	 * Check wal_records counter to determine whether any WAL activity has
+	 * happened since last time. Note that other WalUsage counters don't need
+	 * to be checked because they are incremented always together with
+	 * wal_records counter.
+	 *
+	 * m_wal_buffers_full also doesn't need to be checked because it's
+	 * incremented only when at least one WAL record is generated (i.e.,
+	 * wal_records counter is incremented). But for safely, we assert that
+	 * m_wal_buffers_full is always zero when no WAL record is generated
+	 *
+	 * This function can be called by a process like walwriter that normally
+	 * generates no WAL records. To determine whether any WAL activity has
+	 * happened at that process since the last time, the numbers of WAL writes
+	 * and syncs are also checked.
+	 */
+	if (pgWalUsage.wal_records == prevWalUsage.wal_records &&
+		WalStats.m_wal_write == 0 && WalStats.m_wal_sync == 0)
+	{
+		Assert(WalStats.m_wal_buffers_full == 0);
+		return;
+	}
+
+	if (!force)
+	{
+		TimestampTz now = GetCurrentTimestamp();
+
+		/*
+		 * Don't send a message unless it's been at least PGSTAT_STAT_INTERVAL
+		 * msec since we last sent one to avoid overloading the stats
+		 * collector.
+		 */
+		if (!TimestampDifferenceExceeds(sendTime, now, PGSTAT_STAT_INTERVAL))
+			return;
+		sendTime = now;
+	}
+
+	/*
+	 * Set the counters related to generated WAL data if the counters were
+	 * updated.
+	 */
+	if (pgWalUsage.wal_records != prevWalUsage.wal_records)
+	{
+		WalUsage	walusage;
+
+		/*
+		 * Calculate how much WAL usage counters were increased by
+		 * substracting the previous counters from the current ones. Fill the
+		 * results in WAL stats message.
+		 */
+		MemSet(&walusage, 0, sizeof(WalUsage));
+		WalUsageAccumDiff(&walusage, &pgWalUsage, &prevWalUsage);
+
+		WalStats.m_wal_records = walusage.wal_records;
+		WalStats.m_wal_fpi = walusage.wal_fpi;
+		WalStats.m_wal_bytes = walusage.wal_bytes;
+
+		/*
+		 * Save the current counters for the subsequent calculation of WAL
+		 * usage.
+		 */
+		prevWalUsage = pgWalUsage;
+	}
+
+	/*
+	 * Prepare and send the message
+	 */
+	pgstat_setheader(&WalStats.m_hdr, PGSTAT_MTYPE_WAL);
+	pgstat_send(&WalStats, sizeof(WalStats));
+
+	/*
+	 * Clear out the statistics buffer, so it can be re-used.
+	 */
+	MemSet(&WalStats, 0, sizeof(WalStats));
+}
+
+/* ----------
  * pgstat_send_slru() -
  *
  *		Send SLRU statistics to the collector
@@ -5013,6 +3678,11 @@ PgstatCollectorMain(int argc, char *argv[])
 												 len);
 					break;
 
+				case PGSTAT_MTYPE_RESETREPLSLOTCOUNTER:
+					pgstat_recv_resetreplslotcounter(&msg.msg_resetreplslotcounter,
+													 len);
+					break;
+
 				case PGSTAT_MTYPE_AUTOVAC_START:
 					pgstat_recv_autovac(&msg.msg_autovacuum_start, len);
 					break;
@@ -5025,6 +3695,10 @@ PgstatCollectorMain(int argc, char *argv[])
 					pgstat_recv_analyze(&msg.msg_analyze, len);
 					break;
 
+				case PGSTAT_MTYPE_ANL_ANCESTORS:
+					pgstat_recv_anl_ancestors(&msg.msg_anl_ancestors, len);
+					break;
+
 				case PGSTAT_MTYPE_ARCHIVER:
 					pgstat_recv_archiver(&msg.msg_archiver, len);
 					break;
@@ -5035,6 +3709,10 @@ PgstatCollectorMain(int argc, char *argv[])
 
 				case PGSTAT_MTYPE_QUEUESTAT:  /* GPDB */
 					pgstat_recv_queuestat((PgStat_MsgQueuestat *) &msg, len);
+					break;
+
+				case PGSTAT_MTYPE_WAL:
+					pgstat_recv_wal(&msg.msg_wal, len);
 					break;
 
 				case PGSTAT_MTYPE_SLRU:
@@ -5065,6 +3743,14 @@ PgstatCollectorMain(int argc, char *argv[])
 				case PGSTAT_MTYPE_CHECKSUMFAILURE:
 					pgstat_recv_checksum_failure(&msg.msg_checksumfailure,
 												 len);
+					break;
+
+				case PGSTAT_MTYPE_REPLSLOT:
+					pgstat_recv_replslot(&msg.msg_replslot, len);
+					break;
+
+				case PGSTAT_MTYPE_CONNECTION:
+					pgstat_recv_connstat(&msg.msg_conn, len);
 					break;
 
 				default:
@@ -5141,11 +3827,17 @@ reset_dbentry_counters(PgStat_StatDBEntry *dbentry)
 	dbentry->last_checksum_failure = 0;
 	dbentry->n_block_read_time = 0;
 	dbentry->n_block_write_time = 0;
+	dbentry->n_sessions = 0;
+	dbentry->total_session_time = 0;
+	dbentry->total_active_time = 0;
+	dbentry->total_idle_in_xact_time = 0;
+	dbentry->n_sessions_abandoned = 0;
+	dbentry->n_sessions_fatal = 0;
+	dbentry->n_sessions_killed = 0;
 
 	dbentry->stat_reset_timestamp = GetCurrentTimestamp();
 	dbentry->stats_timestamp = 0;
 
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(Oid);
 	hash_ctl.entrysize = sizeof(PgStat_StatTabEntry);
 	dbentry->tables = hash_create("Per-database table",
@@ -5225,6 +3917,7 @@ pgstat_get_tab_entry(PgStat_StatDBEntry *dbentry, Oid tableoid, bool create)
 		result->n_live_tuples = 0;
 		result->n_dead_tuples = 0;
 		result->changes_since_analyze = 0;
+		result->changes_since_analyze_reported = 0;
 		result->inserts_since_vacuum = 0;
 		result->blocks_fetched = 0;
 		result->blocks_hit = 0;
@@ -5309,6 +4002,12 @@ pgstat_write_statsfiles(bool permanent, bool allDbs)
 	(void) rc;					/* we'll check for error with ferror */
 
 	/*
+	 * Write WAL stats struct
+	 */
+	rc = fwrite(&walStats, sizeof(walStats), 1, fpout);
+	(void) rc;					/* we'll check for error with ferror */
+
+	/*
 	 * Write SLRU stats struct
 	 */
 	rc = fwrite(slruStats, sizeof(slruStats), 1, fpout);
@@ -5349,6 +4048,21 @@ pgstat_write_statsfiles(bool permanent, bool allDbs)
 	{
 		fputc('Q', fpout);
 		fwrite(queueentry, sizeof(PgStat_StatQueueEntry), 1, fpout);
+	}
+	/*
+	 * Write replication slot stats struct
+	 */
+	if (replSlotStatHash)
+	{
+		PgStat_StatReplSlotEntry *slotent;
+
+		hash_seq_init(&hstat, replSlotStatHash);
+		while ((slotent = (PgStat_StatReplSlotEntry *) hash_seq_search(&hstat)) != NULL)
+		{
+			fputc('R', fpout);
+			rc = fwrite(slotent, sizeof(PgStat_StatReplSlotEntry), 1, fpout);
+			(void) rc;			/* we'll check for error with ferror */
+		}
 	}
 
 	/*
@@ -5572,7 +4286,6 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	/*
 	 * Create the DB hashtable
 	 */
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(Oid);
 	hash_ctl.entrysize = sizeof(PgStat_StatDBEntry);
 	hash_ctl.hcxt = pgStatLocalContext;
@@ -5592,11 +4305,12 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	pgStatQueueHash = queuehash;
 
 	/*
-	 * Clear out global and archiver statistics so they start from zero in
-	 * case we can't load an existing statsfile.
+	 * Clear out global, archiver, WAL and SLRU statistics so they start from
+	 * zero in case we can't load an existing statsfile.
 	 */
 	memset(&globalStats, 0, sizeof(globalStats));
 	memset(&archiverStats, 0, sizeof(archiverStats));
+	memset(&walStats, 0, sizeof(walStats));
 	memset(&slruStats, 0, sizeof(slruStats));
 
 	/*
@@ -5605,6 +4319,7 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	 */
 	globalStats.stat_reset_timestamp = GetCurrentTimestamp();
 	archiverStats.stat_reset_timestamp = globalStats.stat_reset_timestamp;
+	walStats.stat_reset_timestamp = globalStats.stat_reset_timestamp;
 
 	/*
 	 * Set the same reset timestamp for all SLRU items too.
@@ -5671,6 +4386,17 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 		ereport(pgStatRunningInCollector ? LOG : WARNING,
 				(errmsg("corrupted statistics file \"%s\"", statfile)));
 		memset(&archiverStats, 0, sizeof(archiverStats));
+		goto done;
+	}
+
+	/*
+	 * Read WAL stats struct
+	 */
+	if (fread(&walStats, 1, sizeof(walStats), fpin) != sizeof(walStats))
+	{
+		ereport(pgStatRunningInCollector ? LOG : WARNING,
+				(errmsg("corrupted statistics file \"%s\"", statfile)));
+		memset(&walStats, 0, sizeof(walStats));
 		goto done;
 	}
 
@@ -5746,7 +4472,6 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 						break;
 				}
 
-				memset(&hash_ctl, 0, sizeof(hash_ctl));
 				hash_ctl.keysize = sizeof(Oid);
 				hash_ctl.entrysize = sizeof(PgStat_StatTabEntry);
 				hash_ctl.hcxt = pgStatLocalContext;
@@ -5809,6 +4534,45 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 
 				memcpy(queueentry, &queuebuf, sizeof(PgStat_StatQueueEntry));
 				break;
+
+				/*
+				 * 'R'	A PgStat_StatReplSlotEntry struct describing a
+				 * replication slot follows.
+				 */
+			case 'R':
+				{
+					PgStat_StatReplSlotEntry slotbuf;
+					PgStat_StatReplSlotEntry *slotent;
+
+					if (fread(&slotbuf, 1, sizeof(PgStat_StatReplSlotEntry), fpin)
+						!= sizeof(PgStat_StatReplSlotEntry))
+					{
+						ereport(pgStatRunningInCollector ? LOG : WARNING,
+								(errmsg("corrupted statistics file \"%s\"",
+										statfile)));
+						goto done;
+					}
+
+					/* Create hash table if we don't have it already. */
+					if (replSlotStatHash == NULL)
+					{
+						HASHCTL		hash_ctl;
+
+						hash_ctl.keysize = sizeof(NameData);
+						hash_ctl.entrysize = sizeof(PgStat_StatReplSlotEntry);
+						hash_ctl.hcxt = pgStatLocalContext;
+						replSlotStatHash = hash_create("Replication slots hash",
+													   PGSTAT_REPLSLOT_HASH_SIZE,
+													   &hash_ctl,
+													   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+					}
+
+					slotent = (PgStat_StatReplSlotEntry *) hash_search(replSlotStatHash,
+																	   (void *) &slotbuf.slotname,
+																	   HASH_ENTER, NULL);
+					memcpy(slotent, &slotbuf, sizeof(PgStat_StatReplSlotEntry));
+					break;
+				}
 
 			case 'E':
 				goto done;
@@ -5998,7 +4762,8 @@ done:
  * pgstat_read_db_statsfile_timestamp() -
  *
  *	Attempt to determine the timestamp of the last db statfile write.
- *	Returns true if successful; the timestamp is stored in *ts.
+ *	Returns true if successful; the timestamp is stored in *ts. The caller must
+ *	rely on timestamp stored in *ts iff the function returns true.
  *
  *	This needs to be careful about handling databases for which no stats file
  *	exists, such as databases without a stat entry or those not yet written:
@@ -6019,7 +4784,9 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 	PgStat_StatQueueEntry queuebuf;	/* GPDB */
 	PgStat_GlobalStats myGlobalStats;
 	PgStat_ArchiverStats myArchiverStats;
+	PgStat_WalStats myWalStats;
 	PgStat_SLRUStats mySLRUStats[SLRU_NUM_ELEMENTS];
+	PgStat_StatReplSlotEntry myReplSlotStats;
 	FILE	   *fpin;
 	int32		format_id;
 	const char *statfile = permanent ? PGSTAT_STAT_PERMANENT_FILENAME : pgstat_stat_filename;
@@ -6075,6 +4842,17 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 	}
 
 	/*
+	 * Read WAL stats struct
+	 */
+	if (fread(&myWalStats, 1, sizeof(myWalStats), fpin) != sizeof(myWalStats))
+	{
+		ereport(pgStatRunningInCollector ? LOG : WARNING,
+				(errmsg("corrupted statistics file \"%s\"", statfile)));
+		FreeFile(fpin);
+		return false;
+	}
+
+	/*
 	 * Read SLRU stats struct
 	 */
 	if (fread(mySLRUStats, 1, sizeof(mySLRUStats), fpin) != sizeof(mySLRUStats))
@@ -6107,7 +4885,8 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
 									statfile)));
-					goto done;
+					FreeFile(fpin);
+					return false;
 				}
 
 				/*
@@ -6132,7 +4911,24 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
 									statfile)));
-					goto done;
+					FreeFile(fpin);
+					return false;
+				}
+				break;
+
+				/*
+				 * 'R'	A PgStat_StatReplSlotEntry struct describing a
+				 * replication slot follows.
+				 */
+			case 'R':
+				if (fread(&myReplSlotStats, 1, sizeof(PgStat_StatReplSlotEntry), fpin)
+					!= sizeof(PgStat_StatReplSlotEntry))
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile)));
+					FreeFile(fpin);
+					return false;
 				}
 				break;
 
@@ -6140,10 +4936,13 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 				goto done;
 
 			default:
-				ereport(pgStatRunningInCollector ? LOG : WARNING,
-						(errmsg("corrupted statistics file \"%s\"",
-								statfile)));
-				goto done;
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile)));
+					FreeFile(fpin);
+					return false;
+				}
 		}
 	}
 
@@ -6247,8 +5046,9 @@ backend_read_statsfile(void)
 				/* Copy because timestamptz_to_str returns a static buffer */
 				filetime = pstrdup(timestamptz_to_str(file_ts));
 				mytime = pstrdup(timestamptz_to_str(cur_ts));
-				elog(LOG, "stats collector's time %s is later than backend local time %s",
-					 filetime, mytime);
+				ereport(LOG,
+						(errmsg("statistics collector's time %s is later than backend local time %s",
+								filetime, mytime)));
 				pfree(filetime);
 				pfree(mytime);
 			}
@@ -6321,8 +5121,14 @@ pgstat_clear_snapshot(void)
 	/* Reset variables */
 	pgStatLocalContext = NULL;
 	pgStatDBHash = NULL;
-	localBackendStatusTable = NULL;
-	localNumBackends = 0;
+	replSlotStatHash = NULL;
+
+	/*
+	 * Historically the backend_status.c facilities lived in this file, and
+	 * were reset with the same function. For now keep it that way, and
+	 * forward the reset request.
+	 */
+	pgstat_clear_backend_activity_snapshot();
 }
 
 
@@ -6390,9 +5196,9 @@ pgstat_recv_inquiry(PgStat_MsgInquiry *msg, int len)
 			/* Copy because timestamptz_to_str returns a static buffer */
 			writetime = pstrdup(timestamptz_to_str(dbentry->stats_timestamp));
 			mytime = pstrdup(timestamptz_to_str(cur_ts));
-			elog(LOG,
-				 "stats_timestamp %s is later than collector's time %s for database %u",
-				 writetime, mytime, dbentry->databaseid);
+			ereport(LOG,
+					(errmsg("stats_timestamp %s is later than collector's time %s for database %u",
+							writetime, mytime, dbentry->databaseid)));
 			pfree(writetime);
 			pfree(mytime);
 		}
@@ -6470,6 +5276,7 @@ pgstat_recv_tabstat(PgStat_MsgTabstat *msg, int len)
 			tabentry->n_live_tuples = tabmsg->t_counts.t_delta_live_tuples;
 			tabentry->n_dead_tuples = tabmsg->t_counts.t_delta_dead_tuples;
 			tabentry->changes_since_analyze = tabmsg->t_counts.t_changed_tuples;
+			tabentry->changes_since_analyze_reported = 0;
 			tabentry->inserts_since_vacuum = tabmsg->t_counts.t_tuples_inserted;
 			tabentry->blocks_fetched = tabmsg->t_counts.t_blocks_fetched;
 			tabentry->blocks_hit = tabmsg->t_counts.t_blocks_hit;
@@ -6664,6 +5471,12 @@ pgstat_recv_resetsharedcounter(PgStat_MsgResetsharedcounter *msg, int len)
 		memset(&archiverStats, 0, sizeof(archiverStats));
 		archiverStats.stat_reset_timestamp = GetCurrentTimestamp();
 	}
+	else if (msg->m_resettarget == RESET_WAL)
+	{
+		/* Reset the WAL statistics for the cluster. */
+		memset(&walStats, 0, sizeof(walStats));
+		walStats.stat_reset_timestamp = GetCurrentTimestamp();
+	}
 
 	/*
 	 * Presumably the sender of this message validated the target, don't
@@ -6721,6 +5534,52 @@ pgstat_recv_resetslrucounter(PgStat_MsgResetslrucounter *msg, int len)
 		}
 	}
 }
+
+/* ----------
+ * pgstat_recv_resetreplslotcounter() -
+ *
+ *	Reset some replication slot statistics of the cluster.
+ * ----------
+ */
+static void
+pgstat_recv_resetreplslotcounter(PgStat_MsgResetreplslotcounter *msg,
+								 int len)
+{
+	PgStat_StatReplSlotEntry *slotent;
+	TimestampTz ts;
+
+	/* Return if we don't have replication slot statistics */
+	if (replSlotStatHash == NULL)
+		return;
+
+	ts = GetCurrentTimestamp();
+	if (msg->clearall)
+	{
+		HASH_SEQ_STATUS sstat;
+
+		hash_seq_init(&sstat, replSlotStatHash);
+		while ((slotent = (PgStat_StatReplSlotEntry *) hash_seq_search(&sstat)) != NULL)
+			pgstat_reset_replslot(slotent, ts);
+	}
+	else
+	{
+		/* Get the slot statistics to reset */
+		slotent = pgstat_get_replslot_entry(msg->m_slotname, false);
+
+		/*
+		 * Nothing to do if the given slot entry is not found.  This could
+		 * happen when the slot with the given name is removed and the
+		 * corresponding statistics entry is also removed before receiving the
+		 * reset message.
+		 */
+		if (!slotent)
+			return;
+
+		/* Reset the stats for the requested replication slot */
+		pgstat_reset_replslot(slotent, ts);
+	}
+}
+
 
 /* ----------
  * pgstat_recv_autovac() -
@@ -6815,7 +5674,10 @@ pgstat_recv_analyze(PgStat_MsgAnalyze *msg, int len)
 	 * have no good way to estimate how many of those there were.
 	 */
 	if (msg->m_resetcounter)
+	{
 		tabentry->changes_since_analyze = 0;
+		tabentry->changes_since_analyze_reported = 0;
+	}
 
 	if (msg->m_autovacuum)
 	{
@@ -6829,6 +5691,29 @@ pgstat_recv_analyze(PgStat_MsgAnalyze *msg, int len)
 	}
 }
 
+static void
+pgstat_recv_anl_ancestors(PgStat_MsgAnlAncestors *msg, int len)
+{
+	PgStat_StatDBEntry *dbentry;
+	PgStat_StatTabEntry *tabentry;
+
+	dbentry = pgstat_get_db_entry(msg->m_databaseid, true);
+
+	tabentry = pgstat_get_tab_entry(dbentry, msg->m_tableoid, true);
+
+	for (int i = 0; i < msg->m_nancestors; i++)
+	{
+		Oid			ancestor_relid = msg->m_ancestors[i];
+		PgStat_StatTabEntry *ancestor;
+
+		ancestor = pgstat_get_tab_entry(dbentry, ancestor_relid, true);
+		ancestor->changes_since_analyze +=
+			tabentry->changes_since_analyze - tabentry->changes_since_analyze_reported;
+	}
+
+	tabentry->changes_since_analyze_reported = tabentry->changes_since_analyze;
+
+}
 
 /* ----------
  * pgstat_recv_archiver() -
@@ -7071,6 +5956,25 @@ pgstat_fetch_stat_queueentry(Oid queueid)
 
 
 /* ----------
+ * pgstat_recv_wal() -
+ *
+ *	Process a WAL message.
+ * ----------
+ */
+static void
+pgstat_recv_wal(PgStat_MsgWal *msg, int len)
+{
+	walStats.wal_records += msg->m_wal_records;
+	walStats.wal_fpi += msg->m_wal_fpi;
+	walStats.wal_bytes += msg->m_wal_bytes;
+	walStats.wal_buffers_full += msg->m_wal_buffers_full;
+	walStats.wal_write += msg->m_wal_write;
+	walStats.wal_sync += msg->m_wal_sync;
+	walStats.wal_write_time += msg->m_wal_write_time;
+	walStats.wal_sync_time += msg->m_wal_sync_time;
+}
+
+/* ----------
  * pgstat_recv_slru() -
  *
  *	Process a SLRU message.
@@ -7159,6 +6063,92 @@ pgstat_recv_checksum_failure(PgStat_MsgChecksumFailure *msg, int len)
 
 	dbentry->n_checksum_failures += msg->m_failurecount;
 	dbentry->last_checksum_failure = msg->m_failure_time;
+}
+
+/* ----------
+ * pgstat_recv_replslot() -
+ *
+ *	Process a REPLSLOT message.
+ * ----------
+ */
+static void
+pgstat_recv_replslot(PgStat_MsgReplSlot *msg, int len)
+{
+	if (msg->m_drop)
+	{
+		Assert(!msg->m_create);
+
+		/* Remove the replication slot statistics with the given name */
+		if (replSlotStatHash != NULL)
+			(void) hash_search(replSlotStatHash,
+							   (void *) &(msg->m_slotname),
+							   HASH_REMOVE,
+							   NULL);
+	}
+	else
+	{
+		PgStat_StatReplSlotEntry *slotent;
+
+		slotent = pgstat_get_replslot_entry(msg->m_slotname, true);
+		Assert(slotent);
+
+		if (msg->m_create)
+		{
+			/*
+			 * If the message for dropping the slot with the same name gets
+			 * lost, slotent has stats for the old slot. So we initialize all
+			 * counters at slot creation.
+			 */
+			pgstat_reset_replslot(slotent, 0);
+		}
+		else
+		{
+			/* Update the replication slot statistics */
+			slotent->spill_txns += msg->m_spill_txns;
+			slotent->spill_count += msg->m_spill_count;
+			slotent->spill_bytes += msg->m_spill_bytes;
+			slotent->stream_txns += msg->m_stream_txns;
+			slotent->stream_count += msg->m_stream_count;
+			slotent->stream_bytes += msg->m_stream_bytes;
+			slotent->total_txns += msg->m_total_txns;
+			slotent->total_bytes += msg->m_total_bytes;
+		}
+	}
+}
+
+/* ----------
+ * pgstat_recv_connstat() -
+ *
+ *  Process connection information.
+ * ----------
+ */
+static void
+pgstat_recv_connstat(PgStat_MsgConn *msg, int len)
+{
+	PgStat_StatDBEntry *dbentry;
+
+	dbentry = pgstat_get_db_entry(msg->m_databaseid, true);
+
+	dbentry->n_sessions += msg->m_count;
+	dbentry->total_session_time += msg->m_session_time;
+	dbentry->total_active_time += msg->m_active_time;
+	dbentry->total_idle_in_xact_time += msg->m_idle_in_xact_time;
+	switch (msg->m_disconnect)
+	{
+		case DISCONNECT_NOT_YET:
+		case DISCONNECT_NORMAL:
+			/* we don't collect these */
+			break;
+		case DISCONNECT_CLIENT_EOF:
+			dbentry->n_sessions_abandoned++;
+			break;
+		case DISCONNECT_FATAL:
+			dbentry->n_sessions_fatal++;
+			break;
+		case DISCONNECT_KILLED:
+			dbentry->n_sessions_killed++;
+			break;
+	}
 }
 
 /* ----------
@@ -7299,48 +6289,81 @@ pgstat_db_requested(Oid databaseid)
 	return false;
 }
 
-/*
- * Convert a potentially unsafely truncated activity string (see
- * PgBackendStatus.st_activity_raw's documentation) into a correctly truncated
- * one.
+/* ----------
+ * pgstat_replslot_entry
  *
- * The returned string is allocated in the caller's memory context and may be
- * freed.
+ * Return the entry of replication slot stats with the given name. Return
+ * NULL if not found and the caller didn't request to create it.
+ *
+ * create tells whether to create the new slot entry if it is not found.
+ * ----------
  */
-char *
-pgstat_clip_activity(const char *raw_activity)
+static PgStat_StatReplSlotEntry *
+pgstat_get_replslot_entry(NameData name, bool create)
 {
-	char	   *activity;
-	int			rawlen;
-	int			cliplen;
+	PgStat_StatReplSlotEntry *slotent;
+	bool		found;
 
-	/*
-	 * Some callers, like pgstat_get_backend_current_activity(), do not
-	 * guarantee that the buffer isn't concurrently modified. We try to take
-	 * care that the buffer is always terminated by a NUL byte regardless, but
-	 * let's still be paranoid about the string's length. In those cases the
-	 * underlying buffer is guaranteed to be pgstat_track_activity_query_size
-	 * large.
-	 */
-	activity = pnstrdup(raw_activity, pgstat_track_activity_query_size - 1);
+	if (replSlotStatHash == NULL)
+	{
+		HASHCTL		hash_ctl;
 
-	/* now double-guaranteed to be NUL terminated */
-	rawlen = strlen(activity);
+		/*
+		 * Quick return NULL if the hash table is empty and the caller didn't
+		 * request to create the entry.
+		 */
+		if (!create)
+			return NULL;
 
-	/*
-	 * All supported server-encodings make it possible to determine the length
-	 * of a multi-byte character from its first byte (this is not the case for
-	 * client encodings, see GB18030). As st_activity is always stored using
-	 * server encoding, this allows us to perform multi-byte aware truncation,
-	 * even if the string earlier was truncated in the middle of a multi-byte
-	 * character.
-	 */
-	cliplen = pg_mbcliplen(activity, rawlen,
-						   pgstat_track_activity_query_size - 1);
+		hash_ctl.keysize = sizeof(NameData);
+		hash_ctl.entrysize = sizeof(PgStat_StatReplSlotEntry);
+		replSlotStatHash = hash_create("Replication slots hash",
+									   PGSTAT_REPLSLOT_HASH_SIZE,
+									   &hash_ctl,
+									   HASH_ELEM | HASH_BLOBS);
+	}
 
-	activity[cliplen] = '\0';
+	slotent = (PgStat_StatReplSlotEntry *) hash_search(replSlotStatHash,
+													   (void *) &name,
+													   create ? HASH_ENTER : HASH_FIND,
+													   &found);
 
-	return activity;
+	if (!slotent)
+	{
+		/* not found */
+		Assert(!create && !found);
+		return NULL;
+	}
+
+	/* initialize the entry */
+	if (create && !found)
+	{
+		namestrcpy(&(slotent->slotname), NameStr(name));
+		pgstat_reset_replslot(slotent, 0);
+	}
+
+	return slotent;
+}
+
+/* ----------
+ * pgstat_reset_replslot
+ *
+ * Reset the given replication slot stats.
+ * ----------
+ */
+static void
+pgstat_reset_replslot(PgStat_StatReplSlotEntry *slotent, TimestampTz ts)
+{
+	/* reset only counters. Don't clear slot name */
+	slotent->spill_txns = 0;
+	slotent->spill_count = 0;
+	slotent->spill_bytes = 0;
+	slotent->stream_txns = 0;
+	slotent->stream_count = 0;
+	slotent->stream_bytes = 0;
+	slotent->total_txns = 0;
+	slotent->total_bytes = 0;
+	slotent->stat_reset_timestamp = ts;
 }
 
 /*

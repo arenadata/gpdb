@@ -50,7 +50,7 @@ begin
 end
 $$ language plpgsql READS SQL DATA ROWS 10;
 select * from (select refcursor (1, 10)) t1, test;
-ERROR:  function cannot execute on a QE slice because it accesses relation "public.test"  (seg0 slice1 usensimiobmbp.corp.emc.com:18506 pid=17309)
+ERROR:  function cannot execute on a QE slice because it accesses relation "public.test"  (entry db 172.17.0.3:7000 pid=275098)
 CONTEXT:  SQL statement "select * from test where a > param1 and b > param2"
 PL/pgSQL function refcursor(integer,integer) line 7 at OPEN
 drop function refcursor(int, int);
