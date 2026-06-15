@@ -7493,6 +7493,16 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			indxinfo[j].indisclustered = (PQgetvalue(res, j, i_indisclustered)[0] == 't');
 			indxinfo[j].indisreplident = (PQgetvalue(res, j, i_indisreplident)[0] == 't');
 			indxinfo[j].parentidx = atooid(PQgetvalue(res, j, i_parentidx));
+			/*
+			 * GPDB: this query does not retrieve the index's recorded
+			 * collation dependencies, so NULL these out (the IndxInfo array is
+			 * pg_malloc'd, not zeroed).  appendIndexCollationVersion() skips
+			 * the restore when they are NULL; leaving them uninitialized made
+			 * it strlen() a garbage pointer and crash during binary-upgrade
+			 * dumps (pg_upgrade).
+			 */
+			indxinfo[j].inddependcollnames = NULL;
+			indxinfo[j].inddependcollversions = NULL;
 			indxinfo[j].partattaches = (SimplePtrList)
 			{
 				NULL, NULL
@@ -20008,36 +20018,46 @@ appendIndexCollationVersion(PQExpBuffer buffer, IndxInfo *indxinfo, int enc,
 						  indxinfo->dobj.catId.oid);
 	}
 
-	/* Restore the versions that were recorded by the old cluster (if any). */
-	parsePGArray(inddependcollnames,
-				 &inddependcollnamesarray,
-				 &ninddependcollnames);
-	parsePGArray(inddependcollversions,
-				 &inddependcollversionsarray,
-				 &ninddependcollversions);
-	Assert(ninddependcollnames == ninddependcollversions);
-
-	if (ninddependcollnames > 0)
-		appendPQExpBufferStr(buffer,
-							 "\n-- For binary upgrade, restore old index's collation versions\n");
-	for (int i = 0; i < ninddependcollnames; i++)
+	/*
+	 * Restore the versions that were recorded by the old cluster (if any).
+	 *
+	 * GPDB: indexes without recorded collation dependencies have NULL
+	 * inddependcollnames/versions (the index query's array_agg yields NULL,
+	 * not an empty array); parsePGArray() would then strlen(NULL) and crash.
+	 * Skip the restore in that case.
+	 */
+	if (inddependcollnames != NULL && inddependcollversions != NULL)
 	{
-		/*
-		 * Import refobjversion from the old cluster, being careful to resolve
-		 * the collation OID by name in the new cluster.
-		 */
-		appendPQExpBuffer(buffer,
-						  "UPDATE pg_catalog.pg_depend SET refobjversion = %s WHERE objid = '%u'::pg_catalog.oid AND refclassid = 'pg_catalog.pg_collation'::regclass AND refobjversion IS NOT NULL AND refobjid = ",
-						  inddependcollversionsarray[i],
-						  indxinfo->dobj.catId.oid);
-		appendStringLiteralAH(buffer,inddependcollnamesarray[i], fout);
-		appendPQExpBuffer(buffer, "::regcollation;\n");
-	}
+		parsePGArray(inddependcollnames,
+					 &inddependcollnamesarray,
+					 &ninddependcollnames);
+		parsePGArray(inddependcollversions,
+					 &inddependcollversionsarray,
+					 &ninddependcollversions);
+		Assert(ninddependcollnames == ninddependcollversions);
 
-	if (inddependcollnamesarray)
-		free(inddependcollnamesarray);
-	if (inddependcollversionsarray)
-		free(inddependcollversionsarray);
+		if (ninddependcollnames > 0)
+			appendPQExpBufferStr(buffer,
+								 "\n-- For binary upgrade, restore old index's collation versions\n");
+		for (int i = 0; i < ninddependcollnames; i++)
+		{
+			/*
+			 * Import refobjversion from the old cluster, being careful to resolve
+			 * the collation OID by name in the new cluster.
+			 */
+			appendPQExpBuffer(buffer,
+							  "UPDATE pg_catalog.pg_depend SET refobjversion = %s WHERE objid = '%u'::pg_catalog.oid AND refclassid = 'pg_catalog.pg_collation'::regclass AND refobjversion IS NOT NULL AND refobjid = ",
+							  inddependcollversionsarray[i],
+							  indxinfo->dobj.catId.oid);
+			appendStringLiteralAH(buffer,inddependcollnamesarray[i], fout);
+			appendPQExpBuffer(buffer, "::regcollation;\n");
+		}
+
+		if (inddependcollnamesarray)
+			free(inddependcollnamesarray);
+		if (inddependcollversionsarray)
+			free(inddependcollversionsarray);
+	}
 }
 
 /*
