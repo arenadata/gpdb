@@ -11,8 +11,6 @@ ARG UBUNTU_UPDATES_MIRROR=http://archive.ubuntu.com/ubuntu
 ARG UBUNTU_BACKPORTS_MIRROR=http://archive.ubuntu.com/ubuntu
 ARG UBUNTU_SECURITY_MIRROR=http://security.ubuntu.com/ubuntu
 
-ARG sigar=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/sigar_1.6.5-3304%2Bgite8961a6_all.deb
-ARG sigar_headers=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/sigar-headers_1.6.5-3304%2Bgite8961a6_all.deb
 ARG adb_python3=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/adb6-python_3.9.18-3304_all.deb
 
 ARG adb_python3_bin=/opt/adb6-python3.9/bin/python3
@@ -28,7 +26,7 @@ RUN set -eux; \
       /etc/apt/sources.list; \
     ./README.ubuntu.bash; \
     rm README.ubuntu.bash; \
-    wget $sigar $sigar_headers $adb_python3; \
+    wget $adb_python3; \
     apt install -y ./*.deb; \
     rm ./*.deb; \
 # Set Python 2 as default when needed
@@ -44,12 +42,14 @@ RUN set -eux; \
 # Alter precedence in favor of IPv4 during resolving
     echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf; \
 # Install allure-behave for behave tests
-    python -m pip install --no-cache-dir allure-behave==2.4.0 mock==3.0.5 && \
+    python -m pip install --no-cache-dir allure-behave==2.4.0 mock==3.0.5 coverage && \
 # Install pytest for gpload test
     python -m pip install --no-cache-dir -r pytest_requirement.txt && \
     rm pytest_requirement.txt && \
 # ADCC extension dependencies
     $adb_python3_bin -m pip install --no-cache-dir protobuf==3.20.0 && \
+# Install isolation2 tests dependencies
+    $adb_python3_bin -m pip install --no-cache-dir psutil==5.7.0 wheel installer && \
 # Cleanup to reduce image size
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/man/
@@ -71,6 +71,15 @@ ENV TARGET_OS=ubuntu \
 RUN test "$(lsb_release -sr)" == "22.04" && export PYTHON3=$adb_python3_bin; \
     gpdb_src/concourse/scripts/compile_gpdb.bash
 
+# Build python modules for isolation2 tests
+# PyGresSQL requires libpq, so build wheel here to install later
+RUN set -eux; \
+    source /usr/local/greengage-db-devel/greengage_path.sh; \
+    unset PYTHONPATH; \
+    export PYTHON_SRC="/home/gpadmin/gpdb_src/gpMgmt/bin/pythonSrc/"; \
+    $adb_python3_bin -m pip wheel $PYTHON_SRC/PyGreSQL-5.2.5 -w bin_gpdb/; \
+    $adb_python3_bin -m pip wheel $PYTHON_SRC/PyGreSQL-compat -w bin_gpdb/;
+
 FROM base AS code
 # Use --exclude, when it will be available in stable syntax.
 COPY . gpdb_src
@@ -81,6 +90,10 @@ FROM base AS test
 COPY --from=code  /home/gpadmin/gpdb_src gpdb_src
 COPY --from=build /home/gpadmin/bin_gpdb bin_gpdb
 COPY --from=build /home/gpadmin/gpdb_src/VERSION gpdb_src
+
+# Install pygresql for python3
+RUN find bin_gpdb -name "PyGreSQL*.whl" -exec $adb_python3_bin \
+    -m installer {} \;
 
 # Install entab used by pgindent utility.
 # This should be done using gpdb sources.

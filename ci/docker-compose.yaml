@@ -18,6 +18,7 @@ services:
       - ${PWD}/allure-results:/tmp/allure-results
       - ${PWD}/ssh_keys:/home/gpadmin/.ssh.src
       - ${PWD}/logs_cdw:/logs
+      - ${PWD}/coverage:/tmp/coverage-data
   sdw1:
     <<: *common-service
     hostname: sdw1

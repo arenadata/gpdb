@@ -915,10 +915,14 @@ standard_ProcessUtility(Node *parsetree,
 			break;
 
 		case T_AlterResourceGroupStmt:
-			if (Gp_role == GP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH &&
+				!gp_resource_group_enable_alter_in_transaction)
+			{
 				PreventTransactionChain(isTopLevel, "ALTER RESOURCE GROUP");
+			}
 
-			AlterResourceGroup((AlterResourceGroupStmt *) parsetree);
+			AlterResourceGroupExtended((AlterResourceGroupStmt *) parsetree,
+									   isTopLevel);
 			break;
 
 		case T_DropResourceGroupStmt:
@@ -1096,6 +1100,13 @@ standard_ProcessUtility(Node *parsetree,
 							   dest, completionTag);
 			break;
 	}
+
+	/*
+	 * Make effects of commands visible, for instance so that
+	 * PreCommit_on_commit_actions() can see them (see for example bug
+	 * #15631).
+	 */
+	CommandCounterIncrement();
 }
 
 /*

@@ -1,6 +1,6 @@
 -- count number of certain operators in a given plan
 -- start_ignore
-create language plpythonu;
+create language plpython3u;
 -- end_ignore
 
 create or replace function count_operator(query text, operator text) returns int as
@@ -14,7 +14,7 @@ for i in range(len(rv)):
         result = result+1
 return result
 $$
-language plpythonu;
+language plpython3u;
 
 --start_ignore
 DROP TABLE IF EXISTS bfv_subquery_p;
@@ -291,6 +291,17 @@ SELECT (EXISTS (SELECT UNNEST(X))) AS B FROM A;
 EXPLAIN SELECT (EXISTS (SELECT UNNEST(X))) AS B FROM A;
 
 DROP TABLE A;
+
+--
+-- Test if we reattach flow of omitted SubqueryScan to outerplan.
+--
+
+EXPLAIN (VERBOSE, COSTS OFF)
+WITH A AS (
+    SELECT * FROM UNNEST(ARRAY[0]) I
+), B AS (
+    SELECT *, UNNEST(ARRAY[1]) FROM A
+) SELECT * FROM A WHERE I IN (SELECT A.I FROM B);
 
 --
 -- Test the ctid in Function and Values Scans

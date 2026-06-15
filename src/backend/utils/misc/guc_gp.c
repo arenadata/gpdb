@@ -234,6 +234,7 @@ double		gp_resource_group_memory_limit;
 bool		gp_resource_group_bypass;
 bool		gp_resource_group_enable_recalculate_query_mem;
 bool		gp_resource_group_retrieve;
+bool		gp_resource_group_enable_alter_in_transaction;
 
 /* Perfmon segment GUCs */
 int			gp_perfmon_segment_interval;
@@ -561,6 +562,8 @@ static const struct config_enum_entry gp_autostats_modes[] = {
 	{"on_change", GP_AUTOSTATS_ON_CHANGE},
 	{"onchange", GP_AUTOSTATS_ON_CHANGE},
 	{"on_no_stats", GP_AUTOSTATS_ON_NO_STATS},
+	{"on_change_and_no_stats", GP_AUTOSTATS_ON_CHANGE_AND_NO_STATS},
+	{"onchange_and_no_stats", GP_AUTOSTATS_ON_CHANGE_AND_NO_STATS},
 	{NULL, 0}
 };
 
@@ -3045,7 +3048,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
-		{"optimizer_enable_table_alias", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"optimizer_enable_table_alias", PGC_USERSET, DEFUNCT_OPTIONS,
 			gettext_noop("Enable using table aliases to make plan explain more descriptive"),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
@@ -3164,6 +3167,15 @@ struct config_bool ConfigureNamesBool_gp[] =
 			NULL
 		},
 		&gp_resource_group_cpu_ceiling_enforcement,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_resource_group_enable_alter_in_transaction", PGC_POSTMASTER, RESOURCES,
+			gettext_noop("Allow ALTER RESOURCE GROUP inside a transaction block."),
+			NULL
+		},
+		&gp_resource_group_enable_alter_in_transaction,
 		false, NULL, NULL
 	},
 
@@ -4384,7 +4396,7 @@ struct config_int ConfigureNamesInt_gp[] =
 
 	{
 		{"gp_autostats_on_change_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Threshold for number of tuples added to table by CTAS or Insert-to to trigger autostats in on_change mode. See gp_autostats_mode."),
+			gettext_noop("Threshold for number of tuples added (or changed) to table by CTAS or DML to trigger autostats in on_change mode. See gp_autostats_mode."),
 			NULL
 		},
 		&gp_autostats_on_change_threshold,
@@ -5001,6 +5013,16 @@ struct config_real ConfigureNamesReal_gp[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"gp_autostats_on_change_ratio_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Threshold for fraction of tuples from statistics added (or changed) to table by CTAS or DML to trigger autostats in on_change mode. See gp_autostats_mode."),
+			NULL
+		},
+		&gp_autostats_on_change_ratio_threshold,
+		0.0, 0.0, 100.0,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL
@@ -5054,7 +5076,7 @@ struct config_string ConfigureNamesString_gp[] =
 	},
 
 	{
-		{"gp_role", PGC_SUSET, CLIENT_CONN_OTHER,
+		{"gp_role", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("Sets the role for the session."),
 			gettext_noop("Valid values are DISPATCH, EXECUTE, and UTILITY."),
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
@@ -5323,7 +5345,7 @@ struct config_enum ConfigureNamesEnum_gp[] =
 	{
 		{"gp_autostats_mode", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the autostats mode."),
-			gettext_noop("Valid values are NONE, ON_CHANGE, ON_NO_STATS. ON_CHANGE requires setting gp_autostats_on_change_threshold.")
+			gettext_noop("Valid values are NONE, ON_CHANGE, ON_NO_STATS, ON_CHANGE_AND_NO_STATS. ON_CHANGE and ON_CHANGE_AND_NO_STATS requires setting gp_autostats_on_change_threshold and gp_autostats_on_change_ratio_threshold(optional).")
 		},
 		&gp_autostats_mode,
 		GP_AUTOSTATS_NONE, gp_autostats_modes,
@@ -5333,7 +5355,7 @@ struct config_enum ConfigureNamesEnum_gp[] =
 	{
 		{"gp_autostats_mode_in_functions", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the autostats mode for statements in procedural language functions."),
-			gettext_noop("Valid values are NONE, ON_CHANGE, ON_NO_STATS. ON_CHANGE requires setting gp_autostats_on_change_threshold.")
+			gettext_noop("Valid values are NONE, ON_CHANGE, ON_NO_STATS, ON_CHANGE_AND_NO_STATS. ON_CHANGE and ON_CHANGE_AND_NO_STATS requires setting gp_autostats_on_change_threshold and gp_autostats_on_change_ratio_threshold(optional).")
 		},
 		&gp_autostats_mode_in_functions,
 		GP_AUTOSTATS_NONE, gp_autostats_modes,
