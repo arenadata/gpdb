@@ -160,6 +160,34 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	const char *old_status;
 	int			mode;
 
+	/*
+	 * Fast exit if user has not requested sync replication, or there are no
+	 * sync replication standby names defined.
+	 *
+	 * Since this routine gets called every commit time, it's important to
+	 * exit quickly if sync replication is not requested. So we check
+	 * WalSndCtl->sync_standbys_defined flag without the lock and exit
+	 * immediately if it's false. If it's true, we need to check it again later
+	 * while holding the lock, to check the flag and operate the sync rep
+	 * queue atomically. This is necessary to avoid the race condition
+	 * described in SyncRepUpdateSyncStandbysDefined(). On the other
+	 * hand, if it's false, the lock is not necessary because we don't touch
+	 * the queue.
+	 */
+	/*
+	 * GPDB: the coordinator's synchronous standby is not configured through
+	 * synchronous_standby_names (so sync_standbys_defined is false for it);
+	 * instead the QD decides synchronously below by looking for an active
+	 * gp_walreceiver (see the IS_QUERY_DISPATCHER block).  Therefore the QD
+	 * must not take this sync_standbys_defined fast path -- doing so made
+	 * coordinator commits never block on the standby.  Segments keep the
+	 * upstream behavior.  (Mirrors the IS_QUERY_DISPATCHER guard further down.)
+	 */
+	if (!SyncRepRequested() ||
+		(!IS_QUERY_DISPATCHER() &&
+		 !((volatile WalSndCtlData *) WalSndCtl)->sync_standbys_defined))
+		return;
+
 	/* Cap the level for anything other than commit to remote flush only. */
 	if (commit)
 		mode = SyncRepWaitMode;
@@ -170,12 +198,6 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	elogif(debug_walrepl_syncrep, LOG,
 			"syncrep wait -- This backend's commit LSN for syncrep is %X/%X.",
 		   (uint32) (lsn >> 32), (uint32) lsn);
-
-	/*
-	 * Fast exit if user has not requested sync replication.
-	 */
-	if (!SyncRepRequested())
-		return;
 
 	Assert(SHMQueueIsDetached(&(MyProc->syncRepLinks)));
 	Assert(WalSndCtl != NULL);
