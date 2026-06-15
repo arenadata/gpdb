@@ -661,7 +661,7 @@ DistributedLog_ShmemInit(void)
 	DistributedLogCtl->PagePrecedes = DistributedLog_PagePrecedes;
 	SimpleLruInit(DistributedLogCtl, "DistributedLogCtl", DistributedLog_ShmemBuffers(), 0,
 				  DistributedLogControlLock, "pg_distributedlog",
-				  LWTRANCHE_DISTRIBUTEDLOG_BUFFERS, SYNC_HANDLER_CLOG);
+				  LWTRANCHE_DISTRIBUTEDLOG_BUFFERS, SYNC_HANDLER_DISTRIBUTED_CLOG);
 
 	/* Create or attach to the shared structure */
 	DistributedLogShared =
@@ -1074,4 +1074,13 @@ DistributedLog_redo(XLogReaderState *record)
 	}
 	else
 		elog(PANIC, "DistributedLog_redo: unknown op code %u", info);
+}
+
+/*
+ * Entrypoint for sync.c to sync distributed clog files.
+ */
+int
+DistributedLog_syncfiletag(const FileTag *ftag, char *path)
+{
+	return SlruSyncFileTag(DistributedLogCtl, ftag, path);
 }
