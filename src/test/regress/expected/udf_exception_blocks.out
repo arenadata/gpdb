@@ -230,8 +230,8 @@ SELECT insert_db(1, 'david');
 SELECT * from test_loop_tab;
  a |   b   
 ---+-------
- 1 | david
  2 | dummy
+ 1 | david
 (2 rows)
 
 INSERT INTO test_loop_tab select *,'abcdefghijklmnopqrstuvwxyz' from generate_series(1, 100);
@@ -739,8 +739,8 @@ SET debug_dtm_action_nestinglevel=0;
 DROP TABLE IF EXISTS employees;
 NOTICE:  table "employees" does not exist, skipping
 select test_protocol_allseg(1, 2,'f');
-ERROR:  Raise error for debug_dtm_action = 3, debug_dtm_action_protocol = Rollback Current Subtransaction  (seg0 127.0.1.1:25432 pid=24104)
-CONTEXT:  PL/pgSQL function "test_protocol_allseg" line 17 during exception cleanup
+ERROR:  Raise error for debug_dtm_action = 3, debug_dtm_action_protocol = Rollback Current Subtransaction  (seg0 172.17.0.3:7002 pid=2894740)
+CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
@@ -756,7 +756,7 @@ DROP TABLE IF EXISTS employees;
 NOTICE:  table "employees" does not exist, skipping
 select test_protocol_allseg(1, 2,'f');
 NOTICE:  catching the exception ...2
-ERROR:  transaction 41615890 at level 1 already processed (current level 1) (cdbtm.c:2299)  (seg2 192.168.235.128:7004 pid=654) (cdbtm.c:2299)
+ERROR:  transaction 30412 at level 1 already processed (current level 1) (cdbtm.c:2337)  (seg2 172.17.0.3:7004 pid=2894756) (cdbtm.c:2337)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during exception cleanup
 select * from employees;
 ERROR:  relation "employees" does not exist
@@ -793,8 +793,8 @@ SET debug_dtm_action=fail_begin_command;
 SET debug_dtm_action_nestinglevel=0;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
-ERROR:  Raise ERROR for debug_dtm_action = 2, debug_dtm_action_protocol =  Begin Internal Subtransaction  (seg0 127.0.1.1:25432 pid=24104)
-CONTEXT:  PL/pgSQL function "test_protocol_allseg" line 8 during statement block entry
+ERROR:  Raise ERROR for debug_dtm_action = 2, debug_dtm_action_protocol =  Begin Internal Subtransaction  (seg0 172.17.0.3:7002 pid=2894740)
+CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during statement block entry
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
@@ -830,8 +830,8 @@ SET debug_dtm_action=fail_end_command;
 SET debug_dtm_action_nestinglevel=0;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
-ERROR:  Raise error for debug_dtm_action = 3, debug_dtm_action_protocol =  Begin Internal Subtransaction  (seg0 127.0.1.1:25432 pid=24104)
-CONTEXT:  PL/pgSQL function "test_protocol_allseg" line 8 during statement block entry
+ERROR:  Raise error for debug_dtm_action = 3, debug_dtm_action_protocol =  Begin Internal Subtransaction  (seg0 172.17.0.3:7002 pid=2894740)
+CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during statement block entry
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
@@ -868,7 +868,7 @@ SET debug_dtm_action_nestinglevel=0;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 NOTICE:  catching the exception ...2
-ERROR:  transaction 41615928 at level 1 already processed (current level 1) (cdbtm.c:2299)  (seg1 192.168.235.128:7003 pid=648) (cdbtm.c:2299)
+ERROR:  transaction 30526 at level 1 already processed (current level 1) (cdbtm.c:2337)  (seg0 172.17.0.3:7002 pid=2894740) (cdbtm.c:2337)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during exception cleanup
 select * from employees;
 ERROR:  relation "employees" does not exist
@@ -905,8 +905,8 @@ SET debug_dtm_action=fail_begin_command;
 SET debug_dtm_action_nestinglevel=0;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
-ERROR:  Raise ERROR for debug_dtm_action = 2, debug_dtm_action_protocol = Rollback Current Subtransaction  (seg0 127.0.1.1:25432 pid=24104)
-CONTEXT:  PL/pgSQL function "test_protocol_allseg" line 17 during exception cleanup
+ERROR:  Raise ERROR for debug_dtm_action = 2, debug_dtm_action_protocol = Rollback Current Subtransaction  (seg0 172.17.0.3:7002 pid=2894740)
+CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;

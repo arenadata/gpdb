@@ -3,7 +3,7 @@
  * pg_publication.h
  *	  definition of the "publication" system catalog (pg_publication)
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_publication.h
@@ -32,7 +32,7 @@ CATALOG(pg_publication,6107,PublicationRelationId)
 
 	NameData	pubname;		/* name of the publication */
 
-	Oid			pubowner;		/* publication owner */
+	Oid			pubowner BKI_LOOKUP(pg_authid); /* publication owner */
 
 	/*
 	 * indicates that this is special publication which should encompass all
@@ -62,6 +62,9 @@ CATALOG(pg_publication,6107,PublicationRelationId)
  * ----------------
  */
 typedef FormData_pg_publication *Form_pg_publication;
+
+#define PublicationObjectIndexId 6110
+#define PublicationNameIndexId 6111
 
 typedef struct PublicationActions
 {

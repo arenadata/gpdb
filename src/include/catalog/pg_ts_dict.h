@@ -4,7 +4,7 @@
  *	  definition of the "text search dictionary" system catalog (pg_ts_dict)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_ts_dict.h
@@ -35,10 +35,10 @@ CATALOG(pg_ts_dict,3600,TSDictionaryRelationId)
 	NameData	dictname;
 
 	/* name space */
-	Oid			dictnamespace BKI_DEFAULT(PGNSP);
+	Oid			dictnamespace BKI_DEFAULT(pg_catalog) BKI_LOOKUP(pg_namespace);
 
 	/* owner */
-	Oid			dictowner BKI_DEFAULT(PGUID);
+	Oid			dictowner BKI_DEFAULT(POSTGRES) BKI_LOOKUP(pg_authid);
 
 	/* dictionary's template */
 	Oid			dicttemplate BKI_LOOKUP(pg_ts_template);
@@ -55,5 +55,9 @@ FOREIGN_KEY(dictowner REFERENCES pg_authid(oid));
 FOREIGN_KEY(dicttemplate REFERENCES pg_ts_template(oid));
 
 typedef FormData_pg_ts_dict *Form_pg_ts_dict;
+
+
+#define TSDictionaryNameNspIndexId	3604
+#define TSDictionaryOidIndexId	3605
 
 #endif							/* PG_TS_DICT_H */

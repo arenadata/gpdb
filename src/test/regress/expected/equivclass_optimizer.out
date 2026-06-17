@@ -105,13 +105,13 @@ set enable_mergejoin = off;
 --
 explain (costs off)
   select * from ec0 where ff = f1 and f1 = '42'::int8;
-                      QUERY PLAN                      
-------------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Gather Motion 1:1  (slice1; segments: 1)
    ->  Index Scan using ec0_pkey on ec0
          Index Cond: (ff = '42'::bigint)
          Filter: ((f1 = '42'::bigint) AND (ff = f1))
- Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (5 rows)
 
 explain (costs off)
@@ -132,7 +132,7 @@ explain (costs off)
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Seq Scan on ec1
          Filter: ((ff = f1) AND (f1 = '42'::int8alias1))
- Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (4 rows)
 
 explain (costs off)
@@ -142,7 +142,7 @@ explain (costs off)
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Seq Scan on ec1
          Filter: ((ff = f1) AND (f1 = '42'::int8alias2))
- Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (4 rows)
 
 explain (costs off)
@@ -185,7 +185,7 @@ explain (costs off)
                      Filter: ('42'::bigint = x1)
          ->  Index Scan using ec1_pkey on ec1
                Index Cond: (ff = ec2.x1)
- Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (9 rows)
 
 explain (costs off)
@@ -200,7 +200,7 @@ explain (costs off)
                      Filter: (x1 = '42'::int8alias1)
          ->  Index Scan using ec1_pkey on ec1
                Index Cond: (ff = ec2.x1)
- Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (9 rows)
 
 explain (costs off)
@@ -215,7 +215,7 @@ explain (costs off)
                      Filter: (x1 = '42'::int8alias2)
          ->  Index Scan using ec1_pkey on ec1
                Index Cond: (ff = ec2.x1)
- Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (9 rows)
 
 create index ec1_expr1 on ec1((ff + 1));
@@ -246,7 +246,7 @@ explain (costs off)
                                        ->  Seq Scan on ec1
                                        ->  Seq Scan on ec1 ec1_1
                            ->  Seq Scan on ec1 ec1_2
- Optimizer: Pivotal Optimizer (GPORCA) version 3.83.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (14 rows)
 
 explain (costs off)
@@ -274,7 +274,7 @@ explain (costs off)
                                        ->  Seq Scan on ec1
                                        ->  Seq Scan on ec1 ec1_1
                            ->  Seq Scan on ec1 ec1_2
- Optimizer: Pivotal Optimizer (GPORCA) version 3.83.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (15 rows)
 
 explain (costs off)
@@ -318,7 +318,7 @@ explain (costs off)
                                        ->  Seq Scan on ec1 ec1_4
                                        ->  Seq Scan on ec1 ec1_5
                            ->  Seq Scan on ec1 ec1_6
- Optimizer: Pivotal Optimizer (GPORCA) version 3.83.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (25 rows)
 
 -- let's try that as a mergejoin
@@ -365,7 +365,7 @@ explain (costs off)
                                        ->  Seq Scan on ec1 ec1_4
                                        ->  Seq Scan on ec1 ec1_5
                            ->  Seq Scan on ec1 ec1_6
- Optimizer: Pivotal Optimizer (GPORCA) version 3.83.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (25 rows)
 
 -- check partially indexed scan
@@ -396,7 +396,7 @@ explain (costs off)
                                        ->  Seq Scan on ec1
                                        ->  Seq Scan on ec1 ec1_1
                            ->  Seq Scan on ec1 ec1_2
- Optimizer: Pivotal Optimizer (GPORCA) version 3.83.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (14 rows)
 
 -- let's try that as a mergejoin
@@ -426,7 +426,7 @@ explain (costs off)
                                        ->  Seq Scan on ec1
                                        ->  Seq Scan on ec1 ec1_1
                            ->  Seq Scan on ec1 ec1_2
- Optimizer: Pivotal Optimizer (GPORCA) version 3.83.0
+ Optimizer: Pivotal Optimizer (GPORCA)
 (14 rows)
 
 -- check effects of row-level security
@@ -435,6 +435,7 @@ set enable_mergejoin = off;
 alter table ec1 enable row level security;
 create policy p1 on ec1 using (f1 < '5'::int8alias1);
 create user regress_user_ectest;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
 grant select on ec0 to regress_user_ectest;
 grant select on ec1 to regress_user_ectest;
 -- without any RLS, we'll treat {a.ff, b.ff, 43} as an EquivalenceClass
@@ -501,6 +502,8 @@ explain (costs off)
 
 -- check that we recognize equivalence with dummy domains in the way
 create temp table undername (f1 name, f2 int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 create temp view overview as
   select f1::information_schema.sql_identifier as sqli, f2 from undername;
 explain (costs off)  -- this should not require a sort

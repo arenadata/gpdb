@@ -110,14 +110,14 @@ SET enable_indexscan = OFF;
 SET enable_bitmapscan = OFF;
 
 SELECT * FROM fast_emp4000
-    WHERE home_base @ '(200,200),(2000,1000)'::box
+    WHERE home_base <@ '(200,200),(2000,1000)'::box
     ORDER BY (home_base[0])[0];
 
 SELECT count(*) FROM fast_emp4000 WHERE home_base && '(1000,1000,0,0)'::box;
 
 SELECT count(*) FROM fast_emp4000 WHERE home_base IS NULL;
 
-SELECT * FROM polygon_tbl WHERE f1 ~ '((1,1),(2,2),(2,1))'::polygon
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];
 
 SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
@@ -148,13 +148,13 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
 -- In gpdb, we intentional filter out point (1e-300, -1e-300) every order by related queries
 -- in this test case file. It is an underflow point, rank it cause randomly results( (0,0),
 -- (1e-300, -1e-300) are equal).
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1', f1[0];
 
 SELECT * FROM point_tbl WHERE f1 IS NULL;
 
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1', f1[0];
 
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1', f1[0];
 
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
 
@@ -167,10 +167,10 @@ SET enable_bitmapscan = OFF;
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM fast_emp4000
-    WHERE home_base @ '(200,200),(2000,1000)'::box
+    WHERE home_base <@ '(200,200),(2000,1000)'::box
     ORDER BY (home_base[0])[0];
 SELECT * FROM fast_emp4000
-    WHERE home_base @ '(200,200),(2000,1000)'::box
+    WHERE home_base <@ '(200,200),(2000,1000)'::box
     ORDER BY (home_base[0])[0];
 
 EXPLAIN (COSTS OFF)
@@ -182,9 +182,9 @@ SELECT count(*) FROM fast_emp4000 WHERE home_base IS NULL;
 SELECT count(*) FROM fast_emp4000 WHERE home_base IS NULL;
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM polygon_tbl WHERE f1 ~ '((1,1),(2,2),(2,1))'::polygon
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];
-SELECT * FROM polygon_tbl WHERE f1 ~ '((1,1),(2,2),(2,1))'::polygon
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];
 
 EXPLAIN (COSTS OFF)
@@ -238,20 +238,20 @@ SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
 SELECT count(*) FROM point_tbl p WHERE p.f1 ~= '(-5, -12)';
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1', f1[0];
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1', f1[0];
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM point_tbl WHERE f1 IS NULL;
 SELECT * FROM point_tbl WHERE f1 IS NULL;
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1', f1[0];
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1', f1[0];
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1', f1[0];
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1', f1[0];
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
@@ -267,8 +267,8 @@ SET enable_indexscan = OFF;
 SET enable_bitmapscan = ON;
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
-SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1', f1[0];
+SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1', f1[0];
 
 RESET enable_seqscan;
 RESET enable_indexscan;

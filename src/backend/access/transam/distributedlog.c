@@ -661,7 +661,8 @@ DistributedLog_ShmemInit(void)
 	DistributedLogCtl->PagePrecedes = DistributedLog_PagePrecedes;
 	SimpleLruInit(DistributedLogCtl, "DistributedLogCtl", DistributedLog_ShmemBuffers(), 0,
 				  DistributedLogControlLock, "pg_distributedlog",
-				  LWTRANCHE_DISTRIBUTEDLOG_BUFFERS);
+				  LWTRANCHE_DISTRIBUTEDLOG_BUFFERS,
+				  SYNC_HANDLER_NONE);
 
 	/* Create or attach to the shared structure */
 	DistributedLogShared =
@@ -849,7 +850,7 @@ DistributedLog_Shutdown(void)
 		 "DistributedLog_Shutdown");
 
 	/* Flush dirty DistributedLog pages to disk */
-	SimpleLruFlush(DistributedLogCtl, false);
+	SimpleLruWriteAll(DistributedLogCtl, false);
 }
 
 /*
@@ -865,7 +866,7 @@ DistributedLog_CheckPoint(void)
 		 "DistributedLog_CheckPoint");
 
 	/* Flush dirty DistributedLog pages to disk */
-	SimpleLruFlush(DistributedLogCtl, true);
+	SimpleLruWriteAll(DistributedLogCtl, true);
 }
 
 

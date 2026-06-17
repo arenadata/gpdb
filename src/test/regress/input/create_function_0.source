@@ -1,0 +1,40 @@
+--
+-- CREATE_FUNCTION_0
+--
+
+-- Create a bunch of C functions that will be used by later tests:
+
+CREATE FUNCTION test_enc_conversion(bytea, name, name, bool, validlen OUT int, result OUT bytea)
+    AS '@libdir@/regress@DLSUFFIX@', 'test_enc_conversion'
+    LANGUAGE C STRICT;
+
+CREATE FUNCTION binary_coercible(oid, oid)
+    RETURNS bool
+    AS '@libdir@/regress@DLSUFFIX@', 'binary_coercible'
+    LANGUAGE C STRICT STABLE PARALLEL SAFE;
+
+-- Things that shouldn't work:
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
+    AS 'SELECT ''not an integer'';';
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
+    AS 'not even SQL';
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
+    AS 'SELECT 1, 2, 3;';
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
+    AS 'SELECT $2;';
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
+    AS 'a', 'b';
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE C
+    AS 'nosuchfile';
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE C
+    AS '@libdir@/regress@DLSUFFIX@', 'nosuchsymbol';
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE internal
+    AS 'nosuch';

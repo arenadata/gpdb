@@ -18,7 +18,7 @@
  * some don't pay attention to non-default functions at all.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_amproc.h
@@ -72,5 +72,8 @@ FOREIGN_KEY(amproc REFERENCES pg_proc(oid));
  * ----------------
  */
 typedef FormData_pg_amproc *Form_pg_amproc;
+
+#define AccessMethodProcedureIndexId  2655
+#define AccessMethodProcedureOidIndexId  2757
 
 #endif							/* PG_AMPROC_H */

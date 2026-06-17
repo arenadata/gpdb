@@ -4,7 +4,7 @@
  *	  definition of the "trigger" system catalog (pg_trigger)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_trigger.h
@@ -34,18 +34,25 @@
 CATALOG(pg_trigger,2620,TriggerRelationId)
 {
 	Oid			oid;			/* oid */
-	Oid			tgrelid;		/* relation trigger is attached to */
-	Oid			tgparentid;		/* OID of parent trigger, if any */
+	Oid			tgrelid BKI_LOOKUP(pg_class);	/* relation trigger is
+												 * attached to */
+	Oid			tgparentid BKI_LOOKUP_OPT(pg_trigger);	/* OID of parent
+														 * trigger, if any */
 	NameData	tgname;			/* trigger's name */
-	Oid			tgfoid;			/* OID of function to be called */
+	Oid			tgfoid BKI_LOOKUP(pg_proc); /* OID of function to be called */
 	int16		tgtype;			/* BEFORE/AFTER/INSTEAD, UPDATE/DELETE/INSERT,
 								 * ROW/STATEMENT; see below */
 	char		tgenabled;		/* trigger's firing configuration WRT
 								 * session_replication_role */
 	bool		tgisinternal;	/* trigger is system-generated */
-	Oid			tgconstrrelid;	/* constraint's FROM table, if any */
-	Oid			tgconstrindid;	/* constraint's supporting index, if any */
-	Oid			tgconstraint;	/* associated pg_constraint entry, if any */
+	Oid			tgconstrrelid BKI_LOOKUP_OPT(pg_class); /* constraint's FROM
+														 * table, if any */
+	Oid			tgconstrindid BKI_LOOKUP_OPT(pg_class); /* constraint's
+														 * supporting index, if
+														 * any */
+	Oid			tgconstraint BKI_LOOKUP_OPT(pg_constraint); /* associated
+															 * pg_constraint entry,
+															 * if any */
 	bool		tgdeferrable;	/* constraint trigger is deferrable */
 	bool		tginitdeferred; /* constraint trigger is deferred initially */
 	int16		tgnargs;		/* # of extra arguments in tgargs */
@@ -76,6 +83,12 @@ FOREIGN_KEY(tgconstrrelid REFERENCES pg_class(oid));
  * ----------------
  */
 typedef FormData_pg_trigger *Form_pg_trigger;
+
+
+#define TriggerConstraintIndexId  2699
+#define TriggerRelidNameIndexId  2701
+#define TriggerOidIndexId  2702
+
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

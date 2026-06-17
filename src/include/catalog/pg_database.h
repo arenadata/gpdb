@@ -4,7 +4,7 @@
  *	  definition of the "database" system catalog (pg_database)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_database.h
@@ -35,7 +35,7 @@ CATALOG(pg_database,1262,DatabaseRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID
 	NameData	datname;
 
 	/* owner of database */
-	Oid			datdba BKI_DEFAULT(PGUID);
+	Oid			datdba BKI_DEFAULT(POSTGRES) BKI_LOOKUP(pg_authid);
 
 	/* character encoding */
 	int32		encoding;
@@ -83,5 +83,11 @@ FOREIGN_KEY(dattablespace REFERENCES pg_tablespace(oid));
  * ----------------
  */
 typedef FormData_pg_database *Form_pg_database;
+
+#define PgDatabaseToastTable 4177
+#define PgDatabaseToastIndex 4178
+
+#define DatabaseNameIndexId  2671
+#define DatabaseOidIndexId	2672
 
 #endif							/* PG_DATABASE_H */

@@ -59,6 +59,7 @@
 
 #include "common/int.h"
 #include "common/logging.h"
+#include "common/string.h"
 #include "fe_utils/cancel.h"
 #include "fe_utils/conditional.h"
 #include "getopt_long.h"
@@ -1224,7 +1225,11 @@ doConnect(void)
 			!have_password)
 		{
 			PQfinish(conn);
-			simple_prompt("Password: ", password, sizeof(password), false);
+			{
+				char *p = simple_prompt("Password: ", false);
+				strlcpy(password, p, sizeof(password));
+				free(p);
+			}
 			have_password = true;
 			new_pass = true;
 		}

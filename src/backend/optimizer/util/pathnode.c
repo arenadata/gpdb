@@ -5,7 +5,7 @@
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1304,6 +1304,35 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals,
 }
 
 /*
+ * create_tidrangescan_path
+ *	  Creates a path corresponding to a scan by a range of TIDs, returning
+ *	  the pathnode.
+ */
+TidRangePath *
+create_tidrangescan_path(PlannerInfo *root, RelOptInfo *rel,
+						 List *tidrangequals, Relids required_outer)
+{
+	TidRangePath *pathnode = makeNode(TidRangePath);
+
+	pathnode->path.pathtype = T_TidRangeScan;
+	pathnode->path.parent = rel;
+	pathnode->path.pathtarget = rel->reltarget;
+	pathnode->path.param_info = get_baserel_parampathinfo(root, rel,
+														  required_outer);
+	pathnode->path.parallel_aware = false;
+	pathnode->path.parallel_safe = rel->consider_parallel;
+	pathnode->path.parallel_workers = 0;
+	pathnode->path.pathkeys = NIL;	/* always unordered */
+
+	pathnode->tidrangequals = tidrangequals;
+
+	cost_tidrangescan(&pathnode->path, root, rel, tidrangequals,
+					  pathnode->path.param_info);
+
+	return pathnode;
+}
+
+/*
  * create_append_path
  *	  Creates a path corresponding to an Append plan, returning the
  *	  pathnode.
@@ -1317,7 +1346,7 @@ create_append_path(PlannerInfo *root,
 				   List *subpaths, List *partial_subpaths,
 				   List *pathkeys, Relids required_outer,
 				   int parallel_workers, bool parallel_aware,
-				   List *partitioned_rels, double rows)
+				   double rows)
 {
 	AppendPath *pathnode = makeNode(AppendPath);
 	ListCell   *l;
@@ -1330,15 +1359,14 @@ create_append_path(PlannerInfo *root,
 
 	/*
 	 * When generating an Append path for a partitioned table, there may be
-	 * parameters that are useful so we can eliminate certain partitions
-	 * during execution.  Here we'll go all the way and fully populate the
-	 * parameter info data as we do for normal base relations.  However, we
-	 * need only bother doing this for RELOPT_BASEREL rels, as
-	 * RELOPT_OTHER_MEMBER_REL's Append paths are merged into the base rel's
-	 * Append subpaths.  It would do no harm to do this, we just avoid it to
-	 * save wasting effort.
+	 * parameterized quals that are useful for run-time pruning.  Hence,
+	 * compute path.param_info the same way as for any other baserel, so that
+	 * such quals will be available for make_partition_pruneinfo().  (This
+	 * would not work right for a non-baserel, ie a scan on a non-leaf child
+	 * partition, and it's not necessary anyway in that case.  Must skip it if
+	 * we don't have "root", too.)
 	 */
-	if (partitioned_rels != NIL && root && rel->reloptkind == RELOPT_BASEREL)
+	if (root && rel->reloptkind == RELOPT_BASEREL && IS_PARTITIONED_REL(rel))
 		pathnode->path.param_info = get_baserel_parampathinfo(root,
 															  rel,
 															  required_outer);
@@ -1350,7 +1378,6 @@ create_append_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
-	pathnode->partitioned_rels = list_copy(partitioned_rels);
 
 	pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = true;
@@ -1484,8 +1511,7 @@ create_merge_append_path(PlannerInfo *root,
 						 RelOptInfo *rel,
 						 List *subpaths,
 						 List *pathkeys,
-						 Relids required_outer,
-						 List *partitioned_rels)
+						 Relids required_outer)
 {
 	MergeAppendPath *pathnode = makeNode(MergeAppendPath);
 	Cost		input_startup_cost;
@@ -1501,7 +1527,6 @@ create_merge_append_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = pathkeys;
-	pathnode->partitioned_rels = list_copy(partitioned_rels);
 	pathnode->subpaths = subpaths;
 
 	/*
@@ -1877,7 +1902,8 @@ set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
 				else
 					numsegments = subpath->locus.numsegments;
 
-				restrict_info = make_restrictinfo((Expr *) makeSegmentFilterExpr(
+				restrict_info = make_restrictinfo(root,
+												  (Expr *) makeSegmentFilterExpr(
 													  gp_session_id % numsegments),
 												  true,		/* is_pushed_down */
 												  false,	/* outerjoin_delayed */
@@ -1998,7 +2024,7 @@ create_group_result_path(PlannerInfo *root, RelOptInfo *rel,
  *	  pathnode.
  */
 MaterialPath *
-create_material_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
+create_material_path(RelOptInfo *rel, Path *subpath)
 {
 	MaterialPath *pathnode = makeNode(MaterialPath);
 
@@ -2023,11 +2049,68 @@ create_material_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 	pathnode->subpath = subpath;
 
 	cost_material(&pathnode->path,
-				  root,
 				  subpath->startup_cost,
 				  subpath->total_cost,
 				  subpath->rows,
 				  subpath->pathtarget->width);
+
+	return pathnode;
+}
+
+/*
+ * create_resultcache_path
+ *	  Creates a path corresponding to a ResultCache plan, returning the
+ *	  pathnode.
+ */
+ResultCachePath *
+create_resultcache_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
+						List *param_exprs, List *hash_operators,
+						bool singlerow, double calls)
+{
+	ResultCachePath *pathnode = makeNode(ResultCachePath);
+
+	Assert(subpath->parent == rel);
+
+	pathnode->path.pathtype = T_ResultCache;
+	pathnode->path.parent = rel;
+	pathnode->path.pathtarget = rel->reltarget;
+	pathnode->path.param_info = subpath->param_info;
+	pathnode->path.parallel_aware = false;
+	pathnode->path.parallel_safe = rel->consider_parallel &&
+		subpath->parallel_safe;
+	pathnode->path.parallel_workers = subpath->parallel_workers;
+	pathnode->path.pathkeys = subpath->pathkeys;
+	pathnode->path.rescannable = subpath->rescannable;
+
+	/*
+	 * GPDB: a Result Cache (Memoize) inherits the distribution (locus) of its
+	 * subpath.  Without this the path reaches join-motion planning with an
+	 * uninitialized CdbPathLocus (FailedAssertion cdbpathlocus_is_valid).
+	 */
+	pathnode->path.locus = subpath->locus;
+
+	pathnode->subpath = subpath;
+	pathnode->hash_operators = hash_operators;
+	pathnode->param_exprs = param_exprs;
+	pathnode->singlerow = singlerow;
+	pathnode->calls = calls;
+
+	/*
+	 * For now we set est_entries to 0.  cost_resultcache_rescan() does all
+	 * the hard work to determine how many cache entries there are likely to
+	 * be, so it seems best to leave it up to that function to fill this field
+	 * in.  If left at 0, the executor will make a guess at a good value.
+	 */
+	pathnode->est_entries = 0;
+
+	/*
+	 * Add a small additional charge for caching the first entry.  All the
+	 * harder calculations for rescans are performed in
+	 * cost_resultcache_rescan().
+	 */
+	pathnode->path.startup_cost = subpath->startup_cost + cpu_tuple_cost;
+	pathnode->path.total_cost = subpath->total_cost + cpu_tuple_cost;
+	pathnode->path.rows = subpath->rows;
 
 	return pathnode;
 }
@@ -2229,6 +2312,7 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->path.rows = estimate_num_groups(root,
 											  sjinfo->semi_rhs_exprs,
 											  rel->rows,
+											  NULL,
 											  NULL);
 	numCols = list_length(sjinfo->semi_rhs_exprs);
 
@@ -3606,7 +3690,7 @@ create_nestloop_path(PlannerInfo *root,
 	 */
 	if (!outer_path->rescannable && !bms_is_empty(required_outer))
 	{
-		MaterialPath *matouter = create_material_path(root, outer_path->parent, outer_path);
+		MaterialPath *matouter = create_material_path(outer_path->parent, outer_path);
 
 		matouter->cdb_shield_child_from_rescans = true;
 
@@ -3623,7 +3707,7 @@ create_nestloop_path(PlannerInfo *root,
 		 * NLs potentially rescan the inner; if our inner path
 		 * isn't rescannable we have to add a materialize node
 		 */
-		MaterialPath *matinner = create_material_path(root, inner_path->parent, inner_path);
+		MaterialPath *matinner = create_material_path(inner_path->parent, inner_path);
 
 		matinner->cdb_shield_child_from_rescans = true;
 
@@ -4110,7 +4194,33 @@ create_projection_path_with_quals(PlannerInfo *root,
 								  bool need_param)
 {
 	ProjectionPath *pathnode = makeNode(ProjectionPath);
-	PathTarget *oldtarget = subpath->pathtarget;
+	PathTarget *oldtarget;
+
+	/*
+	 * We mustn't put a ProjectionPath directly above another; it's useless
+	 * and will confuse create_projection_plan.  Rather than making sure all
+	 * callers handle that, let's implement it here, by stripping off any
+	 * ProjectionPath in what we're given.  Given this rule, there won't be
+	 * more than one.
+	 */
+	if (IsA(subpath, ProjectionPath))
+	{
+		ProjectionPath *subpp = (ProjectionPath *) subpath;
+
+		Assert(subpp->path.parent == rel);
+		/*
+		 * GPDB: The stripped ProjectionPath may carry restrict clauses (e.g. a
+		 * correlated subquery's param filter applied above a Motion by
+		 * bring_to_outer_query()). Those can only be evaluated by a real Result
+		 * node, so we must not lose them when collapsing the two projections
+		 * into one. Carry them up into the surviving ProjectionPath.
+		 */
+		if (subpp->cdb_restrict_clauses)
+			restrict_clauses = list_concat(list_copy(subpp->cdb_restrict_clauses),
+										   restrict_clauses);
+		subpath = subpp->subpath;
+		Assert(!IsA(subpath, ProjectionPath));
+	}
 
 	pathnode->path.pathtype = T_Result;
 	pathnode->path.parent = rel;
@@ -4137,11 +4247,17 @@ create_projection_path_with_quals(PlannerInfo *root,
 	 * Note: in the latter case, create_projection_plan has to recheck our
 	 * conclusion; see comments therein.
 	 *
-	 * GPDB: The 'restrict_clauses' is a GPDB addition. If the subpath supports
-	 * Filters, we could push them down too. But currently this is only used on
-	 * top of Material paths, which don't support it, so it doesn't matter.
+	 * GPDB: The 'restrict_clauses' is a GPDB addition, used by
+	 * bring_to_outer_query() to apply a correlated subquery's param filter
+	 * above a Motion. We do not push those Filters down into the subpath here,
+	 * so when restrict_clauses is non-empty we always need a real Result node
+	 * to carry them (create_projection_plan puts them in plan->qual). Eliding
+	 * the Result in that case would silently drop the filter and run the
+	 * subquery uncorrelated, so only take the no-Result shortcut when there are
+	 * no restrict clauses.
 	 */
-	if (!restrict_clauses &&
+	oldtarget = subpath->pathtarget;
+	if (restrict_clauses == NIL &&
 		(is_projection_capable_path(subpath) ||
 		 equal(oldtarget->exprs, target->exprs)))
 	{
@@ -4361,7 +4477,7 @@ create_set_projection_path(PlannerInfo *root,
  * 'limit_tuples' is the estimated bound on the number of output tuples,
  *		or -1 if no LIMIT or couldn't estimate
  */
-SortPath *
+IncrementalSortPath *
 create_incremental_sort_path(PlannerInfo *root,
 							 RelOptInfo *rel,
 							 Path *subpath,
@@ -4398,7 +4514,7 @@ create_incremental_sort_path(PlannerInfo *root,
 
 	sort->nPresortedCols = presorted_keys;
 
-	return pathnode;
+	return sort;
 }
 
 /*
@@ -5199,6 +5315,7 @@ create_lockrows_path(PlannerInfo *root, RelOptInfo *rel,
  *	  Creates a pathnode that represents performing INSERT/UPDATE/DELETE mods
  *
  * 'rel' is the parent relation associated with the result
+ * 'subpath' is a Path producing source data
  * 'operation' is the operation type
  * 'canSetTag' is true if we set the command tag/es_processed
  * 'nominalRelation' is the parent RT index for use of EXPLAIN
@@ -5206,8 +5323,8 @@ create_lockrows_path(PlannerInfo *root, RelOptInfo *rel,
  * 'partColsUpdated' is true if any partitioning columns are being updated,
  *		either from the target relation or a descendent partitioned table.
  * 'resultRelations' is an integer list of actual RT indexes of target rel(s)
- * 'subpaths' is a list of Path(s) producing source data (one per rel)
- * 'subroots' is a list of PlannerInfo structs (one per rel)
+ * 'updateColnosLists' is a list of UPDATE target column number lists
+ *		(one sublist per rel); or NIL if not an UPDATE
  * 'withCheckOptionLists' is a list of WCO lists (one per rel)
  * 'returningLists' is a list of RETURNING tlists (one per rel)
  * 'rowMarks' is a list of PlanRowMarks (non-locking only)
@@ -5216,22 +5333,23 @@ create_lockrows_path(PlannerInfo *root, RelOptInfo *rel,
  */
 ModifyTablePath *
 create_modifytable_path(PlannerInfo *root, RelOptInfo *rel,
+						Path *subpath,
 						CmdType operation, bool canSetTag,
 						Index nominalRelation, Index rootRelation,
 						bool partColsUpdated,
-						List *resultRelations, List *subpaths,
-						List *subroots,
+						List *resultRelations,
+						List *updateColnosLists,
 						List *withCheckOptionLists, List *returningLists,
 						List *is_split_updates,
 						List *rowMarks, OnConflictExpr *onconflict,
 						int epqParam)
 {
 	ModifyTablePath *pathnode = makeNode(ModifyTablePath);
-	double		total_size;
-	ListCell   *lc;
+	List	   *subpaths;
 
-	Assert(list_length(resultRelations) == list_length(subpaths));
-	Assert(list_length(resultRelations) == list_length(subroots));
+	Assert(operation == CMD_UPDATE ?
+		   list_length(resultRelations) == list_length(updateColnosLists) :
+		   updateColnosLists == NIL);
 	Assert(withCheckOptionLists == NIL ||
 		   list_length(resultRelations) == list_length(withCheckOptionLists));
 	Assert(returningLists == NIL ||
@@ -5252,12 +5370,23 @@ create_modifytable_path(PlannerInfo *root, RelOptInfo *rel,
 	/*
 	 * Put Motions on top of the subpaths as needed, and set the locus of the
 	 * ModifyTable path itself.
+	 *
+	 * adjust_modifytable_subpaths() wraps each subpath in the Motion required
+	 * to distribute its output according to the target table's policy, writing
+	 * the wrapped paths back into the list.  We must keep that list and use the
+	 * wrapped subpath below; otherwise the Motion is discarded and e.g. a
+	 * General-locus source (VALUES, generate_series) is executed on every
+	 * segment, inserting duplicate rows.
 	 */
+	subpaths = list_make1(subpath);
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
 		pathnode->path.locus =
 			adjust_modifytable_subpaths(root, operation,
 										resultRelations, subpaths,
 										is_split_updates);
+		subpath = (Path *) linitial(subpaths);
+	}
 	else
 	{
 		/* don't allow split updates in utility mode. */
@@ -5274,6 +5403,7 @@ create_modifytable_path(PlannerInfo *root, RelOptInfo *rel,
 
 	/*
 	 * Compute cost & rowcount as sum of subpath costs & rowcounts.
+	 * Compute cost & rowcount as subpath cost & rowcount (if RETURNING)
 	 *
 	 * Currently, we don't charge anything extra for the actual table
 	 * modification work, nor for the WITH CHECK OPTIONS or RETURNING
@@ -5282,31 +5412,27 @@ create_modifytable_path(PlannerInfo *root, RelOptInfo *rel,
 	 * costs to change any higher-level planning choices.  But we might want
 	 * to make it look better sometime.
 	 */
-	pathnode->path.startup_cost = 0;
-	pathnode->path.total_cost = 0;
-	pathnode->path.rows = 0;
-	total_size = 0;
-	foreach(lc, subpaths)
+	pathnode->path.startup_cost = subpath->startup_cost;
+	pathnode->path.total_cost = subpath->total_cost;
+	if (returningLists != NIL)
 	{
-		Path	   *subpath = (Path *) lfirst(lc);
+		pathnode->path.rows = subpath->rows;
 
-		if (lc == list_head(subpaths))	/* first node? */
-			pathnode->path.startup_cost = subpath->startup_cost;
-		pathnode->path.total_cost += subpath->total_cost;
-		pathnode->path.rows += subpath->rows;
-		total_size += subpath->pathtarget->width * subpath->rows;
+		/*
+		 * Set width to match the subpath output.  XXX this is totally wrong:
+		 * we should return an average of the RETURNING tlist widths.  But
+		 * it's what happened historically, and improving it is a task for
+		 * another day.  (Again, it's mostly window dressing.)
+		 */
+		pathnode->path.pathtarget->width = subpath->pathtarget->width;
+	}
+	else
+	{
+		pathnode->path.rows = 0;
+		pathnode->path.pathtarget->width = 0;
 	}
 
-	/*
-	 * Set width to the average width of the subpath outputs.  XXX this is
-	 * totally wrong: we should report zero if no RETURNING, else an average
-	 * of the RETURNING tlist widths.  But it's what happened historically,
-	 * and improving it is a task for another day.
-	 */
-	if (pathnode->path.rows > 0)
-		total_size /= pathnode->path.rows;
-	pathnode->path.pathtarget->width = rint(total_size);
-
+	pathnode->subpath = subpath;
 	pathnode->operation = operation;
 	pathnode->canSetTag = canSetTag;
 	pathnode->nominalRelation = nominalRelation;
@@ -5315,7 +5441,8 @@ create_modifytable_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->resultRelations = resultRelations;
 	pathnode->is_split_updates = is_split_updates;
 	pathnode->subpaths = subpaths;
-	pathnode->subroots = subroots;
+	pathnode->subroots = NIL;
+	pathnode->updateColnosLists = updateColnosLists;
 	pathnode->withCheckOptionLists = withCheckOptionLists;
 	pathnode->returningLists = returningLists;
 	pathnode->rowMarks = rowMarks;
@@ -5710,8 +5837,18 @@ reparameterize_path(PlannerInfo *root, Path *path,
 									   apath->path.pathkeys, required_outer,
 									   apath->path.parallel_workers,
 									   apath->path.parallel_aware,
-									   apath->partitioned_rels,
 									   -1);
+			}
+		case T_ResultCache:
+			{
+				ResultCachePath *rcpath = (ResultCachePath *) path;
+
+				return (Path *) create_resultcache_path(root, rel,
+														rcpath->subpath,
+														rcpath->param_exprs,
+														rcpath->hash_operators,
+														rcpath->singlerow,
+														rcpath->calls);
 			}
 		default:
 			break;
@@ -5928,6 +6065,16 @@ do { \
 				FLAT_COPY_PATH(apath, path, AppendPath);
 				REPARAMETERIZE_CHILD_PATH_LIST(apath->subpaths);
 				new_path = (Path *) apath;
+			}
+			break;
+
+		case T_ResultCachePath:
+			{
+				ResultCachePath *rcpath;
+
+				FLAT_COPY_PATH(rcpath, path, ResultCachePath);
+				REPARAMETERIZE_CHILD_PATH(rcpath->subpath);
+				new_path = (Path *) rcpath;
 			}
 			break;
 

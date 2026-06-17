@@ -4,7 +4,7 @@
  *	  definition of the "access method" system catalog (pg_am)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_am.h
@@ -49,6 +49,9 @@ FOREIGN_KEY(amhandler REFERENCES pg_proc(oid));
  * ----------------
  */
 typedef FormData_pg_am *Form_pg_am;
+
+#define AmNameIndexId  2651
+#define AmOidIndexId  2652
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

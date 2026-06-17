@@ -62,6 +62,7 @@
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
+#include "optimizer/prep.h"
 #include "optimizer/paths.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_clause.h"
@@ -1551,8 +1552,7 @@ add_multi_dqas_hash_agg_path(PlannerInfo *root,
 										  info->dqa_expr_lst);
 
 	AggClauseCosts DedupCost = {};
-	get_agg_clause_costs(root, (Node *) info->tup_split_target->exprs,
-						 AGGSPLIT_SIMPLE,
+	get_agg_clause_costs(root, AGGSPLIT_SIMPLE,
 						 &DedupCost);
 
 	if (gp_enable_dqa_pruning)
@@ -2148,11 +2148,20 @@ fetch_multi_dqas_info(PlannerInfo *root,
 			dNumDistinctGroups += estimate_num_groups(root,
 			                                          this_dqa_group_exprs,
 			                                          num_total_input_rows,
-			                                          NULL);
+			                                          NULL, NULL);
 		}
 
-		/* assign an agg_expr_id value to aggref*/
+		/*
+		 * Assign the agg_expr_id value to both stage instances of this
+		 * aggregate.  The guarded (TupleSplit-consuming) stage reads it to
+		 * match split tuples against its transition (see
+		 * ExecBuildAggTrans); assigning only one instance left the partial
+		 * stage at 0, so every guard compared the AggExprId column against
+		 * -1 and no transition ever advanced: all multi-DQA aggregates
+		 * returned NULL/0.
+		 */
 		aggref->agg_expr_id = agg_expr_id;
+		aggref_final->agg_expr_id = agg_expr_id;
 
 		/* rid of filter in aggref */
 		aggref->aggfilter = NULL;
@@ -2181,8 +2190,73 @@ fetch_multi_dqas_info(PlannerInfo *root,
 	info->dqa_group_clause = list_concat(info->dqa_group_clause,
 										 list_copy(ctx->groupClause));
 
-	info->partial_target= ctx->partial_grouping_target;
-	info->final_target = ctx->target;
+	/*
+	 * The partial and final stage targetlists carry their own flat-copies of
+	 * the DISTINCT Aggrefs (made by make_partial_grouping_target() and the
+	 * query's grouping target), distinct from the cost-list copies mutated by
+	 * the loop above.  Two adjustments made there on the cost-list copies must
+	 * also reach these plan copies, matched by aggno (shared across stage
+	 * instances of the same aggregate):
+	 *
+	 *  - agg_expr_id (partial stage only): the guarded, TupleSplit-consuming
+	 *    stage reads it to match split tuples against its transition.  Without
+	 *    it every guard compared the AggExprId column against -1 and all
+	 *    multi-DQA aggregates returned NULL/0.
+	 *
+	 *  - aggfilter removal (both stages): a DISTINCT aggregate's FILTER is
+	 *    enforced down in TupleSplit via DQAExpr.agg_filter (the fetch loop
+	 *    above moved it there and cleared it on the cost-list copies).  Leaving
+	 *    it on the plan Aggref makes setrefs try to resolve the raw filter
+	 *    columns against a subplan that no longer exposes them, failing with
+	 *    "variable not found in subplan target list".
+	 *
+	 * copy_pathtarget() only shallow-copies the expr list, so mutate private
+	 * copies of the Aggrefs to avoid disturbing the ones other (non-TupleSplit)
+	 * candidate paths for this rel still share.
+	 */
+	info->partial_target = copy_pathtarget(ctx->partial_grouping_target);
+	info->final_target = copy_pathtarget(ctx->target);
+	{
+		PathTarget *plan_targets[2];
+		bool		stamp_expr_id[2];
+
+		plan_targets[0] = info->partial_target;
+		stamp_expr_id[0] = true;
+		plan_targets[1] = info->final_target;
+		stamp_expr_id[1] = false;
+
+		for (int ti = 0; ti < 2; ti++)
+		{
+			ListCell   *lc_t;
+
+			foreach(lc_t, plan_targets[ti]->exprs)
+			{
+				Expr	   *expr = (Expr *) lfirst(lc_t);
+				ListCell   *lc_a;
+
+				if (!IsA(expr, Aggref))
+					continue;
+				forboth(lc_a, ctx->agg_partial_costs->distinctAggrefs,
+						lc, ctx->agg_final_costs->distinctAggrefs)
+				{
+					Aggref	   *stamped = (Aggref *) lfirst(lc_a);
+					Aggref	   *stamped_final = (Aggref *) lfirst(lc);
+
+					if (stamped->aggno == ((Aggref *) expr)->aggno)
+					{
+						Aggref	   *plan_agg = copyObject((Aggref *) expr);
+
+						if (stamp_expr_id[ti])
+							plan_agg->agg_expr_id =
+								Max(stamped->agg_expr_id, stamped_final->agg_expr_id);
+						plan_agg->aggfilter = NULL;
+						lfirst(lc_t) = plan_agg;
+						break;
+					}
+				}
+			}
+		}
+	}
 }
 
 /*
@@ -2277,7 +2351,7 @@ fetch_single_dqa_info(PlannerInfo *root,
 	info->dNumDistinctGroups = estimate_num_groups(root,
 												   dqa_group_exprs,
 												   num_total_input_rows,
-												   NULL);
+												   NULL, NULL);
 }
 
 /*

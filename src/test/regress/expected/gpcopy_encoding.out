@@ -14,6 +14,8 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into enctest values (chr(196)); -- Latin Capital Letter a with Diaeresis
 -- with UTF-8 as the server encoding, it should be stored as two bytes.
 select octet_length(t) from enctest;
+NOTICE:  One or more columns in the following table(s) do not have statistics: enctest
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  octet_length 
 --------------
             2
@@ -40,6 +42,8 @@ copy enctest from '/tmp/enctest_utf_to_latin1-2' encoding 'latin1';
 -- with latin1 as the server encoding, the character we used in the tests should be
 -- stored as one byte.
 select octet_length(t) from enctest;
+NOTICE:  One or more columns in the following table(s) do not have statistics: enctest
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  octet_length 
 --------------
             1
@@ -49,6 +53,8 @@ select octet_length(t) from enctest;
 (4 rows)
 
 select * from enctest;
+NOTICE:  One or more columns in the following table(s) do not have statistics: enctest
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  t 
 ---
  Ä

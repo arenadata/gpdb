@@ -3,7 +3,7 @@
  * plpgsql.h		- Definitions for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -128,8 +128,7 @@ typedef enum PLpgSQL_stmt_type
 	PLPGSQL_STMT_PERFORM,
 	PLPGSQL_STMT_CALL,
 	PLPGSQL_STMT_COMMIT,
-	PLPGSQL_STMT_ROLLBACK,
-	PLPGSQL_STMT_SET
+	PLPGSQL_STMT_ROLLBACK
 } PLpgSQL_stmt_type;
 
 /*
@@ -218,11 +217,10 @@ typedef struct PLpgSQL_type
  */
 typedef struct PLpgSQL_expr
 {
-	char	   *query;
-	SPIPlanPtr	plan;
-	bool		cachable;			/* true if plan can be cached */
+	char	   *query;			/* query string, verbatim from function body */
+	RawParseMode parseMode;		/* raw_parser() mode to use */
+	SPIPlanPtr	plan;			/* plan, or NULL if not made yet */
 	Bitmapset  *paramnos;		/* all dnos referenced by this query */
-	int			rwparam;		/* dno of read/write param, or -1 if none */
 
 	/* function containing this expr (not set until we first parse query) */
 	struct PLpgSQL_function *func;
@@ -235,6 +233,17 @@ typedef struct PLpgSQL_expr
 	Oid			expr_simple_type;	/* result type Oid, if simple */
 	int32		expr_simple_typmod; /* result typmod, if simple */
 	bool		expr_simple_mutable;	/* true if simple expr is mutable */
+
+	/*
+	 * These fields are used to optimize assignments to expanded-datum
+	 * variables.  If this expression is the source of an assignment to a
+	 * simple variable, target_param holds that variable's dno; else it's -1.
+	 * If we match a Param within expr_simple_expr to such a variable, that
+	 * Param's address is stored in expr_rw_param; then expression code
+	 * generation will allow the value for that Param to be passed read/write.
+	 */
+	int			target_param;	/* dno of assign target, or -1 if none */
+	Param	   *expr_rw_param;	/* read/write Param within expr, if any */
 
 	/*
 	 * If the expression was ever determined to be simple, we remember its
@@ -261,7 +270,7 @@ typedef struct PLpgSQL_expr
  * Generic datum array item
  *
  * PLpgSQL_datum is the common supertype for PLpgSQL_var, PLpgSQL_row,
- * PLpgSQL_rec, PLpgSQL_recfield, and PLpgSQL_arrayelem.
+ * PLpgSQL_rec, and PLpgSQL_recfield.
  */
 typedef struct PLpgSQL_datum
 {
@@ -423,7 +432,7 @@ typedef struct PLpgSQL_recfield
 } PLpgSQL_recfield;
 
 /*
- * Element of array variable
+ * PLpgSQL_arrayelem - array element
  */
 typedef struct PLpgSQL_arrayelem
 {
@@ -580,17 +589,6 @@ typedef struct PLpgSQL_stmt_rollback
 	unsigned int stmtid;
 	bool		chain;
 } PLpgSQL_stmt_rollback;
-
-/*
- * SET statement
- */
-typedef struct PLpgSQL_stmt_set
-{
-	PLpgSQL_stmt_type cmd_type;
-	int			lineno;
-	unsigned int stmtid;
-	PLpgSQL_expr *expr;
-} PLpgSQL_stmt_set;
 
 /*
  * GET DIAGNOSTICS item
@@ -1024,9 +1022,6 @@ typedef struct PLpgSQL_function
 	int			extra_warnings;
 	int			extra_errors;
 
-	/* count of statements inside function */
-	unsigned int nstatements;
-
 	/* the datums representing the function's local variables */
 	int			ndatums;
 	PLpgSQL_datum **datums;
@@ -1034,6 +1029,10 @@ typedef struct PLpgSQL_function
 
 	/* function body parsetree */
 	PLpgSQL_stmt_block *action;
+
+	/* data derived while parsing body */
+	unsigned int nstatements;	/* counter for assigning stmtids */
+	bool		requires_procedure_resowner;	/* contains CALL or DO? */
 
 	/* these fields change when the function is used */
 	struct PLpgSQL_execstate *cur_estate;
@@ -1095,6 +1094,9 @@ typedef struct PLpgSQL_execstate
 	/* EState and resowner to use for "simple" expression evaluation */
 	EState	   *simple_eval_estate;
 	ResourceOwner simple_eval_resowner;
+
+	/* if running nonatomic procedure or DO block, resowner to use for CALL */
+	ResourceOwner procedure_resowner;
 
 	/* lookup table to use for executing type casts */
 	HTAB	   *cast_hash;
@@ -1280,6 +1282,7 @@ extern Datum plpgsql_exec_function(PLpgSQL_function *func,
 								   FunctionCallInfo fcinfo,
 								   EState *simple_eval_estate,
 								   ResourceOwner simple_eval_resowner,
+								   ResourceOwner procedure_resowner,
 								   bool atomic);
 extern HeapTuple plpgsql_exec_trigger(PLpgSQL_function *func,
 									  TriggerData *trigdata);

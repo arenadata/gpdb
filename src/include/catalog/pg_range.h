@@ -4,7 +4,7 @@
  *	  definition of the "range type" system catalog (pg_range)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_range.h
@@ -34,17 +34,20 @@ CATALOG(pg_range,3541,RangeRelationId)
 	/* OID of range's element type (subtype) */
 	Oid			rngsubtype BKI_LOOKUP(pg_type);
 
+	/* OID of the range's multirange type */
+	Oid			rngmultitypid BKI_LOOKUP(pg_type);
+
 	/* collation for this range type, or 0 */
-	Oid			rngcollation BKI_DEFAULT(0);
+	Oid			rngcollation BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_collation);
 
 	/* subtype's btree opclass */
 	Oid			rngsubopc BKI_LOOKUP(pg_opclass);
 
 	/* canonicalize range, or 0 */
-	regproc		rngcanonical BKI_LOOKUP(pg_proc);
+	regproc		rngcanonical BKI_LOOKUP_OPT(pg_proc);
 
 	/* subtype difference as a float8, or 0 */
-	regproc		rngsubdiff BKI_LOOKUP(pg_proc);
+	regproc		rngsubdiff BKI_LOOKUP_OPT(pg_proc);
 } FormData_pg_range;
 
 /* ----------------
@@ -54,13 +57,18 @@ CATALOG(pg_range,3541,RangeRelationId)
  */
 typedef FormData_pg_range *Form_pg_range;
 
+#define RangeTypidIndexId					3542
+
+#define RangeMultirangeTypidIndexId			2228
+
+
 /*
  * prototypes for functions in pg_range.c
  */
 
 extern void RangeCreate(Oid rangeTypeOid, Oid rangeSubType, Oid rangeCollation,
 						Oid rangeSubOpclass, RegProcedure rangeCanonical,
-						RegProcedure rangeSubDiff);
+						RegProcedure rangeSubDiff, Oid multirangeTypeOid);
 extern void RangeDelete(Oid rangeTypeOid);
 
 #endif							/* PG_RANGE_H */

@@ -25,6 +25,7 @@
 
 #include "pgstat.h"
 #include "storage/ipc.h"		/* For proc_exit_inprogress  */
+#include "storage/latch.h"
 #include "tcop/tcopprot.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdisp_async.h"
@@ -1040,7 +1041,7 @@ checkSegmentAlive(CdbDispatchCmdAsync *pParms)
 static inline void
 send_sequence_response(PGconn *conn, Oid oid, int64 last, int64 cached, int64 increment, bool overflow, bool error)
 {
-	if (pqPutMsgStart(SEQ_NEXTVAL_QUERY_RESPONSE, false, conn) < 0)
+	if (pqPutMsgStart(SEQ_NEXTVAL_QUERY_RESPONSE, conn) < 0)
 		elog(ERROR, "Failed to send sequence response: %s", PQerrorMessage(conn));
 	pqPutInt(oid, 4, conn);
 	pqPutInt(last >> 32, 4, conn);

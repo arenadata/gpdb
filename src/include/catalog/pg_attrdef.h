@@ -4,7 +4,7 @@
  *	  definition of the "attribute defaults" system catalog (pg_attrdef)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_attrdef.h
@@ -30,7 +30,8 @@ CATALOG(pg_attrdef,2604,AttrDefaultRelationId)
 {
 	Oid			oid;			/* oid */
 
-	Oid			adrelid;		/* OID of table containing attribute */
+	Oid			adrelid BKI_LOOKUP(pg_class);	/* OID of table containing
+												 * attribute */
 	int16		adnum;			/* attnum of attribute */
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
@@ -48,5 +49,10 @@ FOREIGN_KEY(adrelid REFERENCES pg_attribute(attrelid));
  * ----------------
  */
 typedef FormData_pg_attrdef *Form_pg_attrdef;
+
+
+#define AttrDefaultIndexId	2656
+#define AttrDefaultOidIndexId  2657
+
 
 #endif							/* PG_ATTRDEF_H */

@@ -3,7 +3,7 @@
  * objectaddress.c
  *	  functions for working with ObjectAddresses
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -102,7 +102,8 @@
  */
 typedef struct
 {
-	const char *class_descr;	/* string describing the catalog, for internal error messages */
+	const char *class_descr;	/* string describing the catalog, for internal
+								 * error messages */
 	Oid			class_oid;		/* oid of catalog */
 	Oid			oid_index_oid;	/* oid of index on system oid column */
 	int			oid_catcache_id;	/* id of catcache on system oid column	*/
@@ -594,7 +595,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		true
 	},
 	{
-		"extented statistics",
+		"extended statistics",
 		StatisticExtRelationId,
 		StatisticExtOidIndexId,
 		STATEXTOID,
@@ -1545,7 +1546,7 @@ get_object_address_attribute(ObjectType objtype, List *object,
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("column name must be qualified")));
-	attname = strVal(lfirst(list_tail(object)));
+	attname = strVal(llast(object));
 	relname = list_truncate(list_copy(object), list_length(object) - 1);
 	/* XXX no missing_ok support here */
 	relation = relation_openrv(makeRangeVarFromNameList(relname), lockmode);
@@ -2921,6 +2922,7 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				char	   *attname = get_attname(object->objectId,
 												  object->objectSubId,
 												  missing_ok);
+
 				if (!attname)
 					break;
 
@@ -2938,6 +2940,7 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				bits16		flags = FORMAT_PROC_INVALID_AS_NULL;
 				char	   *proname = format_procedure_extended(object->objectId,
 																flags);
+
 				if (proname == NULL)
 					break;
 
@@ -2950,6 +2953,7 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				bits16		flags = FORMAT_TYPE_INVALID_AS_NULL;
 				char	   *typname = format_type_extended(object->objectId, -1,
 														   flags);
+
 				if (typname == NULL)
 					break;
 
@@ -3911,6 +3915,7 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 			{
 				char	   *pubname = get_publication_name(object->objectId,
 														   missing_ok);
+
 				if (pubname)
 					appendStringInfo(&buffer, _("publication %s"), pubname);
 				break;
@@ -3951,6 +3956,7 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 			{
 				char	   *subname = get_subscription_name(object->objectId,
 															missing_ok);
+
 				if (subname)
 					appendStringInfo(&buffer, _("subscription %s"), subname);
 				break;
@@ -4336,7 +4342,7 @@ pg_identify_object_as_address(PG_FUNCTION_ARGS)
 
 	tupdesc = BlessTupleDesc(tupdesc);
 
-	/* object type */
+	/* object type, which can never be NULL */
 	values[0] = CStringGetTextDatum(getObjectTypeDescription(&address, true));
 	nulls[0] = false;
 
@@ -4552,9 +4558,8 @@ getObjectTypeDescription(const ObjectAddress *object, bool missing_ok)
 			 */
 	}
 
-	/* an empty string is equivalent to no object found */
-	if (buffer.len == 0)
-		return NULL;
+	/* the result can never be empty */
+	Assert(buffer.len > 0);
 
 	return buffer.data;
 }
@@ -4776,6 +4781,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 				bits16		flags = FORMAT_PROC_FORCE_QUALIFY | FORMAT_PROC_INVALID_AS_NULL;
 				char	   *proname = format_procedure_extended(object->objectId,
 																flags);
+
 				if (proname == NULL)
 					break;
 
@@ -5025,6 +5031,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 				bits16		flags = FORMAT_OPERATOR_FORCE_QUALIFY | FORMAT_OPERATOR_INVALID_AS_NULL;
 				char	   *oprname = format_operator_extended(object->objectId,
 															   flags);
+
 				if (oprname == NULL)
 					break;
 
@@ -5675,10 +5682,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 			{
 				HeapTuple	tup;
 				Form_pg_event_trigger trigForm;
-
-				/* no objname support here */
-				if (objname)
-					*objname = NIL;
+				char	   *evtname;
 
 				tup = SearchSysCache1(EVENTTRIGGEROID,
 									  ObjectIdGetDatum(object->objectId));
@@ -5690,8 +5694,10 @@ getObjectIdentityParts(const ObjectAddress *object,
 					break;
 				}
 				trigForm = (Form_pg_event_trigger) GETSTRUCT(tup);
-				appendStringInfoString(&buffer,
-									   quote_identifier(NameStr(trigForm->evtname)));
+				evtname = pstrdup(NameStr(trigForm->evtname));
+				appendStringInfoString(&buffer, quote_identifier(evtname));
+				if (objname)
+					*objname = list_make1(evtname);
 				ReleaseSysCache(tup);
 				break;
 			}

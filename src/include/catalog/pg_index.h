@@ -4,7 +4,7 @@
  *	  definition of the "index" system catalog (pg_index)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_index.h
@@ -28,8 +28,9 @@
  */
 CATALOG(pg_index,2610,IndexRelationId) BKI_SCHEMA_MACRO
 {
-	Oid			indexrelid;		/* OID of the index */
-	Oid			indrelid;		/* OID of the relation it indexes */
+	Oid			indexrelid BKI_LOOKUP(pg_class);	/* OID of the index */
+	Oid			indrelid BKI_LOOKUP(pg_class);	/* OID of the relation it
+												 * indexes */
 	int16		indnatts;		/* total number of columns in index */
 	int16		indnkeyatts;	/* number of key columns in index */
 	bool		indisunique;	/* is this a unique index? */
@@ -48,8 +49,8 @@ CATALOG(pg_index,2610,IndexRelationId) BKI_SCHEMA_MACRO
 											 * or 0 */
 
 #ifdef CATALOG_VARLEN
-	oidvector	indcollation BKI_FORCE_NOT_NULL;	/* collation identifiers */
-	oidvector	indclass BKI_FORCE_NOT_NULL;	/* opclass identifiers */
+	oidvector	indcollation BKI_LOOKUP_OPT(pg_collation) BKI_FORCE_NOT_NULL;	/* collation identifiers */
+	oidvector	indclass BKI_LOOKUP(pg_opclass) BKI_FORCE_NOT_NULL; /* opclass identifiers */
 	int2vector	indoption BKI_FORCE_NOT_NULL;	/* per-column flags
 												 * (AM-specific meanings) */
 	pg_node_tree indexprs;		/* expression trees for index attributes that
@@ -72,6 +73,11 @@ FOREIGN_KEY(indrelid REFERENCES pg_class(oid));
  * ----------------
  */
 typedef FormData_pg_index *Form_pg_index;
+
+#define IndexIndrelidIndexId  2678
+#define IndexRelidIndexId  2679
+
+/* indkey can contain zero (InvalidAttrNumber) to represent expressions */
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

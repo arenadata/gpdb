@@ -67,6 +67,7 @@
 #include "common/file_utils.h"
 #include "common/logging.h"
 #include "common/restricted_token.h"
+#include "common/string.h"
 #include "common/username.h"
 #include "fe_utils/string_utils.h"
 #include "getaddrinfo.h"
@@ -161,6 +162,7 @@ static char *info_schema_file;
 static char *cdb_init_d_dir;
 static char *features_file;
 static char *system_views_file;
+static char *system_functions_file;
 static bool success = false;
 static bool made_new_pgdata = false;
 static bool found_existing_pgdata = false;
@@ -255,6 +257,7 @@ static void bootstrap_template1(void);
 static void setup_auth(FILE *cmdfd);
 static void get_su_pwd();
 static void setup_depend(FILE *cmdfd);
+static void setup_run_file(FILE *cmdfd, const char *filename);
 static void setup_sysviews(FILE *cmdfd);
 static void setup_description(FILE *cmdfd);
 #if 0
@@ -339,12 +342,9 @@ escape_quotes(const char *src)
 
 /*
  * Escape a field value to be inserted into the BKI data.
- * Here, we first run the value through escape_quotes (which
- * will be inverted by the backend's scanstr() function) and
- * then overlay special processing of double quotes, which
- * bootscanner.l will only accept as data if converted to octal
- * representation ("\042").  We always wrap the value in double
- * quotes, even if that isn't strictly necessary.
+ * Run the value through escape_quotes (which will be inverted
+ * by the backend's DeescapeQuotedString() function), then wrap
+ * the value in single quotes, even if that isn't strictly necessary.
  */
 static char *
 escape_quotes_bki(const char *src)
@@ -353,30 +353,13 @@ escape_quotes_bki(const char *src)
 	char	   *data = escape_quotes(src);
 	char	   *resultp;
 	char	   *datap;
-	int			nquotes = 0;
 
-	/* count double quotes in data */
-	datap = data;
-	while ((datap = strchr(datap, '"')) != NULL)
-	{
-		nquotes++;
-		datap++;
-	}
-
-	result = (char *) pg_malloc(strlen(data) + 3 + nquotes * 3);
+	result = (char *) pg_malloc(strlen(data) + 3);
 	resultp = result;
-	*resultp++ = '"';
+	*resultp++ = '\'';
 	for (datap = data; *datap; datap++)
-	{
-		if (*datap == '"')
-		{
-			strcpy(resultp, "\\042");
-			resultp += 4;
-		}
-		else
-			*resultp++ = *datap;
-	}
-	*resultp++ = '"';
+		*resultp++ = *datap;
+	*resultp++ = '\'';
 	*resultp = '\0';
 
 	free(data);
@@ -1525,8 +1508,14 @@ get_su_pwd(void)
 		 */
 		printf("\n");
 		fflush(stdout);
-		simple_prompt("Enter new superuser password: ", pwd1, sizeof(pwd1), false);
-		simple_prompt("Enter it again: ", pwd2, sizeof(pwd2), false);
+		{
+			char *p1 = simple_prompt("Enter new superuser password: ", false);
+			char *p2 = simple_prompt("Enter it again: ", false);
+			strlcpy(pwd1, p1, sizeof(pwd1));
+			strlcpy(pwd2, p2, sizeof(pwd2));
+			free(p1);
+			free(p2);
+		}
 		if (strcmp(pwd1, pwd2) != 0)
 		{
 			fprintf(stderr, _("Passwords didn't match.\n"));
@@ -1676,6 +1665,35 @@ setup_depend(FILE *cmdfd)
 
 	for (line = pg_depend_setup; *line != NULL; line++)
 		PG_CMD_PUTS(*line);
+}
+
+/*
+ * Run a SQL file of system-object definitions (e.g. system_functions.sql)
+ * through the bootstrap backend, one logical line at a time.
+ *
+ * GPDB: system_functions.sql installs the real bodies of the ~46 internal SQL
+ * functions whose pg_proc.dat entry carries the placeholder prosrc
+ * 'see system_functions.sql'.  This step was lost in the PG merge; without it
+ * those functions (col_description, obj_description, ...) try to execute the
+ * literal placeholder text and fail with 'syntax error at or near "see"'.
+ */
+static void
+setup_run_file(FILE *cmdfd, const char *filename)
+{
+	char	  **line;
+	char	  **lines;
+
+	lines = readfile(filename);
+
+	for (line = lines; *line != NULL; line++)
+	{
+		PG_CMD_PUTS(*line);
+		free(*line);
+	}
+
+	PG_CMD_PUTS("\n\n");
+
+	free(lines);
 }
 
 /*
@@ -2802,6 +2820,7 @@ setup_data_file_paths(void)
 	set_input(&dictionary_file, "snowball_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
+	set_input(&system_functions_file, "system_functions.sql");
 	set_input(&system_views_file, "system_views.sql");
 
 	set_input(&cdb_init_d_dir, "cdb_init.d");
@@ -2830,6 +2849,7 @@ setup_data_file_paths(void)
 	check_input(dictionary_file);
 	check_input(info_schema_file);
 	check_input(features_file);
+	check_input(system_functions_file);
 	check_input(system_views_file);
 }
 
@@ -3165,6 +3185,12 @@ initialize_data_directory(void)
 	PG_CMD_OPEN;
 
 	setup_auth(cmdfd);
+
+	/*
+	 * Install the real bodies of internal SQL functions defined in
+	 * system_functions.sql (must run before setup_depend so they are pinned).
+	 */
+	setup_run_file(cmdfd, system_functions_file);
 
 	setup_depend(cmdfd);
 

@@ -4,7 +4,7 @@
  *	  definition of the "namespace" system catalog (pg_namespace)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_namespace.h
@@ -37,7 +37,7 @@ CATALOG(pg_namespace,2615,NamespaceRelationId)
 	Oid			oid;			/* oid */
 
 	NameData	nspname;
-	Oid			nspowner;
+	Oid			nspowner BKI_DEFAULT(POSTGRES) BKI_LOOKUP(pg_authid);
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	aclitem		nspacl[1];
@@ -60,6 +60,10 @@ typedef FormData_pg_namespace *Form_pg_namespace;
 	 namespaceId == PG_BITMAPINDEX_NAMESPACE || \
 	 namespaceId == PG_PUBLIC_NAMESPACE || \
 	 namespaceId == PG_AOSEGMENT_NAMESPACE)
+
+
+#define NamespaceNameIndexId  2684
+#define NamespaceOidIndexId  2685
 
 /*
  * prototypes for functions in pg_namespace.c

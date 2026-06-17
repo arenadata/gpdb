@@ -28,8 +28,8 @@ SELECT * FROM uaocs_outdatedindex_abort WHERE b < 16;
  a | b |                                                                c                                                                 
 ---+---+----------------------------------------------------------------------------------------------------------------------------------
  2 | 2 | Good morning                                                                                                                    
+ 3 | 3 | Good morning                                                                                                                    
  4 | 4 | Good morning                                                                                                                    
  1 | 1 | Good morning                                                                                                                    
- 3 | 3 | Good morning                                                                                                                    
 (4 rows)
 
