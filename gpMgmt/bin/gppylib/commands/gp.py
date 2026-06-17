@@ -1071,7 +1071,7 @@ class GpCatVersionDirectory(Command):
 
 #-----------------------------------------------
 class GpConfigHelper(Command):
-    def __init__(self, command_name, postgresconf_dir, name, value=None, segInfo=None, removeParameter=False, getParameter=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, command_name, postgresconf_dir, name, value=None, segInfo=None, removeParameter=False, getParameter=False, ctxt=LOCAL, remoteHost=None, autoconf=False):
         self.segInfo = segInfo
 
         addParameter = (not getParameter) and (not removeParameter)
@@ -1081,6 +1081,8 @@ class GpConfigHelper(Command):
             args = "--get-parameter %s" % name
         if removeParameter:
             args = "--remove-parameter %s" % name
+        if autoconf:
+            args = " --autoconf "
 
         cmdStr = "$GPHOME/sbin/gpconfig_helper.py --file %s %s" % (
             os.path.join(postgresconf_dir, 'postgresql.conf'),

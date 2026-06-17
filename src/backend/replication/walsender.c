@@ -2524,42 +2524,10 @@ WalSndKill(int code, Datum arg)
 
 	Assert(walsnd != NULL);
 
-	/* Only track failure for GPDB primary-mirror replication */
-	if (MyWalSnd->is_for_gp_walreceiver)
-		FTSReplicationStatusMarkDisconnectForReplication(application_name);
-
-	if (IS_QUERY_DISPATCHER())
-	{
-		/*
-		 * Acquire the SyncRepLock here to avoid any race conditions
-		 * that may occur when the WAL sender is waking up waiting backends in the
-		 * sync-rep queue just before its exit and a new backend comes in
-		 * to wait in the queue due to the fact that WAL sender is still alive.
-		 * Refer to the use of SyncRepLock in SyncRepWaitForLSN()
-		 */
-		LWLockAcquire(SyncRepLock, LW_EXCLUSIVE);
-		{
-			/* Release any waiting backends in the sync-rep queue */
-			SyncRepWakeQueue(true, SYNC_REP_WAIT_WRITE);
-			SyncRepWakeQueue(true, SYNC_REP_WAIT_FLUSH);
-
-			SpinLockAcquire(&MyWalSnd->mutex);
-
-			/* xlog can get freed without the WAL sender worry */
-			MyWalSnd->xlogCleanUpTo = InvalidXLogRecPtr;
-
-			/* Mark WalSnd struct no longer in use. */
-			MyWalSnd->pid = 0;
-			walsnd->latch = NULL;
-
-			SpinLockRelease(&MyWalSnd->mutex);
-		}
-		LWLockRelease(SyncRepLock);
-		/* WalSnd struct isn't mine anymore */
-		MyWalSnd = NULL;
-		return;
-	}
-
+	/*
+	 * Clear MyWalSnd first; then disown the latch.  This is so that signal
+	 * handlers won't try to touch the latch after it's no longer ours.
+	 */
 	MyWalSnd = NULL;
 
 	SpinLockAcquire(&walsnd->mutex);
