@@ -52,6 +52,8 @@
 #include "catalog/gp_segment_configuration.h"
 
 #include "tcop/tcopprot.h" /* quickdie() */
+#include "replication/walsender_private.h"
+#include "replication/gp_replication.h"
 
 bool am_ftsprobe = false;
 bool am_ftshandler = false;
@@ -268,6 +270,8 @@ probeWalRepUpdateConfig(int16 dbid, int16 segindex, char role,
 	}
 }
 
+extern int max_wal_senders;
+
 static
 void FtsLoop()
 {
@@ -369,6 +373,28 @@ void FtsLoop()
 		/* free current components info and free ip addr caches */	
 		cdbcomponent_destroyCdbComponents();
 
+		bool syncStandbyPresent = false;
+		for (int i = 0; i < max_wal_senders; i++)
+		{
+			/* use volatile pointer to prevent code rearrangement */
+			volatile WalSnd *walsnd = &WalSndCtl->walsnds[i];
+
+			SpinLockAcquire(&walsnd->mutex);
+			syncStandbyPresent = (walsnd->pid != 0)
+								 && ((walsnd->state == WALSNDSTATE_STREAMING)
+									 || (walsnd->state == WALSNDSTATE_CATCHUP &&
+										 walsnd->caughtup_within_range))
+								 && walsnd->is_for_gp_walreceiver;
+			SpinLockRelease(&walsnd->mutex);
+
+			if (syncStandbyPresent)
+				break;
+		}
+		
+		if (!syncStandbyPresent) {
+			UnsetSyncStandbysDefined();
+		}
+		
 		SIMPLE_FAULT_INJECTOR("ftsLoop_after_probe");
 
 		/* Notify any waiting backends about probe cycle completion. */

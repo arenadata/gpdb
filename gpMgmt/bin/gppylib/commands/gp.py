@@ -1075,6 +1075,8 @@ class GpConfigHelper(Command):
         self.segInfo = segInfo
 
         addParameter = (not getParameter) and (not removeParameter)
+        file = 'postgresql.conf'
+        args = None
         if addParameter:
             args = "--add-parameter %s --value %s " % (name, shlex.quote(value))
         if getParameter:
@@ -1082,11 +1084,11 @@ class GpConfigHelper(Command):
         if removeParameter:
             args = "--remove-parameter %s" % name
         if autoconf:
-            args = " --autoconf "
+            file = 'postgresql.auto.conf'
 
+        assert args is not None
         cmdStr = "$GPHOME/sbin/gpconfig_helper.py --file %s %s" % (
-            os.path.join(postgresconf_dir, 'postgresql.conf'),
-            args)
+            os.path.join(postgresconf_dir, file), args)
 
         Command.__init__(self, command_name, cmdStr, ctxt, remoteHost)
 

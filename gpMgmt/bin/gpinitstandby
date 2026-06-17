@@ -295,17 +295,17 @@ def delete_standby(options):
     
     # If the standby is down, and the synchronous_standby_names is *, the cluster will not start
     # set synchronous_standby_names to ''
-    cmd = gp.GpAddConfigScript('master',
-                               array.master.datadir,
+    cmd = gp.GpAddConfigScript('coordinator',
+                               array.coordinator.datadir,
                                'synchronous_standby_names',
                                value="''",
                                removeonly=False,
                                ctxt=gp.REMOTE,
-                               remoteHost=array.master.hostname,
+                               remoteHost=array.coordinator.hostname,
                                autoconf=True)
     cmd.run(validateAfter=True)
     # make it effective
-    pg.ReloadDbConf.local('pg_ctl reload', array.master)
+    pg.ReloadDbConf.local('pg_ctl reload', array.coordinator)
 
     try:
         remove_standby_from_catalog(options, array)
@@ -368,17 +368,17 @@ def check_and_start_standby():
                            standby.port)
 
     # set synchronous_standby_names to '*'
-    cmd = gp.GpAddConfigScript('master',
-                               array.master.datadir,
+    cmd = gp.GpConfigHelper('coordinator',
+                               array.coordinator.datadir,
                                'synchronous_standby_names',
                                value="'*'",
-                               removeonly=False,
+                               removeParameter=False,
                                ctxt=gp.REMOTE,
-                               remoteHost=array.master.hostname,
+                               remoteHost=array.coordinator.hostname,
                                autoconf=True)
     cmd.run(validateAfter=True)
     # make it effective
-    pg.ReloadDbConf.local('pg_ctl reload', array.master)
+    pg.ReloadDbConf.local('pg_ctl reload', array.coordinator)
     
     logger.info("Successfully started standby coordinator")
 
@@ -451,6 +451,20 @@ def create_standby(options):
             gp.start_standbycoordinator(standby.hostname,
                                    standby.datadir,
                                    standby.port)
+
+            # set synchronous_standby_names to '*'
+            cmd = gp.GpConfigHelper('coordinator',
+                                    array.coordinator.datadir,
+                                    'synchronous_standby_names',
+                                    value="'*'",
+                                    removeParameter=False,
+                                    ctxt=gp.REMOTE,
+                                    remoteHost=array.coordinator.hostname,
+                                    autoconf=True)
+            cmd.run(validateAfter=True)
+            # make it effective
+            pg.ReloadDbConf.local('pg_ctl reload', array.coordinator)
+            
         except Exception as ex:
             raise GpInitStandbyException('failed to start standby')
 

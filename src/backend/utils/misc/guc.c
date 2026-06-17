@@ -8431,7 +8431,7 @@ AlterSystemSetConfigFile(AlterSystemStmt *altersysstmt)
 	char		AutoConfFileName[MAXPGPATH];
 	char		AutoConfTmpFileName[MAXPGPATH];
 
-	if (!am_ftshandler && !superuser())
+	if (!am_ftsprobe && !am_ftshandler && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to execute ALTER SYSTEM command")));
