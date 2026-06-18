@@ -1337,18 +1337,6 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 												 attmap,
 												 NULL);
 
-			/* Copy comment on index, if requested */
-			if (table_like_clause->options & CREATE_TABLE_LIKE_COMMENTS)
-			{
-				comment = GetComment(parent_index_oid, RelationRelationId, 0);
-
-				/*
-				 * We make use of IndexStmt's idxcomment option, so as not to
-				 * need to know now what name the index will have.
-				 */
-				index_stmt->idxcomment = comment;
-			}
-
 			/* Save it in the inh_indexes list for the time being */
 			cxt->inh_indexes = lappend(cxt->inh_indexes, index_stmt);
 
