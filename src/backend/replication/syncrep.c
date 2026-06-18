@@ -173,9 +173,13 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	 * described in SyncRepUpdateSyncStandbysDefined(). On the other
 	 * hand, if it's false, the lock is not necessary because we don't touch
 	 * the queue.
+	 *
+	 * GGDB: the coordinator should be able to commit even if standby is not
+	 * available. Therefore, at the coordinator, we make a separate check below
+	 * about whether synchronous replication is currently available or not.
 	 */
-	if (!SyncRepRequested() ||
-		!((volatile WalSndCtlData *) WalSndCtl)->sync_standbys_defined)
+	if (!IS_QUERY_DISPATCHER() && (!SyncRepRequested() ||
+		!((volatile WalSndCtlData *) WalSndCtl)->sync_standbys_defined))
 		return;
 
 	/* Cap the level for anything other than commit to remote flush only. */
