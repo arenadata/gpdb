@@ -176,13 +176,7 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	 */
 	if (!SyncRepRequested() ||
 		!((volatile WalSndCtlData *) WalSndCtl)->sync_standbys_defined)
-	{
-#ifdef FAULT_INJECTOR
-		/* Simulate the case that the standby / mirror is lagging behind. */
-		if (SIMPLE_FAULT_INJECTOR("syncrep_skip_return") != FaultInjectorTypeSkip)
-#endif
 		return;
-	}
 
 	/* Cap the level for anything other than commit to remote flush only. */
 	if (commit)

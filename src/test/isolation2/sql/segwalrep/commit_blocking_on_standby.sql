@@ -14,8 +14,6 @@ select application_name, state from pg_stat_replication;
 -- Inject fault on standby to skip WAL flush.
 select gp_inject_fault_infinite('walrecv_skip_flush', 'skip', dbid)
 from gp_segment_configuration where content=-1 and role='m';
-select gp_inject_fault_infinite('syncrep_skip_return', 'skip', dbid)
-from gp_segment_configuration where content=-1 and role='p';
 
 begin;
 create or replace function wait_for_pg_stat_activity(timeout_secs int)
@@ -55,8 +53,6 @@ select wait_for_pg_stat_activity(60);
 select datname, wait_event, query from pg_stat_activity
 where wait_event = 'SyncRep';
 
-select gp_inject_fault('syncrep_skip_return', 'reset', dbid)
-from gp_segment_configuration where content=-1 and role='p';
 select gp_inject_fault('walrecv_skip_flush', 'reset', dbid)
 from gp_segment_configuration where content=-1 and role='m';
 
@@ -88,8 +84,6 @@ select gp_inject_fault_infinite('wal_sender_loop', 'infinite_loop', dbid)
 -- Inject fault on standby to skip WAL flush.
 select gp_inject_fault_infinite('walrecv_skip_flush', 'skip', dbid)
        from gp_segment_configuration where content=-1 and role='m';
-select gp_inject_fault_infinite('syncrep_skip_return', 'skip', dbid)
-       from gp_segment_configuration where content=-1 and role='p';
 
 -- Kill existing walsender.  WAL sender and WAL receiver processes
 -- will be restarted and new connection will be established.  Note
