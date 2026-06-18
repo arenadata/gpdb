@@ -98,7 +98,9 @@ typedef struct
 	List	   *fkconstraints;	/* FOREIGN KEY constraints */
 	List	   *ixconstraints;	/* index-creating constraints */
 	List	   *inh_indexes;	/* cloned indexes from INCLUDING INDEXES
-								 * GPDB: used by transformDistributedBy */
+								 * GPDB: used by transformDistributedBy
+								 * Note: Attribute numbers in expressions
+								 * might not be correct, only use names */
 	List	   *attr_encodings; /* List of ColumnReferenceStorageDirectives */
 	List	   *extstats;		/* cloned extended statistics */
 	List	   *blist;			/* "before list" of things to do before
