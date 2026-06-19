@@ -20036,7 +20036,7 @@ appendIndexCollationVersion(PQExpBuffer buffer, IndxInfo *indxinfo, int enc,
 		appendPQExpBuffer(buffer,
 						  "UPDATE pg_catalog.pg_depend SET refobjversion = 'unknown' WHERE objid = '%u'::pg_catalog.oid AND refclassid = 'pg_catalog.pg_collation'::regclass AND refobjversion IS NOT NULL;\n",
 						  indxinfo->dobj.catId.oid);
-		appendPQExpBuffer(buffer, "RESET allow_system_table_mods");
+		appendPQExpBuffer(buffer, "RESET allow_system_table_mods;\n");
 	}
 
 	/* Restore the versions that were recorded by the old cluster (if any). */

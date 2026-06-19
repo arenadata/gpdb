@@ -98,7 +98,9 @@ typedef struct
 	List	   *fkconstraints;	/* FOREIGN KEY constraints */
 	List	   *ixconstraints;	/* index-creating constraints */
 	List	   *inh_indexes;	/* cloned indexes from INCLUDING INDEXES
-								 * GPDB: used by transformDistributedBy */
+								 * GPDB: used by transformDistributedBy
+								 * Note: Attribute numbers in expressions
+								 * might not be correct, only use names */
 	List	   *attr_encodings; /* List of ColumnReferenceStorageDirectives */
 	List	   *extstats;		/* cloned extended statistics */
 	List	   *blist;			/* "before list" of things to do before
@@ -1336,18 +1338,6 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 												 parent_index,
 												 attmap,
 												 NULL);
-
-			/* Copy comment on index, if requested */
-			if (table_like_clause->options & CREATE_TABLE_LIKE_COMMENTS)
-			{
-				comment = GetComment(parent_index_oid, RelationRelationId, 0);
-
-				/*
-				 * We make use of IndexStmt's idxcomment option, so as not to
-				 * need to know now what name the index will have.
-				 */
-				index_stmt->idxcomment = comment;
-			}
 
 			/* Save it in the inh_indexes list for the time being */
 			cxt->inh_indexes = lappend(cxt->inh_indexes, index_stmt);
