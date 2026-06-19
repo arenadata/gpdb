@@ -297,12 +297,12 @@ PG_FUNCTION_INFO_V1(ssl_client_dn);
 Datum
 ssl_client_dn(PG_FUNCTION_ARGS)
 {
-	char		subject[2 * NAMEDATALEN];
+	char		subject[NAMEDATALEN];
 
 	if (!MyProcPort->ssl_in_use || !MyProcPort->peer_cert_valid)
 		PG_RETURN_NULL();
 
-	be_tls_get_peer_subject_name(MyProcPort, subject, sizeof(subject));
+	be_tls_get_peer_subject_name(MyProcPort, subject, NAMEDATALEN);
 
 	if (!*subject)
 		PG_RETURN_NULL();
@@ -324,12 +324,12 @@ PG_FUNCTION_INFO_V1(ssl_issuer_dn);
 Datum
 ssl_issuer_dn(PG_FUNCTION_ARGS)
 {
-	char		issuer[2 * NAMEDATALEN];
+	char		issuer[NAMEDATALEN];
 
 	if (!MyProcPort->ssl_in_use || !MyProcPort->peer_cert_valid)
 		PG_RETURN_NULL();
 
-	be_tls_get_peer_issuer_name(MyProcPort, issuer, sizeof(issuer));
+	be_tls_get_peer_issuer_name(MyProcPort, issuer, NAMEDATALEN);
 
 	if (!*issuer)
 		PG_RETURN_NULL();
