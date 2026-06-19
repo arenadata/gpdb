@@ -7269,7 +7269,9 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 				i_tablespace,
 				i_indreloptions,
 				i_indstatcols,
-				i_indstatvals;
+				i_indstatvals,
+				i_inddependcollnames,
+				i_inddependcollversions;
 
 	/*
 	 * We want to perform just one query against pg_index.  However, we
@@ -7335,14 +7337,37 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 						  "(SELECT pg_catalog.array_agg(attstattarget ORDER BY attnum) "
 						  "  FROM pg_catalog.pg_attribute "
 						  "  WHERE attrelid = i.indexrelid AND "
-						  "    attstattarget >= 0) AS indstatvals ");
+						  "    attstattarget >= 0) AS indstatvals, ");
 	else
 		appendPQExpBuffer(query,
 						  "0 AS parentidx, "
 						  "i.indnatts AS indnkeyatts, "
 						  "i.indnatts AS indnatts, "
 						  "'' AS indstatcols, "
-						  "'' AS indstatvals ");
+						  "'' AS indstatvals, ");
+
+	if (fout->remoteVersion >= 140000)
+		appendPQExpBuffer(query,
+						  "(SELECT pg_catalog.array_agg(quote_ident(ns.nspname) || '.' || quote_ident(c.collname) ORDER BY refobjid) "
+						  "  FROM pg_catalog.pg_depend d "
+						  "  JOIN pg_catalog.pg_collation c ON (c.oid = d.refobjid) "
+						  "  JOIN pg_catalog.pg_namespace ns ON (c.collnamespace = ns.oid) "
+						  "  WHERE d.classid = 'pg_catalog.pg_class'::regclass AND "
+						  "    d.objid = i.indexrelid AND "
+						  "    d.objsubid = 0 AND "
+						  "    d.refclassid = 'pg_catalog.pg_collation'::regclass AND "
+						  "    d.refobjversion IS NOT NULL) AS inddependcollnames, "
+						  "(SELECT pg_catalog.array_agg(quote_literal(refobjversion) ORDER BY refobjid) "
+						  "  FROM pg_catalog.pg_depend "
+						  "  WHERE classid = 'pg_catalog.pg_class'::regclass AND "
+						  "    objid = i.indexrelid AND "
+						  "    objsubid = 0 AND "
+						  "    refclassid = 'pg_catalog.pg_collation'::regclass AND "
+						  "    refobjversion IS NOT NULL) AS inddependcollversions ");
+	else
+		appendPQExpBuffer(query,
+						  "'{}' AS inddependcollnames, "
+						  "'{}' AS inddependcollversions ");
 
 	appendPQExpBuffer(query,
 							"FROM unnest('%s'::pg_catalog.oid[]) AS src(tbloid)\n"
@@ -7427,6 +7452,8 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 	i_indreloptions = PQfnumber(res, "indreloptions");
 	i_indstatcols = PQfnumber(res, "indstatcols");
 	i_indstatvals = PQfnumber(res, "indstatvals");
+	i_inddependcollnames = PQfnumber(res, "inddependcollnames");
+	i_inddependcollversions = PQfnumber(res, "inddependcollversions");
 
 	indxinfo = (IndxInfo *) pg_malloc(ntups * sizeof(IndxInfo));
 
@@ -7487,6 +7514,8 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			indxinfo[j].indreloptions = pg_strdup(PQgetvalue(res, j, i_indreloptions));
 			indxinfo[j].indstatcols = pg_strdup(PQgetvalue(res, j, i_indstatcols));
 			indxinfo[j].indstatvals = pg_strdup(PQgetvalue(res, j, i_indstatvals));
+			indxinfo[j].inddependcollnames = pg_strdup(PQgetvalue(res, j, i_inddependcollnames));
+			indxinfo[j].inddependcollversions = pg_strdup(PQgetvalue(res, j, i_inddependcollversions));
 			indxinfo[j].indkeys = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
 			parseOidArray(PQgetvalue(res, j, i_indkey),
 						  indxinfo[j].indkeys, indxinfo[j].indnattrs);
