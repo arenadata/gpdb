@@ -20031,10 +20031,12 @@ appendIndexCollationVersion(PQExpBuffer buffer, IndxInfo *indxinfo, int enc,
 	if (coll_unknown)
 	{
 		appendPQExpBuffer(buffer,
-						  "\n-- For binary upgrade, clobber new index's collation versions\n");
+						  "\n-- For binary upgrade, clobber new index's collation versions\n"
+						  "SET allow_system_table_mods = true;\n");
 		appendPQExpBuffer(buffer,
 						  "UPDATE pg_catalog.pg_depend SET refobjversion = 'unknown' WHERE objid = '%u'::pg_catalog.oid AND refclassid = 'pg_catalog.pg_collation'::regclass AND refobjversion IS NOT NULL;\n",
 						  indxinfo->dobj.catId.oid);
+		appendPQExpBuffer(buffer, "RESET allow_system_table_mods;\n");
 	}
 
 	/* Restore the versions that were recorded by the old cluster (if any). */
@@ -20048,7 +20050,8 @@ appendIndexCollationVersion(PQExpBuffer buffer, IndxInfo *indxinfo, int enc,
 
 	if (ninddependcollnames > 0)
 		appendPQExpBufferStr(buffer,
-							 "\n-- For binary upgrade, restore old index's collation versions\n");
+							 "\n-- For binary upgrade, restore old index's collation versions\n"
+							 "SET allow_system_table_mods = true;\n");
 	for (int i = 0; i < ninddependcollnames; i++)
 	{
 		/*
@@ -20062,6 +20065,9 @@ appendIndexCollationVersion(PQExpBuffer buffer, IndxInfo *indxinfo, int enc,
 		appendStringLiteralAH(buffer,inddependcollnamesarray[i], fout);
 		appendPQExpBuffer(buffer, "::regcollation;\n");
 	}
+
+	if (ninddependcollnames > 0)
+		appendPQExpBufferStr(buffer, "RESET allow_system_table_mods;\n");
 
 	if (inddependcollnamesarray)
 		free(inddependcollnamesarray);
