@@ -4,7 +4,7 @@
  *	  XML data type support.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/utils/adt/xml.c
@@ -222,8 +222,7 @@ const TableFuncRoutine XmlTableRoutine =
 	ereport(ERROR, \
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
 			 errmsg("unsupported XML feature"), \
-			 errdetail("This functionality requires the server to be built with libxml support."), \
-			 errhint("You need to rebuild PostgreSQL using --with-libxml.")))
+			 errdetail("This functionality requires the server to be built with libxml support.")))
 
 
 /* from SQL/XML:2008 section 4.9 */
@@ -961,8 +960,8 @@ pg_xml_init_library(void)
 		if (sizeof(char) != sizeof(xmlChar))
 			ereport(ERROR,
 					(errmsg("could not initialize XML library"),
-					 errdetail("libxml2 has incompatible char type: sizeof(char)=%u, sizeof(xmlChar)=%u.",
-							   (int) sizeof(char), (int) sizeof(xmlChar))));
+					 errdetail("libxml2 has incompatible char type: sizeof(char)=%zu, sizeof(xmlChar)=%zu.",
+							   sizeof(char), sizeof(xmlChar))));
 
 #ifdef USE_LIBXMLCONTEXT
 		/* Set up libxml's memory allocation our way */
@@ -3649,8 +3648,8 @@ map_sql_type_to_xmlschema_type(Oid typeoid, int typmod)
 								 "    <xsd:maxInclusive value=\"" INT64_FORMAT "\"/>\n"
 								 "    <xsd:minInclusive value=\"" INT64_FORMAT "\"/>\n"
 								 "  </xsd:restriction>\n",
-								 (((uint64) 1) << (sizeof(int64) * 8 - 1)) - 1,
-								 (((uint64) 1) << (sizeof(int64) * 8 - 1)));
+								 PG_INT64_MAX,
+								 PG_INT64_MIN);
 				break;
 
 			case FLOAT4OID:
@@ -3671,7 +3670,7 @@ map_sql_type_to_xmlschema_type(Oid typeoid, int typmod)
 			case TIMEOID:
 			case TIMETZOID:
 				{
-					const char *tz = (typeoid == TIMETZOID ? "(+|-)\\p{Nd}{2}:\\p{Nd}{2}" : "");
+					const char *tz = (typeoid == TIMETZOID ? "(\\+|-)\\p{Nd}{2}:\\p{Nd}{2}" : "");
 
 					if (typmod == -1)
 						appendStringInfo(&result,
@@ -3694,7 +3693,7 @@ map_sql_type_to_xmlschema_type(Oid typeoid, int typmod)
 			case TIMESTAMPOID:
 			case TIMESTAMPTZOID:
 				{
-					const char *tz = (typeoid == TIMESTAMPTZOID ? "(+|-)\\p{Nd}{2}:\\p{Nd}{2}" : "");
+					const char *tz = (typeoid == TIMESTAMPTZOID ? "(\\+|-)\\p{Nd}{2}:\\p{Nd}{2}" : "");
 
 					if (typmod == -1)
 						appendStringInfo(&result,
@@ -4556,13 +4555,7 @@ XmlTableFetchRow(TableFuncScanState *state)
 
 	xtCxt = GetXmlTableBuilderPrivateData(state, "XmlTableFetchRow");
 
-	/*
-	 * XmlTable returns table - set of composite values. The error context, is
-	 * used for producement more values, between two calls, there can be
-	 * created and used another libxml2 error context. It is libxml2 global
-	 * value, so it should be refreshed any time before any libxml2 usage,
-	 * that is finished by returning some value.
-	 */
+	/* Propagate our own error context to libxml2 */
 	xmlSetStructuredErrorFunc((void *) xtCxt->xmlerrcxt, xml_errorHandler);
 
 	if (xtCxt->xpathobj == NULL)
@@ -4616,7 +4609,7 @@ XmlTableGetValue(TableFuncScanState *state, int colnum,
 		   xtCxt->xpathobj->type == XPATH_NODESET &&
 		   xtCxt->xpathobj->nodesetval != NULL);
 
-	/* Propagate context related error context to libxml2 */
+	/* Propagate our own error context to libxml2 */
 	xmlSetStructuredErrorFunc((void *) xtCxt->xmlerrcxt, xml_errorHandler);
 
 	*isnull = false;
@@ -4759,7 +4752,7 @@ XmlTableDestroyOpaque(TableFuncScanState *state)
 
 	xtCxt = GetXmlTableBuilderPrivateData(state, "XmlTableDestroyOpaque");
 
-	/* Propagate context related error context to libxml2 */
+	/* Propagate our own error context to libxml2 */
 	xmlSetStructuredErrorFunc((void *) xtCxt->xmlerrcxt, xml_errorHandler);
 
 	if (xtCxt->xpathscomp != NULL)

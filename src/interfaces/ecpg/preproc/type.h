@@ -141,6 +141,13 @@ struct cursor
 	struct cursor *next;
 };
 
+struct declared_list
+{
+	char	   *name;
+	char	   *connection;
+	struct declared_list *next;
+};
+
 struct typedefs
 {
 	char	   *name;
@@ -198,6 +205,12 @@ struct fetch_desc
 {
 	char	   *str;
 	char	   *name;
+};
+
+struct describe
+{
+	int			input;
+	char	   *stmt_name;
 };
 
 #endif							/* _ECPG_PREPROC_TYPE_H */

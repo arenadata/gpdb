@@ -3,7 +3,7 @@
  * statistics.h
  *	  Extended statistics and selectivity estimation functions.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/statistics/statistics.h
@@ -26,7 +26,8 @@
 typedef struct MVNDistinctItem
 {
 	double		ndistinct;		/* ndistinct value for this combination */
-	Bitmapset  *attrs;			/* attr numbers of items */
+	int			nattributes;	/* number of attributes */
+	AttrNumber *attributes;		/* attribute numbers */
 } MVNDistinctItem;
 
 /* A MVNDistinct object, comprising all possible combinations of columns */
@@ -93,11 +94,11 @@ typedef struct MCVList
 	MCVItem		items[FLEXIBLE_ARRAY_MEMBER];	/* array of MCV items */
 } MCVList;
 
-extern MVNDistinct *statext_ndistinct_load(Oid mvoid);
-extern MVDependencies *statext_dependencies_load(Oid mvoid);
-extern MCVList *statext_mcv_load(Oid mvoid);
+extern MVNDistinct *statext_ndistinct_load(Oid mvoid, bool inh);
+extern MVDependencies *statext_dependencies_load(Oid mvoid, bool inh);
+extern MCVList *statext_mcv_load(Oid mvoid, bool inh);
 
-extern void BuildRelationExtStatistics(Relation onerel, double totalrows,
+extern void BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 									   int numrows, HeapTuple *rows,
 									   int natts, VacAttrStats **vacattrstats);
 extern int	ComputeExtStatisticsRows(Relation onerel,
@@ -116,10 +117,14 @@ extern Selectivity statext_clauselist_selectivity(PlannerInfo *root,
 												  JoinType jointype,
 												  SpecialJoinInfo *sjinfo,
 												  RelOptInfo *rel,
-												  Bitmapset **estimatedclauses);
+												  Bitmapset **estimatedclauses,
+												  bool is_or);
 extern bool has_stats_of_kind(List *stats, char requiredkind);
 extern StatisticExtInfo *choose_best_statistics(List *stats, char requiredkind,
+												bool inh,
 												Bitmapset **clause_attnums,
+												List **clause_exprs,
 												int nclauses);
+extern HeapTuple statext_expressions_load(Oid stxoid, bool inh, int idx);
 
 #endif							/* STATISTICS_H */

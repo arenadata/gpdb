@@ -44,7 +44,7 @@
  * if the old one gets invalidated.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -542,7 +542,7 @@ ReleaseGenericPlan(CachedPlanSource *plansource)
 
 		Assert(plan->magic == CACHEDPLAN_MAGIC);
 		plansource->gplan = NULL;
-		ReleaseCachedPlan(plan, false);
+		ReleaseCachedPlan(plan, NULL);
 	}
 }
 
@@ -694,17 +694,17 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	if (rawtree == NULL)
 		tlist = NIL;
 	else if (plansource->parserSetup != NULL)
-		tlist = pg_analyze_and_rewrite_params(rawtree,
+		tlist = pg_analyze_and_rewrite_withcb(rawtree,
 											  plansource->query_string,
 											  plansource->parserSetup,
 											  plansource->parserSetupArg,
 											  queryEnv);
 	else
-		tlist = pg_analyze_and_rewrite(rawtree,
-									   plansource->query_string,
-									   plansource->param_types,
-									   plansource->num_params,
-									   queryEnv);
+		tlist = pg_analyze_and_rewrite_fixedparams(rawtree,
+												   plansource->query_string,
+												   plansource->param_types,
+												   plansource->num_params,
+												   queryEnv);
 
 	/* GPDB: For CTAS query, set its isCTAS to be true */
 	if (intoClause)
@@ -930,8 +930,8 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	 * rejected a generic plan, it's possible to reach here with is_valid
 	 * false due to an invalidation while making the generic plan.  In theory
 	 * the invalidation must be a false positive, perhaps a consequence of an
-	 * sinval reset event or the CLOBBER_CACHE_ALWAYS debug code.  But for
-	 * safety, let's treat it as real and redo the RevalidateCachedQuery call.
+	 * sinval reset event or the debug_discard_caches code.  But for safety,
+	 * let's treat it as real and redo the RevalidateCachedQuery call.
 	 */
 	if (!plansource->is_valid)
 		qlist = RevalidateCachedQuery(plansource, queryEnv, intoClause);
@@ -1249,9 +1249,9 @@ cached_plan_cost(CachedPlan *plan, bool include_planner)
  * execution.
  *
  * On return, the refcount of the plan has been incremented; a later
- * ReleaseCachedPlan() call is expected.  The refcount has been reported
- * to the CurrentResourceOwner if useResOwner is true (note that that must
- * only be true if it's a "saved" CachedPlanSource).
+ * ReleaseCachedPlan() call is expected.  If "owner" is not NULL then
+ * the refcount has been reported to that ResourceOwner (note that this
+ * is only supported for "saved" CachedPlanSources).
  *
  * Note: if any replanning activity is required, the caller's memory context
  * is used for that work.
@@ -1266,7 +1266,8 @@ cached_plan_cost(CachedPlan *plan, bool include_planner)
  */
 CachedPlan *
 GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
-			  bool useResOwner, QueryEnvironment *queryEnv, IntoClause *intoClause)
+			  ResourceOwner owner, QueryEnvironment *queryEnv,
+			  IntoClause *intoClause)
 {
 	CachedPlan *plan = NULL;
 	List	   *qlist;
@@ -1276,7 +1277,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 	Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
 	Assert(plansource->is_complete);
 	/* This seems worth a real test, though */
-	if (useResOwner && !plansource->is_saved)
+	if (owner && !plansource->is_saved)
 		elog(ERROR, "cannot apply ResourceOwner to non-saved cached plan");
 
 	/* Make sure the querytree list is valid and we have parse-time locks */
@@ -1355,11 +1356,11 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 	Assert(plan != NULL);
 
 	/* Flag the plan as in use by caller */
-	if (useResOwner)
-		ResourceOwnerEnlargePlanCacheRefs(CurrentResourceOwner);
+	if (owner)
+		ResourceOwnerEnlargePlanCacheRefs(owner);
 	plan->refcount++;
-	if (useResOwner)
-		ResourceOwnerRememberPlanCacheRef(CurrentResourceOwner, plan);
+	if (owner)
+		ResourceOwnerRememberPlanCacheRef(owner, plan);
 
 	/*
 	 * Saved plans should be under CacheMemoryContext so they will not go away
@@ -1380,21 +1381,21 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
  * ReleaseCachedPlan: release active use of a cached plan.
  *
  * This decrements the reference count, and frees the plan if the count
- * has thereby gone to zero.  If useResOwner is true, it is assumed that
- * the reference count is managed by the CurrentResourceOwner.
+ * has thereby gone to zero.  If "owner" is not NULL, it is assumed that
+ * the reference count is managed by that ResourceOwner.
  *
- * Note: useResOwner = false is used for releasing references that are in
+ * Note: owner == NULL is used for releasing references that are in
  * persistent data structures, such as the parent CachedPlanSource or a
  * Portal.  Transient references should be protected by a resource owner.
  */
 void
-ReleaseCachedPlan(CachedPlan *plan, bool useResOwner)
+ReleaseCachedPlan(CachedPlan *plan, ResourceOwner owner)
 {
 	Assert(plan->magic == CACHEDPLAN_MAGIC);
-	if (useResOwner)
+	if (owner)
 	{
 		Assert(plan->is_saved);
-		ResourceOwnerForgetPlanCacheRef(CurrentResourceOwner, plan);
+		ResourceOwnerForgetPlanCacheRef(owner, plan);
 	}
 	Assert(plan->refcount > 0);
 	plan->refcount--;

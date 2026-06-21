@@ -439,7 +439,6 @@ _PG_init(void)
 	/************************************************************
 	 * Create the hash table for working interpreters
 	 ************************************************************/
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(Oid);
 	hash_ctl.entrysize = sizeof(pltcl_interp_desc);
 	pltcl_interp_htab = hash_create("PL/Tcl interpreters",
@@ -450,7 +449,6 @@ _PG_init(void)
 	/************************************************************
 	 * Create the hash table for function lookup
 	 ************************************************************/
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(pltcl_proc_key);
 	hash_ctl.entrysize = sizeof(pltcl_proc_ptr);
 	pltcl_proc_htab = hash_create("PL/Tcl functions",
@@ -475,6 +473,9 @@ _PG_init(void)
 							   NULL,
 							   PGC_SUSET, 0,
 							   NULL, NULL, NULL);
+
+	MarkGUCPrefixReserved("pltcl");
+	MarkGUCPrefixReserved("pltclu");
 
 	pltcl_pm_init_done = true;
 }
@@ -828,11 +829,15 @@ pltcl_func_handler(PG_FUNCTION_ARGS, pltcl_call_state *call_state,
 	{
 		ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
 
-		if (!rsi || !IsA(rsi, ReturnSetInfo) ||
-			(rsi->allowedModes & SFRM_Materialize) == 0)
+		if (!rsi || !IsA(rsi, ReturnSetInfo))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("set-valued function called in context that cannot accept a set")));
+
+		if (!(rsi->allowedModes & SFRM_Materialize))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("materialize mode required, but it is not allowed in this context")));
 
 		call_state->rsi = rsi;
 		call_state->tuple_store_cxt = rsi->econtext->ecxt_per_query_memory;
@@ -1238,7 +1243,6 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS, pltcl_call_state *call_state,
 		for (i = 0; i < trigdata->tg_trigger->tgnargs; i++)
 			Tcl_ListObjAppendElement(NULL, tcl_cmd,
 									 Tcl_NewStringObj(utf_e2u(trigdata->tg_trigger->tgargs[i]), -1));
-
 	}
 	PG_CATCH();
 	{
@@ -1532,7 +1536,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 					rettype == RECORDOID)
 					 /* okay */ ;
 				else if (rettype == TRIGGEROID ||
-						 rettype == EVTTRIGGEROID)
+						 rettype == EVENT_TRIGGEROID)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("trigger functions can only be called as triggers")));
@@ -2930,7 +2934,6 @@ pltcl_commit(ClientData cdata, Tcl_Interp *interp,
 	PG_TRY();
 	{
 		SPI_commit();
-		SPI_start_transaction();
 	}
 	PG_CATCH();
 	{
@@ -2970,7 +2973,6 @@ pltcl_rollback(ClientData cdata, Tcl_Interp *interp,
 	PG_TRY();
 	{
 		SPI_rollback();
-		SPI_start_transaction();
 	}
 	PG_CATCH();
 	{

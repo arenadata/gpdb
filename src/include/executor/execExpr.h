@@ -4,7 +4,7 @@
  *	  Low level infrastructure related to expression evaluation
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/execExpr.h
@@ -20,6 +20,8 @@
 /* forward references to avoid circularity */
 struct ExprEvalStep;
 struct SubscriptingRefState;
+struct ScalarArrayOpExprHashTable;
+struct JsonbValue;
 
 /* Bits in ExprState->flags (see also execnodes.h for public flag bits): */
 /* expression's interpreter has been initialized */
@@ -31,6 +33,25 @@ struct SubscriptingRefState;
 typedef void (*ExecEvalSubroutine) (ExprState *state,
 									struct ExprEvalStep *op,
 									ExprContext *econtext);
+
+/* API for out-of-line evaluation subroutines returning bool */
+typedef bool (*ExecEvalBoolSubroutine) (ExprState *state,
+										struct ExprEvalStep *op,
+										ExprContext *econtext);
+
+/* ExprEvalSteps that cache a composite type's tupdesc need one of these */
+/* (it fits in-line in some step types, otherwise allocate out-of-line) */
+typedef struct ExprEvalRowtypeCache
+{
+	/*
+	 * cacheptr points to composite type's TypeCacheEntry if tupdesc_id is not
+	 * 0; or for an anonymous RECORD type, it points directly at the cached
+	 * tupdesc for the type, and tupdesc_id is 0.  (We'd use separate fields
+	 * if space were not at a premium.)  Initial state is cacheptr == NULL.
+	 */
+	void	   *cacheptr;
+	uint64		tupdesc_id;		/* last-seen tupdesc identifier, or 0 */
+} ExprEvalRowtypeCache;
 
 /*
  * Discriminator for ExprEvalSteps.
@@ -185,8 +206,8 @@ typedef enum ExprEvalOp
 	 */
 	EEOP_FIELDSTORE_FORM,
 
-	/* Process a container subscript; short-circuit expression to NULL if NULL */
-	EEOP_SBSREF_SUBSCRIPT,
+	/* Process container subscripts; possibly short-circuit result to NULL */
+	EEOP_SBSREF_SUBSCRIPTS,
 
 	/*
 	 * Compute old container element/slice when a SubscriptingRef assignment
@@ -215,6 +236,7 @@ typedef enum ExprEvalOp
 	EEOP_SCALARARRAYOP,
 	EEOP_SCALARARRAYOP_FAST_INT, 	/* fast path x in (123, 456, 789) */
 	EEOP_SCALARARRAYOP_FAST_STR, 	/* fast path x in ('a', 'b', 'c') */
+EEOP_HASHED_SCALARARRAYOP,
 	EEOP_XMLEXPR,
 	EEOP_AGGREF,
 	EEOP_GROUPING_FUNC,
@@ -224,7 +246,9 @@ typedef enum ExprEvalOp
 	EEOP_ROWIDEXPR,
 	EEOP_WINDOW_FUNC,
 	EEOP_SUBPLAN,
-	EEOP_ALTERNATIVE_SUBPLAN,
+	EEOP_JSON_CONSTRUCTOR,
+	EEOP_IS_JSON,
+	EEOP_JSONEXPR,
 
 	/* aggregation related nodes */
 	EEOP_AGG_STRICT_DESERIALIZE,
@@ -355,8 +379,8 @@ typedef struct ExprEvalStep
 		/* for EEOP_NULLTEST_ROWIS[NOT]NULL */
 		struct
 		{
-			/* cached tupdesc pointer - filled at runtime */
-			TupleDesc	argdesc;
+			/* cached descriptor for composite type - filled at runtime */
+			ExprEvalRowtypeCache rowcache;
 		}			nulltest_row;
 
 		/* for EEOP_PARAM_EXEC/EXTERN */
@@ -488,8 +512,8 @@ typedef struct ExprEvalStep
 		{
 			AttrNumber	fieldnum;	/* field number to extract */
 			Oid			resulttype; /* field's type */
-			/* cached tupdesc pointer - filled at runtime */
-			TupleDesc	argdesc;
+			/* cached descriptor for composite type - filled at runtime */
+			ExprEvalRowtypeCache rowcache;
 		}			fieldselect;
 
 		/* for EEOP_FIELDSTORE_DEFORM / FIELDSTORE_FORM */
@@ -498,9 +522,9 @@ typedef struct ExprEvalStep
 			/* original expression node */
 			FieldStore *fstore;
 
-			/* cached tupdesc pointer - filled at runtime */
-			/* note that a DEFORM and FORM pair share the same tupdesc */
-			TupleDesc  *argdesc;
+			/* cached descriptor for composite type - filled at runtime */
+			/* note that a DEFORM and FORM pair share the same cache */
+			ExprEvalRowtypeCache *rowcache;
 
 			/* workspace for column values */
 			Datum	   *values;
@@ -508,19 +532,19 @@ typedef struct ExprEvalStep
 			int			ncolumns;
 		}			fieldstore;
 
-		/* for EEOP_SBSREF_SUBSCRIPT */
+		/* for EEOP_SBSREF_SUBSCRIPTS */
 		struct
 		{
+			ExecEvalBoolSubroutine subscriptfunc;	/* evaluation subroutine */
 			/* too big to have inline */
 			struct SubscriptingRefState *state;
-			int			off;	/* 0-based index of this subscript */
-			bool		isupper;	/* is it upper or lower subscript? */
 			int			jumpdone;	/* jump here on null */
 		}			sbsref_subscript;
 
 		/* for EEOP_SBSREF_OLD / ASSIGN / FETCH */
 		struct
 		{
+			ExecEvalSubroutine subscriptfunc;	/* evaluation subroutine */
 			/* too big to have inline */
 			struct SubscriptingRefState *state;
 		}			sbsref;
@@ -540,12 +564,12 @@ typedef struct ExprEvalStep
 		/* for EEOP_CONVERT_ROWTYPE */
 		struct
 		{
-			ConvertRowtypeExpr *convert;	/* original expression */
+			Oid			inputtype;	/* input composite type */
+			Oid			outputtype; /* output composite type */
 			/* these three fields are filled at runtime: */
-			TupleDesc	indesc; /* tupdesc for input type */
-			TupleDesc	outdesc;	/* tupdesc for output type */
+			ExprEvalRowtypeCache *incache;	/* cache for input type */
+			ExprEvalRowtypeCache *outcache; /* cache for output type */
 			TupleConversionMap *map;	/* column mapping */
-			bool		initialized;	/* initialized for current types? */
 		}			convert_rowtype;
 
 		/* for EEOP_SCALARARRAYOP */
@@ -576,6 +600,21 @@ typedef struct ExprEvalStep
 			int		   *fp_len;
 			Datum	   *fp_datum;
 		}			scalararrayop_fast;
+/* for EEOP_HASHED_SCALARARRAYOP */
+		struct
+		{
+			bool		has_nulls;
+			bool		inclause;	/* true for IN and false for NOT IN */
+			struct ScalarArrayOpExprHashTable *elements_tab;
+			FmgrInfo   *finfo;	/* function's lookup data */
+			FunctionCallInfo fcinfo_data;	/* arguments etc */
+			/* faster to access without additional indirection: */
+			PGFunction	fn_addr;	/* actual call address */
+			FmgrInfo   *hash_finfo; /* function's lookup data */
+			FunctionCallInfo hash_fcinfo_data;	/* arguments etc */
+			/* faster to access without additional indirection: */
+			PGFunction	hash_fn_addr;	/* actual call address */
+		}			hashedscalararrayop;
 
 		/* for EEOP_XMLEXPR */
 		struct
@@ -592,8 +631,7 @@ typedef struct ExprEvalStep
 		/* for EEOP_AGGREF */
 		struct
 		{
-			/* out-of-line state, modified by nodeAgg.c */
-			AggrefExprState *astate;
+			int			aggno;
 		}			aggref;
 
 		/* for EEOP_GROUPING_FUNC */
@@ -640,13 +678,6 @@ typedef struct ExprEvalStep
 			SubPlanState *sstate;
 		}			subplan;
 
-		/* for EEOP_ALTERNATIVE_SUBPLAN */
-		struct
-		{
-			/* out-of-line state, created by nodeSubplan.c */
-			AlternativeSubPlanState *asstate;
-		}			alternative_subplan;
-
 		/* for EEOP_AGG_*DESERIALIZE */
 		struct
 		{
@@ -691,6 +722,72 @@ typedef struct ExprEvalStep
 			int			transno;
 			int			setoff;
 		}			agg_trans;
+
+		/* for EEOP_JSON_CONSTRUCTOR */
+		struct
+		{
+			JsonConstructorExpr *constructor;
+			Datum	   *arg_values;
+			bool	   *arg_nulls;
+			Oid		   *arg_types;
+			struct
+			{
+				int			category;
+				Oid			outfuncid;
+			}		   *arg_type_cache; /* cache for datum_to_json[b]() */
+			int			nargs;
+		}			json_constructor;
+
+		/* for EEOP_IS_JSON */
+		struct
+		{
+			JsonIsPredicate *pred;	/* original expression node */
+		}			is_json;
+
+		/* for EEOP_JSONEXPR */
+		struct
+		{
+			JsonExpr   *jsexpr; /* original expression node */
+
+			struct
+			{
+				FmgrInfo	func;	/* typinput function for output type */
+				Oid			typioparam;
+			}			input;	/* I/O info for output type */
+
+			NullableDatum
+					   *formatted_expr, /* formatted context item value */
+					   *res_expr,	/* result item */
+					   *coercion_expr,	/* input for JSON item coercion */
+					   *pathspec;	/* path specification value */
+
+			ExprState  *result_expr;	/* coerced to output type */
+			ExprState  *default_on_empty;	/* ON EMPTY DEFAULT expression */
+			ExprState  *default_on_error;	/* ON ERROR DEFAULT expression */
+			List	   *args;	/* passing arguments */
+
+			void	   *cache;	/* cache for json_populate_type() */
+
+			struct JsonCoercionsState
+			{
+				struct JsonCoercionState
+				{
+					JsonCoercion *coercion; /* coercion expression */
+					ExprState  *estate; /* coercion expression state */
+				}			null,
+							string,
+				numeric    ,
+							boolean,
+							date,
+							time,
+							timetz,
+							timestamp,
+							timestamptz,
+							composite;
+			}			coercions;	/* states for coercion from SQL/JSON item
+									 * types directly to the output type */
+		}			jsonexpr;
+
 	}			d;
 } ExprEvalStep;
 
@@ -700,35 +797,40 @@ typedef struct SubscriptingRefState
 {
 	bool		isassignment;	/* is it assignment, or just fetch? */
 
-	Oid			refelemtype;	/* OID of the container element type */
-	int16		refattrlength;	/* typlen of container type */
-	int16		refelemlength;	/* typlen of the container element type */
-	bool		refelembyval;	/* is the element type pass-by-value? */
-	char		refelemalign;	/* typalign of the element type */
+	/* workspace for type-specific subscripting code */
+	void	   *workspace;
 
-	/* numupper and upperprovided[] are filled at compile time */
-	/* at runtime, extracted subscript datums get stored in upperindex[] */
+	/* numupper and upperprovided[] are filled at expression compile time */
+	/* at runtime, subscripts are computed in upperindex[]/upperindexnull[] */
 	int			numupper;
-	bool		upperprovided[MAXDIM];
-	int			upperindex[MAXDIM];
+	bool	   *upperprovided;	/* indicates if this position is supplied */
+	Datum	   *upperindex;
+	bool	   *upperindexnull;
 
 	/* similarly for lower indexes, if any */
 	int			numlower;
-	bool		lowerprovided[MAXDIM];
-	int			lowerindex[MAXDIM];
-
-	/* subscript expressions get evaluated into here */
-	Datum		subscriptvalue;
-	bool		subscriptnull;
+	bool	   *lowerprovided;
+	Datum	   *lowerindex;
+	bool	   *lowerindexnull;
 
 	/* for assignment, new value to assign is evaluated into here */
 	Datum		replacevalue;
 	bool		replacenull;
 
-	/* if we have a nested assignment, SBSREF_OLD puts old value here */
+	/* if we have a nested assignment, sbs_fetch_old puts old value here */
 	Datum		prevvalue;
 	bool		prevnull;
 } SubscriptingRefState;
+
+/* Execution step methods used for SubscriptingRef */
+typedef struct SubscriptExecSteps
+{
+	/* See nodes/subscripting.h for more detail about these */
+	ExecEvalBoolSubroutine sbs_check_subscripts;	/* process subscripts */
+	ExecEvalSubroutine sbs_fetch;	/* fetch an element */
+	ExecEvalSubroutine sbs_assign;	/* assign to an element */
+	ExecEvalSubroutine sbs_fetch_old;	/* fetch old value for assignment */
+} SubscriptExecSteps;
 
 
 /* functions in execExpr.c */
@@ -773,27 +875,38 @@ extern void ExecEvalFieldStoreDeForm(ExprState *state, ExprEvalStep *op,
 									 ExprContext *econtext);
 extern void ExecEvalFieldStoreForm(ExprState *state, ExprEvalStep *op,
 								   ExprContext *econtext);
-extern bool ExecEvalSubscriptingRef(ExprState *state, ExprEvalStep *op);
-extern void ExecEvalSubscriptingRefFetch(ExprState *state, ExprEvalStep *op);
-extern void ExecEvalSubscriptingRefOld(ExprState *state, ExprEvalStep *op);
-extern void ExecEvalSubscriptingRefAssign(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConvertRowtype(ExprState *state, ExprEvalStep *op,
 								   ExprContext *econtext);
 extern void ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalScalarArrayOpFastInt(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalScalarArrayOpFastStr(ExprState *state, ExprEvalStep *op);
+extern void ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op,
+										ExprContext *econtext);
 extern void ExecEvalConstraintNotNull(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintCheck(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op);
+extern void ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalGroupingFunc(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalSubPlan(ExprState *state, ExprEvalStep *op,
 							ExprContext *econtext);
-extern void ExecEvalAlternativeSubPlan(ExprState *state, ExprEvalStep *op,
-									   ExprContext *econtext);
 extern void ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op,
 								ExprContext *econtext);
 extern void ExecEvalSysVar(ExprState *state, ExprEvalStep *op,
 						   ExprContext *econtext, TupleTableSlot *slot);
+extern void ExecEvalJsonConstructor(ExprState *state, ExprEvalStep *op,
+									ExprContext *econtext);
+extern void ExecEvalJson(ExprState *state, ExprEvalStep *op,
+						 ExprContext *econtext);
+extern Datum ExecPrepareJsonItemCoercion(struct JsonbValue *item,
+										 JsonReturning *returning,
+										 struct JsonCoercionsState *coercions,
+										 struct JsonCoercionState **pjcstate);
+extern bool ExecEvalJsonNeedsSubTransaction(JsonExpr *jsexpr,
+											struct JsonCoercionsState *);
+extern Datum ExecEvalExprPassingCaseValue(ExprState *estate,
+										  ExprContext *econtext, bool *isnull,
+										  Datum caseval_datum,
+										  bool caseval_isnull);
 
 extern void ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup pergroup,
 							 ExprContext *aggcontext);

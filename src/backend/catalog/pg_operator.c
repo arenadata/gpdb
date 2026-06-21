@@ -3,7 +3,7 @@
  * pg_operator.c
  *	  routines to support manipulation of the pg_operator relation
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -250,7 +250,7 @@ OperatorShellMake(const char *operatorName,
 	values[Anum_pg_operator_oprname - 1] = NameGetDatum(&oname);
 	values[Anum_pg_operator_oprnamespace - 1] = ObjectIdGetDatum(operatorNamespace);
 	values[Anum_pg_operator_oprowner - 1] = ObjectIdGetDatum(GetUserId());
-	values[Anum_pg_operator_oprkind - 1] = CharGetDatum(leftTypeId ? (rightTypeId ? 'b' : 'r') : 'l');
+	values[Anum_pg_operator_oprkind - 1] = CharGetDatum(leftTypeId ? 'b' : 'l');
 	values[Anum_pg_operator_oprcanmerge - 1] = BoolGetDatum(false);
 	values[Anum_pg_operator_oprcanhash - 1] = BoolGetDatum(false);
 	values[Anum_pg_operator_oprleft - 1] = ObjectIdGetDatum(leftTypeId);
@@ -273,7 +273,7 @@ OperatorShellMake(const char *operatorName,
 	CatalogTupleInsert(pg_operator_desc, tup);
 
 	/* Add dependencies for the entry */
-	makeOperatorDependencies(tup, false);
+	makeOperatorDependencies(tup, true, false);
 
 	heap_freetuple(tup);
 
@@ -499,7 +499,7 @@ OperatorCreate(const char *operatorName,
 	values[Anum_pg_operator_oprname - 1] = NameGetDatum(&oname);
 	values[Anum_pg_operator_oprnamespace - 1] = ObjectIdGetDatum(operatorNamespace);
 	values[Anum_pg_operator_oprowner - 1] = ObjectIdGetDatum(GetUserId());
-	values[Anum_pg_operator_oprkind - 1] = CharGetDatum(leftTypeId ? (rightTypeId ? 'b' : 'r') : 'l');
+	values[Anum_pg_operator_oprkind - 1] = CharGetDatum(leftTypeId ? 'b' : 'l');
 	values[Anum_pg_operator_oprcanmerge - 1] = BoolGetDatum(canMerge);
 	values[Anum_pg_operator_oprcanhash - 1] = BoolGetDatum(canHash);
 	values[Anum_pg_operator_oprleft - 1] = ObjectIdGetDatum(leftTypeId);
@@ -553,7 +553,7 @@ OperatorCreate(const char *operatorName,
 	}
 
 	/* Add dependencies for the entry */
-	address = makeOperatorDependencies(tup, isUpdate);
+	address = makeOperatorDependencies(tup, true, isUpdate);
 
 	/* Post creation hook for new operator */
 	InvokeObjectPostCreateHook(OperatorRelationId, operatorObjectId, 0);
@@ -773,15 +773,22 @@ OperatorUpd(Oid baseId, Oid commId, Oid negId, bool isDelete)
  * complete operator, a new shell operator, a just-updated shell,
  * or an operator that's being modified by ALTER OPERATOR).
  *
+ * makeExtensionDep should be true when making a new operator or
+ * replacing a shell, false for ALTER OPERATOR.  Passing false
+ * will prevent any change in the operator's extension membership.
+ *
  * NB: the OidIsValid tests in this routine are necessary, in case
  * the given operator is a shell.
  */
 ObjectAddress
-makeOperatorDependencies(HeapTuple tuple, bool isUpdate)
+makeOperatorDependencies(HeapTuple tuple,
+						 bool makeExtensionDep,
+						 bool isUpdate)
 {
 	Form_pg_operator oper = (Form_pg_operator) GETSTRUCT(tuple);
 	ObjectAddress myself,
 				referenced;
+	ObjectAddresses *addrs;
 
 	ObjectAddressSet(myself, OperatorRelationId, oper->oid);
 
@@ -795,32 +802,34 @@ makeOperatorDependencies(HeapTuple tuple, bool isUpdate)
 		deleteSharedDependencyRecordsFor(myself.classId, myself.objectId, 0);
 	}
 
+	addrs = new_object_addresses();
+
 	/* Dependency on namespace */
 	if (OidIsValid(oper->oprnamespace))
 	{
 		ObjectAddressSet(referenced, NamespaceRelationId, oper->oprnamespace);
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on left type */
 	if (OidIsValid(oper->oprleft))
 	{
 		ObjectAddressSet(referenced, TypeRelationId, oper->oprleft);
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on right type */
 	if (OidIsValid(oper->oprright))
 	{
 		ObjectAddressSet(referenced, TypeRelationId, oper->oprright);
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on result type */
 	if (OidIsValid(oper->oprresult))
 	{
 		ObjectAddressSet(referenced, TypeRelationId, oper->oprresult);
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/*
@@ -836,29 +845,33 @@ makeOperatorDependencies(HeapTuple tuple, bool isUpdate)
 	if (OidIsValid(oper->oprcode))
 	{
 		ObjectAddressSet(referenced, ProcedureRelationId, oper->oprcode);
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on restriction selectivity function */
 	if (OidIsValid(oper->oprrest))
 	{
 		ObjectAddressSet(referenced, ProcedureRelationId, oper->oprrest);
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on join selectivity function */
 	if (OidIsValid(oper->oprjoin))
 	{
 		ObjectAddressSet(referenced, ProcedureRelationId, oper->oprjoin);
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		add_exact_object_address(&referenced, addrs);
 	}
+
+	record_object_address_dependencies(&myself, addrs, DEPENDENCY_NORMAL);
+	free_object_addresses(addrs);
 
 	/* Dependency on owner */
 	recordDependencyOnOwner(OperatorRelationId, oper->oid,
 							oper->oprowner);
 
 	/* Dependency on extension */
-	recordDependencyOnCurrentExtension(&myself, isUpdate);
+	if (makeExtensionDep)
+		recordDependencyOnCurrentExtension(&myself, true);
 
 	return myself;
 }

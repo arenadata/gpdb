@@ -23,12 +23,15 @@ begin
     for ln in execute $1
     loop
         -- Replace any numeric word with just 'N'
-        ln := regexp_replace(ln, '\m\d+\M', 'N', 'g');
+        ln := regexp_replace(ln, '-?\m\d+\M', 'N', 'g');
         -- In sort output, the above won't match units-suffixed numbers
         ln := regexp_replace(ln, '\m\d+kB', 'NkB', 'g');
         -- Ignore text-mode buffers output because it varies depending
         -- on the system state
         CONTINUE WHEN (ln ~ ' +Buffers: .*');
+        -- Ignore text-mode "Planning:" line because whether it's output
+        -- varies depending on the system state
+        CONTINUE WHEN (ln = 'Planning:');
         return next ln;
     end loop;
 end;
@@ -52,15 +55,39 @@ begin
 end;
 $$;
 
+-- GGDB: the JIT regression jobs run with jit enabled and lowered jit cost
+-- thresholds, so EXPLAIN (VERBOSE) emits a "Settings: jit = ..." line. That line
+-- is ignored by init_file, but its width still perturbs the explain_filter output
+-- column and breaks the otherwise-identical non-jit jobs. Pin the jit GUCs to
+-- their boot defaults so EXPLAIN output is the same under both job types (the JSON
+-- cases below already strip jit for the same "varies in test environment" reason).
+set jit = off;
+set jit_above_cost = 100000;
+set optimizer_jit_above_cost = 7500;
+-- Disable JIT, or we'll get different output on machines where that's been
+-- forced on
+set jit = off;
+
+-- Similarly, disable track_io_timing, to avoid output differences when
+-- enabled.
+set track_io_timing = off;
+
 -- Simple cases
 
 select explain_filter('explain select * from int8_tbl i8');
 select explain_filter('explain (analyze) select * from int8_tbl i8');
 select explain_filter('explain (analyze, verbose) select * from int8_tbl i8');
 select explain_filter('explain (analyze, buffers, format text) select * from int8_tbl i8');
-select explain_filter('explain (analyze, buffers, format json) select * from int8_tbl i8');
 select explain_filter('explain (analyze, buffers, format xml) select * from int8_tbl i8');
 select explain_filter('explain (analyze, buffers, format yaml) select * from int8_tbl i8');
+select explain_filter('explain (buffers, format text) select * from int8_tbl i8');
+select explain_filter('explain (buffers, format json) select * from int8_tbl i8');
+
+-- Check output including I/O timings.  These fields are conditional
+-- but always set in JSON format, so check them only in this case.
+set track_io_timing = on;
+select explain_filter('explain (analyze, buffers, format json) select * from int8_tbl i8');
+set track_io_timing = off;
 
 -- SETTINGS option
 -- We have to ignore other settings that might be imposed by the environment,
@@ -82,9 +109,7 @@ rollback;
 -- in any detail.  We can check that it parses correctly as JSON, and then
 -- remove it from the displayed results.
 
--- Serializable isolation would disable parallel query, so explicitly use an
--- arbitrary other level.
-begin isolation level repeatable read;
+begin;
 -- encourage use of parallel plans
 set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
@@ -108,3 +133,15 @@ select jsonb_pretty(
 );
 
 rollback;
+
+-- Test display of temporary objects
+create temp table t1(f1 float8);
+
+create function pg_temp.mysin(float8) returns float8 language plpgsql
+as 'begin return sin($1); end';
+
+select explain_filter('explain (verbose) select * from t1 where pg_temp.mysin(f1) < 0.5');
+
+-- Test compute_query_id
+set compute_query_id = on;
+select explain_filter('explain (verbose) select * from int8_tbl i8');

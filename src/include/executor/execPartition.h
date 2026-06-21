@@ -2,7 +2,7 @@
  * execPartition.h
  *		POSTGRES partitioning executor interface
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -22,32 +22,19 @@
 typedef struct PartitionDispatchData *PartitionDispatch;
 typedef struct PartitionTupleRouting PartitionTupleRouting;
 
-/*
- * PartitionRoutingInfo
- *
- * Additional result relation information specific to routing tuples to a
- * table partition.
- */
-typedef struct PartitionRoutingInfo
-{
-	/*
-	 * Map for converting tuples in root partitioned table format into
-	 * partition format, or NULL if no conversion is required.
-	 */
-	TupleConversionMap *pi_RootToPartitionMap;
+extern PartitionTupleRouting *ExecSetupPartitionTupleRouting(EState *estate,
+															 Relation rel);
+extern ResultRelInfo *ExecFindPartition(ModifyTableState *mtstate,
+										ResultRelInfo *rootResultRelInfo,
+										PartitionTupleRouting *proute,
+										TupleTableSlot *slot,
+										EState *estate);
+extern void ExecCleanupTupleRouting(ModifyTableState *mtstate,
+									PartitionTupleRouting *proute);
+/* GPDB: exported for tablecmds_gp.c (partition split/exchange) */
+extern int	get_partition_for_tuple(PartitionKey key, PartitionDesc partdesc,
+									Datum *values, bool *isnull);
 
-	/*
-	 * Map for converting tuples in partition format into the root partitioned
-	 * table format, or NULL if no conversion is required.
-	 */
-	TupleConversionMap *pi_PartitionToRootMap;
-
-	/*
-	 * Slot to store tuples in partition format, or NULL when no translation
-	 * is required between root and partition.
-	 */
-	TupleTableSlot *pi_PartitionTupleSlot;
-} PartitionRoutingInfo;
 
 /*
  * PartitionedRelPruningData - Per-partitioned-table data for run-time pruning
@@ -137,26 +124,27 @@ typedef struct PartitionPruneState
 	PartitionPruningData *partprunedata[FLEXIBLE_ARRAY_MEMBER];
 } PartitionPruneState;
 
-extern PartitionTupleRouting *ExecSetupPartitionTupleRouting(EState *estate,
-															 ModifyTableState *mtstate,
-															 Relation rel);
-extern ResultRelInfo *ExecFindPartition(ModifyTableState *mtstate,
-										ResultRelInfo *rootResultRelInfo,
-										PartitionTupleRouting *proute,
-										TupleTableSlot *slot,
-										EState *estate);
-extern void ExecCleanupTupleRouting(ModifyTableState *mtstate,
-									PartitionTupleRouting *proute);
+extern PartitionPruneState *ExecInitPartitionPruning(PlanState *planstate,
+													 int n_total_subplans,
+													 PartitionPruneInfo *pruneinfo,
+													 Bitmapset **initially_valid_subplans);
+/*
+ * GPDB: standalone prune-state builder for PartitionSelector nodes (PG15 made
+ * the core builder static behind ExecInitPartitionPruning).
+ */
 extern PartitionPruneState *ExecCreatePartitionPruneState(PlanState *planstate,
 														  PartitionPruneInfo *partitionpruneinfo);
+/*
+ * GPDB keeps the extra (estate, nplans, join_prune_paramids) parameters so that
+ * partition pruning can intersect with results produced by PartitionSelector
+ * nodes (MPP join pruning); PG15's initial_prune flag is appended.
+ */
 extern Bitmapset *ExecFindMatchingSubPlans(PartitionPruneState *prunestate,
 										   EState *estate,
-										   int nplans, List *join_prune_paramids);
-extern Bitmapset *ExecFindInitialMatchingSubPlans(PartitionPruneState *prunestate,
-												  int nsubplans);
-extern int get_partition_for_tuple(PartitionKey key, PartitionDesc partdesc,
-								   Datum *values, bool *isnull);
-
-extern Bitmapset *ExecAddMatchingSubPlans(PartitionPruneState *prunestate, Bitmapset *result);
+										   int nplans,
+										   List *join_prune_paramids,
+										   bool initial_prune);
+extern Bitmapset *ExecAddMatchingSubPlans(PartitionPruneState *prunestate,
+										  Bitmapset *result);
 
 #endif							/* EXECPARTITION_H */

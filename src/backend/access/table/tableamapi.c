@@ -3,7 +3,7 @@
  * tableamapi.c
  *		Support routines for API for Postgres table access methods
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/table/tableamapi.c
@@ -66,7 +66,14 @@ GetTableAmRoutine(Oid amhandler)
 	Assert(routine->tuple_tid_valid != NULL);
 	Assert(routine->tuple_get_latest_tid != NULL);
 	Assert(routine->tuple_satisfies_snapshot != NULL);
-	Assert(routine->compute_xid_horizon_for_tuples != NULL);
+	/*
+	 * GPDB: index_delete_tuples (bottom-up index deletion, PG14) is optional.
+	 * The append-only and AOCO table AMs intentionally leave it NULL, and the
+	 * index AMs already guard on it (e.g. _bt_simpledel_pass /
+	 * table_index_delete_tuples callers test rd_tableam->index_delete_tuples
+	 * != NULL), so a NULL callback is a valid "not supported" value rather than
+	 * an incomplete AM. Hence no Assert here, unlike upstream.
+	 */
 
 	Assert(routine->tuple_insert != NULL);
 

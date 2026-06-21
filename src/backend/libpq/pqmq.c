@@ -3,7 +3,7 @@
  * pqmq.c
  *	  Use the frontend/backend protocol for communication over a shm_mq
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/libpq/pqmq.c
@@ -33,8 +33,6 @@ static int	mq_flush_if_writable(void);
 static bool mq_is_send_pending(void);
 static int	mq_putmessage(char msgtype, const char *s, size_t len);
 static void mq_putmessage_noblock(char msgtype, const char *s, size_t len);
-static void mq_startcopyout(void);
-static void mq_endcopyout(bool errorAbort);
 
 static const PQcommMethods PqCommMqMethods = {
 	mq_comm_reset,
@@ -42,9 +40,7 @@ static const PQcommMethods PqCommMqMethods = {
 	mq_flush_if_writable,
 	mq_is_send_pending,
 	mq_putmessage,
-	mq_putmessage_noblock,
-	mq_startcopyout,
-	mq_endcopyout
+	mq_putmessage_noblock
 };
 
 /*
@@ -158,7 +154,12 @@ mq_putmessage(char msgtype, const char *s, size_t len)
 
 	for (;;)
 	{
-		result = shm_mq_sendv(pq_mq_handle, iov, 2, true);
+		/*
+		 * Immediately notify the receiver by passing force_flush as true so
+		 * that the shared memory value is updated before we send the parallel
+		 * message signal right after this.
+		 */
+		result = shm_mq_sendv(pq_mq_handle, iov, 2, true, true);
 
 		if (pq_mq_parallel_leader_pid != 0)
 			SendProcSignal(pq_mq_parallel_leader_pid,
@@ -193,18 +194,6 @@ mq_putmessage_noblock(char msgtype, const char *s, size_t len)
 	 * don't need it.
 	 */
 	elog(ERROR, "not currently supported");
-}
-
-static void
-mq_startcopyout(void)
-{
-	/* Nothing to do. */
-}
-
-static void
-mq_endcopyout(bool errorAbort)
-{
-	/* Nothing to do. */
 }
 
 /*

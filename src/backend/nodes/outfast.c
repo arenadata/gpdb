@@ -393,6 +393,7 @@ _outJoinExpr(StringInfo str, JoinExpr *node)
 	WRITE_NODE_FIELD(larg);
 	WRITE_NODE_FIELD(rarg);
 	WRITE_NODE_FIELD(usingClause);
+	WRITE_NODE_FIELD(join_using_alias);
 	WRITE_NODE_FIELD(quals);
 	WRITE_NODE_FIELD(alias);
 	WRITE_INT_FIELD(rtindex);
@@ -560,6 +561,10 @@ _outAExpr(StringInfo str, A_Expr *node)
 
 			WRITE_NODE_FIELD(name);
 			break;
+		case AEXPR_NOT_DISTINCT:
+
+			WRITE_NODE_FIELD(name);
+			break;
 		case AEXPR_NULLIF:
 
 			WRITE_NODE_FIELD(name);
@@ -600,10 +605,6 @@ _outAExpr(StringInfo str, A_Expr *node)
 
 			WRITE_NODE_FIELD(name);
 			break;
-		case AEXPR_PAREN:
-
-			break;
-
 		default:
 
 			break;
@@ -615,28 +616,35 @@ _outAExpr(StringInfo str, A_Expr *node)
 }
 
 static void
-_outValue(StringInfo str, Value *value)
+_outValue(StringInfo str, const Node *value)
 {
-
 	int16 vt = value->type;
 	appendBinaryStringInfo(str, (const char *)&vt, sizeof(int16));
-	switch (value->type)
+	switch (nodeTag(value))
 	{
 		case T_Integer:
-			appendBinaryStringInfo(str, (const char *)&value->val.ival, sizeof(long));
+			{
+				long ival = ((const Integer *) value)->ival;
+				appendBinaryStringInfo(str, (const char *)&ival, sizeof(long));
+			}
 			break;
 		case T_Float:
 		case T_String:
 		case T_BitString:
 			{
-				int slen = (value->val.str != NULL ? strlen(value->val.str) : 0);
+				/* Float.fval / String.sval / BitString.bsval all alias a char * */
+				const char *sval = ((const String *) value)->sval;
+				int slen = (sval != NULL ? strlen(sval) : 0);
 				appendBinaryStringInfo(str, (const char *)&slen, sizeof(int));
 				if (slen > 0)
-					appendBinaryStringInfo(str, value->val.str, slen);
+					appendBinaryStringInfo(str, sval, slen);
 			}
 			break;
-		case T_Null:
-			/* nothing to do */
+		case T_Boolean:
+			{
+				bool bval = ((const Boolean *) value)->boolval;
+				appendBinaryStringInfo(str, (const char *)&bval, sizeof(bool));
+			}
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) value->type);
@@ -647,11 +655,13 @@ _outValue(StringInfo str, Value *value)
 static void
 _outAConst(StringInfo str, A_Const *node)
 {
+	bool isnull = node->isnull;
+
 	WRITE_NODE_TYPE("A_CONST");
-
-	_outValue(str, &(node->val));
+	appendBinaryStringInfo(str, (const char *)&isnull, sizeof(bool));
+	if (!node->isnull)
+		_outValue(str, (const Node *) &node->val);
 	WRITE_LOCATION_FIELD(location);  /*CDB*/
-
 }
 
 static void
@@ -926,7 +936,7 @@ _outNode(StringInfo str, void *obj)
 	else if (IsA(obj, Integer) ||
 			 IsA(obj, Float) ||
 			 IsA(obj, String) ||
-			 IsA(obj, Null) ||
+			 IsA(obj, Boolean) ||
 			 IsA(obj, BitString))
 	{
 		_outValue(str, obj);
@@ -1356,6 +1366,9 @@ _outNode(StringInfo str, void *obj)
 			case T_CreateFunctionStmt:
 				_outCreateFunctionStmt(str, obj);
 				break;
+			case T_ReturnStmt:
+				_outReturnStmt(str, obj);
+				break;
 			case T_FunctionParameter:
 				_outFunctionParameter(str, obj);
 				break;
@@ -1544,6 +1557,21 @@ _outNode(StringInfo str, void *obj)
 			case T_IndexElem:
 				_outIndexElem(str, obj);
 				break;
+			case T_StatsElem:
+				_outStatsElem(str, obj);
+				break;
+			case T_WindowDef:
+				_outWindowDef(str, obj);
+				break;
+			case T_RangeSubselect:
+				_outRangeSubselect(str, obj);
+				break;
+			case T_InferClause:
+				_outInferClause(str, obj);
+				break;
+			case T_OnConflictClause:
+				_outOnConflictClause(str, obj);
+				break;
 			case T_Query:
 				_outQuery(str, obj);
 				break;
@@ -1564,6 +1592,12 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_WithClause:
 				_outWithClause(str, obj);
+				break;
+			case T_CTESearchClause:
+				_outCTESearchClause(str, obj);
+				break;
+			case T_CTECycleClause:
+				_outCTECycleClause(str, obj);
 				break;
 			case T_CommonTableExpr:
 				_outCommonTableExpr(str, obj);
@@ -1736,6 +1770,9 @@ _outNode(StringInfo str, void *obj)
 			case T_AlterTypeStmtSetDefaultEnc:
 				_outAlterTypeStmtSetDefaultEnc(str, obj);
 				break;
+			case T_AlterTypeStmt:
+				_outAlterTypeStmt(str, obj);
+				break;
 			case T_AlterExtensionStmt:
 				_outAlterExtensionStmt(str, obj);
 				break;
@@ -1837,6 +1874,66 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_AppendRelInfo:
 				_outAppendRelInfo(str, obj);
+				break;
+			case T_MergeAction:
+				_outMergeAction(str, obj);
+				break;
+
+			/*
+			 * GPDB: PG15 SQL/JSON nodes — needed to dispatch JSON_TABLE /
+			 * JSON_VALUE / JSON_QUERY / IS JSON / JSON constructors over
+			 * distributed tables. The _out* bodies come from outfuncs.c.
+			 */
+			case T_JsonFormat:
+				_outJsonFormat(str, obj);
+				break;
+			case T_JsonReturning:
+				_outJsonReturning(str, obj);
+				break;
+			case T_JsonValueExpr:
+				_outJsonValueExpr(str, obj);
+				break;
+			case T_JsonConstructorExpr:
+				_outJsonConstructorExpr(str, obj);
+				break;
+			case T_JsonBehavior:
+				_outJsonBehavior(str, obj);
+				break;
+			case T_JsonExpr:
+				_outJsonExpr(str, obj);
+				break;
+			case T_JsonCoercion:
+				_outJsonCoercion(str, obj);
+				break;
+			case T_JsonItemCoercions:
+				_outJsonItemCoercions(str, obj);
+				break;
+			case T_JsonTableParent:
+				_outJsonTableParent(str, obj);
+				break;
+			case T_JsonTableSibling:
+				_outJsonTableSibling(str, obj);
+				break;
+			case T_JsonIsPredicate:
+				_outJsonIsPredicate(str, obj);
+				break;
+			case T_JsonFuncExpr:
+				_outJsonFuncExpr(str, obj);
+				break;
+			case T_JsonCommon:
+				_outJsonCommon(str, obj);
+				break;
+			case T_JsonOutput:
+				_outJsonOutput(str, obj);
+				break;
+			case T_JsonArgument:
+				_outJsonArgument(str, obj);
+				break;
+			case T_PublicationObjSpec:
+				_outPublicationObjSpec(str, obj);
+				break;
+			case T_PublicationTable:
+				_outPublicationTable(str, obj);
 				break;
 
 			default:

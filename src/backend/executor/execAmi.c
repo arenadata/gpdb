@@ -3,7 +3,7 @@
  * execAmi.c
  *	  miscellaneous executor access method routines
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/executor/execAmi.c
@@ -39,6 +39,7 @@
 #include "executor/nodeLimit.h"
 #include "executor/nodeLockRows.h"
 #include "executor/nodeMaterial.h"
+#include "executor/nodeMemoize.h"
 #include "executor/nodeMergeAppend.h"
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeModifyTable.h"
@@ -54,6 +55,7 @@
 #include "executor/nodeSubplan.h"
 #include "executor/nodeSubqueryscan.h"
 #include "executor/nodeTableFuncscan.h"
+#include "executor/nodeTidrangescan.h"
 #include "executor/nodeTidscan.h"
 #include "executor/nodeTupleSplit.h"
 #include "executor/nodeUnique.h"
@@ -247,6 +249,10 @@ ExecReScan(PlanState *node)
 			ExecReScanTidScan((TidScanState *) node);
 			break;
 
+		case T_TidRangeScanState:
+			ExecReScanTidRangeScan((TidRangeScanState *) node);
+			break;
+
 		case T_SubqueryScanState:
 			ExecReScanSubqueryScan((SubqueryScanState *) node);
 			break;
@@ -305,6 +311,10 @@ ExecReScan(PlanState *node)
 
 		case T_MaterialState:
 			ExecReScanMaterial((MaterialState *) node);
+			break;
+
+		case T_MemoizeState:
+			ExecReScanMemoize((MemoizeState *) node);
 			break;
 
 		case T_SortState:
@@ -519,19 +529,22 @@ ExecSupportsMarkRestore(Path *pathnode)
 	{
 		case T_IndexScan:
 		case T_IndexOnlyScan:
+
+			/*
+			 * Not all index types support mark/restore.
+			 */
+			return castNode(IndexPath, pathnode)->indexinfo->amcanmarkpos;
+
 		case T_Material:
 		case T_Sort:
 		case T_ShareInputScan:
 			return true;
 
 		case T_CustomScan:
-			{
-				CustomPath *customPath = castNode(CustomPath, pathnode);
+			if (castNode(CustomPath, pathnode)->flags & CUSTOMPATH_SUPPORT_MARK_RESTORE)
+				return true;
+			return false;
 
-				if (customPath->flags & CUSTOMPATH_SUPPORT_MARK_RESTORE)
-					return true;
-				return false;
-			}
 		case T_Result:
 
 			/*
@@ -624,6 +637,10 @@ ExecSupportsBackwardScan(Plan *node)
 			{
 				ListCell   *l;
 
+				/* With async, tuples may be interleaved, so can't back up. */
+				if (((Append *) node)->nasyncplans > 0)
+					return false;
+
 				foreach(l, ((Append *) node)->appendplans)
 				{
 					if (!ExecSupportsBackwardScan((Plan *) lfirst(l)))
@@ -635,6 +652,7 @@ ExecSupportsBackwardScan(Plan *node)
 
 		case T_SeqScan:
 		case T_TidScan:
+		case T_TidRangeScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
 		case T_CteScan:
@@ -660,12 +678,8 @@ ExecSupportsBackwardScan(Plan *node)
 		case T_ShareInputScan:
 			return true;
 		case T_CustomScan:
-			{
-				uint32		flags = ((CustomScan *) node)->flags;
-
-				if (flags & CUSTOMPATH_SUPPORT_BACKWARD_SCAN)
-					return true;
-			}
+			if (((CustomScan *) node)->flags & CUSTOMPATH_SUPPORT_BACKWARD_SCAN)
+				return true;
 			return false;
 
 		case T_Material:

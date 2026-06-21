@@ -10,6 +10,7 @@ GiST stands for Generalized Search Tree. It was introduced in the seminal paper
 Jeffrey F. Naughton, Avi Pfeffer:
 
     http://www.sai.msu.su/~megera/postgres/gist/papers/gist.ps
+    https://dsf.berkeley.edu/papers/sigmod97-gist.pdf
 
 and implemented by J. Hellerstein and P. Aoki in an early version of
 PostgreSQL (more details are available from The GiST Indexing Project
@@ -25,6 +26,7 @@ The current implementation of GiST supports:
   * Concurrency
   * Recovery support via WAL logging
   * Buffering build algorithm
+  * Sorted build method
 
 The support for concurrency implemented in PostgreSQL was developed based on
 the paper "Access Methods for Next-Generation Database Systems" by
@@ -92,10 +94,10 @@ index child page to be split between the time we make a queue entry for it
 (while visiting its parent page) and the time we actually reach and scan
 the child page.  To avoid missing the entries that were moved to the right
 sibling, we detect whether a split has occurred by comparing the child
-page's NSN to the LSN that the parent had when visited.  If it did, the
-sibling page is immediately added to the front of the queue, ensuring that
-its items will be scanned in the same order as if they were still on the
-original child page.
+page's NSN (node sequence number, a special-purpose LSN) to the LSN that
+the parent had when visited.  If it did, the sibling page is immediately
+added to the front of the queue, ensuring that its items will be scanned
+in the same order as if they were still on the original child page.
 
 As is usual in Postgres, the search algorithm only guarantees to find index
 entries that existed before the scan started; index entries added during
@@ -412,6 +414,21 @@ the new buffers will always be siblings of buffers that haven't been fully
 emptied yet; tuples never move upwards in the tree. The final emptying loops
 through buffers at a given level until all buffers at that level have been
 emptied, and then moves down to the next level.
+
+Sorted build method
+-------------------
+
+Sort all input tuples, pack them into GiST leaf pages in the sorted order,
+and create downlinks and internal pages as we go. This method builds the index
+from the bottom up, similar to how the B-tree index is built.
+
+The sorted method is used if the operator classes for all columns have a
+"sortsupport" defined. Otherwise, we fall back on inserting tuples one by one
+with optional buffering.
+
+Sorting GiST build requires good linearization of the sort opclass. That is not
+always the case in multidimensional data. To tackle the anomalies, we buffer
+index tuples and apply a picksplit function that can be multidimensional-aware.
 
 Bulk delete algorithm (VACUUM)
 ------------------------------

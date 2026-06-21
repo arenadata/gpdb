@@ -4,7 +4,7 @@
  *	  Routines to support inter-object dependencies.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,6 +18,7 @@
 #include "access/htup_details.h"
 #include "access/table.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
@@ -46,9 +47,11 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
+#include "catalog/pg_publication_namespace.h"
 #include "catalog/pg_publication_rel.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
@@ -189,7 +192,9 @@ static const Oid object_classes[] = {
 	DefaultAclRelationId,		/* OCLASS_DEFACL */
 	ExtensionRelationId,		/* OCLASS_EXTENSION */
 	EventTriggerRelationId,		/* OCLASS_EVENT_TRIGGER */
+	ParameterAclRelationId,		/* OCLASS_PARAMETER_ACL */
 	PolicyRelationId,			/* OCLASS_POLICY */
+	PublicationNamespaceRelationId, /* OCLASS_PUBLICATION_NAMESPACE */
 	PublicationRelationId,		/* OCLASS_PUBLICATION */
 	PublicationRelRelationId,	/* OCLASS_PUBLICATION_REL */
 	SubscriptionRelationId,		/* OCLASS_SUBSCRIPTION */
@@ -537,6 +542,16 @@ findDependentObjects(const ObjectAddress *object,
 		return;
 
 	/*
+	 * If the target object is pinned, we can just error out immediately; it
+	 * won't have any objects recorded as depending on it.
+	 */
+	if (IsPinnedObject(object->classId, object->objectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				 errmsg("cannot drop %s because it is required by the database system",
+						getObjectDescription(object, false))));
+
+	/*
 	 * The target object might be internally dependent on some other object
 	 * (its "owner"), and/or be a member of an extension (also considered its
 	 * owner).  If so, and if we aren't recursing from the owning object, we
@@ -809,15 +824,6 @@ findDependentObjects(const ObjectAddress *object,
 				objflags |= DEPFLAG_IS_PART;
 				break;
 
-			case DEPENDENCY_PIN:
-
-				/*
-				 * Should not happen; PIN dependencies should have zeroes in
-				 * the depender fields...
-				 */
-				elog(ERROR, "incorrect use of PIN dependency with %s",
-					 getObjectDescription(object, false));
-				break;
 			default:
 				elog(ERROR, "unrecognized dependency type '%c' for %s",
 					 foundDep->deptype, getObjectDescription(object, false));
@@ -945,18 +951,6 @@ findDependentObjects(const ObjectAddress *object,
 				break;
 			case DEPENDENCY_EXTENSION:
 				subflags = DEPFLAG_EXTENSION;
-				break;
-			case DEPENDENCY_PIN:
-
-				/*
-				 * For a PIN dependency we just ereport immediately; there
-				 * won't be any others to report.
-				 */
-				ereport(ERROR,
-						(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-						 errmsg("cannot drop %s because it is required by the database system",
-								getObjectDescription(object, false))));
-				subflags = 0;	/* keep compiler quiet */
 				break;
 			default:
 				elog(ERROR, "unrecognized dependency type '%c' for %s",
@@ -1093,15 +1087,9 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 	 * If no error is to be thrown, and the msglevel is too low to be shown to
 	 * either client or server log, there's no need to do any of the rest of
 	 * the work.
-	 *
-	 * Note: this code doesn't know all there is to be known about elog
-	 * levels, but it works for NOTICE and DEBUG2, which are the only values
-	 * msglevel can currently have.  We also assume we are running in a normal
-	 * operating environment.
 	 */
 	if (behavior == DROP_CASCADE &&
-		msglevel < client_min_messages &&
-		(msglevel < log_min_messages || log_min_messages == LOG))
+		!message_level_is_interesting(msglevel))
 		return;
 
 	/*
@@ -1134,6 +1122,10 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 
 		objDesc = getObjectDescription(obj, false);
 
+		/* An object being dropped concurrently doesn't need to be reported */
+		if (objDesc == NULL)
+			continue;
+
 		/*
 		 * If, at any stage of the recursive search, we reached the object via
 		 * an AUTO, INTERNAL, PARTITION, or EXTENSION dependency, then it's
@@ -1151,40 +1143,45 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 			 * log_min_messages are different.
 			 */
 			ereport(DEBUG2,
-					(errmsg("drop auto-cascades to %s",
-							objDesc)));
+					(errmsg_internal("drop auto-cascades to %s",
+									 objDesc)));
 		}
 		else if (behavior == DROP_RESTRICT)
 		{
 			char	   *otherDesc = getObjectDescription(&extra->dependee,
 														 false);
 
-			if (msglevel == NOTICE && Gp_role == GP_ROLE_EXECUTE)
+			if (otherDesc)
 			{
-				ereport(DEBUG1,
-						(errmsg("%s depends on %s",
-								objDesc, otherDesc)));
-			}
-			else
-			{
-				if (numReportedClient < MAX_REPORTED_DEPS)
+				if (msglevel == NOTICE && Gp_role == GP_ROLE_EXECUTE)
 				{
-					/* separate entries with a newline */
-					if (clientdetail.len != 0)
-						appendStringInfoChar(&clientdetail, '\n');
-					appendStringInfo(&clientdetail, _("%s depends on %s"),
-									 objDesc, otherDesc);
-					numReportedClient++;
+					ereport(DEBUG1,
+							(errmsg("%s depends on %s",
+									objDesc, otherDesc)));
 				}
 				else
-					numNotReportedClient++;
-				/* separate entries with a newline */
-				if (logdetail.len != 0)
-					appendStringInfoChar(&logdetail, '\n');
-				appendStringInfo(&logdetail, _("%s depends on %s"),
-								 objDesc, otherDesc);
-				pfree(otherDesc);
+				{
+					if (numReportedClient < MAX_REPORTED_DEPS)
+					{
+						/* separate entries with a newline */
+						if (clientdetail.len != 0)
+							appendStringInfoChar(&clientdetail, '\n');
+						appendStringInfo(&clientdetail, _("%s depends on %s"),
+										 objDesc, otherDesc);
+						numReportedClient++;
+					}
+					else
+						numNotReportedClient++;
+					/* separate entries with a newline */
+					if (logdetail.len != 0)
+						appendStringInfoChar(&logdetail, '\n');
+					appendStringInfo(&logdetail, _("%s depends on %s"),
+									 objDesc, otherDesc);
+					pfree(otherDesc);
+				}
 			}
+			else
+				numNotReportedClient++;
 			ok = false;
 		}
 		else
@@ -1248,7 +1245,6 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 	else if (numReportedClient > 1)
 	{
 		ereport(msglevel,
-		/* translator: %d always has a value larger than 1 */
 				(errmsg_plural("drop cascades to %d other object",
 							   "drop cascades to %d other objects",
 							   numReportedClient + numNotReportedClient,
@@ -1541,8 +1537,16 @@ doDeletion(const ObjectAddress *object, int flags)
 			RemovePolicyById(object->objectId);
 			break;
 
+		case OCLASS_PUBLICATION_NAMESPACE:
+			RemovePublicationSchemaById(object->objectId);
+			break;
+
 		case OCLASS_PUBLICATION_REL:
 			RemovePublicationRelById(object->objectId);
+			break;
+
+		case OCLASS_PUBLICATION:
+			RemovePublicationById(object->objectId);
 			break;
 
 		case OCLASS_CAST:
@@ -1563,7 +1567,6 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_USER_MAPPING:
 		case OCLASS_DEFACL:
 		case OCLASS_EVENT_TRIGGER:
-		case OCLASS_PUBLICATION:
 		case OCLASS_TRANSFORM:
 		case OCLASS_EXTPROTOCOL:
 			DropObjectById(object);
@@ -1576,6 +1579,7 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_DATABASE:
 		case OCLASS_TBLSPACE:
 		case OCLASS_SUBSCRIPTION:
+		case OCLASS_PARAMETER_ACL:
 			elog(ERROR, "global objects cannot be deleted by doDeletion");
 			break;
 
@@ -2012,6 +2016,22 @@ find_expr_references_walker(Node *node,
 						   context->addrs);
 		/* fall through to examine arguments */
 	}
+	else if (IsA(node, SubscriptingRef))
+	{
+		SubscriptingRef *sbsref = (SubscriptingRef *) node;
+
+		/*
+		 * The refexpr should provide adequate dependency on refcontainertype,
+		 * and that type in turn depends on refelemtype.  However, a custom
+		 * subscripting handler might set refrestype to something different
+		 * from either of those, in which case we'd better record it.
+		 */
+		if (sbsref->refrestype != sbsref->refcontainertype &&
+			sbsref->refrestype != sbsref->refelemtype)
+			add_object_address(OCLASS_TYPE, sbsref->refrestype, 0,
+							   context->addrs);
+		/* fall through to examine arguments */
+	}
 	else if (IsA(node, SubPlan))
 	{
 		/* Extra work needed here if we ever need this case */
@@ -2188,6 +2208,21 @@ find_expr_references_walker(Node *node,
 		if (OidIsValid(wc->inRangeColl) &&
 			wc->inRangeColl != DEFAULT_COLLATION_OID)
 			add_object_address(OCLASS_COLLATION, wc->inRangeColl, 0,
+							   context->addrs);
+		/* fall through to examine substructure */
+	}
+	else if (IsA(node, CTECycleClause))
+	{
+		CTECycleClause *cc = (CTECycleClause *) node;
+
+		if (OidIsValid(cc->cycle_mark_type))
+			add_object_address(OCLASS_TYPE, cc->cycle_mark_type, 0,
+							   context->addrs);
+		if (OidIsValid(cc->cycle_mark_collation))
+			add_object_address(OCLASS_COLLATION, cc->cycle_mark_collation, 0,
+							   context->addrs);
+		if (OidIsValid(cc->cycle_mark_neop))
+			add_object_address(OCLASS_OPERATOR, cc->cycle_mark_neop, 0,
 							   context->addrs);
 		/* fall through to examine substructure */
 	}
@@ -2902,9 +2937,14 @@ getObjectClass(const ObjectAddress *object)
 		case ExtprotocolRelationId:
 			Assert(object->objectSubId == 0);
 			return OCLASS_EXTPROTOCOL;
+		case ParameterAclRelationId:
+			return OCLASS_PARAMETER_ACL;
 
 		case PolicyRelationId:
 			return OCLASS_POLICY;
+
+		case PublicationNamespaceRelationId:
+			return OCLASS_PUBLICATION_NAMESPACE;
 
 		case PublicationRelationId:
 			return OCLASS_PUBLICATION;

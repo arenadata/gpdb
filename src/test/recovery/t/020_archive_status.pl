@@ -1,14 +1,16 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 #
 # Tests related to WAL archiving and recovery.
 #
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 16;
-use Config;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
-my $primary = get_new_node('primary');
+my $primary = PostgreSQL::Test::Cluster->new('primary');
 $primary->init(
 	has_archiving    => 1,
 	allows_streaming => 1);
@@ -25,7 +27,7 @@ my $primary_data = $primary->data_dir;
 # a portable solution, use an archive command based on a command known to
 # work but will fail: copy with an incorrect original path.
 my $incorrect_command =
-  $TestLib::windows_os
+  $PostgreSQL::Test::Utils::windows_os
   ? qq{copy "%p_does_not_exist" "%f_does_not_exist"}
   : qq{cp "%p_does_not_exist" "%f_does_not_exist"};
 $primary->safe_psql(
@@ -65,7 +67,7 @@ is( $primary->safe_psql(
 		FROM pg_stat_archiver
 	}),
 	"0|$segment_name_1",
-	'pg_stat_archiver failed to archive $segment_name_1');
+	"pg_stat_archiver failed to archive $segment_name_1");
 
 # Crash the cluster for the next test in charge of checking that non-archived
 # WAL segments are not removed.
@@ -136,7 +138,7 @@ $primary->poll_query_until('postgres',
   or die "Timed out while waiting for archiving to finish";
 
 # Test standby with archive_mode = on.
-my $standby1 = get_new_node('standby');
+my $standby1 = PostgreSQL::Test::Cluster->new('standby');
 $standby1->init_from_backup($primary, 'backup', has_restoring => 1);
 $standby1->append_conf('postgresql.conf', "archive_mode = on");
 my $standby1_data = $standby1->data_dir;
@@ -146,7 +148,7 @@ $standby1->start;
 # that all segments needed are restored from the archives.
 $standby1->poll_query_until('postgres',
 	qq{ SELECT pg_wal_lsn_diff(pg_last_wal_replay_lsn(), '$primary_lsn') >= 0 }
-) or die "Timed out while waiting for xlog replay on standby2";
+) or die "Timed out while waiting for xlog replay on standby1";
 
 $standby1->safe_psql('postgres', q{CHECKPOINT});
 
@@ -172,7 +174,7 @@ ok( -f "$standby1_data/$segment_path_2_done",
 # command to fail to persist the .ready files.  Note that this node
 # has inherited the archive command of the previous cold backup that
 # will cause archiving failures.
-my $standby2 = get_new_node('standby2');
+my $standby2 = PostgreSQL::Test::Cluster->new('standby2');
 $standby2->init_from_backup($primary, 'backup', has_restoring => 1);
 $standby2->append_conf('postgresql.conf', 'archive_mode = always');
 my $standby2_data = $standby2->data_dir;
@@ -232,3 +234,5 @@ ok( -f "$standby2_data/$segment_path_1_done"
 	  && -f "$standby2_data/$segment_path_2_done",
 	".done files created after archive success with archive_mode=always on standby"
 );
+
+done_testing();

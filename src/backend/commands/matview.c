@@ -3,7 +3,7 @@
  * matview.c
  *	  materialized view support
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -193,6 +193,17 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 										  lockmode, 0,
 										  RangeVarCallbackOwnsTable, NULL);
 	matviewRel = table_open(matviewOid, NoLock);
+	relowner = matviewRel->rd_rel->relowner;
+
+	/*
+	 * Switch to the owner's userid, so that any functions are run as that
+	 * user.  Also lock down security-restricted operations and arrange to
+	 * make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(relowner,
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	save_nestlevel = NewGUCNestLevel();
 
 	/* Make sure it is a materialized view. */
 	if (matviewRel->rd_rel->relkind != RELKIND_MATVIEW)
@@ -211,7 +222,8 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	if (concurrent && stmt->skipData)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("CONCURRENTLY and WITH NO DATA options cannot be used together")));
+				 errmsg("%s and %s options cannot be used together",
+						"CONCURRENTLY", "WITH NO DATA")));
 
 	/*
 	 * Check that everything is correct for a refresh. Problems at this point
@@ -312,10 +324,17 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	 * Don't lock it down too tight to create a temporary table just yet.  We
 	 * will switch modes when we are about to execute user code.
 	 */
-	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	/*
+	 * GPDB: switch to the owner's userid for creating the transient table.
+	 * The original userid/sec_context were already saved (and SECURITY_
+	 * RESTRICTED_OPERATION set) at the top of this function; do NOT re-fetch
+	 * them here, or the final SetUserIdAndSecContext(save_userid,
+	 * save_sec_context) would restore the restricted context instead of the
+	 * original, tripping the "prevSecContext == 0" assert in the next
+	 * StartTransaction.  The GUC nest level is likewise already established.
+	 */
 	SetUserIdAndSecContext(relowner,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
-	save_nestlevel = NewGUCNestLevel();
 
 	/* Concurrent refresh builds new data in temp tablespace, and does diff. */
 	if (concurrent)
@@ -407,6 +426,17 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 
 	ObjectAddressSet(address, RelationRelationId, matviewOid);
 
+	/*
+	 * Save the rowcount so that pg_stat_statements can track the total number
+	 * of rows processed by REFRESH MATERIALIZED VIEW command. Note that we
+	 * still don't display the rowcount in the command completion tag output,
+	 * i.e., the display_rowcount flag of CMDTAG_REFRESH_MATERIALIZED_VIEW
+	 * command tag is left false in cmdtaglist.h. Otherwise, the change of
+	 * completion tag output might break applications using it.
+	 */
+	if (qc)
+		SetQueryCompletion(qc, CMDTAG_REFRESH_MATERIALIZED_VIEW, processed);
+
 	return address;
 }
 
@@ -460,7 +490,7 @@ refresh_matview_datafill(DestReceiver *dest, Query *query,
 	CHECK_FOR_INTERRUPTS();
 
 	/* Plan the query which will generate data for the refresh. */
-	plan = pg_plan_query(query, queryString, 0, NULL);
+	plan = pg_plan_query(query, queryString, CURSOR_OPT_PARALLEL_OK, NULL);
 
 	plan->refreshClause = refreshClause;
 
@@ -701,9 +731,12 @@ transientrel_destroy(DestReceiver *self)
 /*
  * Given a qualified temporary table name, append an underscore followed by
  * the given integer, to make a new table name based on the old one.
+ * The result is a palloc'd string.
  *
- * This leaks memory through palloc(), which won't be cleaned up until the
- * current memory context is freed.
+ * As coded, this would fail to make a valid SQL name if the given name were,
+ * say, "FOO"."BAR".  Currently, the table name portion of the input will
+ * never be double-quoted because it's of the form "pg_temp_NNN", cf
+ * make_new_heap().  But we might have to work harder someday.
  */
 static char *
 make_temptable_name_n(char *tempname, int n)
@@ -793,16 +826,20 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	 * that in a way that allows showing the first duplicated row found.  Even
 	 * after we pass this test, a unique index on the materialized view may
 	 * find a duplicate key problem.
+	 *
+	 * Note: here and below, we use "tablename.*::tablerowtype" as a hack to
+	 * keep ".*" from being expanded into multiple columns in a SELECT list.
+	 * Compare ruleutils.c's get_variable().
 	 */
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
-					 "SELECT newdata FROM %s newdata "
-					 "WHERE newdata IS NOT NULL AND EXISTS "
-					 "(SELECT 1 FROM %s newdata2 WHERE newdata2 IS NOT NULL "
-					 "AND newdata2 OPERATOR(pg_catalog.*=) newdata "
-					 "AND newdata2.ctid OPERATOR(pg_catalog.<>) "
-					 "newdata.ctid and newdata2.gp_segment_id = "
-					 "newdata.gp_segment_id)",
+					 "SELECT _$newdata.* FROM %s _$newdata "
+					 "WHERE _$newdata.* IS NOT NULL AND EXISTS "
+					 "(SELECT 1 FROM %s _$newdata2 WHERE _$newdata2.* IS NOT NULL "
+					 "AND _$newdata2.* OPERATOR(pg_catalog.*=) _$newdata.* "
+					 "AND (_$newdata2.ctid OPERATOR(pg_catalog.<>) "
+					 "_$newdata.ctid OR _$newdata2.gp_segment_id "
+					 "OPERATOR(pg_catalog.<>) _$newdata.gp_segment_id))",
 					 tempname, tempname);
 	if (SPI_execute(querybuf.data, false, 1) != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
@@ -833,10 +870,19 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	/* Start building the query for creating the diff table. */
 	resetStringInfo(&querybuf);
 
+	/*
+	 * GPDB: unlike upstream, store the new data as expanded columns rather
+	 * than a whole-row record: an anonymous record's typmod is not
+	 * registered on other nodes, so reading the record column back from
+	 * the distributed temp table fails with "record type has not been
+	 * registered".  Unmatched-side discrimination works off tid alone
+	 * (matched rows are filtered out by the WHERE clause below).
+	 */
 	appendStringInfo(&querybuf,
 					 "CREATE TEMP TABLE %s AS "
-					 "SELECT mv.ctid AS tid, mv.gp_segment_id as sid, newdata.* "
-					 "FROM %s mv FULL JOIN %s newdata ON (",
+					 "SELECT _$mv.ctid AS tid, "
+					 "_$mv.gp_segment_id AS sid, _$newdata.* "
+					 "FROM %s _$mv FULL JOIN %s _$newdata ON (",
 					 diffname, matviewname, tempname);
 
 	/*
@@ -931,9 +977,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 				if (foundUniqueIndex)
 					appendStringInfoString(&querybuf, " AND ");
 
-				leftop = quote_qualified_identifier("newdata",
+				leftop = quote_qualified_identifier("_$newdata",
 													NameStr(newattr->attname));
-				rightop = quote_qualified_identifier("mv",
+				rightop = quote_qualified_identifier("_$mv",
 													 NameStr(attr->attname));
 
 				generate_operator_clause(&querybuf,
@@ -963,10 +1009,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 
 
 	appendStringInfoString(&querybuf,
-						   " AND newdata.* OPERATOR(pg_catalog.*=) mv.*) "
-						   "WHERE newdata.* IS NULL OR mv.* IS NULL "
-						   "ORDER BY tid ");
-	appendStringInfoString(&querybuf, distributed);
+						   " AND _$newdata.* OPERATOR(pg_catalog.*=) _$mv.*) "
+						   "WHERE _$newdata.* IS NULL OR _$mv.* IS NULL "
+						   "ORDER BY tid");
 
 	/* Create the temporary "diff" table. */
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
@@ -991,10 +1036,11 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	/* Deletes must come before inserts; do them first. */
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
-					 "DELETE FROM %s mv WHERE ctid OPERATOR(pg_catalog.=) ANY "
-					 "(SELECT diff.tid FROM %s diff "
-					 "WHERE diff.tid = mv.ctid and diff.sid = mv.gp_segment_id and"
-	 				 " diff.tid IS NOT NULL)",
+					 "DELETE FROM %s _$mv WHERE EXISTS "
+					 "(SELECT 1 FROM %s _$diff "
+					 "WHERE _$diff.tid IS NOT NULL "
+					 "AND _$diff.tid OPERATOR(pg_catalog.=) _$mv.ctid "
+					 "AND _$diff.sid OPERATOR(pg_catalog.=) _$mv.gp_segment_id)",
 					 matviewname, diffname);
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_DELETE)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
@@ -1005,13 +1051,12 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	for (int i = 0; i < newHeapDesc->natts; ++i)
 	{
 		Form_pg_attribute attr = TupleDescAttr(newHeapDesc, i);
-		if (i == newHeapDesc->natts - 1)
-			appendStringInfo(&querybuf, " %s", NameStr(attr->attname));
-		else
-			appendStringInfo(&querybuf, " %s,", NameStr(attr->attname));
+
+		appendStringInfo(&querybuf, "%s %s", (i == 0) ? "" : ",",
+						 quote_identifier(NameStr(attr->attname)));
 	}
 	appendStringInfo(&querybuf,
-					 " FROM %s diff WHERE tid IS NULL",
+					 " FROM %s _$diff WHERE tid IS NULL",
 					 diffname);
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_INSERT)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);

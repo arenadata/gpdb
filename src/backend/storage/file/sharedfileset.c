@@ -3,7 +3,7 @@
  * sharedfileset.c
  *	  Shared temporary file management.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -25,66 +25,34 @@
 #include "common/hashfn.h"
 #include "miscadmin.h"
 #include "storage/dsm.h"
+#include "storage/ipc.h"
 #include "storage/sharedfileset.h"
 #include "utils/builtins.h"
 
 static void SharedFileSetOnDetach(dsm_segment *segment, Datum datum);
-static void SharedFileSetPath(char *path, SharedFileSet *fileset, Oid tablespace);
-static void SharedFilePath(char *path, SharedFileSet *fileset, const char *name);
-static Oid	ChooseTablespace(const SharedFileSet *fileset, const char *name);
 
 /*
- * Initialize a space for temporary files that can be opened for read-only
- * access by other backends.  Other backends must attach to it before
- * accessing it.  Associate this SharedFileSet with 'seg'.  Any contained
- * files will be deleted when the last backend detaches.
- *
- * Files will be distributed over the tablespaces configured in
- * temp_tablespaces.
+ * Initialize a space for temporary files that can be opened by other backends.
+ * Other backends must attach to it before accessing it.  Associate this
+ * SharedFileSet with 'seg'.  Any contained files will be deleted when the
+ * last backend detaches.
  *
  * Under the covers the set is one or more directories which will eventually
- * be deleted when there are no backends attached.
+ * be deleted.
  */
 void
 SharedFileSetInit(SharedFileSet *fileset, dsm_segment *seg)
 {
-	static uint32 counter = 0;
-
+	/* Initialize the shared fileset specific members. */
 	SpinLockInit(&fileset->mutex);
 	fileset->refcnt = 1;
-	fileset->creator_pid = MyProcPid;
-	fileset->number = counter;
-	counter = (counter + 1) % INT_MAX;
 
-	/* Capture the tablespace OIDs so that all backends agree on them. */
-	PrepareTempTablespaces();
-	fileset->ntablespaces =
-		GetTempTablespaces(&fileset->tablespaces[0],
-						   lengthof(fileset->tablespaces));
-	if (fileset->ntablespaces == 0)
-	{
-		/* If the GUC is empty, use current database's default tablespace */
-		fileset->tablespaces[0] = MyDatabaseTableSpace;
-		fileset->ntablespaces = 1;
-	}
-	else
-	{
-		int			i;
-
-		/*
-		 * An entry of InvalidOid means use the default tablespace for the
-		 * current database.  Replace that now, to be sure that all users of
-		 * the SharedFileSet agree on what to do.
-		 */
-		for (i = 0; i < fileset->ntablespaces; i++)
-		{
-			if (fileset->tablespaces[i] == InvalidOid)
-				fileset->tablespaces[i] = MyDatabaseTableSpace;
-		}
-	}
+	/* Initialize the fileset. */
+	FileSetInit(&fileset->fs);
 
 	/* Register our cleanup callback. */
-	on_dsm_detach(seg, SharedFileSetOnDetach, PointerGetDatum(fileset));
+	if (seg)
+		on_dsm_detach(seg, SharedFileSetOnDetach, PointerGetDatum(fileset));
 }
 
 /*
@@ -115,83 +83,12 @@ SharedFileSetAttach(SharedFileSet *fileset, dsm_segment *seg)
 }
 
 /*
- * Create a new file in the given set.
- */
-File
-SharedFileSetCreate(SharedFileSet *fileset, const char *name)
-{
-	char		path[MAXPGPATH];
-	File		file;
-
-	SharedFilePath(path, fileset, name);
-	file = PathNameCreateTemporaryFile(path, false);
-
-	/* If we failed, see if we need to create the directory on demand. */
-	if (file <= 0)
-	{
-		char		tempdirpath[MAXPGPATH];
-		char		filesetpath[MAXPGPATH];
-		Oid			tablespace = ChooseTablespace(fileset, name);
-
-		TempTablespacePath(tempdirpath, tablespace);
-		SharedFileSetPath(filesetpath, fileset, tablespace);
-		PathNameCreateTemporaryDir(tempdirpath, filesetpath);
-		file = PathNameCreateTemporaryFile(path, true);
-	}
-
-	return file;
-}
-
-/*
- * Open a file that was created with SharedFileSetCreate(), possibly in
- * another backend.
- */
-File
-SharedFileSetOpen(SharedFileSet *fileset, const char *name)
-{
-	char		path[MAXPGPATH];
-	File		file;
-
-	SharedFilePath(path, fileset, name);
-	file = PathNameOpenTemporaryFile(path);
-
-	return file;
-}
-
-/*
- * Delete a file that was created with SharedFileSetCreate().
- * Return true if the file existed, false if didn't.
- */
-bool
-SharedFileSetDelete(SharedFileSet *fileset, const char *name,
-					bool error_on_failure)
-{
-	char		path[MAXPGPATH];
-
-	SharedFilePath(path, fileset, name);
-
-	return PathNameDeleteTemporaryFile(path, error_on_failure);
-}
-
-/*
  * Delete all files in the set.
  */
 void
 SharedFileSetDeleteAll(SharedFileSet *fileset)
 {
-	char		dirpath[MAXPGPATH];
-	int			i;
-
-	/*
-	 * Delete the directory we created in each tablespace.  Doesn't fail
-	 * because we use this in error cleanup paths, but can generate LOG
-	 * message on IO error.
-	 */
-	for (i = 0; i < fileset->ntablespaces; ++i)
-	{
-		SharedFileSetPath(dirpath, fileset, fileset->tablespaces[i]);
-		PathNameDeleteTemporaryDir(dirpath);
-	}
+	FileSetDeleteAll(&fileset->fs);
 }
 
 /*
@@ -219,44 +116,5 @@ SharedFileSetOnDetach(dsm_segment *segment, Datum datum)
 	 * this function so we can safely access its data.
 	 */
 	if (unlink_all)
-		SharedFileSetDeleteAll(fileset);
-}
-
-/*
- * Build the path for the directory holding the files backing a SharedFileSet
- * in a given tablespace.
- */
-static void
-SharedFileSetPath(char *path, SharedFileSet *fileset, Oid tablespace)
-{
-	char		tempdirpath[MAXPGPATH];
-
-	TempTablespacePath(tempdirpath, tablespace);
-	snprintf(path, MAXPGPATH, "%s/%s%lu.%u.sharedfileset",
-			 tempdirpath, PG_TEMP_FILE_PREFIX,
-			 (unsigned long) fileset->creator_pid, fileset->number);
-}
-
-/*
- * Sorting hat to determine which tablespace a given shared temporary file
- * belongs in.
- */
-static Oid
-ChooseTablespace(const SharedFileSet *fileset, const char *name)
-{
-	uint32		hash = hash_any((const unsigned char *) name, strlen(name));
-
-	return fileset->tablespaces[hash % fileset->ntablespaces];
-}
-
-/*
- * Compute the full path of a file in a SharedFileSet.
- */
-static void
-SharedFilePath(char *path, SharedFileSet *fileset, const char *name)
-{
-	char		dirpath[MAXPGPATH];
-
-	SharedFileSetPath(dirpath, fileset, ChooseTablespace(fileset, name));
-	snprintf(path, MAXPGPATH, "%s/%s", dirpath, name);
+		FileSetDeleteAll(&fileset->fs);
 }

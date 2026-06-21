@@ -7,6 +7,7 @@
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+* Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/pathnode.h
@@ -71,22 +72,33 @@ extern BitmapOrPath *create_bitmap_or_path(PlannerInfo *root,
 										   List *bitmapquals);
 extern TidPath *create_tidscan_path(PlannerInfo *root, RelOptInfo *rel,
                                     List *tidquals, Relids required_outer);
+extern TidRangePath *create_tidrangescan_path(PlannerInfo *root,
+											  RelOptInfo *rel,
+											  List *tidrangequals,
+											  Relids required_outer);
 extern AppendPath *create_append_path(PlannerInfo *root, RelOptInfo *rel,
-                                      List *subpaths, List *partial_subpaths,
-                                      List *pathkeys, Relids required_outer,
-                                      int parallel_workers, bool parallel_aware,
-                                      List *partitioned_rels, double rows);
+									  List *subpaths, List *partial_subpaths,
+									  List *pathkeys, Relids required_outer,
+									  int parallel_workers, bool parallel_aware,
+									  double rows);
 extern MergeAppendPath *create_merge_append_path(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 List *subpaths,
 												 List *pathkeys,
-												 Relids required_outer,
-												 List *partitioned_rels);
+												 Relids required_outer);
 extern GroupResultPath *create_group_result_path(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 PathTarget *target,
 												 List *havingqual);
-extern MaterialPath *create_material_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath);
+extern MaterialPath *create_material_path(RelOptInfo *rel, Path *subpath);
+extern MemoizePath *create_memoize_path(PlannerInfo *root,
+										RelOptInfo *rel,
+										Path *subpath,
+										List *param_exprs,
+										List *hash_operators,
+										bool singlerow,
+										bool binary_mode,
+										double calls);
 extern UniquePath *create_unique_path(PlannerInfo *root, RelOptInfo *rel,
 									  Path *subpath, SpecialJoinInfo *sjinfo);
 extern UniquePath *create_unique_rowid_path(PlannerInfo *root,
@@ -220,17 +232,17 @@ extern ProjectSetPath *create_set_projection_path(PlannerInfo *root,
 												  RelOptInfo *rel,
 												  Path *subpath,
 												  PathTarget *target);
-extern SortPath *create_incremental_sort_path(PlannerInfo *root,
-											  RelOptInfo *rel,
-											  Path *subpath,
-											  List *pathkeys,
-											  int presorted_keys,
-											  double limit_tuples);
 extern SortPath *create_sort_path(PlannerInfo *root,
 								  RelOptInfo *rel,
 								  Path *subpath,
 								  List *pathkeys,
 								  double limit_tuples);
+extern IncrementalSortPath *create_incremental_sort_path(PlannerInfo *root,
+														 RelOptInfo *rel,
+														 Path *subpath,
+														 List *pathkeys,
+														 int presorted_keys,
+														 double limit_tuples);
 #if 0 /* Group nodes are not used in GPDB */
 extern GroupPath *create_group_path(PlannerInfo *root,
 									RelOptInfo *rel,
@@ -280,7 +292,9 @@ extern WindowAggPath *create_windowagg_path(PlannerInfo *root,
 											Path *subpath,
 											PathTarget *target,
 											List *windowFuncs,
-											WindowClause *winclause);
+											WindowClause *winclause,
+											List *qual,
+											bool topwindow);
 extern SetOpPath *create_setop_path(PlannerInfo *root,
 									RelOptInfo *rel,
 									Path *subpath,
@@ -303,15 +317,16 @@ extern LockRowsPath *create_lockrows_path(PlannerInfo *root, RelOptInfo *rel,
 										  Path *subpath, List *rowMarks, int epqParam);
 extern ModifyTablePath *create_modifytable_path(PlannerInfo *root,
 												RelOptInfo *rel,
+												Path *subpath,
 												CmdType operation, bool canSetTag,
 												Index nominalRelation, Index rootRelation,
 												bool partColsUpdated,
-												List *resultRelations, List *subpaths,
-												List *subroots,
+												List *resultRelations,
+												List *updateColnosLists,
 												List *withCheckOptionLists, List *returningLists,
 												List *is_split_updates,
 												List *rowMarks, OnConflictExpr *onconflict,
-												int epqParam);
+												List *mergeActionLists, int epqParam);
 extern Path *create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 									Path *subpath,
 									Node *limitOffset, Node *limitCount,

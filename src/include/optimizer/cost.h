@@ -6,7 +6,7 @@
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/cost.h
@@ -22,7 +22,7 @@
 
 /* defaults for costsize.c's Cost parameters */
 /* NB: cost-estimation code should use the variables, not these constants! */
-/* If you change these, update backend/utils/misc/postgresql.sample.conf */
+/* If you change these, update backend/utils/misc/postgresql.conf.sample */
 #define DEFAULT_SEQ_PAGE_COST  1.0
 #define DEFAULT_RANDOM_PAGE_COST  4.0
 #define DEFAULT_CPU_TUPLE_COST	0.01
@@ -31,6 +31,8 @@
 #define DEFAULT_PARALLEL_TUPLE_COST 0.1
 #define DEFAULT_PARALLEL_SETUP_COST  1000.0
 
+/* defaults for non-Cost parameters */
+#define DEFAULT_RECURSIVE_WORKTABLE_FACTOR  10.0
 #define DEFAULT_EFFECTIVE_CACHE_SIZE  524288	/* measured in pages */
 
 typedef enum
@@ -76,6 +78,7 @@ extern PGDLLIMPORT bool enable_hashagg;
 extern PGDLLIMPORT bool enable_groupagg;
 extern PGDLLIMPORT bool enable_nestloop;
 extern PGDLLIMPORT bool enable_material;
+extern PGDLLIMPORT bool enable_memoize;
 extern PGDLLIMPORT bool enable_mergejoin;
 extern PGDLLIMPORT bool enable_hashjoin;
 extern PGDLLIMPORT bool enable_gathermerge;
@@ -84,6 +87,7 @@ extern PGDLLIMPORT bool enable_partitionwise_aggregate;
 extern PGDLLIMPORT bool enable_parallel_append;
 extern PGDLLIMPORT bool enable_parallel_hash;
 extern PGDLLIMPORT bool enable_partition_pruning;
+extern PGDLLIMPORT bool enable_async_append;
 extern PGDLLIMPORT int constraint_exclusion;
 
 extern bool gp_enable_hashjoin_size_heuristic;          /*CDB*/
@@ -105,6 +109,9 @@ extern void cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root);
 extern void cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec);
 extern void cost_tidscan(Path *path, PlannerInfo *root,
 						 RelOptInfo *baserel, List *tidquals, ParamPathInfo *param_info);
+extern void cost_tidrangescan(Path *path, PlannerInfo *root,
+							  RelOptInfo *baserel, List *tidrangequals,
+							  ParamPathInfo *param_info);
 extern void cost_subqueryscan(SubqueryScanPath *path, PlannerInfo *root,
 							  RelOptInfo *baserel, ParamPathInfo *param_info);
 extern void cost_functionscan(Path *path, PlannerInfo *root,
@@ -131,12 +138,14 @@ extern void cost_incremental_sort(Path *path,
 								  Cost input_startup_cost, Cost input_total_cost,
 								  double input_tuples, int width, Cost comparison_cost, int sort_mem,
 								  double limit_tuples);
-extern void cost_append(AppendPath *path);
+extern Cost cost_sort_estimate(PlannerInfo *root, List *pathkeys,
+							   int nPresortedKeys, double tuples);
+extern void cost_append(AppendPath *path, PlannerInfo *root);
 extern void cost_merge_append(Path *path, PlannerInfo *root,
 							  List *pathkeys, int n_streams,
 							  Cost input_startup_cost, Cost input_total_cost,
 							  double tuples);
-extern void cost_material(Path *path, PlannerInfo *root,
+extern void cost_material(Path *path,
 						  Cost input_startup_cost, Cost input_total_cost,
 						  double tuples, int width);
 extern void cost_tup_split(Path *path, PlannerInfo *root,
@@ -237,6 +246,6 @@ extern double compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel,
 								   Path *bitmapqual, int loop_count, Cost *cost, double *tuple);
 
 extern int planner_segment_count(GpPolicy *policy);
-extern double global_work_mem(PlannerInfo *root);
+extern double global_work_mem(void);
 
 #endif							/* COST_H */

@@ -380,11 +380,11 @@ rollback;
 --
 explain (costs off)
 select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
+  from tenk1 right join b_star on aa = unique1
   where bb < bb and bb is null;
 
 select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
+  from tenk1 right join b_star on aa = unique1
   where bb < bb and bb is null;
 
 --
@@ -458,6 +458,11 @@ reset enable_hashjoin;
 --
 set enable_mergejoin = true;
 set enable_hashjoin = false;
+-- GPDB: force seqscan+sort for the order-by-unique2 inner.  tenk1.unique2's
+-- correlation varies run-to-run (the per-segment heap order from test_setup's
+-- COPY isn't fixed), which otherwise flips this plan between an index scan and
+-- a sort.  The merge-join redundant-sort-key behavior under test is unaffected.
+set enable_indexscan = false;
 explain (costs off)
 select count(*) from
   (select * from tenk1 x order by x.thousand, x.twothousand, x.fivethous) x
@@ -472,6 +477,7 @@ select count(*) from
   on x.thousand = y.unique2 and x.twothousand = y.hundred and x.fivethous = y.unique2;
 reset enable_mergejoin;
 reset enable_hashjoin;
+reset enable_indexscan;
 
 
 --
@@ -553,6 +559,7 @@ reset enable_nestloop;
 
 set work_mem to '64kB';
 set enable_mergejoin to off;
+set enable_memoize to off;
 
 explain (costs off)
 select count(*) from tenk1 a, tenk1 b
@@ -562,6 +569,7 @@ select count(*) from tenk1 a, tenk1 b
 
 reset work_mem;
 reset enable_mergejoin;
+reset enable_memoize;
 
 --
 -- regression test for 8.2 bug with improper re-ordering of left joins
@@ -1075,6 +1083,9 @@ select unique1 from tenk1, f_immutable_int4(1) x where x = unique1;
 
 explain (costs off)
 select unique1 from tenk1, lateral f_immutable_int4(1) x where x = unique1;
+
+explain (costs off)
+select unique1 from tenk1, lateral f_immutable_int4(1) x where x in (select 17);
 
 explain (costs off)
 select unique1, x from tenk1 join f_immutable_int4(1) x on unique1 = x;
@@ -1689,6 +1700,38 @@ where ss.stringu2 !~* ss.case1;
 
 rollback;
 
+-- test case to expose miscomputation of required relid set for a PHV
+explain (verbose, costs off)
+select i8.*, ss.v, t.unique2
+  from int8_tbl i8
+    left join int4_tbl i4 on i4.f1 = 1
+    left join lateral (select i4.f1 + 1 as v) as ss on true
+    left join tenk1 t on t.unique2 = ss.v
+where q2 = 456;
+
+select i8.*, ss.v, t.unique2
+  from int8_tbl i8
+    left join int4_tbl i4 on i4.f1 = 1
+    left join lateral (select i4.f1 + 1 as v) as ss on true
+    left join tenk1 t on t.unique2 = ss.v
+where q2 = 456;
+
+-- and check a related issue where we miscompute required relids for
+-- a PHV that's been translated to a child rel
+create temp table parttbl (a integer primary key) partition by range (a);
+create temp table parttbl1 partition of parttbl for values from (1) to (100);
+insert into parttbl values (11), (12);
+explain (costs off)
+select * from
+  (select *, 12 as phv from parttbl) as ss
+  right join int4_tbl on true
+where ss.a = ss.phv and f1 = 0;
+
+select * from
+  (select *, 12 as phv from parttbl) as ss
+  right join int4_tbl on true
+where ss.a = ss.phv and f1 = 0;
+
 -- bug #8444: we've historically allowed duplicate aliases within aliased JOINs
 
 select * from
@@ -1940,6 +1983,9 @@ select * from
    union all
    (select q1.v)
   ) as q2;
+
+-- check the number of columns specified
+SELECT * FROM (int8_tbl i cross join int4_tbl j) ss(a,b,c,d);
 
 -- check we don't try to do a unique-ified semijoin with LATERAL
 explain (verbose, costs off)

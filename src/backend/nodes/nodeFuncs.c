@@ -3,7 +3,7 @@
  * nodeFuncs.c
  *		Various general-purpose manipulations of Node trees
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -72,15 +72,7 @@ exprType(const Node *expr)
 			type = ((const WindowFunc *) expr)->wintype;
 			break;
 		case T_SubscriptingRef:
-			{
-				const SubscriptingRef *sbsref = (const SubscriptingRef *) expr;
-
-				/* slice and/or store operations yield the container type */
-				if (sbsref->reflowerindexpr || sbsref->refassgnexpr)
-					type = sbsref->refcontainertype;
-				else
-					type = sbsref->refelemtype;
-			}
+			type = ((const SubscriptingRef *) expr)->refrestype;
 			break;
 		case T_FuncExpr:
 			type = ((const FuncExpr *) expr)->funcresulttype;
@@ -277,6 +269,25 @@ exprType(const Node *expr)
 			type = INT8OID;
 			break;
 
+		case T_JsonValueExpr:
+			{
+				const JsonValueExpr *jve = (const JsonValueExpr *) expr;
+
+				type = exprType((Node *) (jve->formatted_expr ? jve->formatted_expr : jve->raw_expr));
+			}
+			break;
+		case T_JsonConstructorExpr:
+			type = ((const JsonConstructorExpr *) expr)->returning->typid;
+			break;
+		case T_JsonIsPredicate:
+			type = BOOLOID;
+			break;
+		case T_JsonExpr:
+			type = ((const JsonExpr *) expr)->returning->typid;
+			break;
+		case T_JsonCoercion:
+			type = exprType(((const JsonCoercion *) expr)->expr);
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			type = InvalidOid;	/* keep compiler quiet */
@@ -305,7 +316,6 @@ exprTypmod(const Node *expr)
 		case T_Param:
 			return ((const Param *) expr)->paramtypmod;
 		case T_SubscriptingRef:
-			/* typmod is the same for container or element */
 			return ((const SubscriptingRef *) expr)->reftypmod;
 		case T_FuncExpr:
 			{
@@ -460,7 +470,7 @@ exprTypmod(const Node *expr)
 				typmod = exprTypmod((Node *) linitial(cexpr->args));
 				if (typmod < 0)
 					return -1;	/* no point in trying harder */
-				for_each_cell(arg, cexpr->args, list_second_cell(cexpr->args))
+				for_each_from(arg, cexpr->args, 1)
 				{
 					Node	   *e = (Node *) lfirst(arg);
 
@@ -488,7 +498,7 @@ exprTypmod(const Node *expr)
 				typmod = exprTypmod((Node *) linitial(mexpr->args));
 				if (typmod < 0)
 					return -1;	/* no point in trying harder */
-				for_each_cell(arg, mexpr->args, list_second_cell(mexpr->args))
+				for_each_from(arg, mexpr->args, 1)
 				{
 					Node	   *e = (Node *) lfirst(arg);
 
@@ -510,6 +520,14 @@ exprTypmod(const Node *expr)
 			return ((const SetToDefault *) expr)->typeMod;
 		case T_PlaceHolderVar:
 			return exprTypmod((Node *) ((const PlaceHolderVar *) expr)->phexpr);
+		case T_JsonValueExpr:
+			return exprTypmod((Node *) ((const JsonValueExpr *) expr)->formatted_expr);
+		case T_JsonConstructorExpr:
+			return ((const JsonConstructorExpr *) expr)->returning->typmod;
+		case T_JsonExpr:
+			return ((JsonExpr *) expr)->returning->typmod;
+		case T_JsonCoercion:
+			return exprTypmod(((const JsonCoercion *) expr)->expr);
 		default:
 			break;
 	}
@@ -764,6 +782,8 @@ expression_returns_set_walker(Node *node, void *context)
 	/* Avoid recursion for some cases that parser checks not to return a set */
 	if (IsA(node, Aggref))
 		return false;
+	if (IsA(node, GroupingFunc))
+		return false;
 	if (IsA(node, WindowFunc))
 		return false;
 
@@ -836,10 +856,12 @@ exprCollation(const Node *expr)
 			coll = ((const NullIfExpr *) expr)->opcollid;
 			break;
 		case T_ScalarArrayOpExpr:
-			coll = InvalidOid;	/* result is always boolean */
+			/* ScalarArrayOpExpr's result is boolean ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_BoolExpr:
-			coll = InvalidOid;	/* result is always boolean */
+			/* BoolExpr's result is boolean ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_SubLink:
 			{
@@ -861,8 +883,8 @@ exprCollation(const Node *expr)
 				}
 				else
 				{
-					/* otherwise, result is RECORD or BOOLEAN */
-					coll = InvalidOid;
+					/* otherwise, SubLink's result is RECORD or BOOLEAN */
+					coll = InvalidOid;	/* ... so it has no collation */
 				}
 			}
 			break;
@@ -879,8 +901,8 @@ exprCollation(const Node *expr)
 				}
 				else
 				{
-					/* otherwise, result is RECORD or BOOLEAN */
-					coll = InvalidOid;
+					/* otherwise, SubPlan's result is RECORD or BOOLEAN */
+					coll = InvalidOid;	/* ... so it has no collation */
 				}
 			}
 			break;
@@ -896,7 +918,8 @@ exprCollation(const Node *expr)
 			coll = ((const FieldSelect *) expr)->resultcollid;
 			break;
 		case T_FieldStore:
-			coll = InvalidOid;	/* result is always composite */
+			/* FieldStore's result is composite ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_RelabelType:
 			coll = ((const RelabelType *) expr)->resultcollid;
@@ -908,7 +931,8 @@ exprCollation(const Node *expr)
 			coll = ((const ArrayCoerceExpr *) expr)->resultcollid;
 			break;
 		case T_ConvertRowtypeExpr:
-			coll = InvalidOid;	/* result is always composite */
+			/* ConvertRowtypeExpr's result is composite ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_CollateExpr:
 			coll = ((const CollateExpr *) expr)->collOid;
@@ -923,13 +947,15 @@ exprCollation(const Node *expr)
 			coll = ((const ArrayExpr *) expr)->array_collid;
 			break;
 		case T_RowExpr:
-			coll = InvalidOid;	/* result is always composite */
+			/* RowExpr's result is composite ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_TableValueExpr:
 			coll = InvalidOid;  /* result is always anytable */
 			break;
 		case T_RowCompareExpr:
-			coll = InvalidOid;	/* result is always boolean */
+			/* RowCompareExpr's result is boolean ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_CoalesceExpr:
 			coll = ((const CoalesceExpr *) expr)->coalescecollid;
@@ -957,10 +983,12 @@ exprCollation(const Node *expr)
 				coll = InvalidOid;
 			break;
 		case T_NullTest:
-			coll = InvalidOid;	/* result is always boolean */
+			/* NullTest's result is boolean ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_BooleanTest:
-			coll = InvalidOid;	/* result is always boolean */
+			/* BooleanTest's result is boolean ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_CoerceToDomain:
 			coll = ((const CoerceToDomain *) expr)->resultcollid;
@@ -972,10 +1000,12 @@ exprCollation(const Node *expr)
 			coll = ((const SetToDefault *) expr)->collation;
 			break;
 		case T_CurrentOfExpr:
-			coll = InvalidOid;	/* result is always boolean */
+			/* CurrentOfExpr's result is boolean ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_NextValueExpr:
-			coll = InvalidOid;	/* result is always an integer type */
+			/* NextValueExpr's result is an integer type ... */
+			coll = InvalidOid;	/* ... so it has no collation */
 			break;
 		case T_InferenceElem:
 			coll = exprCollation((Node *) ((const InferenceElem *) expr)->expr);
@@ -988,6 +1018,37 @@ exprCollation(const Node *expr)
 		case T_AggExprId:
 		case T_RowIdExpr:
 			coll = InvalidOid;
+			break;
+		case T_JsonValueExpr:
+			coll = exprCollation((Node *) ((const JsonValueExpr *) expr)->formatted_expr);
+			break;
+		case T_JsonConstructorExpr:
+			{
+				const JsonConstructorExpr *ctor = (const JsonConstructorExpr *) expr;
+
+				if (ctor->coercion)
+					coll = exprCollation((Node *) ctor->coercion);
+				else
+					coll = InvalidOid;
+			}
+			break;
+		case T_JsonIsPredicate:
+			coll = InvalidOid;	/* result is always an boolean type */
+			break;
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = (JsonExpr *) expr;
+				JsonCoercion *coercion = jexpr->result_coercion;
+
+				if (!coercion)
+					coll = InvalidOid;
+				else if (coercion->expr)
+					coll = exprCollation(coercion->expr);
+				else if (coercion->via_io || coercion->via_populate)
+					coll = coercion->collation;
+				else
+					coll = InvalidOid;
+			}
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
@@ -1099,10 +1160,12 @@ exprSetCollation(Node *expr, Oid collation)
 			((NullIfExpr *) expr)->opcollid = collation;
 			break;
 		case T_ScalarArrayOpExpr:
-			Assert(!OidIsValid(collation)); /* result is always boolean */
+			/* ScalarArrayOpExpr's result is boolean ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_BoolExpr:
-			Assert(!OidIsValid(collation)); /* result is always boolean */
+			/* BoolExpr's result is boolean ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_SubLink:
 #ifdef USE_ASSERT_CHECKING
@@ -1134,7 +1197,8 @@ exprSetCollation(Node *expr, Oid collation)
 			((FieldSelect *) expr)->resultcollid = collation;
 			break;
 		case T_FieldStore:
-			Assert(!OidIsValid(collation)); /* result is always composite */
+			/* FieldStore's result is composite ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_RelabelType:
 			((RelabelType *) expr)->resultcollid = collation;
@@ -1146,7 +1210,8 @@ exprSetCollation(Node *expr, Oid collation)
 			((ArrayCoerceExpr *) expr)->resultcollid = collation;
 			break;
 		case T_ConvertRowtypeExpr:
-			Assert(!OidIsValid(collation)); /* result is always composite */
+			/* ConvertRowtypeExpr's result is composite ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_CaseExpr:
 			((CaseExpr *) expr)->casecollid = collation;
@@ -1155,13 +1220,15 @@ exprSetCollation(Node *expr, Oid collation)
 			((ArrayExpr *) expr)->array_collid = collation;
 			break;
 		case T_RowExpr:
-			Assert(!OidIsValid(collation)); /* result is always composite */
+			/* RowExpr's result is composite ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_TableValueExpr:
 			Assert(!OidIsValid(collation));		/* result is always anytable */
 			break;
 		case T_RowCompareExpr:
-			Assert(!OidIsValid(collation)); /* result is always boolean */
+			/* RowCompareExpr's result is boolean ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_CoalesceExpr:
 			((CoalesceExpr *) expr)->coalescecollid = collation;
@@ -1180,10 +1247,12 @@ exprSetCollation(Node *expr, Oid collation)
 				   (collation == InvalidOid));
 			break;
 		case T_NullTest:
-			Assert(!OidIsValid(collation)); /* result is always boolean */
+			/* NullTest's result is boolean ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_BooleanTest:
-			Assert(!OidIsValid(collation)); /* result is always boolean */
+			/* BooleanTest's result is boolean ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_CoerceToDomain:
 			((CoerceToDomain *) expr)->resultcollid = collation;
@@ -1195,13 +1264,46 @@ exprSetCollation(Node *expr, Oid collation)
 			((SetToDefault *) expr)->collation = collation;
 			break;
 		case T_CurrentOfExpr:
-			Assert(!OidIsValid(collation)); /* result is always boolean */
+			/* CurrentOfExpr's result is boolean ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		case T_NextValueExpr:
-			Assert(!OidIsValid(collation)); /* result is always an integer
-											 * type */
+			/* NextValueExpr's result is an integer type ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
+		case T_JsonValueExpr:
+			exprSetCollation((Node *) ((JsonValueExpr *) expr)->formatted_expr,
+							 collation);
+			break;
+		case T_JsonConstructorExpr:
+			{
+				JsonConstructorExpr *ctor = (JsonConstructorExpr *) expr;
 
+				if (ctor->coercion)
+					exprSetCollation((Node *) ctor->coercion, collation);
+				else
+					Assert(!OidIsValid(collation)); /* result is always a
+													 * json[b] type */
+			}
+			break;
+		case T_JsonIsPredicate:
+			Assert(!OidIsValid(collation)); /* result is always boolean */
+			break;
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = (JsonExpr *) expr;
+				JsonCoercion *coercion = jexpr->result_coercion;
+
+				if (!coercion)
+					Assert(!OidIsValid(collation));
+				else if (coercion->expr)
+					exprSetCollation(coercion->expr, collation);
+				else if (coercion->via_io || coercion->via_populate)
+					coercion->collation = collation;
+				else
+					Assert(!OidIsValid(collation));
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			break;
@@ -1629,6 +1731,12 @@ exprLocation(const Node *expr)
 		case T_OnConflictClause:
 			loc = ((const OnConflictClause *) expr)->location;
 			break;
+		case T_CTESearchClause:
+			loc = ((const CTESearchClause *) expr)->location;
+			break;
+		case T_CTECycleClause:
+			loc = ((const CTECycleClause *) expr)->location;
+			break;
 		case T_CommonTableExpr:
 			loc = ((const CommonTableExpr *) expr)->location;
 			break;
@@ -1651,6 +1759,24 @@ exprLocation(const Node *expr)
 			break;
 		case T_PartitionRangeDatum:
 			loc = ((const PartitionRangeDatum *) expr)->location;
+			break;
+		case T_JsonValueExpr:
+			loc = exprLocation((Node *) ((const JsonValueExpr *) expr)->raw_expr);
+			break;
+		case T_JsonConstructorExpr:
+			loc = ((const JsonConstructorExpr *) expr)->location;
+			break;
+		case T_JsonIsPredicate:
+			loc = ((const JsonIsPredicate *) expr)->location;
+			break;
+		case T_JsonExpr:
+			{
+				const JsonExpr *jsexpr = (const JsonExpr *) expr;
+
+				/* consider both function name and leftmost arg */
+				loc = leftmostLoc(jsexpr->location,
+								  exprLocation(jsexpr->formatted_expr));
+			}
 			break;
 		default:
 			/* for any other node type it's just unknown... */
@@ -1976,6 +2102,7 @@ expression_tree_walker(Node *node,
 		case T_DMLActionExpr:
 		case T_AggExprId:
 		case T_RowIdExpr:
+		case T_CTESearchClause:
 			/* primitive node types with no expression subnodes */
 			break;
 		case T_WithCheckOption:
@@ -2204,6 +2331,30 @@ expression_tree_walker(Node *node,
 		case T_Query:
 			/* Do nothing with a sub-Query, per discussion above */
 			break;
+		case T_WindowClause:
+			{
+				WindowClause *wc = (WindowClause *) node;
+
+				if (walker(wc->partitionClause, context))
+					return true;
+				if (walker(wc->orderClause, context))
+					return true;
+				if (walker(wc->startOffset, context))
+					return true;
+				if (walker(wc->endOffset, context))
+					return true;
+			}
+			break;
+		case T_CTECycleClause:
+			{
+				CTECycleClause *cc = (CTECycleClause *) node;
+
+				if (walker(cc->cycle_mark_value, context))
+					return true;
+				if (walker(cc->cycle_mark_default, context))
+					return true;
+			}
+			break;
 		case T_CommonTableExpr:
 			{
 				CommonTableExpr *cte = (CommonTableExpr *) node;
@@ -2212,7 +2363,33 @@ expression_tree_walker(Node *node,
 				 * Invoke the walker on the CTE's Query node, so it can
 				 * recurse into the sub-query if it wants to.
 				 */
-				return walker(cte->ctequery, context);
+				if (walker(cte->ctequery, context))
+					return true;
+
+				if (walker(cte->search_clause, context))
+					return true;
+				if (walker(cte->cycle_clause, context))
+					return true;
+			}
+			break;
+		case T_PartitionBoundSpec:
+			{
+				PartitionBoundSpec *pbs = (PartitionBoundSpec *) node;
+
+				if (walker(pbs->listdatums, context))
+					return true;
+				if (walker(pbs->lowerdatums, context))
+					return true;
+				if (walker(pbs->upperdatums, context))
+					return true;
+			}
+			break;
+		case T_PartitionRangeDatum:
+			{
+				PartitionRangeDatum *prd = (PartitionRangeDatum *) node;
+
+				if (walker(prd->value, context))
+					return true;
 			}
 			break;
 		case T_List:
@@ -2245,6 +2422,16 @@ expression_tree_walker(Node *node,
 				if (walker(onconflict->onConflictWhere, context))
 					return true;
 				if (walker(onconflict->exclRelTlist, context))
+					return true;
+			}
+			break;
+		case T_MergeAction:
+			{
+				MergeAction *action = (MergeAction *) node;
+
+				if (walker(action->targetList, context))
+					return true;
+				if (walker(action->qual, context))
 					return true;
 			}
 			break;
@@ -2347,24 +2534,6 @@ expression_tree_walker(Node *node,
 				return walker(expr->subquery, context);
 			}
 			break;
-		case T_WindowClause:
-			{
-				WindowClause *wc = (WindowClause *) node;
-
-				if (expression_tree_walker((Node *) wc->partitionClause, walker,
-										   context))
-					return true;
-				if (expression_tree_walker((Node *) wc->orderClause, walker,
-										   context))
-					return true;
-				if (walker((Node *) wc->startOffset, context))
-					return true;
-				if (walker((Node *) wc->endOffset, context))
-					return true;
-				return false;
-			}
-			break;
-
 		case T_TableSampleClause:
 			{
 				TableSampleClause *tsc = (TableSampleClause *) node;
@@ -2411,6 +2580,80 @@ expression_tree_walker(Node *node,
 					return true;
 				if (walker(tf->coldefexprs, context))
 					return true;
+				if (walker(tf->colvalexprs, context))
+					return true;
+			}
+			break;
+		case T_JsonValueExpr:
+			{
+				JsonValueExpr *jve = (JsonValueExpr *) node;
+
+				if (walker(jve->raw_expr, context))
+					return true;
+				if (walker(jve->formatted_expr, context))
+					return true;
+			}
+			break;
+		case T_JsonConstructorExpr:
+			{
+				JsonConstructorExpr *ctor = (JsonConstructorExpr *) node;
+
+				if (walker(ctor->args, context))
+					return true;
+				if (walker(ctor->func, context))
+					return true;
+				if (walker(ctor->coercion, context))
+					return true;
+			}
+			break;
+		case T_JsonIsPredicate:
+			return walker(((JsonIsPredicate *) node)->expr, context);
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = (JsonExpr *) node;
+
+				if (walker(jexpr->formatted_expr, context))
+					return true;
+				if (walker(jexpr->result_coercion, context))
+					return true;
+				if (walker(jexpr->passing_values, context))
+					return true;
+				/* we assume walker doesn't care about passing_names */
+				if (jexpr->on_empty &&
+					walker(jexpr->on_empty->default_expr, context))
+					return true;
+				if (walker(jexpr->on_error->default_expr, context))
+					return true;
+				if (walker(jexpr->coercions, context))
+					return true;
+			}
+			break;
+		case T_JsonCoercion:
+			return walker(((JsonCoercion *) node)->expr, context);
+		case T_JsonItemCoercions:
+			{
+				JsonItemCoercions *coercions = (JsonItemCoercions *) node;
+
+				if (walker(coercions->null, context))
+					return true;
+				if (walker(coercions->string, context))
+					return true;
+				if (walker(coercions->numeric, context))
+					return true;
+				if (walker(coercions->boolean, context))
+					return true;
+				if (walker(coercions->date, context))
+					return true;
+				if (walker(coercions->time, context))
+					return true;
+				if (walker(coercions->timetz, context))
+					return true;
+				if (walker(coercions->timestamp, context))
+					return true;
+				if (walker(coercions->timestamptz, context))
+					return true;
+				if (walker(coercions->composite, context))
+					return true;
 			}
 			break;
 		default:
@@ -2456,6 +2699,8 @@ query_tree_walker(Query *query,
 	if (walker((Node *) query->withCheckOptions, context))
 		return true;
 	if (walker((Node *) query->onConflict, context))
+		return true;
+	if (walker((Node *) query->mergeActionList, context))
 		return true;
 	if (walker((Node *) query->returningList, context))
 		return true;
@@ -2736,11 +2981,6 @@ expression_tree_mutator(Node *node,
 	( (newnode) = (nodetype *) palloc(sizeof(nodetype)), \
 	  memcpy((newnode), (node), sizeof(nodetype)) )
 
-#define CHECKFLATCOPY(newnode, node, nodetype)	\
-	( AssertMacro(IsA((node), nodetype)), \
-	  (newnode) = (nodetype *) palloc(sizeof(nodetype)), \
-	  memcpy((newnode), (node), sizeof(nodetype)) )
-
 #define MUTATE(newfield, oldfield, fieldtype)  \
 		( (newfield) = (fieldtype) mutator((Node *) (oldfield), context) )
 
@@ -2784,8 +3024,14 @@ expression_tree_mutator(Node *node,
 		case T_CurrentOfExpr:
 		case T_NextValueExpr:
 		case T_RangeTblRef:
+		case T_Integer:
+		case T_Float:
+		case T_Boolean:
 		case T_String:
-		case T_Null:
+		case T_BitString:
+		case T_SortGroupClause:
+		case T_CTESearchClause:
+		case T_JsonFormat:
 			return (Node *) copyObject(node);
 		case T_WithCheckOption:
 			{
@@ -3232,6 +3478,18 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 
 			}
+			break;
+		case T_CTECycleClause:
+			{
+				CTECycleClause *cc = (CTECycleClause *) node;
+				CTECycleClause *newnode;
+
+				FLATCOPY(newnode, cc, CTECycleClause);
+				MUTATE(newnode->cycle_mark_value, cc->cycle_mark_value, Node *);
+				MUTATE(newnode->cycle_mark_default, cc->cycle_mark_default, Node *);
+				return (Node *) newnode;
+			}
+			break;
 		case T_CommonTableExpr:
 			{
 				CommonTableExpr *cte = (CommonTableExpr *) node;
@@ -3244,6 +3502,32 @@ expression_tree_mutator(Node *node,
 				 * recurse into the sub-query if it wants to.
 				 */
 				MUTATE(newnode->ctequery, cte->ctequery, Node *);
+
+				MUTATE(newnode->search_clause, cte->search_clause, CTESearchClause *);
+				MUTATE(newnode->cycle_clause, cte->cycle_clause, CTECycleClause *);
+
+				return (Node *) newnode;
+			}
+			break;
+		case T_PartitionBoundSpec:
+			{
+				PartitionBoundSpec *pbs = (PartitionBoundSpec *) node;
+				PartitionBoundSpec *newnode;
+
+				FLATCOPY(newnode, pbs, PartitionBoundSpec);
+				MUTATE(newnode->listdatums, pbs->listdatums, List *);
+				MUTATE(newnode->lowerdatums, pbs->lowerdatums, List *);
+				MUTATE(newnode->upperdatums, pbs->upperdatums, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_PartitionRangeDatum:
+			{
+				PartitionRangeDatum *prd = (PartitionRangeDatum *) node;
+				PartitionRangeDatum *newnode;
+
+				FLATCOPY(newnode, prd, PartitionRangeDatum);
+				MUTATE(newnode->value, prd->value, Node *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3289,6 +3573,18 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->onConflictSet, oc->onConflictSet, List *);
 				MUTATE(newnode->onConflictWhere, oc->onConflictWhere, Node *);
 				MUTATE(newnode->exclRelTlist, oc->exclRelTlist, List *);
+
+				return (Node *) newnode;
+			}
+			break;
+		case T_MergeAction:
+			{
+				MergeAction *action = (MergeAction *) node;
+				MergeAction *newnode;
+
+				FLATCOPY(newnode, action, MergeAction);
+				MUTATE(newnode->qual, action->qual, Node *);
+				MUTATE(newnode->targetList, action->targetList, List *);
 
 				return (Node *) newnode;
 			}
@@ -3422,16 +3718,6 @@ expression_tree_mutator(Node *node,
 
 			}
 			break;
-		case T_SortGroupClause:
-			{
-				SortGroupClause *sortcl = (SortGroupClause *) node;
-				SortGroupClause *newnode;
-
-				FLATCOPY(newnode, sortcl, SortGroupClause);
-
-				return (Node *) newnode;
-			}
-			break;
 		case T_DMLActionExpr:
 			{
 				DMLActionExpr *action_expr = (DMLActionExpr *) node;
@@ -3481,6 +3767,102 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->rowexpr, tf->rowexpr, Node *);
 				MUTATE(newnode->colexprs, tf->colexprs, List *);
 				MUTATE(newnode->coldefexprs, tf->coldefexprs, List *);
+				MUTATE(newnode->colvalexprs, tf->colvalexprs, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_JsonReturning:
+			{
+				JsonReturning *jr = (JsonReturning *) node;
+				JsonReturning *newnode;
+
+				FLATCOPY(newnode, jr, JsonReturning);
+				MUTATE(newnode->format, jr->format, JsonFormat *);
+
+				return (Node *) newnode;
+			}
+		case T_JsonValueExpr:
+			{
+				JsonValueExpr *jve = (JsonValueExpr *) node;
+				JsonValueExpr *newnode;
+
+				FLATCOPY(newnode, jve, JsonValueExpr);
+				MUTATE(newnode->raw_expr, jve->raw_expr, Expr *);
+				MUTATE(newnode->formatted_expr, jve->formatted_expr, Expr *);
+				MUTATE(newnode->format, jve->format, JsonFormat *);
+
+				return (Node *) newnode;
+			}
+		case T_JsonConstructorExpr:
+			{
+				JsonConstructorExpr *jve = (JsonConstructorExpr *) node;
+				JsonConstructorExpr *newnode;
+
+				FLATCOPY(newnode, jve, JsonConstructorExpr);
+				MUTATE(newnode->args, jve->args, List *);
+				MUTATE(newnode->func, jve->func, Expr *);
+				MUTATE(newnode->coercion, jve->coercion, Expr *);
+				MUTATE(newnode->returning, jve->returning, JsonReturning *);
+
+				return (Node *) newnode;
+			}
+			break;
+		case T_JsonIsPredicate:
+			{
+				JsonIsPredicate *pred = (JsonIsPredicate *) node;
+				JsonIsPredicate *newnode;
+
+				FLATCOPY(newnode, pred, JsonIsPredicate);
+				MUTATE(newnode->expr, pred->expr, Node *);
+
+				return (Node *) newnode;
+			}
+			break;
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = (JsonExpr *) node;
+				JsonExpr   *newnode;
+
+				FLATCOPY(newnode, jexpr, JsonExpr);
+				MUTATE(newnode->path_spec, jexpr->path_spec, Node *);
+				MUTATE(newnode->formatted_expr, jexpr->formatted_expr, Node *);
+				MUTATE(newnode->result_coercion, jexpr->result_coercion, JsonCoercion *);
+				MUTATE(newnode->passing_values, jexpr->passing_values, List *);
+				/* assume mutator does not care about passing_names */
+				if (newnode->on_empty)
+					MUTATE(newnode->on_empty->default_expr,
+						   jexpr->on_empty->default_expr, Node *);
+				MUTATE(newnode->on_error->default_expr,
+					   jexpr->on_error->default_expr, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_JsonCoercion:
+			{
+				JsonCoercion *coercion = (JsonCoercion *) node;
+				JsonCoercion *newnode;
+
+				FLATCOPY(newnode, coercion, JsonCoercion);
+				MUTATE(newnode->expr, coercion->expr, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_JsonItemCoercions:
+			{
+				JsonItemCoercions *coercions = (JsonItemCoercions *) node;
+				JsonItemCoercions *newnode;
+
+				FLATCOPY(newnode, coercions, JsonItemCoercions);
+				MUTATE(newnode->null, coercions->null, JsonCoercion *);
+				MUTATE(newnode->string, coercions->string, JsonCoercion *);
+				MUTATE(newnode->numeric, coercions->numeric, JsonCoercion *);
+				MUTATE(newnode->boolean, coercions->boolean, JsonCoercion *);
+				MUTATE(newnode->date, coercions->date, JsonCoercion *);
+				MUTATE(newnode->time, coercions->time, JsonCoercion *);
+				MUTATE(newnode->timetz, coercions->timetz, JsonCoercion *);
+				MUTATE(newnode->timestamp, coercions->timestamp, JsonCoercion *);
+				MUTATE(newnode->timestamptz, coercions->timestamptz, JsonCoercion *);
+				MUTATE(newnode->composite, coercions->composite, JsonCoercion *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3509,9 +3891,9 @@ expression_tree_mutator(Node *node,
  * which is the bitwise OR of flag values to suppress mutating of
  * indicated items.  (More flag bits may be added as needed.)
  *
- * Normally the Query node itself is copied, but some callers want it to be
- * modified in-place; they must pass QTW_DONT_COPY_QUERY in flags.  All
- * modified substructure is safely copied in any case.
+ * Normally the top-level Query node itself is copied, but some callers want
+ * it to be modified in-place; they must pass QTW_DONT_COPY_QUERY in flags.
+ * All modified substructure is safely copied in any case.
  */
 Query *
 query_tree_mutator(Query *query,
@@ -3532,6 +3914,7 @@ query_tree_mutator(Query *query,
 	MUTATE(query->targetList, query->targetList, List *);
 	MUTATE(query->withCheckOptions, query->withCheckOptions, List *);
 	MUTATE(query->onConflict, query->onConflict, OnConflictExpr *);
+	MUTATE(query->mergeActionList, query->mergeActionList, List *);
 	MUTATE(query->returningList, query->returningList, List *);
 	MUTATE(query->jointree, query->jointree, FromExpr *);
 	MUTATE(query->setOperations, query->setOperations, Node *);
@@ -3629,10 +4012,7 @@ range_table_mutator(List *rtable,
 				break;
 			case RTE_SUBQUERY:
 				if (!(flags & QTW_IGNORE_RT_SUBQUERIES))
-				{
-					CHECKFLATCOPY(newrte->subquery, rte->subquery, Query);
-					MUTATE(newrte->subquery, newrte->subquery, Query *);
-				}
+					MUTATE(newrte->subquery, rte->subquery, Query *);
 				else
 				{
 					/* else, copy RT subqueries as-is */
@@ -3732,9 +4112,9 @@ query_or_expression_tree_mutator(Node *node,
  * boundaries: we descend to everything that's possibly interesting.
  *
  * Currently, the node type coverage here extends only to DML statements
- * (SELECT/INSERT/UPDATE/DELETE) and nodes that can appear in them, because
- * this is used mainly during analysis of CTEs, and only DML statements can
- * appear in CTEs.
+ * (SELECT/INSERT/UPDATE/DELETE/MERGE) and nodes that can appear in them,
+ * because this is used mainly during analysis of CTEs, and only DML
+ * statements can appear in CTEs.
  */
 bool
 raw_expression_tree_walker(Node *node,
@@ -3760,12 +4140,13 @@ raw_expression_tree_walker(Node *node,
 		case T_SQLValueFunction:
 		case T_Integer:
 		case T_Float:
+		case T_Boolean:
 		case T_String:
 		case T_BitString:
-		case T_Null:
 		case T_ParamRef:
 		case T_A_Const:
 		case T_A_Star:
+		case T_JsonFormat:
 			/* primitive node types with no subnodes */
 			break;
 		case T_Alias:
@@ -3917,6 +4298,34 @@ raw_expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_MergeStmt:
+			{
+				MergeStmt  *stmt = (MergeStmt *) node;
+
+				if (walker(stmt->relation, context))
+					return true;
+				if (walker(stmt->sourceRelation, context))
+					return true;
+				if (walker(stmt->joinCondition, context))
+					return true;
+				if (walker(stmt->mergeWhenClauses, context))
+					return true;
+				if (walker(stmt->withClause, context))
+					return true;
+			}
+			break;
+		case T_MergeWhenClause:
+			{
+				MergeWhenClause *mergeWhenClause = (MergeWhenClause *) node;
+
+				if (walker(mergeWhenClause->condition, context))
+					return true;
+				if (walker(mergeWhenClause->targetList, context))
+					return true;
+				if (walker(mergeWhenClause->values, context))
+					return true;
+			}
+			break;
 		case T_SelectStmt:
 			{
 				SelectStmt *stmt = (SelectStmt *) node;
@@ -3952,6 +4361,16 @@ raw_expression_tree_walker(Node *node,
 				if (walker(stmt->larg, context))
 					return true;
 				if (walker(stmt->rarg, context))
+					return true;
+			}
+			break;
+		case T_PLAssignStmt:
+			{
+				PLAssignStmt *stmt = (PLAssignStmt *) node;
+
+				if (walker(stmt->indirection, context))
+					return true;
+				if (walker(stmt->val, context))
 					return true;
 			}
 			break;
@@ -4134,6 +4553,8 @@ raw_expression_tree_walker(Node *node,
 
 				if (walker(coldef->typeName, context))
 					return true;
+				if (walker(coldef->compression, context))
+					return true;
 				if (walker(coldef->raw_default, context))
 					return true;
 				if (walker(coldef->collClause, context))
@@ -4189,7 +4610,213 @@ raw_expression_tree_walker(Node *node,
 			}
 			break;
 		case T_CommonTableExpr:
+			/* search_clause and cycle_clause are not interesting here */
 			return walker(((CommonTableExpr *) node)->ctequery, context);
+		case T_JsonReturning:
+			return walker(((JsonReturning *) node)->format, context);
+		case T_JsonValueExpr:
+			{
+				JsonValueExpr *jve = (JsonValueExpr *) node;
+
+				if (walker(jve->raw_expr, context))
+					return true;
+				if (walker(jve->formatted_expr, context))
+					return true;
+				if (walker(jve->format, context))
+					return true;
+			}
+			break;
+		case T_JsonParseExpr:
+			{
+				JsonParseExpr *jpe = (JsonParseExpr *) node;
+
+				if (walker(jpe->expr, context))
+					return true;
+				if (walker(jpe->output, context))
+					return true;
+			}
+			break;
+		case T_JsonScalarExpr:
+			{
+				JsonScalarExpr *jse = (JsonScalarExpr *) node;
+
+				if (walker(jse->expr, context))
+					return true;
+				if (walker(jse->output, context))
+					return true;
+			}
+			break;
+		case T_JsonSerializeExpr:
+			{
+				JsonSerializeExpr *jse = (JsonSerializeExpr *) node;
+
+				if (walker(jse->expr, context))
+					return true;
+				if (walker(jse->output, context))
+					return true;
+			}
+			break;
+		case T_JsonConstructorExpr:
+			{
+				JsonConstructorExpr *ctor = (JsonConstructorExpr *) node;
+
+				if (walker(ctor->args, context))
+					return true;
+				if (walker(ctor->func, context))
+					return true;
+				if (walker(ctor->coercion, context))
+					return true;
+				if (walker(ctor->returning, context))
+					return true;
+			}
+			break;
+		case T_JsonOutput:
+			{
+				JsonOutput *out = (JsonOutput *) node;
+
+				if (walker(out->typeName, context))
+					return true;
+				if (walker(out->returning, context))
+					return true;
+			}
+			break;
+		case T_JsonKeyValue:
+			{
+				JsonKeyValue *jkv = (JsonKeyValue *) node;
+
+				if (walker(jkv->key, context))
+					return true;
+				if (walker(jkv->value, context))
+					return true;
+			}
+			break;
+		case T_JsonObjectConstructor:
+			{
+				JsonObjectConstructor *joc = (JsonObjectConstructor *) node;
+
+				if (walker(joc->output, context))
+					return true;
+				if (walker(joc->exprs, context))
+					return true;
+			}
+			break;
+		case T_JsonArrayConstructor:
+			{
+				JsonArrayConstructor *jac = (JsonArrayConstructor *) node;
+
+				if (walker(jac->output, context))
+					return true;
+				if (walker(jac->exprs, context))
+					return true;
+			}
+			break;
+		case T_JsonAggConstructor:
+			{
+				JsonAggConstructor *ctor = (JsonAggConstructor *) node;
+
+				if (walker(ctor->output, context))
+					return true;
+				if (walker(ctor->agg_order, context))
+					return true;
+				if (walker(ctor->agg_filter, context))
+					return true;
+				if (walker(ctor->over, context))
+					return true;
+			}
+			break;
+		case T_JsonObjectAgg:
+			{
+				JsonObjectAgg *joa = (JsonObjectAgg *) node;
+
+				if (walker(joa->constructor, context))
+					return true;
+				if (walker(joa->arg, context))
+					return true;
+			}
+			break;
+		case T_JsonArrayAgg:
+			{
+				JsonArrayAgg *jaa = (JsonArrayAgg *) node;
+
+				if (walker(jaa->constructor, context))
+					return true;
+				if (walker(jaa->arg, context))
+					return true;
+			}
+			break;
+		case T_JsonArrayQueryConstructor:
+			{
+				JsonArrayQueryConstructor *jaqc = (JsonArrayQueryConstructor *) node;
+
+				if (walker(jaqc->output, context))
+					return true;
+				if (walker(jaqc->query, context))
+					return true;
+			}
+			break;
+		case T_JsonIsPredicate:
+			return walker(((JsonIsPredicate *) node)->expr, context);
+		case T_JsonArgument:
+			return walker(((JsonArgument *) node)->val, context);
+		case T_JsonCommon:
+			{
+				JsonCommon *jc = (JsonCommon *) node;
+
+				if (walker(jc->expr, context))
+					return true;
+				if (walker(jc->pathspec, context))
+					return true;
+				if (walker(jc->passing, context))
+					return true;
+			}
+			break;
+		case T_JsonBehavior:
+			{
+				JsonBehavior *jb = (JsonBehavior *) node;
+
+				if (jb->btype == JSON_BEHAVIOR_DEFAULT &&
+					walker(jb->default_expr, context))
+					return true;
+			}
+			break;
+		case T_JsonFuncExpr:
+			{
+				JsonFuncExpr *jfe = (JsonFuncExpr *) node;
+
+				if (walker(jfe->common, context))
+					return true;
+				if (jfe->output && walker(jfe->output, context))
+					return true;
+				if (walker(jfe->on_empty, context))
+					return true;
+				if (walker(jfe->on_error, context))
+					return true;
+			}
+			break;
+		case T_JsonTable:
+			{
+				JsonTable  *jt = (JsonTable *) node;
+
+				if (walker(jt->common, context))
+					return true;
+				if (walker(jt->columns, context))
+					return true;
+			}
+			break;
+		case T_JsonTableColumn:
+			{
+				JsonTableColumn *jtc = (JsonTableColumn *) node;
+
+				if (walker(jtc->typeName, context))
+					return true;
+				if (walker(jtc->on_empty, context))
+					return true;
+				if (walker(jtc->on_error, context))
+					return true;
+				if (jtc->coltype == JTC_NESTED && walker(jtc->columns, context))
+					return true;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -4236,12 +4863,6 @@ planstate_tree_walker(PlanState *planstate,
 	/* special child plans */
 	switch (nodeTag(plan))
 	{
-		case T_ModifyTable:
-			if (planstate_walk_members(((ModifyTableState *) planstate)->mt_plans,
-									   ((ModifyTableState *) planstate)->mt_nplans,
-									   walker, context))
-				return true;
-			break;
 		case T_Append:
 			if (planstate_walk_members(((AppendState *) planstate)->appendplans,
 									   ((AppendState *) planstate)->as_nplans,

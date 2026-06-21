@@ -14,67 +14,24 @@
 -- **************** pg_depend ****************
 
 -- Look for illegal values in pg_depend fields.
--- classid/objid can be zero, but only in 'p' entries
 
 SELECT *
 FROM pg_depend as d1
 WHERE refclassid = 0 OR refobjid = 0 OR
-      deptype NOT IN ('a', 'e', 'i', 'n', 'p') OR
-      (deptype != 'p' AND (classid = 0 OR objid = 0)) OR
-      (deptype = 'p' AND (classid != 0 OR objid != 0 OR objsubid != 0));
+      classid = 0 OR objid = 0 OR
+      deptype NOT IN ('a', 'e', 'i', 'n', 'x', 'P', 'S');
+
 
 -- **************** pg_shdepend ****************
 
 -- Look for illegal values in pg_shdepend fields.
--- classid/objid can be zero, but only in 'p' entries
 
 SELECT *
 FROM pg_shdepend as d1
 WHERE refclassid = 0 OR refobjid = 0 OR
-      deptype NOT IN ('a', 'o', 'p', 'r') OR
-      (deptype != 'p' AND (classid = 0 OR objid = 0)) OR
-      (deptype = 'p' AND (dbid != 0 OR classid != 0 OR objid != 0 OR objsubid != 0));
+      classid = 0 OR objid = 0 OR
+      deptype NOT IN ('a', 'o', 'r', 't');
 
-
--- Check each OID-containing system catalog to see if its lowest-numbered OID
--- is pinned.  If not, and if that OID was generated during initdb, then
--- perhaps initdb forgot to scan that catalog for pinnable entries.
--- Generally, it's okay for a catalog to be listed in the output of this
--- test if that catalog is scanned by initdb.c's setup_depend() function;
--- whatever OID the test is complaining about must have been added later
--- in initdb, where it intentionally isn't pinned.  Legitimate exceptions
--- to that rule are listed in the comments in setup_depend().
-
-do $$
-declare relnm text;
-  reloid oid;
-  shared bool;
-  lowoid oid;
-  pinned bool;
-begin
-for relnm, reloid, shared in
-  select relname, oid, relisshared from pg_class
-  where EXISTS(
-      SELECT * FROM pg_attribute
-      WHERE attrelid = pg_class.oid AND attname = 'oid')
-    and relkind = 'r' and oid < 16384 order by 1
-loop
-  execute 'select min(oid) from ' || relnm into lowoid;
-  continue when lowoid is null or lowoid >= 16384;
-  if shared then
-    pinned := exists(select 1 from pg_shdepend
-                     where refclassid = reloid and refobjid = lowoid
-                     and deptype = 'p');
-  else
-    pinned := exists(select 1 from pg_depend
-                     where refclassid = reloid and refobjid = lowoid
-                     and deptype = 'p');
-  end if;
-  if not pinned then
-    raise notice '% contains unpinned initdb-created object(s)', relnm;
-  end if;
-end loop;
-end$$;
 
 -- **************** pg_class ****************
 
@@ -98,3 +55,24 @@ WHERE c.oid < 16384 AND
       relkind = 'r' AND
       attstorage != 'p'
 ORDER BY 1, 2;
+
+
+-- system catalogs without primary keys
+--
+-- Current exceptions:
+-- * pg_depend, pg_shdepend don't have a unique key
+SELECT relname
+FROM pg_class
+WHERE relnamespace = 'pg_catalog'::regnamespace AND relkind = 'r'
+      AND pg_class.oid NOT IN (SELECT indrelid FROM pg_index WHERE indisprimary)
+ORDER BY 1;
+
+
+-- system catalog unique indexes not wrapped in a constraint
+-- (There should be none.)
+SELECT relname
+FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid
+WHERE relnamespace = 'pg_catalog'::regnamespace AND relkind = 'i'
+      AND i.indisunique
+      AND c.oid NOT IN (SELECT conindid FROM pg_constraint)
+ORDER BY 1;

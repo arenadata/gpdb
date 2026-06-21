@@ -98,6 +98,23 @@ m/^DEBUG:  time to inline:/
 m/\s+\(entry db(.*)+\spid=\d+\)/
 s/\s+\(entry db(.*)+\spid=\d+\)//
 
+# Mask oids in append-optimized auxiliary relation names; they vary
+# from run to run (e.g. VACUUM warnings naming pg_aoseg_<oid>).
+# Kept as two capture-free rules: an optional (cs)? group leaves $1
+# undefined for the row-oriented case, and the perl warning that
+# produces can derail gpdiff comparison.
+m/pg_aocsseg_\d+/
+s/pg_aocsseg_\d+/pg_aocsseg_OID/
+
+m/pg_aoseg_\d+/
+s/pg_aoseg_\d+/pg_aoseg_OID/
+
+m/pg_aovisimap_\d+/
+s/pg_aovisimap_\d+/pg_aovisimap_OID/
+
+m/pg_aoblkdir_\d+/
+s/pg_aoblkdir_\d+/pg_aoblkdir_OID/
+
 # Mask out some numbers (parts of partition names) that vary from run to run.
 m/overlaps existing partition "r\d+"/
 s/overlaps existing partition "r\d+"/partition "r##########"/
@@ -175,5 +192,17 @@ s/^\s+QUERY PLAN\s*$/ QUERY PLAN \n/
 
 m/^------------+\s*$/
 s/^------------+\s*$/------------\n/
+
+# PG14 libpq prefixes connection failure details with the server address;
+# strip it so segment-connection errors compare stably across clusters.
+m/connection to server at "[^"]+"( \([^)]+\))?, port \d+ failed:\s*/
+s/connection to server at "[^"]+"( \([^)]+\))?, port \d+ failed:\s*//
+m/connection to server on socket "[^"]+" failed:\s*/
+s/connection to server on socket "[^"]+" failed:\s*//
+
+# temp schemas and temp tables get session/oid-specific names; matview's
+# REFRESH ... WITH NO DATA error context exposes them
+m/pg_temp_\d+/
+s/pg_temp_\d+/pg_temp_NNN/g
 
 -- end_matchsubs

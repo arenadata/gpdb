@@ -9,7 +9,7 @@
  *
  * Portions Copyright (c) 2007-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -360,7 +360,8 @@ static Size AllocSetGetChunkSpace(MemoryContext context, void *pointer);
 static bool AllocSetIsEmpty(MemoryContext context);
 static void AllocSetStats(MemoryContext context,
 						  MemoryStatsPrintFunc printfunc, void *passthru,
-						  MemoryContextCounters *totals);
+						  MemoryContextCounters *totals,
+						  bool print_to_stderr);
 
 static void AllocSetDeclareAccountingRoot(MemoryContext context);
 static Size AllocSetGetCurrentUsage(MemoryContext context);
@@ -1554,11 +1555,12 @@ AllocSetIsEmpty(MemoryContext context)
  * printfunc: if not NULL, pass a human-readable stats string to this.
  * passthru: pass this pointer through to printfunc.
  * totals: if not NULL, add stats about this context into *totals.
+ * print_to_stderr: print stats to stderr if true, elog otherwise.
  */
 static void
 AllocSetStats(MemoryContext context,
 			  MemoryStatsPrintFunc printfunc, void *passthru,
-			  MemoryContextCounters *totals)
+			  MemoryContextCounters *totals, bool print_to_stderr)
 {
 	AllocSet	set = (AllocSet) context;
 	Size		nblocks = 0;
@@ -1594,10 +1596,10 @@ AllocSetStats(MemoryContext context,
 		char		stats_string[200];
 
 		snprintf(stats_string, sizeof(stats_string),
-				 "%zu total in %zd blocks; %zu free (%zd chunks); %zu used",
+				 "%zu total in %zu blocks; %zu free (%zu chunks); %zu used",
 				 totalspace, nblocks, freespace, freechunks,
 				 totalspace - freespace);
-		printfunc(context, passthru, stats_string);
+		printfunc(context, passthru, stats_string, print_to_stderr);
 	}
 
 	if (totals)
@@ -1640,7 +1642,22 @@ AllocSetGetPeakUsage_recurse(MemoryContext parent, MemoryContext context)
 		 child != NULL;
 		 child = child->nextchild)
 	{
-		AllocSet	childset = (AllocSet) child;
+		AllocSet	childset;
+
+		/*
+		 * GPDB: non-AllocSet contexts (e.g. the Generation "Caller tuples"
+		 * context that PG15's tuplesort creates under the sort context) do not
+		 * carry the AllocSet accounting fields and are never memory accounts,
+		 * so we must not cast them to AllocSet and read ->accountingParent.
+		 * Account for their footprint via the generic mem_allocated instead.
+		 */
+		if (!IsA(child, AllocSetContext))
+		{
+			total += child->mem_allocated;
+			continue;
+		}
+
+		childset = (AllocSet) child;
 
 		if (childset->accountingParent == (AllocSet) parent)
 			AllocSetGetPeakUsage_recurse(parent, child);

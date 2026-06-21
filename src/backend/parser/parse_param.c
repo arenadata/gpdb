@@ -12,7 +12,7 @@
  * Note that other approaches to parameters are possible using the parser
  * hooks defined in ParseState.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -35,7 +35,7 @@
 
 typedef struct FixedParamState
 {
-	Oid		   *paramTypes;		/* array of parameter type OIDs */
+	const Oid  *paramTypes;		/* array of parameter type OIDs */
 	int			numParams;		/* number of array entries */
 } FixedParamState;
 
@@ -64,8 +64,8 @@ static bool query_contains_extern_params_walker(Node *node, void *context);
  * Set up to process a query containing references to fixed parameters.
  */
 void
-parse_fixed_parameters(ParseState *pstate,
-					   Oid *paramTypes, int numParams)
+setup_parse_fixed_parameters(ParseState *pstate,
+							 const Oid *paramTypes, int numParams)
 {
 	FixedParamState *parstate = palloc(sizeof(FixedParamState));
 
@@ -80,8 +80,8 @@ parse_fixed_parameters(ParseState *pstate,
  * Set up to process a query containing references to variable parameters.
  */
 void
-parse_variable_parameters(ParseState *pstate,
-						  Oid **paramTypes, int *numParams)
+setup_parse_variable_parameters(ParseState *pstate,
+								Oid **paramTypes, int *numParams)
 {
 	VarParamState *parstate = palloc(sizeof(VarParamState));
 
@@ -161,6 +161,15 @@ variable_paramref_hook(ParseState *pstate, ParamRef *pref)
 
 	/* If not seen before, initialize to UNKNOWN type */
 	if (*pptype == InvalidOid)
+		*pptype = UNKNOWNOID;
+
+	/*
+	 * If the argument is of type void and it's procedure call, interpret it
+	 * as unknown.  This allows the JDBC driver to not have to distinguish
+	 * function and procedure calls.  See also another component of this hack
+	 * in ParseFuncOrColumn().
+	 */
+	if (*pptype == VOIDOID && pstate->p_expr_kind == EXPR_KIND_CALL_ARGUMENT)
 		*pptype = UNKNOWNOID;
 
 	param = makeNode(Param);

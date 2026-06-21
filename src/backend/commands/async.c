@@ -3,7 +3,7 @@
  * async.c
  *	  Asynchronous notification: NOTIFY, LISTEN, UNLISTEN
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -68,17 +68,27 @@
  *	  CommitTransaction() which will then do the actual transaction commit.
  *
  *	  After commit we are called another time (AtCommit_Notify()). Here we
- *	  make the actual updates to the effective listen state (listenChannels).
+ *	  make any actual updates to the effective listen state (listenChannels).
+ *	  Then we signal any backends that may be interested in our messages
+ *	  (including our own backend, if listening).  This is done by
+ *	  SignalBackends(), which scans the list of listening backends and sends a
+ *	  PROCSIG_NOTIFY_INTERRUPT signal to every listening backend (we don't
+ *	  know which backend is listening on which channel so we must signal them
+ *	  all).  We can exclude backends that are already up to date, though, and
+ *	  we can also exclude backends that are in other databases (unless they
+ *	  are way behind and should be kicked to make them advance their
+ *	  pointers).
  *
- *	  Finally, after we are out of the transaction altogether, we check if
- *	  we need to signal listening backends.  In SignalBackends() we scan the
- *	  list of listening backends and send a PROCSIG_NOTIFY_INTERRUPT signal
- *	  to every listening backend (we don't know which backend is listening on
- *	  which channel so we must signal them all). We can exclude backends that
- *	  are already up to date, though, and we can also exclude backends that
- *	  are in other databases (unless they are way behind and should be kicked
- *	  to make them advance their pointers).  We don't bother with a
- *	  self-signal either, but just process the queue directly.
+ *	  Finally, after we are out of the transaction altogether and about to go
+ *	  idle, we scan the queue for messages that need to be sent to our
+ *	  frontend (which might be notifies from other backends, or self-notifies
+ *	  from our own).  This step is not part of the CommitTransaction sequence
+ *	  for two important reasons.  First, we could get errors while sending
+ *	  data to our frontend, and it's really bad for errors to happen in
+ *	  post-commit cleanup.  Second, in cases where a procedure issues commits
+ *	  within a single frontend command, we don't want to send notifies to our
+ *	  frontend until the command is done; but notifies to other backends
+ *	  should go out immediately after each commit.
  *
  * 5. Upon receipt of a PROCSIG_NOTIFY_INTERRUPT signal, the signal handler
  *	  sets the process's latch, which triggers the event to be processed
@@ -255,7 +265,7 @@ typedef struct QueueBackendStatus
  * When holding NotifyQueueLock in EXCLUSIVE mode, backends can inspect the
  * entries of other backends and also change the head pointer. When holding
  * both NotifyQueueLock and NotifyQueueTailLock in EXCLUSIVE mode, backends
- * can change the tail pointer.
+ * can change the tail pointers.
  *
  * NotifySLRULock is used as the control lock for the pg_notify SLRU buffers.
  * In order to avoid deadlocks, whenever we need multiple locks, we first get
@@ -276,6 +286,8 @@ typedef struct AsyncQueueControl
 	QueuePosition head;			/* head points to the next free location */
 	QueuePosition tail;			/* tail must be <= the queue position of every
 								 * listening backend */
+	int			stopPage;		/* oldest unrecycled page; must be <=
+								 * tail.page */
 	BackendId	firstListener;	/* id of first listener, or InvalidBackendId */
 	TimestampTz lastQueueFillWarn;	/* time of last queue-full msg */
 	QueueBackendStatus backend[FLEXIBLE_ARRAY_MEMBER];
@@ -286,6 +298,7 @@ static AsyncQueueControl *asyncQueueControl;
 
 #define QUEUE_HEAD					(asyncQueueControl->head)
 #define QUEUE_TAIL					(asyncQueueControl->tail)
+#define QUEUE_STOP_PAGE				(asyncQueueControl->stopPage)
 #define QUEUE_FIRST_LISTENER		(asyncQueueControl->firstListener)
 #define QUEUE_BACKEND_PID(i)		(asyncQueueControl->backend[i].pid)
 #define QUEUE_BACKEND_DBOID(i)		(asyncQueueControl->backend[i].dboid)
@@ -423,11 +436,8 @@ static bool unlistenExitRegistered = false;
 /* True if we're currently registered as a listener in asyncQueueControl */
 static bool amRegisteredListener = false;
 
-/* has this backend sent notifications in the current transaction? */
-static bool backendHasSentNotifications = false;
-
 /* have we advanced to a page that's a multiple of QUEUE_CLEANUP_DELAY? */
-static bool backendTryAdvanceTail = false;
+static bool tryAdvanceTail = false;
 
 /* GUC parameter */
 bool		Trace_notify = false;
@@ -456,7 +466,7 @@ static bool asyncQueueProcessPageEntries(volatile QueuePosition *current,
 										 char *page_buffer,
 										 Snapshot snapshot);
 static void asyncQueueAdvanceTail(void);
-static void ProcessIncomingNotify(void);
+static void ProcessIncomingNotify(bool flush);
 static bool AsyncExistsPendingNotify(Notification *n);
 static void AddEventToPendingNotifies(Notification *n);
 static uint32 notification_hash(const void *key, Size keysize);
@@ -487,7 +497,12 @@ asyncQueuePageDiff(int p, int q)
 	return diff;
 }
 
-/* Is p < q, accounting for wraparound? */
+/*
+ * Is p < q, accounting for wraparound?
+ *
+ * Since asyncQueueIsFull() blocks creation of a page that could precede any
+ * extant page, we need not assess entries within a page.
+ */
 static bool
 asyncQueuePagePrecedes(int p, int q)
 {
@@ -537,6 +552,7 @@ AsyncShmemInit(void)
 		/* First time through, so initialize it */
 		SET_QUEUE_POS(QUEUE_HEAD, 0, 0);
 		SET_QUEUE_POS(QUEUE_TAIL, 0, 0);
+		QUEUE_STOP_PAGE = 0;
 		QUEUE_FIRST_LISTENER = InvalidBackendId;
 		asyncQueueControl->lastQueueFillWarn = 0;
 		/* zero'th entry won't be used, but let's initialize it anyway */
@@ -554,9 +570,8 @@ AsyncShmemInit(void)
 	 */
 	NotifyCtl->PagePrecedes = asyncQueuePagePrecedes;
 	SimpleLruInit(NotifyCtl, "Notify", NUM_NOTIFY_BUFFERS, 0,
-				  NotifySLRULock, "pg_notify", LWTRANCHE_NOTIFY_BUFFER);
-	/* Override default assumption that writes should be fsync'd */
-	NotifyCtl->do_fsync = false;
+				  NotifySLRULock, "pg_notify", LWTRANCHE_NOTIFY_BUFFER,
+				  SYNC_HANDLER_NONE);
 
 	if (!found)
 	{
@@ -942,8 +957,6 @@ PreCommit_Notify(void)
 						 AccessExclusiveLock);
 
 		/* Now push the notifications into the queue */
-		backendHasSentNotifications = true;
-
 		nextNotify = list_head(pendingNotifies->events);
 		while (nextNotify != NULL)
 		{
@@ -968,6 +981,8 @@ PreCommit_Notify(void)
 			nextNotify = asyncQueueAddEntries(nextNotify);
 			LWLockRelease(NotifyQueueLock);
 		}
+
+		/* Note that we don't clear pendingNotifies; AtCommit_Notify will. */
 	}
 }
 
@@ -977,6 +992,11 @@ PreCommit_Notify(void)
  *		This is called at transaction commit, after committing to clog.
  *
  *		Update listenChannels and clear transaction-local state.
+ *
+ *		If we issued any notifications in the transaction, send signals to
+ *		listening backends (possibly including ourselves) to process them.
+ *		Also, if we filled enough queue pages with new notifies, try to
+ *		advance the queue tail pointer.
  */
 void
 AtCommit_Notify(void)
@@ -1018,6 +1038,29 @@ AtCommit_Notify(void)
 	/* If no longer listening to anything, get out of listener array */
 	if (amRegisteredListener && listenChannels == NIL)
 		asyncQueueUnregister();
+
+	/*
+	 * Send signals to listening backends.  We need do this only if there are
+	 * pending notifies, which were previously added to the shared queue by
+	 * PreCommit_Notify().
+	 */
+	if (pendingNotifies != NULL)
+		SignalBackends();
+
+	/*
+	 * If it's time to try to advance the global tail pointer, do that.
+	 *
+	 * (It might seem odd to do this in the sender, when more than likely the
+	 * listeners won't yet have read the messages we just sent.  However,
+	 * there's less contention if only the sender does it, and there is little
+	 * need for urgency in advancing the global tail.  So this typically will
+	 * be clearing out messages that were sent some time ago.)
+	 */
+	if (tryAdvanceTail)
+	{
+		tryAdvanceTail = false;
+		asyncQueueAdvanceTail();
+	}
 
 	/* And clean up */
 	ClearPendingActionsAndNotifies();
@@ -1192,85 +1235,6 @@ Exec_UnlistenAllCommit(void)
 }
 
 /*
- * ProcessCompletedNotifies --- send out signals and self-notifies
- *
- * This is called from postgres.c just before going idle at the completion
- * of a transaction.  If we issued any notifications in the just-completed
- * transaction, send signals to other backends to process them, and also
- * process the queue ourselves to send messages to our own frontend.
- * Also, if we filled enough queue pages with new notifies, try to advance
- * the queue tail pointer.
- *
- * The reason that this is not done in AtCommit_Notify is that there is
- * a nonzero chance of errors here (for example, encoding conversion errors
- * while trying to format messages to our frontend).  An error during
- * AtCommit_Notify would be a PANIC condition.  The timing is also arranged
- * to ensure that a transaction's self-notifies are delivered to the frontend
- * before it gets the terminating ReadyForQuery message.
- *
- * Note that we send signals and process the queue even if the transaction
- * eventually aborted.  This is because we need to clean out whatever got
- * added to the queue.
- *
- * NOTE: we are outside of any transaction here.
- */
-void
-ProcessCompletedNotifies(void)
-{
-	MemoryContext caller_context;
-
-	/* Nothing to do if we didn't send any notifications */
-	if (!backendHasSentNotifications)
-		return;
-
-	/*
-	 * We reset the flag immediately; otherwise, if any sort of error occurs
-	 * below, we'd be locked up in an infinite loop, because control will come
-	 * right back here after error cleanup.
-	 */
-	backendHasSentNotifications = false;
-
-	/*
-	 * We must preserve the caller's memory context (probably MessageContext)
-	 * across the transaction we do here.
-	 */
-	caller_context = CurrentMemoryContext;
-
-	if (Trace_notify)
-		elog(DEBUG1, "ProcessCompletedNotifies");
-
-	/*
-	 * We must run asyncQueueReadAllNotifications inside a transaction, else
-	 * bad things happen if it gets an error.
-	 */
-	StartTransactionCommand();
-
-	/* Send signals to other backends */
-	SignalBackends();
-
-	if (listenChannels != NIL)
-	{
-		/* Read the queue ourselves, and send relevant stuff to the frontend */
-		asyncQueueReadAllNotifications();
-	}
-
-	/*
-	 * If it's time to try to advance the global tail pointer, do that.
-	 */
-	if (backendTryAdvanceTail)
-	{
-		backendTryAdvanceTail = false;
-		asyncQueueAdvanceTail();
-	}
-
-	CommitTransactionCommand();
-
-	MemoryContextSwitchTo(caller_context);
-
-	/* We don't need pq_flush() here since postgres.c will do one shortly */
-}
-
-/*
  * Test whether we are actively listening on the given channel name.
  *
  * Note: this function is executed for every notification found in the queue.
@@ -1349,8 +1313,8 @@ asyncQueueIsFull(void)
 	 * logically precedes the current global tail pointer, ie, the head
 	 * pointer would wrap around compared to the tail.  We cannot create such
 	 * a head page for fear of confusing slru.c.  For safety we round the tail
-	 * pointer back to a segment boundary (compare the truncation logic in
-	 * asyncQueueAdvanceTail).
+	 * pointer back to a segment boundary (truncation logic in
+	 * asyncQueueAdvanceTail does not do this, so doing it here is optional).
 	 *
 	 * Note that this test is *not* dependent on how much space there is on
 	 * the current head page.  This is necessary because asyncQueueAddEntries
@@ -1359,7 +1323,7 @@ asyncQueueIsFull(void)
 	nexthead = QUEUE_POS_PAGE(QUEUE_HEAD) + 1;
 	if (nexthead > QUEUE_MAX_PAGE)
 		nexthead = 0;			/* wrap around */
-	boundary = QUEUE_POS_PAGE(QUEUE_TAIL);
+	boundary = QUEUE_STOP_PAGE;
 	boundary -= boundary % SLRU_PAGES_PER_SEGMENT;
 	return asyncQueuePagePrecedes(nexthead, boundary);
 }
@@ -1535,7 +1499,7 @@ asyncQueueAddEntries(ListCell *nextNotify)
 			 * pointer (we don't want to actually do that right here).
 			 */
 			if (QUEUE_POS_PAGE(queue_head) % QUEUE_CLEANUP_DELAY == 0)
-				backendTryAdvanceTail = true;
+				tryAdvanceTail = true;
 
 			/* And exit the loop */
 			break;
@@ -1573,6 +1537,11 @@ pg_notification_queue_usage(PG_FUNCTION_ARGS)
  * Return the fraction of the queue that is currently occupied.
  *
  * The caller must hold NotifyQueueLock in (at least) shared mode.
+ *
+ * Note: we measure the distance to the logical tail page, not the physical
+ * tail page.  In some sense that's wrong, but the relative position of the
+ * physical tail is affected by details such as SLRU segment boundaries,
+ * so that a result based on that is unpleasantly unstable.
  */
 static double
 asyncQueueUsage(void)
@@ -1645,8 +1614,6 @@ asyncQueueFillWarning(void)
 /*
  * Send signals to listening backends.
  *
- * We never signal our own process; that should be handled by our caller.
- *
  * Normally we signal only backends in our own database, since only those
  * backends could be interested in notifies we send.  However, if there's
  * notify traffic in our database but no traffic in another database that
@@ -1655,6 +1622,9 @@ asyncQueueFillWarning(void)
  * advance their queue position pointers, allowing the global tail to advance.
  *
  * Since we know the BackendId and the Pid the signaling is quite cheap.
+ *
+ * This is called during CommitTransaction(), so it's important for it
+ * to have very low probability of failure.
  */
 static void
 SignalBackends(void)
@@ -1669,8 +1639,7 @@ SignalBackends(void)
 	 * list of target PIDs.
 	 *
 	 * XXX in principle these pallocs could fail, which would be bad. Maybe
-	 * preallocate the arrays?	But in practice this is only run in trivial
-	 * transactions, so there should surely be space available.
+	 * preallocate the arrays?  They're not that large, though.
 	 */
 	pids = (int32 *) palloc(MaxBackends * sizeof(int32));
 	ids = (BackendId *) palloc(MaxBackends * sizeof(BackendId));
@@ -1683,8 +1652,6 @@ SignalBackends(void)
 		QueuePosition pos;
 
 		Assert(pid != InvalidPid);
-		if (pid == MyProcPid)
-			continue;			/* never signal self */
 		pos = QUEUE_BACKEND_POS(i);
 		if (QUEUE_BACKEND_DBOID(i) == MyDatabaseId)
 		{
@@ -1716,6 +1683,16 @@ SignalBackends(void)
 	for (int i = 0; i < count; i++)
 	{
 		int32		pid = pids[i];
+
+		/*
+		 * If we are signaling our own process, no need to involve the kernel;
+		 * just set the flag directly.
+		 */
+		if (pid == MyProcPid)
+		{
+			notifyInterruptPending = true;
+			continue;
+		}
 
 		/*
 		 * Note: assuming things aren't broken, a signal failure here could
@@ -1897,15 +1874,20 @@ HandleNotifyInterrupt(void)
  *		via the process's latch, and this routine will get called.
  *		If we are truly idle (ie, *not* inside a transaction block),
  *		process the incoming notifies.
+ *
+ *		If "flush" is true, force any frontend messages out immediately.
+ *		This can be false when being called at the end of a frontend command,
+ *		since we'll flush after sending ReadyForQuery.
  */
 void
-ProcessNotifyInterrupt(void)
+ProcessNotifyInterrupt(bool flush)
 {
 	if (IsTransactionOrTransactionBlock())
 		return;					/* not really idle */
 
+	/* Loop in case another signal arrives while sending messages */
 	while (notifyInterruptPending)
-		ProcessIncomingNotify();
+		ProcessIncomingNotify(flush);
 }
 
 
@@ -1918,7 +1900,6 @@ static void
 asyncQueueReadAllNotifications(void)
 {
 	volatile QueuePosition pos;
-	QueuePosition oldpos;
 	QueuePosition head;
 	Snapshot	snapshot;
 
@@ -1933,7 +1914,7 @@ asyncQueueReadAllNotifications(void)
 	LWLockAcquire(NotifyQueueLock, LW_SHARED);
 	/* Assert checks that we have a valid state entry */
 	Assert(MyProcPid == QUEUE_BACKEND_PID(MyBackendId));
-	pos = oldpos = QUEUE_BACKEND_POS(MyBackendId);
+	pos = QUEUE_BACKEND_POS(MyBackendId);
 	head = QUEUE_HEAD;
 	LWLockRelease(NotifyQueueLock);
 
@@ -2168,6 +2149,9 @@ asyncQueueProcessPageEntries(volatile QueuePosition *current,
 /*
  * Advance the shared queue tail variable to the minimum of all the
  * per-backend tail pointers.  Truncate pg_notify space if possible.
+ *
+ * This is (usually) called during CommitTransaction(), so it's important for
+ * it to have very low probability of failure.
  */
 static void
 asyncQueueAdvanceTail(void)
@@ -2180,7 +2164,23 @@ asyncQueueAdvanceTail(void)
 	/* Restrict task to one backend per cluster; see SimpleLruTruncate(). */
 	LWLockAcquire(NotifyQueueTailLock, LW_EXCLUSIVE);
 
-	/* Compute the new tail. */
+	/*
+	 * Compute the new tail.  Pre-v13, it's essential that QUEUE_TAIL be exact
+	 * (ie, exactly match at least one backend's queue position), so it must
+	 * be updated atomically with the actual computation.  Since v13, we could
+	 * get away with not doing it like that, but it seems prudent to keep it
+	 * so.
+	 *
+	 * Also, because incoming backends will scan forward from QUEUE_TAIL, that
+	 * must be advanced before we can truncate any data.  Thus, QUEUE_TAIL is
+	 * the logical tail, while QUEUE_STOP_PAGE is the physical tail, or oldest
+	 * un-truncated page.  When QUEUE_STOP_PAGE != QUEUE_POS_PAGE(QUEUE_TAIL),
+	 * there are pages we can truncate but haven't yet finished doing so.
+	 *
+	 * For concurrency's sake, we don't want to hold NotifyQueueLock while
+	 * performing SimpleLruTruncate.  This is OK because no backend will try
+	 * to access the pages we are in the midst of truncating.
+	 */
 	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 	min = QUEUE_HEAD;
 	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
@@ -2188,7 +2188,8 @@ asyncQueueAdvanceTail(void)
 		Assert(QUEUE_BACKEND_PID(i) != InvalidPid);
 		min = QUEUE_POS_MIN(min, QUEUE_BACKEND_POS(i));
 	}
-	oldtailpage = QUEUE_POS_PAGE(QUEUE_TAIL);
+	QUEUE_TAIL = min;
+	oldtailpage = QUEUE_STOP_PAGE;
 	LWLockRelease(NotifyQueueLock);
 
 	/*
@@ -2207,16 +2208,16 @@ asyncQueueAdvanceTail(void)
 		 * release the lock again.
 		 */
 		SimpleLruTruncate(NotifyCtl, newtailpage);
-	}
 
-	/*
-	 * Advertise the new tail.  This changes asyncQueueIsFull()'s verdict for
-	 * the segment immediately prior to the new tail, allowing fresh data into
-	 * that segment.
-	 */
-	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
-	QUEUE_TAIL = min;
-	LWLockRelease(NotifyQueueLock);
+		/*
+		 * Update QUEUE_STOP_PAGE.  This changes asyncQueueIsFull()'s verdict
+		 * for the segment immediately prior to the old tail, allowing fresh
+		 * data into that segment.
+		 */
+		LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+		QUEUE_STOP_PAGE = newtailpage;
+		LWLockRelease(NotifyQueueLock);
+	}
 
 	LWLockRelease(NotifyQueueTailLock);
 }
@@ -2224,17 +2225,16 @@ asyncQueueAdvanceTail(void)
 /*
  * ProcessIncomingNotify
  *
- *		Deal with arriving NOTIFYs from other backends as soon as it's safe to
- *		do so. This used to be called from the PROCSIG_NOTIFY_INTERRUPT
- *		signal handler, but isn't anymore.
+ *		Scan the queue for arriving notifications and report them to the front
+ *		end.  The notifications might be from other sessions, or our own;
+ *		there's no need to distinguish here.
  *
- *		Scan the queue for arriving notifications and report them to my front
- *		end.
+ *		If "flush" is true, force any frontend messages out immediately.
  *
  *		NOTE: since we are outside any transaction, we must create our own.
  */
 static void
-ProcessIncomingNotify(void)
+ProcessIncomingNotify(bool flush)
 {
 
 	/* We *must* reset the flag */
@@ -2260,9 +2260,11 @@ ProcessIncomingNotify(void)
 	CommitTransactionCommand();
 
 	/*
-	 * Must flush the notify messages to ensure frontend gets them promptly.
+	 * If this isn't an end-of-command case, we must flush the notify messages
+	 * to ensure frontend gets them promptly.
 	 */
-	pq_flush();
+	if (flush)
+		pq_flush();
 
 	set_ps_display("idle");
 
@@ -2288,14 +2290,13 @@ NotifyMyFrontEnd(const char *channel, const char *payload, int32 srcPid)
 		pq_beginmessage(&buf, 'A');
 		pq_sendint32(&buf, srcPid);
 		pq_sendstring(&buf, channel);
-		if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
-			pq_sendstring(&buf, payload);
+		pq_sendstring(&buf, payload);
 		pq_endmessage(&buf);
 
 		/*
-		 * NOTE: we do not do pq_flush() here.  For a self-notify, it will
-		 * happen at the end of the transaction, and for incoming notifies
-		 * ProcessIncomingNotify will do it after finding all the notifies.
+		 * NOTE: we do not do pq_flush() here.  Some level of caller will
+		 * handle it later, allowing this message to be combined into a packet
+		 * with other ones.
 		 */
 	}
 	else
@@ -2357,7 +2358,6 @@ AddEventToPendingNotifies(Notification *n)
 		ListCell   *l;
 
 		/* Create the hash table */
-		MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 		hash_ctl.keysize = sizeof(Notification *);
 		hash_ctl.entrysize = sizeof(NotificationHash);
 		hash_ctl.hash = notification_hash;

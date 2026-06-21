@@ -3,7 +3,7 @@
  * parallel.c
  *	  Infrastructure for launching parallel workers
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -14,7 +14,6 @@
 
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/nbtree.h"
 #include "access/parallel.h"
 #include "access/session.h"
@@ -25,6 +24,7 @@
 #include "catalog/pg_enum.h"
 #include "catalog/storage.h"
 #include "commands/async.h"
+#include "commands/vacuum.h"
 #include "executor/execParallel.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -75,7 +75,7 @@
 #define PARALLEL_KEY_PENDING_SYNCS			UINT64CONST(0xFFFFFFFFFFFF000B)
 #define PARALLEL_KEY_REINDEX_STATE			UINT64CONST(0xFFFFFFFFFFFF000C)
 #define PARALLEL_KEY_RELMAPPER_STATE		UINT64CONST(0xFFFFFFFFFFFF000D)
-#define PARALLEL_KEY_ENUMBLACKLIST			UINT64CONST(0xFFFFFFFFFFFF000E)
+#define PARALLEL_KEY_UNCOMMITTEDENUMS		UINT64CONST(0xFFFFFFFFFFFF000E)
 
 /* Fixed-size parallel state. */
 typedef struct FixedParallelState
@@ -211,7 +211,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	Size		pendingsyncslen = 0;
 	Size		reindexlen = 0;
 	Size		relmapperlen = 0;
-	Size		enumblacklistlen = 0;
+	Size		uncommittedenumslen = 0;
 	Size		segsize = 0;
 	int			i;
 	FixedParallelState *fps;
@@ -254,8 +254,11 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		shm_toc_estimate_chunk(&pcxt->estimator, guc_len);
 		combocidlen = EstimateComboCIDStateSpace();
 		shm_toc_estimate_chunk(&pcxt->estimator, combocidlen);
-		tsnaplen = EstimateSnapshotSpace(transaction_snapshot);
-		shm_toc_estimate_chunk(&pcxt->estimator, tsnaplen);
+		if (IsolationUsesXactSnapshot())
+		{
+			tsnaplen = EstimateSnapshotSpace(transaction_snapshot);
+			shm_toc_estimate_chunk(&pcxt->estimator, tsnaplen);
+		}
 		asnaplen = EstimateSnapshotSpace(active_snapshot);
 		shm_toc_estimate_chunk(&pcxt->estimator, asnaplen);
 		tstatelen = EstimateTransactionStateSpace();
@@ -267,8 +270,8 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		shm_toc_estimate_chunk(&pcxt->estimator, reindexlen);
 		relmapperlen = EstimateRelationMapSpace();
 		shm_toc_estimate_chunk(&pcxt->estimator, relmapperlen);
-		enumblacklistlen = EstimateEnumBlacklistSpace();
-		shm_toc_estimate_chunk(&pcxt->estimator, enumblacklistlen);
+		uncommittedenumslen = EstimateUncommittedEnumsSpace();
+		shm_toc_estimate_chunk(&pcxt->estimator, uncommittedenumslen);
 		/* If you add more chunks here, you probably need to add keys. */
 		shm_toc_estimate_keys(&pcxt->estimator, 11);
 
@@ -348,7 +351,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		char	   *error_queue_space;
 		char	   *session_dsm_handle_space;
 		char	   *entrypointstate;
-		char	   *enumblacklistspace;
+		char	   *uncommittedenumsspace;
 		Size		lnamelen;
 
 		/* Serialize shared libraries we have loaded. */
@@ -366,11 +369,19 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		SerializeComboCIDState(combocidlen, combocidspace);
 		shm_toc_insert(pcxt->toc, PARALLEL_KEY_COMBO_CID, combocidspace);
 
-		/* Serialize transaction snapshot and active snapshot. */
-		tsnapspace = shm_toc_allocate(pcxt->toc, tsnaplen);
-		SerializeSnapshot(transaction_snapshot, tsnapspace);
-		shm_toc_insert(pcxt->toc, PARALLEL_KEY_TRANSACTION_SNAPSHOT,
-					   tsnapspace);
+		/*
+		 * Serialize the transaction snapshot if the transaction
+		 * isolation-level uses a transaction snapshot.
+		 */
+		if (IsolationUsesXactSnapshot())
+		{
+			tsnapspace = shm_toc_allocate(pcxt->toc, tsnaplen);
+			SerializeSnapshot(transaction_snapshot, tsnapspace);
+			shm_toc_insert(pcxt->toc, PARALLEL_KEY_TRANSACTION_SNAPSHOT,
+						   tsnapspace);
+		}
+
+		/* Serialize the active snapshot. */
 		asnapspace = shm_toc_allocate(pcxt->toc, asnaplen);
 		SerializeSnapshot(active_snapshot, asnapspace);
 		shm_toc_insert(pcxt->toc, PARALLEL_KEY_ACTIVE_SNAPSHOT, asnapspace);
@@ -404,11 +415,12 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		shm_toc_insert(pcxt->toc, PARALLEL_KEY_RELMAPPER_STATE,
 					   relmapperspace);
 
-		/* Serialize enum blacklist state. */
-		enumblacklistspace = shm_toc_allocate(pcxt->toc, enumblacklistlen);
-		SerializeEnumBlacklist(enumblacklistspace, enumblacklistlen);
-		shm_toc_insert(pcxt->toc, PARALLEL_KEY_ENUMBLACKLIST,
-					   enumblacklistspace);
+		/* Serialize uncommitted enum state. */
+		uncommittedenumsspace = shm_toc_allocate(pcxt->toc,
+												 uncommittedenumslen);
+		SerializeUncommittedEnums(uncommittedenumsspace, uncommittedenumslen);
+		shm_toc_insert(pcxt->toc, PARALLEL_KEY_UNCOMMITTEDENUMS,
+					   uncommittedenumsspace);
 
 		/* Allocate space for worker information. */
 		pcxt->worker = palloc0(sizeof(ParallelWorkerInfo) * pcxt->nworkers);
@@ -1257,9 +1269,11 @@ ParallelWorkerMain(Datum main_arg)
 	char	   *pendingsyncsspace;
 	char	   *reindexspace;
 	char	   *relmapperspace;
-	char	   *enumblacklistspace;
+	char	   *uncommittedenumsspace;
 	StringInfoData msgbuf;
 	char	   *session_dsm_handle_space;
+	Snapshot	tsnapshot;
+	Snapshot	asnapshot;
 
 	/* Set flag to indicate that we're initializing a parallel worker. */
 	InitializingParallelWorker = true;
@@ -1304,7 +1318,7 @@ ParallelWorkerMain(Datum main_arg)
 	/* Arrange to signal the leader if we exit. */
 	ParallelLeaderPid = fps->parallel_leader_pid;
 	ParallelLeaderBackendId = fps->parallel_leader_backend_id;
-	on_shmem_exit(ParallelWorkerShutdown, (Datum) 0);
+	before_shmem_exit(ParallelWorkerShutdown, PointerGetDatum(seg));
 
 	/*
 	 * Now we can find and attach to the error queue provided for us.  That's
@@ -1407,14 +1421,25 @@ ParallelWorkerMain(Datum main_arg)
 		shm_toc_lookup(toc, PARALLEL_KEY_SESSION_DSM, false);
 	AttachSession(*(dsm_handle *) session_dsm_handle_space);
 
-	/* Restore transaction snapshot. */
-	tsnapspace = shm_toc_lookup(toc, PARALLEL_KEY_TRANSACTION_SNAPSHOT, false);
-	RestoreTransactionSnapshot(RestoreSnapshot(tsnapspace),
-							   fps->parallel_leader_pgproc);
-
-	/* Restore active snapshot. */
+	/*
+	 * If the transaction isolation level is REPEATABLE READ or SERIALIZABLE,
+	 * the leader has serialized the transaction snapshot and we must restore
+	 * it. At lower isolation levels, there is no transaction-lifetime
+	 * snapshot, but we need TransactionXmin to get set to a value which is
+	 * less than or equal to the xmin of every snapshot that will be used by
+	 * this worker. The easiest way to accomplish that is to install the
+	 * active snapshot as the transaction snapshot. Code running in this
+	 * parallel worker might take new snapshots via GetTransactionSnapshot()
+	 * or GetLatestSnapshot(), but it shouldn't have any way of acquiring a
+	 * snapshot older than the active snapshot.
+	 */
 	asnapspace = shm_toc_lookup(toc, PARALLEL_KEY_ACTIVE_SNAPSHOT, false);
-	PushActiveSnapshot(RestoreSnapshot(asnapspace));
+	tsnapspace = shm_toc_lookup(toc, PARALLEL_KEY_TRANSACTION_SNAPSHOT, true);
+	asnapshot = RestoreSnapshot(asnapspace);
+	tsnapshot = tsnapspace ? RestoreSnapshot(tsnapspace) : asnapshot;
+	RestoreTransactionSnapshot(tsnapshot,
+							   fps->parallel_leader_pgproc);
+	PushActiveSnapshot(asnapshot);
 
 	/*
 	 * We've changed which tuples we can see, and must therefore invalidate
@@ -1449,10 +1474,10 @@ ParallelWorkerMain(Datum main_arg)
 	relmapperspace = shm_toc_lookup(toc, PARALLEL_KEY_RELMAPPER_STATE, false);
 	RestoreRelationMap(relmapperspace);
 
-	/* Restore enum blacklist. */
-	enumblacklistspace = shm_toc_lookup(toc, PARALLEL_KEY_ENUMBLACKLIST,
-										false);
-	RestoreEnumBlacklist(enumblacklistspace);
+	/* Restore uncommitted enums. */
+	uncommittedenumsspace = shm_toc_lookup(toc, PARALLEL_KEY_UNCOMMITTEDENUMS,
+										   false);
+	RestoreUncommittedEnums(uncommittedenumsspace);
 
 	/* Attach to the leader's serializable transaction, if SERIALIZABLE. */
 	AttachSerializableXact(fps->serializable_xact_handle);
@@ -1506,6 +1531,16 @@ ParallelWorkerReportLastRecEnd(XLogRecPtr last_xlog_end)
  * This guards against the case where we exit uncleanly without sending an
  * ErrorResponse to the leader, for example because some code calls proc_exit
  * directly.
+ *
+ * Also explicitly detach from dsm segment so that subsystems using
+ * on_dsm_detach() have a chance to send stats before the stats subsystem is
+ * shut down as part of a before_shmem_exit() hook.
+ *
+ * One might think this could instead be solved by carefully ordering the
+ * attaching to dsm segments, so that the pgstats segments get detached from
+ * later than the parallel query one. That turns out to not work because the
+ * stats hash might need to grow which can cause new segments to be allocated,
+ * which then will be detached from earlier.
  */
 static void
 ParallelWorkerShutdown(int code, Datum arg)
@@ -1513,6 +1548,8 @@ ParallelWorkerShutdown(int code, Datum arg)
 	SendProcSignal(ParallelLeaderPid,
 				   PROCSIG_PARALLEL_MESSAGE,
 				   ParallelLeaderBackendId);
+
+	dsm_detach((dsm_segment *) DatumGetPointer(arg));
 }
 
 /*

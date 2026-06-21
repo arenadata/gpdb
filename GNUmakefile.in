@@ -26,7 +26,7 @@ all:
 	$(MAKE) -C contrib/pgcrypto all
 	$(MAKE) -C contrib/btree_gin all
 	$(MAKE) -C contrib/pg_trgm all
-ifeq ($(with_openssl), yes)
+ifeq ($(with_ssl), openssl)
 	$(MAKE) -C contrib/sslinfo all
 endif
 ifneq ($(with_uuid),no)
@@ -45,6 +45,11 @@ world:
 
 # build src/ before contrib/
 world-contrib-recurse: world-src-recurse
+
+$(call recurse,world-bin,src config contrib,all)
+
+# build src/ before contrib/
+world-bin-contrib-recurse: world-bin-src-recurse
 
 html man:
 	$(MAKE) -C doc $@
@@ -65,7 +70,7 @@ install:
 	$(MAKE) -C contrib/pgcrypto $@
 	$(MAKE) -C contrib/btree_gin $@
 	$(MAKE) -C contrib/pg_trgm $@
-ifeq ($(with_openssl), yes)
+ifeq ($(with_ssl), openssl)
 	$(MAKE) -C contrib/sslinfo $@
 endif
 ifneq ($(with_uuid),no)
@@ -84,6 +89,11 @@ install-world:
 
 # build src/ before contrib/
 install-world-contrib-recurse: install-world-src-recurse
+
+$(call recurse,install-world-bin,src config contrib,install)
+
+# build src/ before contrib/
+install-world-bin-contrib-recurse: install-world-bin-src-recurse
 
 $(call recurse,installdirs uninstall init-po update-po,doc src config gpcontrib)
 
@@ -162,7 +172,7 @@ ICW_TARGETS += contrib/file_fdw contrib/formatter_fixedwidth
 ICW_TARGETS += contrib/extprotocol contrib/dblink contrib/pg_trgm
 ICW_TARGETS += contrib/indexscan contrib/hstore contrib/ltree contrib/pgcrypto
 # sslinfo depends on openssl
-ifeq ($(with_openssl), yes)
+ifeq ($(with_ssl), openssl)
 ICW_TARGETS += contrib/sslinfo
 endif
 ifneq ($(with_uuid),no)
@@ -199,6 +209,8 @@ $(call recurse,installcheck-world,src/bin/pg_upgrade,check)
 unittest-check:
 	$(MAKE) CFLAGS=-DUNITTEST -C src/backend unittest-check
 	$(MAKE) CFLAGS=-DUNITTEST -C src/bin unittest-check
+
+$(call recurse,install-tests,src/test/regress,install-tests)
 
 GNUmakefile: GNUmakefile.in $(top_builddir)/config.status
 	./config.status $@

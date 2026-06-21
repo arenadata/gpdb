@@ -160,8 +160,7 @@ pg_archivecleanup:  removing file "archive/00000001000000370000000E"
    <literal>never</literal>.
   </para>
  </refsect1>
- 
- 
+
  <refsect1>
   <title>Notes</title>
 
@@ -205,11 +204,4 @@ archive_cleanup_command = 'pg_archivecleanup -d /mnt/standby/archive %r 2>>clean
   </itemizedlist>
  </refsect1>
 
- <refsect1>
-  <title>See Also</title>
-
-  <simplelist type="inline">
-   <member><xref linkend="pgstandby"/></member>
-  </simplelist>
- </refsect1>
 </refentry>

@@ -23,7 +23,7 @@ PostgreSQL documentation
 <synopsis>
 ALTER VIEW [ IF EXISTS ] <replaceable class="parameter">name</replaceable> ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> SET DEFAULT <replaceable class="parameter">expression</replaceable>
 ALTER VIEW [ IF EXISTS ] <replaceable class="parameter">name</replaceable> ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> DROP DEFAULT
-ALTER VIEW [ IF EXISTS ] <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+ALTER VIEW [ IF EXISTS ] <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 ALTER VIEW [ IF EXISTS ] <replaceable class="parameter">name</replaceable> RENAME [ COLUMN ] <replaceable class="parameter">column_name</replaceable> TO <replaceable class="parameter">new_column_name</replaceable>
 ALTER VIEW [ IF EXISTS ] <replaceable class="parameter">name</replaceable> RENAME TO <replaceable class="parameter">new_name</replaceable>
 ALTER VIEW [ IF EXISTS ] <replaceable class="parameter">name</replaceable> SET SCHEMA <replaceable class="parameter">new_schema</replaceable>
@@ -156,7 +156,17 @@ ALTER VIEW [ IF EXISTS ] <replaceable class="parameter">name</replaceable> RESET
         <listitem>
          <para>
           Changes the security-barrier property of the view.  The value must
-          be Boolean value, such as <literal>true</literal>
+          be a Boolean value, such as <literal>true</literal>
+          or <literal>false</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+       <varlistentry>
+        <term><literal>security_invoker</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Changes the security-invoker property of the view.  The value must
+          be a Boolean value, such as <literal>true</literal>
           or <literal>false</literal>.
          </para>
         </listitem>

@@ -3,7 +3,7 @@
  * execParallel.c
  *	  Support routines for parallel execution.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * This file contains routines that are intended to support setting up,
@@ -35,6 +35,7 @@
 #include "executor/nodeIncrementalSort.h"
 #include "executor/nodeIndexonlyscan.h"
 #include "executor/nodeIndexscan.h"
+#include "executor/nodeMemoize.h"
 #include "executor/nodeSeqscan.h"
 #include "executor/nodeSort.h"
 #include "executor/nodeSubplan.h"
@@ -174,7 +175,7 @@ ExecSerializePlan(Plan *plan, EState *estate)
 	 */
 	pstmt = makeNode(PlannedStmt);
 	pstmt->commandType = CMD_SELECT;
-	pstmt->queryId = UINT64CONST(0);
+	pstmt->queryId = pgstat_get_my_query_id();
 	pstmt->hasReturning = false;
 	pstmt->hasModifyingCTE = false;
 	pstmt->canSetTag = true;
@@ -184,7 +185,6 @@ ExecSerializePlan(Plan *plan, EState *estate)
 	pstmt->planTree = plan;
 	pstmt->rtable = estate->es_range_table;
 	pstmt->resultRelations = NIL;
-	pstmt->rootResultRelations = NIL;
 	pstmt->appendRelations = NIL;
 
 	/*
@@ -292,6 +292,10 @@ ExecParallelEstimate(PlanState *planstate, ExecParallelEstimateContext *e)
 		case T_AggState:
 			/* even when not parallel-aware, for EXPLAIN ANALYZE */
 			ExecAggEstimate((AggState *) planstate, e->pcxt);
+			break;
+		case T_MemoizeState:
+			/* even when not parallel-aware, for EXPLAIN ANALYZE */
+			ExecMemoizeEstimate((MemoizeState *) planstate, e->pcxt);
 			break;
 		default:
 			break;
@@ -515,6 +519,10 @@ ExecParallelInitializeDSM(PlanState *planstate,
 		case T_AggState:
 			/* even when not parallel-aware, for EXPLAIN ANALYZE */
 			ExecAggInitializeDSM((AggState *) planstate, d->pcxt);
+			break;
+		case T_MemoizeState:
+			/* even when not parallel-aware, for EXPLAIN ANALYZE */
+			ExecMemoizeInitializeDSM((MemoizeState *) planstate, d->pcxt);
 			break;
 		default:
 			break;
@@ -992,6 +1000,7 @@ ExecParallelReInitializeDSM(PlanState *planstate,
 		case T_HashState:
 		case T_SortState:
 		case T_IncrementalSortState:
+		case T_MemoizeState:
 			/* these nodes have DSM state, but no reinitialization is required */
 			break;
 
@@ -1060,6 +1069,9 @@ ExecParallelRetrieveInstrumentation(PlanState *planstate,
 			break;
 		case T_AggState:
 			ExecAggRetrieveInstrumentation((AggState *) planstate);
+			break;
+		case T_MemoizeState:
+			ExecMemoizeRetrieveInstrumentation((MemoizeState *) planstate);
 			break;
 		default:
 			break;
@@ -1353,6 +1365,10 @@ ExecParallelInitializeWorker(PlanState *planstate, ParallelWorkerContext *pwcxt)
 			/* even when not parallel-aware, for EXPLAIN ANALYZE */
 			ExecAggInitializeWorker((AggState *) planstate, pwcxt);
 			break;
+		case T_MemoizeState:
+			/* even when not parallel-aware, for EXPLAIN ANALYZE */
+			ExecMemoizeInitializeWorker((MemoizeState *) planstate, pwcxt);
+			break;
 		default:
 			break;
 	}
@@ -1426,7 +1442,6 @@ ParallelQueryMain(dsm_segment *seg, shm_toc *toc)
 
 		paramexec_space = dsa_get_address(area, fpes->param_exec);
 		RestoreParamExecParams(paramexec_space, queryDesc->estate);
-
 	}
 	pwcxt.toc = toc;
 	pwcxt.seg = seg;

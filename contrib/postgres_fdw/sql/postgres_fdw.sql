@@ -15,6 +15,10 @@ DO $d$
             OPTIONS (dbname '$$||current_database()||$$',
                      port '$$||current_setting('port')||$$'
             )$$;
+        EXECUTE $$CREATE SERVER loopback3 FOREIGN DATA WRAPPER postgres_fdw
+            OPTIONS (dbname '$$||current_database()||$$',
+                     port '$$||current_setting('port')||$$'
+            )$$;
     END;
 $d$;
 
@@ -22,6 +26,7 @@ CREATE USER MAPPING FOR public SERVER testserver1
 	OPTIONS (user 'value', password 'value');
 CREATE USER MAPPING FOR CURRENT_USER SERVER loopback;
 CREATE USER MAPPING FOR CURRENT_USER SERVER loopback2;
+CREATE USER MAPPING FOR public SERVER loopback3;
 
 -- ===================================================================
 -- create objects used through FDW loopback server
@@ -142,6 +147,12 @@ CREATE FOREIGN TABLE ft6 (
 	c3 text
 ) SERVER loopback2 OPTIONS (schema_name 'S 1', table_name 'T 4');
 
+CREATE FOREIGN TABLE ft7 (
+	c1 int NOT NULL,
+	c2 int NOT NULL,
+	c3 text
+) SERVER loopback3 OPTIONS (schema_name 'S 1', table_name 'T 4');
+
 -- ===================================================================
 -- tests for validator
 -- ===================================================================
@@ -237,6 +248,11 @@ ANALYZE ft1;
 ALTER FOREIGN TABLE ft2 OPTIONS (use_remote_estimate 'true');
 
 -- ===================================================================
+-- test error case for create publication on foreign table
+-- ===================================================================
+CREATE PUBLICATION testpub_ftbl FOR TABLE ft1;  -- should fail
+
+-- ===================================================================
 -- simple queries
 -- ===================================================================
 -- single table without alias
@@ -298,6 +314,18 @@ SELECT t1."C 1", t2.c1, t3.c1 FROM "S 1"."T 1" t1 full join ft1 t2 full join ft2
 RESET enable_hashjoin;
 RESET enable_nestloop;
 
+-- Test executing assertion in estimate_path_cost_size() that makes sure that
+-- retrieved_rows for foreign rel re-used to cost pre-sorted foreign paths is
+-- a sensible value even when the rel has tuples=0
+CREATE TABLE loct_empty (c1 int NOT NULL, c2 text);
+CREATE FOREIGN TABLE ft_empty (c1 int NOT NULL, c2 text)
+  SERVER loopback OPTIONS (table_name 'loct_empty');
+INSERT INTO loct_empty
+  SELECT id, 'AAA' || to_char(id, 'FM000') FROM generate_series(1, 100) id;
+DELETE FROM loct_empty;
+ANALYZE ft_empty;
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft_empty ORDER BY c1;
+
 -- ===================================================================
 -- WHERE with remotely-executable conditions
 -- ===================================================================
@@ -307,7 +335,6 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c1 IS NULL;        -- Nu
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c1 IS NOT NULL;    -- NullTest
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE round(abs(c1), 0) = 1; -- FuncExpr
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c1 = -c1;          -- OpExpr(l)
-EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE 1 = c1!;           -- OpExpr(r)
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE (c1 IS NOT NULL) IS DISTINCT FROM (c1 IS NOT NULL); -- DistinctExpr
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c1 = ANY(ARRAY[c2, 1, c1 + 0]); -- ScalarArrayOpExpr
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft1 t1 WHERE c1 = (ARRAY[c1,c2,3])[1]; -- SubscriptingRef
@@ -385,6 +412,35 @@ SELECT count(c3) FROM ft1 t1 WHERE t1.c1 === t1.c2;
 EXPLAIN (VERBOSE, COSTS OFF)
   SELECT * FROM ft1 t1 WHERE t1.c1 === t1.c2 order by t1.c2 limit 1;
 SELECT * FROM ft1 t1 WHERE t1.c1 === t1.c2 order by t1.c2 limit 1;
+
+-- Test CASE pushdown
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1,c2,c3 FROM ft2 WHERE CASE WHEN c1 > 990 THEN c1 END < 1000 ORDER BY c1;
+SELECT c1,c2,c3 FROM ft2 WHERE CASE WHEN c1 > 990 THEN c1 END < 1000 ORDER BY c1;
+
+-- Nested CASE
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1,c2,c3 FROM ft2 WHERE CASE CASE WHEN c2 > 0 THEN c2 END WHEN 100 THEN 601 WHEN c2 THEN c2 ELSE 0 END > 600 ORDER BY c1;
+
+SELECT c1,c2,c3 FROM ft2 WHERE CASE CASE WHEN c2 > 0 THEN c2 END WHEN 100 THEN 601 WHEN c2 THEN c2 ELSE 0 END > 600 ORDER BY c1;
+
+-- CASE arg WHEN
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1 WHERE c1 > (CASE mod(c1, 4) WHEN 0 THEN 1 WHEN 2 THEN 50 ELSE 100 END);
+
+-- CASE cannot be pushed down because of unshippable arg clause
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1 WHERE c1 > (CASE random()::integer WHEN 0 THEN 1 WHEN 2 THEN 50 ELSE 100 END);
+
+-- these are shippable
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1 WHERE CASE c6 WHEN 'foo' THEN true ELSE c3 < 'bar' END;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1 WHERE CASE c3 WHEN c6 THEN true ELSE c3 < 'bar' END;
+
+-- but this is not because of collation
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1 WHERE CASE c3 COLLATE "C" WHEN c6 THEN true ELSE c3 < 'bar' END;
 
 -- ===================================================================
 -- JOIN queries
@@ -480,10 +536,12 @@ SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SET enable_memoize TO off;
 -- right outer join + left outer join
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+RESET enable_memoize;
 -- left outer join + right outer join
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
@@ -849,6 +907,10 @@ create operator class my_op_class for type int using btree family my_op_family a
 explain (verbose, costs off)
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
 
+-- This should not be pushed either.
+explain (verbose, costs off)
+select * from ft2 order by c1 using operator(public.<^);
+
 -- Update local stats on ft2
 ANALYZE ft2;
 
@@ -865,6 +927,10 @@ alter server loopback options (set extensions 'postgres_fdw');
 explain (verbose, costs off)
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
 select array_agg(c1 order by c1 using operator(public.<^)) from ft2 where c2 = 6 and c1 < 100 group by c2;
+
+-- This should be pushed too.
+explain (verbose, costs off)
+select * from ft2 order by c1 using operator(public.<^);
 
 -- Remove from extension
 alter extension postgres_fdw drop operator class my_op_class using btree;
@@ -1105,10 +1171,31 @@ DROP TABLE reind_fdw_parent;
 -- conversion error
 -- ===================================================================
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE int;
-SELECT * FROM ft1 WHERE c1 = 1;  -- ERROR
-SELECT  ft1.c1,  ft2.c2, ft1.c8 FROM ft1, ft2 WHERE ft1.c1 = ft2.c1 AND ft1.c1 = 1; -- ERROR
-SELECT  ft1.c1,  ft2.c2, ft1 FROM ft1, ft2 WHERE ft1.c1 = ft2.c1 AND ft1.c1 = 1; -- ERROR
+SELECT * FROM ft1 ftx(x1,x2,x3,x4,x5,x6,x7,x8) WHERE x1 = 1;  -- ERROR
+SELECT ftx.x1, ft2.c2, ftx.x8 FROM ft1 ftx(x1,x2,x3,x4,x5,x6,x7,x8), ft2
+  WHERE ftx.x1 = ft2.c1 AND ftx.x1 = 1; -- ERROR
+SELECT ftx.x1, ft2.c2, ftx FROM ft1 ftx(x1,x2,x3,x4,x5,x6,x7,x8), ft2
+  WHERE ftx.x1 = ft2.c1 AND ftx.x1 = 1; -- ERROR
 SELECT sum(c2), array_agg(c8) FROM ft1 GROUP BY c8; -- ERROR
+ANALYZE ft1; -- ERROR
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE user_enum;
+
+-- ===================================================================
+-- local type can be different from remote type in some cases,
+-- in particular if similarly-named operators do equivalent things
+-- ===================================================================
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE text;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1 WHERE c8 = 'foo' LIMIT 1;
+SELECT * FROM ft1 WHERE c8 = 'foo' LIMIT 1;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1 WHERE 'foo' = c8 LIMIT 1;
+SELECT * FROM ft1 WHERE 'foo' = c8 LIMIT 1;
+-- we declared c8 to be text locally, but it's still the same type on
+-- the remote which will balk if we try to do anything incompatible
+-- with that remote type
+SELECT * FROM ft1 WHERE c8 LIKE 'foo' LIMIT 1; -- ERROR
+SELECT * FROM ft1 WHERE c8::text LIKE 'foo' LIMIT 1; -- ERROR; cast not pushed down
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE user_enum;
 
 -- ===================================================================
@@ -1230,6 +1317,14 @@ UPDATE ft2 AS target SET (c2) = (
         FROM ft2 AS src
         WHERE target.c1 = src.c1
 ) WHERE c1 > 1100;
+
+-- Test UPDATE involving a join that can be pushed down,
+-- but a SET clause that can't be
+EXPLAIN (VERBOSE, COSTS OFF)
+UPDATE ft2 d SET c2 = CASE WHEN random() >= 0 THEN d.c2 ELSE 0 END
+  FROM ft2 AS t WHERE d.c1 = t.c1 AND d.c1 > 1000;
+UPDATE ft2 d SET c2 = CASE WHEN random() >= 0 THEN d.c2 ELSE 0 END
+  FROM ft2 AS t WHERE d.c1 = t.c1 AND d.c1 > 1000;
 
 -- Test UPDATE/DELETE with WHERE or JOIN/ON conditions containing
 -- user-defined operators/functions
@@ -1403,6 +1498,9 @@ CREATE FOREIGN TABLE foreign_tbl (a int, b int)
 
 CREATE TABLE parent_tbl (a int, b int) PARTITION BY RANGE(a);
 ALTER TABLE parent_tbl ATTACH PARTITION foreign_tbl FOR VALUES FROM (0) TO (100);
+-- Detach and re-attach once, to stress the concurrent detach case.
+ALTER TABLE parent_tbl DETACH PARTITION foreign_tbl CONCURRENTLY;
+ALTER TABLE parent_tbl ATTACH PARTITION foreign_tbl FOR VALUES FROM (0) TO (100);
 
 CREATE VIEW rw_view AS SELECT * FROM parent_tbl
   WHERE a < b WITH CHECK OPTION;
@@ -1448,16 +1546,42 @@ select * from rem1;
 -- ===================================================================
 -- test generated columns
 -- ===================================================================
-create table gloc1 (a int, b int);
+create table gloc1 (
+  a int,
+  b int generated always as (a * 2) stored);
 alter table gloc1 set (autovacuum_enabled = 'false');
 create foreign table grem1 (
   a int,
   b int generated always as (a * 2) stored)
   server loopback options(table_name 'gloc1');
+explain (verbose, costs off)
 insert into grem1 (a) values (1), (2);
+insert into grem1 (a) values (1), (2);
+explain (verbose, costs off)
+update grem1 set a = 22 where a = 2;
 update grem1 set a = 22 where a = 2;
 select * from gloc1;
 select * from grem1;
+delete from grem1;
+
+-- test copy from
+copy grem1 from stdin;
+1
+2
+\.
+select * from gloc1;
+select * from grem1;
+delete from grem1;
+
+-- test batch insert
+alter server loopback options (add batch_size '10');
+explain (verbose, costs off)
+insert into grem1 (a) values (1), (2);
+insert into grem1 (a) values (1), (2);
+select * from gloc1;
+select * from grem1;
+delete from grem1;
+alter server loopback options (drop batch_size);
 
 -- ===================================================================
 -- test local triggers
@@ -1704,6 +1828,10 @@ DROP TRIGGER trig_local_before ON loc1;
 
 
 -- Test direct foreign table modification functionality
+EXPLAIN (verbose, costs off)
+DELETE FROM rem1;                 -- can be pushed down
+EXPLAIN (verbose, costs off)
+DELETE FROM rem1 WHERE false;     -- currently can't be pushed down
 
 -- Test with statement-level triggers
 CREATE TRIGGER trig_stmt_before
@@ -1866,6 +1994,27 @@ select * from bar where f1 in (select f1 from foo) for update;
 explain (verbose, costs off)
 select * from bar where f1 in (select f1 from foo) for share;
 select * from bar where f1 in (select f1 from foo) for share;
+
+-- Now check SELECT FOR UPDATE/SHARE with an inherited source table,
+-- where the parent is itself a foreign table
+create table loct4 (f1 int, f2 int, f3 int);
+create foreign table foo2child (f3 int) inherits (foo2)
+  server loopback options (table_name 'loct4');
+
+explain (verbose, costs off)
+select * from bar where f1 in (select f1 from foo2) for share;
+select * from bar where f1 in (select f1 from foo2) for share;
+
+drop foreign table foo2child;
+
+-- And with a local child relation of the foreign table parent
+create table foo2child (f3 int) inherits (foo2);
+
+explain (verbose, costs off)
+select * from bar where f1 in (select f1 from foo2) for share;
+select * from bar where f1 in (select f1 from foo2) for share;
+
+drop table foo2child;
 
 -- Check UPDATE with inherited target and an inherited source table
 explain (verbose, costs off)
@@ -2328,6 +2477,113 @@ drop foreign table rem3;
 drop table loc3;
 
 -- ===================================================================
+-- test for TRUNCATE
+-- ===================================================================
+CREATE TABLE tru_rtable0 (id int primary key);
+CREATE FOREIGN TABLE tru_ftable (id int)
+       SERVER loopback OPTIONS (table_name 'tru_rtable0');
+INSERT INTO tru_rtable0 (SELECT x FROM generate_series(1,10) x);
+
+CREATE TABLE tru_ptable (id int) PARTITION BY HASH(id);
+CREATE TABLE tru_ptable__p0 PARTITION OF tru_ptable
+                            FOR VALUES WITH (MODULUS 2, REMAINDER 0);
+CREATE TABLE tru_rtable1 (id int primary key);
+CREATE FOREIGN TABLE tru_ftable__p1 PARTITION OF tru_ptable
+                                    FOR VALUES WITH (MODULUS 2, REMAINDER 1)
+       SERVER loopback OPTIONS (table_name 'tru_rtable1');
+INSERT INTO tru_ptable (SELECT x FROM generate_series(11,20) x);
+
+CREATE TABLE tru_pk_table(id int primary key);
+CREATE TABLE tru_fk_table(fkey int references tru_pk_table(id));
+INSERT INTO tru_pk_table (SELECT x FROM generate_series(1,10) x);
+INSERT INTO tru_fk_table (SELECT x % 10 + 1 FROM generate_series(5,25) x);
+CREATE FOREIGN TABLE tru_pk_ftable (id int)
+       SERVER loopback OPTIONS (table_name 'tru_pk_table');
+
+CREATE TABLE tru_rtable_parent (id int);
+CREATE TABLE tru_rtable_child (id int);
+CREATE FOREIGN TABLE tru_ftable_parent (id int)
+       SERVER loopback OPTIONS (table_name 'tru_rtable_parent');
+CREATE FOREIGN TABLE tru_ftable_child () INHERITS (tru_ftable_parent)
+       SERVER loopback OPTIONS (table_name 'tru_rtable_child');
+INSERT INTO tru_rtable_parent (SELECT x FROM generate_series(1,8) x);
+INSERT INTO tru_rtable_child  (SELECT x FROM generate_series(10, 18) x);
+
+-- normal truncate
+SELECT sum(id) FROM tru_ftable;        -- 55
+TRUNCATE tru_ftable;
+SELECT count(*) FROM tru_rtable0;		-- 0
+SELECT count(*) FROM tru_ftable;		-- 0
+
+-- 'truncatable' option
+ALTER SERVER loopback OPTIONS (ADD truncatable 'false');
+TRUNCATE tru_ftable;			-- error
+ALTER FOREIGN TABLE tru_ftable OPTIONS (ADD truncatable 'true');
+TRUNCATE tru_ftable;			-- accepted
+ALTER FOREIGN TABLE tru_ftable OPTIONS (SET truncatable 'false');
+TRUNCATE tru_ftable;			-- error
+ALTER SERVER loopback OPTIONS (DROP truncatable);
+ALTER FOREIGN TABLE tru_ftable OPTIONS (SET truncatable 'false');
+TRUNCATE tru_ftable;			-- error
+ALTER FOREIGN TABLE tru_ftable OPTIONS (SET truncatable 'true');
+TRUNCATE tru_ftable;			-- accepted
+
+-- partitioned table with both local and foreign tables as partitions
+SELECT sum(id) FROM tru_ptable;        -- 155
+TRUNCATE tru_ptable;
+SELECT count(*) FROM tru_ptable;		-- 0
+SELECT count(*) FROM tru_ptable__p0;	-- 0
+SELECT count(*) FROM tru_ftable__p1;	-- 0
+SELECT count(*) FROM tru_rtable1;		-- 0
+
+-- 'CASCADE' option
+SELECT sum(id) FROM tru_pk_ftable;      -- 55
+TRUNCATE tru_pk_ftable;	-- failed by FK reference
+TRUNCATE tru_pk_ftable CASCADE;
+SELECT count(*) FROM tru_pk_ftable;    -- 0
+SELECT count(*) FROM tru_fk_table;		-- also truncated,0
+
+-- truncate two tables at a command
+INSERT INTO tru_ftable (SELECT x FROM generate_series(1,8) x);
+INSERT INTO tru_pk_ftable (SELECT x FROM generate_series(3,10) x);
+SELECT count(*) from tru_ftable; -- 8
+SELECT count(*) from tru_pk_ftable; -- 8
+TRUNCATE tru_ftable, tru_pk_ftable CASCADE;
+SELECT count(*) from tru_ftable; -- 0
+SELECT count(*) from tru_pk_ftable; -- 0
+
+-- truncate with ONLY clause
+-- Since ONLY is specified, the table tru_ftable_child that inherits
+-- tru_ftable_parent locally is not truncated.
+TRUNCATE ONLY tru_ftable_parent;
+SELECT sum(id) FROM tru_ftable_parent;  -- 126
+TRUNCATE tru_ftable_parent;
+SELECT count(*) FROM tru_ftable_parent; -- 0
+
+-- in case when remote table has inherited children
+CREATE TABLE tru_rtable0_child () INHERITS (tru_rtable0);
+INSERT INTO tru_rtable0 (SELECT x FROM generate_series(5,9) x);
+INSERT INTO tru_rtable0_child (SELECT x FROM generate_series(10,14) x);
+SELECT sum(id) FROM tru_ftable;   -- 95
+
+-- Both parent and child tables in the foreign server are truncated
+-- even though ONLY is specified because ONLY has no effect
+-- when truncating a foreign table.
+TRUNCATE ONLY tru_ftable;
+SELECT count(*) FROM tru_ftable;   -- 0
+
+INSERT INTO tru_rtable0 (SELECT x FROM generate_series(21,25) x);
+INSERT INTO tru_rtable0_child (SELECT x FROM generate_series(26,30) x);
+SELECT sum(id) FROM tru_ftable;		-- 255
+TRUNCATE tru_ftable;			-- truncate both of parent and child
+SELECT count(*) FROM tru_ftable;    -- 0
+
+-- cleanup
+DROP FOREIGN TABLE tru_ftable_parent, tru_ftable_child, tru_pk_ftable,tru_ftable__p1,tru_ftable;
+DROP TABLE tru_rtable0, tru_rtable1, tru_ptable, tru_ptable__p0, tru_pk_table, tru_fk_table,
+tru_rtable_parent,tru_rtable_child, tru_rtable0_child;
+
+-- ===================================================================
 -- test IMPORT FOREIGN SCHEMA
 -- ===================================================================
 
@@ -2339,9 +2595,12 @@ CREATE TABLE import_source.t3 (c1 timestamptz default now(), c2 typ1);
 CREATE TABLE import_source."x 4" (c1 float8, "C 2" text, c3 varchar(42));
 CREATE TABLE import_source."x 5" (c1 float8);
 ALTER TABLE import_source."x 5" DROP COLUMN c1;
+CREATE TABLE import_source."x 6" (c1 int, c2 int generated always as (c1 * 2) stored);
 CREATE TABLE import_source.t4 (c1 int) PARTITION BY RANGE (c1);
 CREATE TABLE import_source.t4_part PARTITION OF import_source.t4
   FOR VALUES FROM (1) TO (100);
+CREATE TABLE import_source.t4_part2 PARTITION OF import_source.t4
+  FOR VALUES FROM (100) TO (200);
 
 CREATE SCHEMA import_dest1;
 IMPORT FOREIGN SCHEMA import_source FROM SERVER loopback INTO import_dest1;
@@ -2356,16 +2615,16 @@ IMPORT FOREIGN SCHEMA import_source FROM SERVER loopback INTO import_dest2
 \d import_dest2.*
 CREATE SCHEMA import_dest3;
 IMPORT FOREIGN SCHEMA import_source FROM SERVER loopback INTO import_dest3
-  OPTIONS (import_collate 'false', import_not_null 'false');
+  OPTIONS (import_collate 'false', import_generated 'false', import_not_null 'false');
 \det+ import_dest3.*
 \d import_dest3.*
 
 -- Check LIMIT TO and EXCEPT
 CREATE SCHEMA import_dest4;
-IMPORT FOREIGN SCHEMA import_source LIMIT TO (t1, nonesuch)
+IMPORT FOREIGN SCHEMA import_source LIMIT TO (t1, nonesuch, t4_part)
   FROM SERVER loopback INTO import_dest4;
 \det+ import_dest4.*
-IMPORT FOREIGN SCHEMA import_source EXCEPT (t1, "x 4", nonesuch)
+IMPORT FOREIGN SCHEMA import_source EXCEPT (t1, "x 4", nonesuch, t4_part)
   FROM SERVER loopback INTO import_dest4;
 \det+ import_dest4.*
 
@@ -2516,8 +2775,8 @@ INSERT INTO pagg_tab_p3 SELECT i % 30, i % 50, to_char(i/30, 'FM0000') FROM gene
 
 -- Create foreign partitions
 CREATE FOREIGN TABLE fpagg_tab_p1 PARTITION OF pagg_tab FOR VALUES FROM (0) TO (10) SERVER loopback OPTIONS (table_name 'pagg_tab_p1');
-CREATE FOREIGN TABLE fpagg_tab_p2 PARTITION OF pagg_tab FOR VALUES FROM (10) TO (20) SERVER loopback OPTIONS (table_name 'pagg_tab_p2');;
-CREATE FOREIGN TABLE fpagg_tab_p3 PARTITION OF pagg_tab FOR VALUES FROM (20) TO (30) SERVER loopback OPTIONS (table_name 'pagg_tab_p3');;
+CREATE FOREIGN TABLE fpagg_tab_p2 PARTITION OF pagg_tab FOR VALUES FROM (10) TO (20) SERVER loopback OPTIONS (table_name 'pagg_tab_p2');
+CREATE FOREIGN TABLE fpagg_tab_p3 PARTITION OF pagg_tab FOR VALUES FROM (20) TO (30) SERVER loopback OPTIONS (table_name 'pagg_tab_p3');
 
 ANALYZE pagg_tab;
 ANALYZE fpagg_tab_p1;
@@ -2573,7 +2832,7 @@ $d$;
 CREATE USER MAPPING FOR public SERVER loopback_nopw;
 CREATE USER MAPPING FOR CURRENT_USER SERVER loopback_nopw;
 
-CREATE FOREIGN TABLE ft1_nopw (
+CREATE FOREIGN TABLE pg_temp.ft1_nopw (
 	c1 int NOT NULL,
 	c2 int NOT NULL,
 	c3 text,
@@ -2584,7 +2843,7 @@ CREATE FOREIGN TABLE ft1_nopw (
 	c8 user_enum
 ) SERVER loopback_nopw OPTIONS (schema_name 'public', table_name 'ft1');
 
-SELECT * FROM ft1_nopw LIMIT 1;
+SELECT 1 FROM ft1_nopw LIMIT 1;
 
 -- If we add a password to the connstr it'll fail, because we don't allow passwords
 -- in connstrs only in user mappings.
@@ -2602,13 +2861,13 @@ $d$;
 
 ALTER USER MAPPING FOR CURRENT_USER SERVER loopback_nopw OPTIONS (ADD password 'dummypw');
 
-SELECT * FROM ft1_nopw LIMIT 1;
+SELECT 1 FROM ft1_nopw LIMIT 1;
 
 -- Unpriv user cannot make the mapping passwordless
 ALTER USER MAPPING FOR CURRENT_USER SERVER loopback_nopw OPTIONS (ADD password_required 'false');
 
 
-SELECT * FROM ft1_nopw LIMIT 1;
+SELECT 1 FROM ft1_nopw LIMIT 1;
 
 RESET ROLE;
 
@@ -2618,7 +2877,7 @@ ALTER USER MAPPING FOR regress_nosuper SERVER loopback_nopw OPTIONS (ADD passwor
 SET ROLE regress_nosuper;
 
 -- Should finally work now
-SELECT * FROM ft1_nopw LIMIT 1;
+SELECT 1 FROM ft1_nopw LIMIT 1;
 
 -- unpriv user also cannot set sslcert / sslkey on the user mapping
 -- first set password_required so we see the right error messages
@@ -2632,13 +2891,13 @@ DROP USER MAPPING FOR CURRENT_USER SERVER loopback_nopw;
 
 -- This will fail again as it'll resolve the user mapping for public, which
 -- lacks password_required=false
-SELECT * FROM ft1_nopw LIMIT 1;
+SELECT 1 FROM ft1_nopw LIMIT 1;
 
 RESET ROLE;
 
 -- The user mapping for public is passwordless and lacks the password_required=false
 -- mapping option, but will work because the current user is a superuser.
-SELECT * FROM ft1_nopw LIMIT 1;
+SELECT 1 FROM ft1_nopw LIMIT 1;
 
 -- cleanup
 DROP USER MAPPING FOR public SERVER loopback_nopw;
@@ -2654,3 +2913,725 @@ SELECT count(*) FROM ft1;
 -- error here
 PREPARE TRANSACTION 'fdw_tpc';
 ROLLBACK;
+
+-- ===================================================================
+-- reestablish new connection
+-- ===================================================================
+
+-- Change application_name of remote connection to special one
+-- so that we can easily terminate the connection later.
+ALTER SERVER loopback OPTIONS (application_name 'fdw_retry_check');
+
+-- If debug_discard_caches is active, it results in
+-- dropping remote connections after every transaction, making it
+-- impossible to test termination meaningfully.  So turn that off
+-- for this test.
+SET debug_discard_caches = 0;
+
+-- Make sure we have a remote connection.
+SELECT 1 FROM ft1 LIMIT 1;
+
+-- Terminate the remote connection and wait for the termination to complete.
+SELECT pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+	WHERE application_name = 'fdw_retry_check';
+
+-- This query should detect the broken connection when starting new remote
+-- transaction, reestablish new connection, and then succeed.
+BEGIN;
+SELECT 1 FROM ft1 LIMIT 1;
+
+-- If we detect the broken connection when starting a new remote
+-- subtransaction, we should fail instead of establishing a new connection.
+-- Terminate the remote connection and wait for the termination to complete.
+SELECT pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+	WHERE application_name = 'fdw_retry_check';
+SAVEPOINT s;
+-- The text of the error might vary across platforms, so only show SQLSTATE.
+\set VERBOSITY sqlstate
+SELECT 1 FROM ft1 LIMIT 1;    -- should fail
+\set VERBOSITY default
+COMMIT;
+
+RESET debug_discard_caches;
+
+-- =============================================================================
+-- test connection invalidation cases and postgres_fdw_get_connections function
+-- =============================================================================
+-- Let's ensure to close all the existing cached connections.
+SELECT 1 FROM postgres_fdw_disconnect_all();
+-- No cached connections, so no records should be output.
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+-- This test case is for closing the connection in pgfdw_xact_callback
+BEGIN;
+-- Connection xact depth becomes 1 i.e. the connection is in midst of the xact.
+SELECT 1 FROM ft1 LIMIT 1;
+SELECT 1 FROM ft7 LIMIT 1;
+-- List all the existing cached connections. loopback and loopback3 should be
+-- output.
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+-- Connections are not closed at the end of the alter and drop statements.
+-- That's because the connections are in midst of this xact,
+-- they are just marked as invalid in pgfdw_inval_callback.
+ALTER SERVER loopback OPTIONS (ADD use_remote_estimate 'off');
+DROP SERVER loopback3 CASCADE;
+-- List all the existing cached connections. loopback and loopback3
+-- should be output as invalid connections. Also the server name for
+-- loopback3 should be NULL because the server was dropped.
+SELECT * FROM postgres_fdw_get_connections() ORDER BY 1;
+-- The invalid connections get closed in pgfdw_xact_callback during commit.
+COMMIT;
+-- All cached connections were closed while committing above xact, so no
+-- records should be output.
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+
+-- =======================================================================
+-- test postgres_fdw_disconnect and postgres_fdw_disconnect_all functions
+-- =======================================================================
+BEGIN;
+-- Ensure to cache loopback connection.
+SELECT 1 FROM ft1 LIMIT 1;
+-- Ensure to cache loopback2 connection.
+SELECT 1 FROM ft6 LIMIT 1;
+-- List all the existing cached connections. loopback and loopback2 should be
+-- output.
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+-- Issue a warning and return false as loopback connection is still in use and
+-- can not be closed.
+SELECT postgres_fdw_disconnect('loopback');
+-- List all the existing cached connections. loopback and loopback2 should be
+-- output.
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+-- Return false as connections are still in use, warnings are issued.
+-- But disable warnings temporarily because the order of them is not stable.
+SET client_min_messages = 'ERROR';
+SELECT postgres_fdw_disconnect_all();
+RESET client_min_messages;
+COMMIT;
+-- Ensure that loopback2 connection is closed.
+SELECT 1 FROM postgres_fdw_disconnect('loopback2');
+SELECT server_name FROM postgres_fdw_get_connections() WHERE server_name = 'loopback2';
+-- Return false as loopback2 connection is closed already.
+SELECT postgres_fdw_disconnect('loopback2');
+-- Return an error as there is no foreign server with given name.
+SELECT postgres_fdw_disconnect('unknownserver');
+-- Let's ensure to close all the existing cached connections.
+SELECT 1 FROM postgres_fdw_disconnect_all();
+-- No cached connections, so no records should be output.
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+
+-- =============================================================================
+-- test case for having multiple cached connections for a foreign server
+-- =============================================================================
+CREATE ROLE regress_multi_conn_user1 SUPERUSER;
+CREATE ROLE regress_multi_conn_user2 SUPERUSER;
+CREATE USER MAPPING FOR regress_multi_conn_user1 SERVER loopback;
+CREATE USER MAPPING FOR regress_multi_conn_user2 SERVER loopback;
+
+BEGIN;
+-- Will cache loopback connection with user mapping for regress_multi_conn_user1
+SET ROLE regress_multi_conn_user1;
+SELECT 1 FROM ft1 LIMIT 1;
+RESET ROLE;
+
+-- Will cache loopback connection with user mapping for regress_multi_conn_user2
+SET ROLE regress_multi_conn_user2;
+SELECT 1 FROM ft1 LIMIT 1;
+RESET ROLE;
+
+-- Should output two connections for loopback server
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+COMMIT;
+-- Let's ensure to close all the existing cached connections.
+SELECT 1 FROM postgres_fdw_disconnect_all();
+-- No cached connections, so no records should be output.
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+
+-- Clean up
+DROP USER MAPPING FOR regress_multi_conn_user1 SERVER loopback;
+DROP USER MAPPING FOR regress_multi_conn_user2 SERVER loopback;
+DROP ROLE regress_multi_conn_user1;
+DROP ROLE regress_multi_conn_user2;
+
+-- ===================================================================
+-- Test foreign server level option keep_connections
+-- ===================================================================
+-- By default, the connections associated with foreign server are cached i.e.
+-- keep_connections option is on. Set it to off.
+ALTER SERVER loopback OPTIONS (keep_connections 'off');
+-- connection to loopback server is closed at the end of xact
+-- as keep_connections was set to off.
+SELECT 1 FROM ft1 LIMIT 1;
+-- No cached connections, so no records should be output.
+SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
+ALTER SERVER loopback OPTIONS (SET keep_connections 'on');
+
+-- ===================================================================
+-- batch insert
+-- ===================================================================
+
+BEGIN;
+
+CREATE SERVER batch10 FOREIGN DATA WRAPPER postgres_fdw OPTIONS( batch_size '10' );
+
+SELECT count(*)
+FROM pg_foreign_server
+WHERE srvname = 'batch10'
+AND srvoptions @> array['batch_size=10'];
+
+ALTER SERVER batch10 OPTIONS( SET batch_size '20' );
+
+SELECT count(*)
+FROM pg_foreign_server
+WHERE srvname = 'batch10'
+AND srvoptions @> array['batch_size=10'];
+
+SELECT count(*)
+FROM pg_foreign_server
+WHERE srvname = 'batch10'
+AND srvoptions @> array['batch_size=20'];
+
+CREATE FOREIGN TABLE table30 ( x int ) SERVER batch10 OPTIONS ( batch_size '30' );
+
+SELECT COUNT(*)
+FROM pg_foreign_table
+WHERE ftrelid = 'table30'::regclass
+AND ftoptions @> array['batch_size=30'];
+
+ALTER FOREIGN TABLE table30 OPTIONS ( SET batch_size '40');
+
+SELECT COUNT(*)
+FROM pg_foreign_table
+WHERE ftrelid = 'table30'::regclass
+AND ftoptions @> array['batch_size=30'];
+
+SELECT COUNT(*)
+FROM pg_foreign_table
+WHERE ftrelid = 'table30'::regclass
+AND ftoptions @> array['batch_size=40'];
+
+ROLLBACK;
+
+CREATE TABLE batch_table ( x int );
+
+CREATE FOREIGN TABLE ftable ( x int ) SERVER loopback OPTIONS ( table_name 'batch_table', batch_size '10' );
+EXPLAIN (VERBOSE, COSTS OFF) INSERT INTO ftable SELECT * FROM generate_series(1, 10) i;
+INSERT INTO ftable SELECT * FROM generate_series(1, 10) i;
+INSERT INTO ftable SELECT * FROM generate_series(11, 31) i;
+INSERT INTO ftable VALUES (32);
+INSERT INTO ftable VALUES (33), (34);
+SELECT COUNT(*) FROM ftable;
+TRUNCATE batch_table;
+DROP FOREIGN TABLE ftable;
+
+-- try if large batches exceed max number of bind parameters
+CREATE FOREIGN TABLE ftable ( x int ) SERVER loopback OPTIONS ( table_name 'batch_table', batch_size '100000' );
+INSERT INTO ftable SELECT * FROM generate_series(1, 70000) i;
+SELECT COUNT(*) FROM ftable;
+TRUNCATE batch_table;
+DROP FOREIGN TABLE ftable;
+
+-- Disable batch insert
+CREATE FOREIGN TABLE ftable ( x int ) SERVER loopback OPTIONS ( table_name 'batch_table', batch_size '1' );
+EXPLAIN (VERBOSE, COSTS OFF) INSERT INTO ftable VALUES (1), (2);
+INSERT INTO ftable VALUES (1), (2);
+SELECT COUNT(*) FROM ftable;
+
+-- Disable batch inserting into foreign tables with BEFORE ROW INSERT triggers
+-- even if the batch_size option is enabled.
+ALTER FOREIGN TABLE ftable OPTIONS ( SET batch_size '10' );
+CREATE TRIGGER trig_row_before BEFORE INSERT ON ftable
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+EXPLAIN (VERBOSE, COSTS OFF) INSERT INTO ftable VALUES (3), (4);
+INSERT INTO ftable VALUES (3), (4);
+SELECT COUNT(*) FROM ftable;
+
+-- Clean up
+DROP TRIGGER trig_row_before ON ftable;
+DROP FOREIGN TABLE ftable;
+DROP TABLE batch_table;
+
+-- Use partitioning
+CREATE TABLE batch_table ( x int ) PARTITION BY HASH (x);
+
+CREATE TABLE batch_table_p0 (LIKE batch_table);
+CREATE FOREIGN TABLE batch_table_p0f
+	PARTITION OF batch_table
+	FOR VALUES WITH (MODULUS 3, REMAINDER 0)
+	SERVER loopback
+	OPTIONS (table_name 'batch_table_p0', batch_size '10');
+
+CREATE TABLE batch_table_p1 (LIKE batch_table);
+CREATE FOREIGN TABLE batch_table_p1f
+	PARTITION OF batch_table
+	FOR VALUES WITH (MODULUS 3, REMAINDER 1)
+	SERVER loopback
+	OPTIONS (table_name 'batch_table_p1', batch_size '1');
+
+CREATE TABLE batch_table_p2
+	PARTITION OF batch_table
+	FOR VALUES WITH (MODULUS 3, REMAINDER 2);
+
+INSERT INTO batch_table SELECT * FROM generate_series(1, 66) i;
+SELECT COUNT(*) FROM batch_table;
+
+-- Check that enabling batched inserts doesn't interfere with cross-partition
+-- updates
+CREATE TABLE batch_cp_upd_test (a int) PARTITION BY LIST (a);
+CREATE TABLE batch_cp_upd_test1 (LIKE batch_cp_upd_test);
+CREATE FOREIGN TABLE batch_cp_upd_test1_f
+	PARTITION OF batch_cp_upd_test
+	FOR VALUES IN (1)
+	SERVER loopback
+	OPTIONS (table_name 'batch_cp_upd_test1', batch_size '10');
+CREATE TABLE batch_cp_up_test1 PARTITION OF batch_cp_upd_test
+	FOR VALUES IN (2);
+INSERT INTO batch_cp_upd_test VALUES (1), (2);
+
+-- The following moves a row from the local partition to the foreign one
+UPDATE batch_cp_upd_test t SET a = 1 FROM (VALUES (1), (2)) s(a) WHERE t.a = s.a;
+SELECT tableoid::regclass, * FROM batch_cp_upd_test;
+
+-- Clean up
+DROP TABLE batch_table, batch_cp_upd_test, batch_table_p0, batch_table_p1 CASCADE;
+
+-- Use partitioning
+ALTER SERVER loopback OPTIONS (ADD batch_size '10');
+
+CREATE TABLE batch_table ( x int, field1 text, field2 text) PARTITION BY HASH (x);
+
+CREATE TABLE batch_table_p0 (LIKE batch_table);
+ALTER TABLE batch_table_p0 ADD CONSTRAINT p0_pkey PRIMARY KEY (x);
+CREATE FOREIGN TABLE batch_table_p0f
+	PARTITION OF batch_table
+	FOR VALUES WITH (MODULUS 2, REMAINDER 0)
+	SERVER loopback
+	OPTIONS (table_name 'batch_table_p0');
+
+CREATE TABLE batch_table_p1 (LIKE batch_table);
+ALTER TABLE batch_table_p1 ADD CONSTRAINT p1_pkey PRIMARY KEY (x);
+CREATE FOREIGN TABLE batch_table_p1f
+	PARTITION OF batch_table
+	FOR VALUES WITH (MODULUS 2, REMAINDER 1)
+	SERVER loopback
+	OPTIONS (table_name 'batch_table_p1');
+
+INSERT INTO batch_table SELECT i, 'test'||i, 'test'|| i FROM generate_series(1, 50) i;
+SELECT COUNT(*) FROM batch_table;
+SELECT * FROM batch_table ORDER BY x;
+
+ALTER SERVER loopback OPTIONS (DROP batch_size);
+
+-- ===================================================================
+-- test asynchronous execution
+-- ===================================================================
+
+ALTER SERVER loopback OPTIONS (DROP extensions);
+ALTER SERVER loopback OPTIONS (ADD async_capable 'true');
+ALTER SERVER loopback2 OPTIONS (ADD async_capable 'true');
+
+CREATE TABLE async_pt (a int, b int, c text) PARTITION BY RANGE (a);
+CREATE TABLE base_tbl1 (a int, b int, c text);
+CREATE TABLE base_tbl2 (a int, b int, c text);
+CREATE FOREIGN TABLE async_p1 PARTITION OF async_pt FOR VALUES FROM (1000) TO (2000)
+  SERVER loopback OPTIONS (table_name 'base_tbl1');
+CREATE FOREIGN TABLE async_p2 PARTITION OF async_pt FOR VALUES FROM (2000) TO (3000)
+  SERVER loopback2 OPTIONS (table_name 'base_tbl2');
+INSERT INTO async_p1 SELECT 1000 + i, i, to_char(i, 'FM0000') FROM generate_series(0, 999, 5) i;
+INSERT INTO async_p2 SELECT 2000 + i, i, to_char(i, 'FM0000') FROM generate_series(0, 999, 5) i;
+ANALYZE async_pt;
+
+-- simple queries
+CREATE TABLE result_tbl (a int, b int, c text);
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO result_tbl SELECT * FROM async_pt WHERE b % 100 = 0;
+INSERT INTO result_tbl SELECT * FROM async_pt WHERE b % 100 = 0;
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
+INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO result_tbl SELECT a, b, 'AAA' || c FROM async_pt WHERE b === 505;
+INSERT INTO result_tbl SELECT a, b, 'AAA' || c FROM async_pt WHERE b === 505;
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+-- Check case where multiple partitions use the same connection
+CREATE TABLE base_tbl3 (a int, b int, c text);
+CREATE FOREIGN TABLE async_p3 PARTITION OF async_pt FOR VALUES FROM (3000) TO (4000)
+  SERVER loopback2 OPTIONS (table_name 'base_tbl3');
+INSERT INTO async_p3 SELECT 3000 + i, i, to_char(i, 'FM0000') FROM generate_series(0, 999, 5) i;
+ANALYZE async_pt;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
+INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+DROP FOREIGN TABLE async_p3;
+DROP TABLE base_tbl3;
+
+-- Check case where the partitioned table has local/remote partitions
+CREATE TABLE async_p3 PARTITION OF async_pt FOR VALUES FROM (3000) TO (4000);
+INSERT INTO async_p3 SELECT 3000 + i, i, to_char(i, 'FM0000') FROM generate_series(0, 999, 5) i;
+ANALYZE async_pt;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
+INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+-- partitionwise joins
+SET enable_partitionwise_join TO true;
+
+CREATE TABLE join_tbl (a1 int, b1 int, c1 text, a2 int, b2 int, c2 text);
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO join_tbl SELECT * FROM async_pt t1, async_pt t2 WHERE t1.a = t2.a AND t1.b = t2.b AND t1.b % 100 = 0;
+INSERT INTO join_tbl SELECT * FROM async_pt t1, async_pt t2 WHERE t1.a = t2.a AND t1.b = t2.b AND t1.b % 100 = 0;
+
+SELECT * FROM join_tbl ORDER BY a1;
+DELETE FROM join_tbl;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO join_tbl SELECT t1.a, t1.b, 'AAA' || t1.c, t2.a, t2.b, 'AAA' || t2.c FROM async_pt t1, async_pt t2 WHERE t1.a = t2.a AND t1.b = t2.b AND t1.b % 100 = 0;
+INSERT INTO join_tbl SELECT t1.a, t1.b, 'AAA' || t1.c, t2.a, t2.b, 'AAA' || t2.c FROM async_pt t1, async_pt t2 WHERE t1.a = t2.a AND t1.b = t2.b AND t1.b % 100 = 0;
+
+SELECT * FROM join_tbl ORDER BY a1;
+DELETE FROM join_tbl;
+
+RESET enable_partitionwise_join;
+
+-- Test rescan of an async Append node with do_exec_prune=false
+SET enable_hashjoin TO false;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO join_tbl SELECT * FROM async_p1 t1, async_pt t2 WHERE t1.a = t2.a AND t1.b = t2.b AND t1.b % 100 = 0;
+INSERT INTO join_tbl SELECT * FROM async_p1 t1, async_pt t2 WHERE t1.a = t2.a AND t1.b = t2.b AND t1.b % 100 = 0;
+
+SELECT * FROM join_tbl ORDER BY a1;
+DELETE FROM join_tbl;
+
+RESET enable_hashjoin;
+
+-- Test interaction of async execution with plan-time partition pruning
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM async_pt WHERE a < 3000;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM async_pt WHERE a < 2000;
+
+-- Test interaction of async execution with run-time partition pruning
+SET plan_cache_mode TO force_generic_plan;
+
+PREPARE async_pt_query (int, int) AS
+  INSERT INTO result_tbl SELECT * FROM async_pt WHERE a < $1 AND b === $2;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+EXECUTE async_pt_query (3000, 505);
+EXECUTE async_pt_query (3000, 505);
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+EXECUTE async_pt_query (2000, 505);
+EXECUTE async_pt_query (2000, 505);
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+RESET plan_cache_mode;
+
+CREATE TABLE local_tbl(a int, b int, c text);
+INSERT INTO local_tbl VALUES (1505, 505, 'foo'), (2505, 505, 'bar');
+ANALYZE local_tbl;
+
+CREATE INDEX base_tbl1_idx ON base_tbl1 (a);
+CREATE INDEX base_tbl2_idx ON base_tbl2 (a);
+CREATE INDEX async_p3_idx ON async_p3 (a);
+ANALYZE base_tbl1;
+ANALYZE base_tbl2;
+ANALYZE async_p3;
+
+ALTER FOREIGN TABLE async_p1 OPTIONS (use_remote_estimate 'true');
+ALTER FOREIGN TABLE async_p2 OPTIONS (use_remote_estimate 'true');
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c = 'bar';
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c = 'bar';
+SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c = 'bar';
+
+ALTER FOREIGN TABLE async_p1 OPTIONS (DROP use_remote_estimate);
+ALTER FOREIGN TABLE async_p2 OPTIONS (DROP use_remote_estimate);
+
+DROP TABLE local_tbl;
+DROP INDEX base_tbl1_idx;
+DROP INDEX base_tbl2_idx;
+DROP INDEX async_p3_idx;
+
+-- UNION queries
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO result_tbl
+(SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)
+UNION
+(SELECT a, b, 'AAA' || c FROM async_p2 WHERE b < 10);
+INSERT INTO result_tbl
+(SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)
+UNION
+(SELECT a, b, 'AAA' || c FROM async_p2 WHERE b < 10);
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO result_tbl
+(SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)
+UNION ALL
+(SELECT a, b, 'AAA' || c FROM async_p2 WHERE b < 10);
+INSERT INTO result_tbl
+(SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)
+UNION ALL
+(SELECT a, b, 'AAA' || c FROM async_p2 WHERE b < 10);
+
+SELECT * FROM result_tbl ORDER BY a;
+DELETE FROM result_tbl;
+
+-- Disable async execution if we use gating Result nodes for pseudoconstant
+-- quals
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM async_pt WHERE CURRENT_USER = SESSION_USER;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+(SELECT * FROM async_p1 WHERE CURRENT_USER = SESSION_USER)
+UNION ALL
+(SELECT * FROM async_p2 WHERE CURRENT_USER = SESSION_USER);
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ((SELECT * FROM async_p1 WHERE b < 10) UNION ALL (SELECT * FROM async_p2 WHERE b < 10)) s WHERE CURRENT_USER = SESSION_USER;
+
+-- Test that pending requests are processed properly
+SET enable_mergejoin TO false;
+SET enable_hashjoin TO false;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM async_pt t1, async_p2 t2 WHERE t1.a = t2.a AND t1.b === 505;
+SELECT * FROM async_pt t1, async_p2 t2 WHERE t1.a = t2.a AND t1.b === 505;
+
+CREATE TABLE local_tbl (a int, b int, c text);
+INSERT INTO local_tbl VALUES (1505, 505, 'foo');
+ANALYZE local_tbl;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt WHERE a < 3000) FROM async_pt WHERE a < 3000) t2 ON t1.a = t2.a;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt WHERE a < 3000) FROM async_pt WHERE a < 3000) t2 ON t1.a = t2.a;
+SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt WHERE a < 3000) FROM async_pt WHERE a < 3000) t2 ON t1.a = t2.a;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
+SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
+
+-- Check with foreign modify
+CREATE TABLE base_tbl3 (a int, b int, c text);
+CREATE FOREIGN TABLE remote_tbl (a int, b int, c text)
+  SERVER loopback OPTIONS (table_name 'base_tbl3');
+INSERT INTO remote_tbl VALUES (2505, 505, 'bar');
+
+CREATE TABLE base_tbl4 (a int, b int, c text);
+CREATE FOREIGN TABLE insert_tbl (a int, b int, c text)
+  SERVER loopback OPTIONS (table_name 'base_tbl4');
+
+EXPLAIN (VERBOSE, COSTS OFF)
+INSERT INTO insert_tbl (SELECT * FROM local_tbl UNION ALL SELECT * FROM remote_tbl);
+INSERT INTO insert_tbl (SELECT * FROM local_tbl UNION ALL SELECT * FROM remote_tbl);
+
+SELECT * FROM insert_tbl ORDER BY a;
+
+-- Check with direct modify
+EXPLAIN (VERBOSE, COSTS OFF)
+WITH t AS (UPDATE remote_tbl SET c = c || c RETURNING *)
+INSERT INTO join_tbl SELECT * FROM async_pt LEFT JOIN t ON (async_pt.a = t.a AND async_pt.b = t.b) WHERE async_pt.b === 505;
+WITH t AS (UPDATE remote_tbl SET c = c || c RETURNING *)
+INSERT INTO join_tbl SELECT * FROM async_pt LEFT JOIN t ON (async_pt.a = t.a AND async_pt.b = t.b) WHERE async_pt.b === 505;
+
+SELECT * FROM join_tbl ORDER BY a1;
+DELETE FROM join_tbl;
+
+DROP TABLE local_tbl;
+DROP FOREIGN TABLE remote_tbl;
+DROP FOREIGN TABLE insert_tbl;
+DROP TABLE base_tbl3;
+DROP TABLE base_tbl4;
+
+RESET enable_mergejoin;
+RESET enable_hashjoin;
+
+-- Test that UPDATE/DELETE with inherited target works with async_capable enabled
+EXPLAIN (VERBOSE, COSTS OFF)
+UPDATE async_pt SET c = c || c WHERE b = 0 RETURNING *;
+UPDATE async_pt SET c = c || c WHERE b = 0 RETURNING *;
+EXPLAIN (VERBOSE, COSTS OFF)
+DELETE FROM async_pt WHERE b = 0 RETURNING *;
+DELETE FROM async_pt WHERE b = 0 RETURNING *;
+
+-- Check EXPLAIN ANALYZE for a query that scans empty partitions asynchronously
+DELETE FROM async_p1;
+DELETE FROM async_p2;
+DELETE FROM async_p3;
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM async_pt;
+
+-- Clean up
+DROP TABLE async_pt;
+DROP TABLE base_tbl1;
+DROP TABLE base_tbl2;
+DROP TABLE result_tbl;
+DROP TABLE join_tbl;
+
+-- Test that an asynchronous fetch is processed before restarting the scan in
+-- ReScanForeignScan
+CREATE TABLE base_tbl (a int, b int);
+INSERT INTO base_tbl VALUES (1, 11), (2, 22), (3, 33);
+CREATE FOREIGN TABLE foreign_tbl (b int)
+  SERVER loopback OPTIONS (table_name 'base_tbl');
+CREATE FOREIGN TABLE foreign_tbl2 () INHERITS (foreign_tbl)
+  SERVER loopback OPTIONS (table_name 'base_tbl');
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT a FROM base_tbl WHERE a IN (SELECT a FROM foreign_tbl);
+SELECT a FROM base_tbl WHERE a IN (SELECT a FROM foreign_tbl);
+
+-- Clean up
+DROP FOREIGN TABLE foreign_tbl CASCADE;
+DROP TABLE base_tbl;
+
+ALTER SERVER loopback OPTIONS (DROP async_capable);
+ALTER SERVER loopback2 OPTIONS (DROP async_capable);
+
+-- ===================================================================
+-- test invalid server, foreign table and foreign data wrapper options
+-- ===================================================================
+-- Invalid fdw_startup_cost option
+CREATE SERVER inv_scst FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS(fdw_startup_cost '100$%$#$#');
+-- Invalid fdw_tuple_cost option
+CREATE SERVER inv_scst FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS(fdw_tuple_cost '100$%$#$#');
+-- Invalid fetch_size option
+CREATE FOREIGN TABLE inv_fsz (c1 int )
+	SERVER loopback OPTIONS (fetch_size '100$%$#$#');
+-- Invalid batch_size option
+CREATE FOREIGN TABLE inv_bsz (c1 int )
+	SERVER loopback OPTIONS (batch_size '100$%$#$#');
+
+-- No option is allowed to be specified at foreign data wrapper level
+ALTER FOREIGN DATA WRAPPER postgres_fdw OPTIONS (nonexistent 'fdw');
+
+-- ===================================================================
+-- test postgres_fdw.application_name GUC
+-- ===================================================================
+--- Turn debug_discard_caches off for this test to make sure that
+--- the remote connection is alive when checking its application_name.
+SET debug_discard_caches = 0;
+
+-- Specify escape sequences in application_name option of a server
+-- object so as to test that they are replaced with status information
+-- expectedly.
+--
+-- Since pg_stat_activity.application_name may be truncated to less than
+-- NAMEDATALEN characters, note that substring() needs to be used
+-- at the condition of test query to make sure that the string consisting
+-- of database name and process ID is also less than that.
+ALTER SERVER loopback2 OPTIONS (application_name 'fdw_%d%p');
+SELECT 1 FROM ft6 LIMIT 1;
+SELECT pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+  WHERE application_name =
+    substring('fdw_' || current_database() || pg_backend_pid() for
+      current_setting('max_identifier_length')::int);
+
+-- postgres_fdw.application_name overrides application_name option
+-- of a server object if both settings are present.
+SET postgres_fdw.application_name TO 'fdw_%a%u%%';
+SELECT 1 FROM ft6 LIMIT 1;
+SELECT pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+  WHERE application_name =
+    substring('fdw_' || current_setting('application_name') ||
+      CURRENT_USER || '%' for current_setting('max_identifier_length')::int);
+
+-- Test %c (session ID) and %C (cluster name) escape sequences.
+SET postgres_fdw.application_name TO 'fdw_%C%c';
+SELECT 1 FROM ft6 LIMIT 1;
+SELECT pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+  WHERE application_name =
+    substring('fdw_' || current_setting('cluster_name') ||
+      to_hex(trunc(EXTRACT(EPOCH FROM (SELECT backend_start FROM
+      pg_stat_get_activity(pg_backend_pid()))))::integer) || '.' ||
+      to_hex(pg_backend_pid())
+      for current_setting('max_identifier_length')::int);
+
+--Clean up
+RESET postgres_fdw.application_name;
+RESET debug_discard_caches;
+
+-- ===================================================================
+-- test parallel commit
+-- ===================================================================
+ALTER SERVER loopback OPTIONS (ADD parallel_commit 'true');
+ALTER SERVER loopback2 OPTIONS (ADD parallel_commit 'true');
+
+CREATE TABLE ploc1 (f1 int, f2 text);
+CREATE FOREIGN TABLE prem1 (f1 int, f2 text)
+  SERVER loopback OPTIONS (table_name 'ploc1');
+CREATE TABLE ploc2 (f1 int, f2 text);
+CREATE FOREIGN TABLE prem2 (f1 int, f2 text)
+  SERVER loopback2 OPTIONS (table_name 'ploc2');
+
+BEGIN;
+INSERT INTO prem1 VALUES (101, 'foo');
+INSERT INTO prem2 VALUES (201, 'bar');
+COMMIT;
+SELECT * FROM prem1;
+SELECT * FROM prem2;
+
+BEGIN;
+SAVEPOINT s;
+INSERT INTO prem1 VALUES (102, 'foofoo');
+INSERT INTO prem2 VALUES (202, 'barbar');
+RELEASE SAVEPOINT s;
+COMMIT;
+SELECT * FROM prem1;
+SELECT * FROM prem2;
+
+-- This tests executing DEALLOCATE ALL against foreign servers in parallel
+-- during pre-commit
+BEGIN;
+SAVEPOINT s;
+INSERT INTO prem1 VALUES (103, 'baz');
+INSERT INTO prem2 VALUES (203, 'qux');
+ROLLBACK TO SAVEPOINT s;
+RELEASE SAVEPOINT s;
+INSERT INTO prem1 VALUES (104, 'bazbaz');
+INSERT INTO prem2 VALUES (204, 'quxqux');
+COMMIT;
+SELECT * FROM prem1;
+SELECT * FROM prem2;
+
+ALTER SERVER loopback OPTIONS (DROP parallel_commit);
+ALTER SERVER loopback2 OPTIONS (DROP parallel_commit);

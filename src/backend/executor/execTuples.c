@@ -46,7 +46,7 @@
  *		to avoid physically constructing projection tuples in many cases.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -124,9 +124,8 @@ tts_virtual_clear(TupleTableSlot *slot)
 }
 
 /*
- * Attribute values are readily available in tts_values and tts_isnull array
- * in a VirtualTupleTableSlot. So there should be no need to call either of the
- * following two functions.
+ * VirtualTupleTableSlots always have fully populated tts_values and
+ * tts_isnull arrays.  So this function should never be called.
  */
 static void
 tts_virtual_getsomeattrs(TupleTableSlot *slot, int natts)
@@ -134,6 +133,11 @@ tts_virtual_getsomeattrs(TupleTableSlot *slot, int natts)
 	elog(ERROR, "getsomeattrs is not required to be called on a virtual tuple table slot");
 }
 
+/*
+ * VirtualTupleTableSlots never provide system attributes (except those
+ * handled generically, such as tableoid).  We generally shouldn't get
+ * here, but provide a user-friendly message if we do.
+ */
 static Datum
 tts_virtual_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 {
@@ -150,6 +154,11 @@ tts_virtual_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	}
 
 	elog(ERROR, "virtual tuple table slot does not have system attributes");
+	Assert(!TTS_EMPTY(slot));
+
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot retrieve a system column in this context")));
 
 	return 0;					/* silence compiler warnings */
 }
@@ -349,6 +358,15 @@ tts_heap_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 
 	Assert(!TTS_EMPTY(slot));
 
+	/*
+	 * In some code paths it's possible to get here with a non-materialized
+	 * slot, in which case we can't retrieve system columns.
+	 */
+	if (!hslot->tuple)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot retrieve a system column in this context")));
+
 	return heap_getsysattr(hslot->tuple, attnum,
 						   slot->tts_tupleDescriptor, isnull);
 }
@@ -511,7 +529,11 @@ tts_minimal_getsomeattrs(TupleTableSlot *slot, int natts)
 static Datum
 tts_minimal_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 {
-	elog(ERROR, "minimal tuple table slot does not have system attributes");
+	Assert(!TTS_EMPTY(slot));
+
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot retrieve a system column in this context")));
 
 	return 0;					/* silence compiler warnings */
 }
@@ -694,6 +716,15 @@ tts_buffer_heap_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	BufferHeapTupleTableSlot *bslot = (BufferHeapTupleTableSlot *) slot;
 
 	Assert(!TTS_EMPTY(slot));
+
+	/*
+	 * In some code paths it's possible to get here with a non-materialized
+	 * slot, in which case we can't retrieve system columns.
+	 */
+	if (!bslot->base.tuple)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot retrieve a system column in this context")));
 
 	return heap_getsysattr(bslot->base.tuple, attnum,
 						   slot->tts_tupleDescriptor, isnull);
@@ -2006,51 +2037,40 @@ ExecTypeFromExprList(List *exprList)
 }
 
 /*
- * ExecTypeSetColNames - set column names in a TupleDesc
+ * ExecTypeSetColNames - set column names in a RECORD TupleDesc
  *
  * Column names must be provided as an alias list (list of String nodes).
- *
- * For some callers, the supplied tupdesc has a named rowtype (not RECORD)
- * and it is moderately likely that the alias list matches the column names
- * already present in the tupdesc.  If we do change any column names then
- * we must reset the tupdesc's type to anonymous RECORD; but we avoid doing
- * so if no names change.
  */
 void
 ExecTypeSetColNames(TupleDesc typeInfo, List *namesList)
 {
-	bool		modified = false;
 	int			colno = 0;
 	ListCell   *lc;
+
+	/* It's only OK to change col names in a not-yet-blessed RECORD type */
+	Assert(typeInfo->tdtypeid == RECORDOID);
+	Assert(typeInfo->tdtypmod < 0);
 
 	foreach(lc, namesList)
 	{
 		char	   *cname = strVal(lfirst(lc));
 		Form_pg_attribute attr;
 
-		/* Guard against too-long names list */
+		/* Guard against too-long names list (probably can't happen) */
 		if (colno >= typeInfo->natts)
 			break;
 		attr = TupleDescAttr(typeInfo, colno);
 		colno++;
 
-		/* Ignore empty aliases (these must be for dropped columns) */
-		if (cname[0] == '\0')
+		/*
+		 * Do nothing for empty aliases or dropped columns (these cases
+		 * probably can't arise in RECORD types, either)
+		 */
+		if (cname[0] == '\0' || attr->attisdropped)
 			continue;
 
-		/* Change tupdesc only if alias is actually different */
-		if (strcmp(cname, NameStr(attr->attname)) != 0)
-		{
-			namestrcpy(&(attr->attname), cname);
-			modified = true;
-		}
-	}
-
-	/* If we modified the tupdesc, it's now a new record type */
-	if (modified)
-	{
-		typeInfo->tdtypeid = RECORDOID;
-		typeInfo->tdtypmod = -1;
+		/* OK, assign the column name */
+		namestrcpy(&(attr->attname), cname);
 	}
 }
 

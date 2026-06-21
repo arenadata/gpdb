@@ -3,7 +3,7 @@
  * shmem.c
  *	  create shared memory and initialize shared memory data structures.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -327,7 +327,6 @@ void
 InitShmemIndex(void)
 {
 	HASHCTL		info;
-	int			hash_flags;
 
 	/*
 	 * Create the shared memory shmem index.
@@ -339,11 +338,11 @@ InitShmemIndex(void)
 	 */
 	info.keysize = SHMEM_INDEX_KEYSIZE;
 	info.entrysize = sizeof(ShmemIndexEnt);
-	hash_flags = HASH_ELEM;
 
 	ShmemIndex = ShmemInitHash("ShmemIndex",
 							   SHMEM_INDEX_SIZE, SHMEM_INDEX_SIZE,
-							   &info, hash_flags);
+							   &info,
+							   HASH_ELEM | HASH_STRINGS);
 }
 
 /*
@@ -363,6 +362,11 @@ InitShmemIndex(void)
  * init_size is the number of hashtable entries to preallocate.  For a table
  * whose maximum size is certain, this should be equal to max_size; that
  * ensures that no run-time out-of-shared-memory failures can occur.
+ *
+ * *infoP and hash_flags must specify at least the entry sizes and key
+ * comparison semantics (see hash_create()).  Flag bits and values specific
+ * to shared-memory hash tables are added here, except that callers may
+ * choose to specify HASH_PARTITION and/or HASH_FIXED_SIZE.
  *
  * Note: before Postgres 9.0, this function returned NULL for some failure
  * cases.  Now, it always throws error instead, so callers need not check
@@ -568,39 +572,13 @@ pg_get_shmem_allocations(PG_FUNCTION_ARGS)
 {
 #define PG_GET_SHMEM_SIZES_COLS 4
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
 	HASH_SEQ_STATUS hstat;
 	ShmemIndexEnt *ent;
 	Size		named_allocated = 0;
 	Datum		values[PG_GET_SHMEM_SIZES_COLS];
 	bool		nulls[PG_GET_SHMEM_SIZES_COLS];
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
+	SetSingleFuncCall(fcinfo, 0);
 
 	LWLockAcquire(ShmemIndexLock, LW_SHARED);
 
@@ -616,7 +594,8 @@ pg_get_shmem_allocations(PG_FUNCTION_ARGS)
 		values[3] = Int64GetDatum(ent->allocated_size);
 		named_allocated += ent->allocated_size;
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 	}
 
 	/* output shared memory allocated but not counted via the shmem index */
@@ -624,7 +603,7 @@ pg_get_shmem_allocations(PG_FUNCTION_ARGS)
 	nulls[1] = true;
 	values[2] = Int64GetDatum(ShmemSegHdr->freeoffset - named_allocated);
 	values[3] = values[2];
-	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 
 	/* output as-of-yet unused shared memory */
 	nulls[0] = true;
@@ -632,11 +611,9 @@ pg_get_shmem_allocations(PG_FUNCTION_ARGS)
 	nulls[1] = false;
 	values[2] = Int64GetDatum(ShmemSegHdr->totalsize - ShmemSegHdr->freeoffset);
 	values[3] = values[2];
-	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 
 	LWLockRelease(ShmemIndexLock);
-
-	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
 }

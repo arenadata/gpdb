@@ -3,7 +3,7 @@
  * varsup.c
  *	  postgres OID & XID variables support routines
  *
- * Copyright (c) 2000-2020, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/access/transam/varsup.c
@@ -18,7 +18,7 @@
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "access/xact.h"
-#include "access/xlog.h"
+#include "access/xlogutils.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 #include "postmaster/autovacuum.h"
@@ -199,10 +199,10 @@ GetNewTransactionId(bool isSubXact)
 	DistributedLog_Extend(xid);
 
 	/*
-	 * Now advance the nextXid counter.  This must not happen until after
-	 * we have successfully completed ExtendCLOG() --- if that routine fails,
-	 * we want the next incoming transaction to try it again.  We cannot
-	 * assign more XIDs until there is CLOG space for them.
+	 * Now advance the nextXid counter.  This must not happen until after we
+	 * have successfully completed ExtendCLOG() --- if that routine fails, we
+	 * want the next incoming transaction to try it again.  We cannot assign
+	 * more XIDs until there is CLOG space for them.
 	 */
 	FullTransactionIdAdvance(&ShmemVariableCache->nextXid);
 
@@ -240,8 +240,8 @@ GetNewTransactionId(bool isSubXact)
 	 * latestCompletedXid is present in the ProcArray, which is essential for
 	 * correct OldestXmin tracking; see src/backend/access/transam/README.
 	 *
-	 * Note that readers of ProcGlobal->xids/PGPROC->xid should be careful
-	 * to fetch the value for each proc only once, rather than assume they can
+	 * Note that readers of ProcGlobal->xids/PGPROC->xid should be careful to
+	 * fetch the value for each proc only once, rather than assume they can
 	 * read a value multiple times and get the same answer each time.  Note we
 	 * are assuming that TransactionId and int fetch/store are atomic.
 	 *
@@ -333,9 +333,9 @@ AdvanceNextFullTransactionIdPastXid(TransactionId xid)
 	uint32		epoch;
 
 	/*
-	 * It is safe to read nextXid without a lock, because this is only
-	 * called from the startup process or single-process mode, meaning that no
-	 * other process can modify it.
+	 * It is safe to read nextXid without a lock, because this is only called
+	 * from the startup process or single-process mode, meaning that no other
+	 * process can modify it.
 	 */
 	Assert(AmStartupProcess() || !IsUnderPostmaster);
 
@@ -483,8 +483,8 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid, Oid oldest_datoid)
 
 	/* Log the info */
 	ereport(DEBUG1,
-			(errmsg("transaction ID wrap limit is %u, limited by database with OID %u",
-					xidWrapLimit, oldest_datoid)));
+			(errmsg_internal("transaction ID wrap limit is %u, limited by database with OID %u",
+							 xidWrapLimit, oldest_datoid)));
 
 	/*
 	 * If past the autovacuum force point, immediately signal an autovac
@@ -591,11 +591,11 @@ GetNewObjectIdUnderLock(void)
 	 * FirstNormalObjectId since that range is reserved for initdb (see
 	 * IsCatalogRelationOid()).  Note we are relying on unsigned comparison.
 	 *
-	 * During initdb, we start the OID generator at FirstBootstrapObjectId, so
-	 * we only wrap if before that point when in bootstrap or standalone mode.
+	 * During initdb, we start the OID generator at FirstGenbkiObjectId, so we
+	 * only wrap if before that point when in bootstrap or standalone mode.
 	 * The first time through this routine after normal postmaster start, the
 	 * counter will be forced up to FirstNormalObjectId.  This mechanism
-	 * leaves the OIDs between FirstBootstrapObjectId and FirstNormalObjectId
+	 * leaves the OIDs between FirstGenbkiObjectId and FirstNormalObjectId
 	 * available for automatic assignment during initdb, while ensuring they
 	 * will never conflict with user-assigned OIDs.
 	 */
@@ -610,7 +610,7 @@ GetNewObjectIdUnderLock(void)
 		else
 		{
 			/* we may be bootstrapping, so don't enforce the full range */
-			if (ShmemVariableCache->nextOid < ((Oid) FirstBootstrapObjectId))
+			if (ShmemVariableCache->nextOid < ((Oid) FirstGenbkiObjectId))
 			{
 				/* wraparound in standalone mode (unlikely but possible) */
 				ShmemVariableCache->nextOid = FirstNormalObjectId;
@@ -711,6 +711,31 @@ AdvanceObjectId(Oid newOid)
 		else
 			ShmemVariableCache->oidCount -= nextOidDifference;
 	}
+	LWLockRelease(OidGenLock);
+}
+
+/*
+ * SetNextObjectId
+ *
+ * This may only be called during initdb; it advances the OID counter
+ * to the specified value.
+ */
+static void
+SetNextObjectId(Oid nextOid)
+{
+	/* Safety check, this is only allowable during initdb */
+	if (IsPostmasterEnvironment)
+		elog(ERROR, "cannot advance OID counter anymore");
+
+	/* Taking the lock is, therefore, just pro forma; but do it anyway */
+	LWLockAcquire(OidGenLock, LW_EXCLUSIVE);
+
+	if (ShmemVariableCache->nextOid > nextOid)
+		elog(ERROR, "too late to advance OID counter to %u, it is now %u",
+			 nextOid, ShmemVariableCache->nextOid);
+
+	ShmemVariableCache->nextOid = nextOid;
+	ShmemVariableCache->oidCount = 0;
 
 	LWLockRelease(OidGenLock);
 }
@@ -781,6 +806,22 @@ OidFollowsNextOid(Oid id)
 	return (diff > 0);
 }
 
+/*
+ * StopGeneratingPinnedObjectIds
+ *
+ * This is called once during initdb to force the OID counter up to
+ * FirstUnpinnedObjectId.  This supports letting initdb's post-bootstrap
+ * processing create some pinned objects early on.  Once it's done doing
+ * so, it calls this (via pg_stop_making_pinned_objects()) so that the
+ * remaining objects it makes will be considered un-pinned.
+ */
+void
+StopGeneratingPinnedObjectIds(void)
+{
+	SetNextObjectId(FirstUnpinnedObjectId);
+}
+
+
 #ifdef USE_ASSERT_CHECKING
 
 /*
@@ -811,8 +852,8 @@ AssertTransactionIdInAllowableRange(TransactionId xid)
 	 * We can't acquire XidGenLock, as this may be called with XidGenLock
 	 * already held (or with other locks that don't allow XidGenLock to be
 	 * nested). That's ok for our purposes though, since we already rely on
-	 * 32bit reads to be atomic. While nextXid is 64 bit, we only look at
-	 * the lower 32bit, so a skewed read doesn't hurt.
+	 * 32bit reads to be atomic. While nextXid is 64 bit, we only look at the
+	 * lower 32bit, so a skewed read doesn't hurt.
 	 *
 	 * There's no increased danger of falling outside [oldest, next] by
 	 * accessing them without a lock. xid needs to have been created with

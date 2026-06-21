@@ -4,10 +4,12 @@
 
 BEGIN;
 
-SELECT *
-   INTO TABLE xacttest
-   FROM aggtest;
-
+CREATE TABLE xacttest (a smallint, b real);
+INSERT INTO xacttest VALUES
+  (56, 7.8),
+  (100, 99.097),
+  (0, 0.09561),
+  (42, 324.78);
 INSERT INTO xacttest (a, b) VALUES (777, 777.777);
 
 END;
@@ -20,10 +22,10 @@ BEGIN;
 
 CREATE TABLE disappear (a int4);
 
-DELETE FROM aggtest;
+DELETE FROM xacttest;
 
 -- should be empty
-SELECT * FROM aggtest;
+SELECT * FROM xacttest;
 
 ABORT;
 
@@ -31,7 +33,7 @@ ABORT;
 SELECT oid FROM pg_class WHERE relname = 'disappear';
 
 -- should have members again
-SELECT * FROM aggtest;
+SELECT * FROM xacttest;
 
 
 -- Read-only tests
@@ -458,6 +460,17 @@ SHOW transaction_deferrable;
 INSERT INTO abc VALUES (5);
 COMMIT;
 
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE, DEFERRABLE;
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+SAVEPOINT x;
+COMMIT AND CHAIN;  -- TBLOCK_SUBCOMMIT
+SHOW transaction_isolation;
+SHOW transaction_read_only;
+SHOW transaction_deferrable;
+COMMIT;
+
 -- different mix of options just for fun
 START TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ WRITE, NOT DEFERRABLE;
 SHOW transaction_isolation;
@@ -493,7 +506,7 @@ DROP TABLE abc;
 
 create temp table i_table (f1 int);
 
--- psql will show only the last result in a multi-statement Query
+-- psql will show all results of a multi-statement Query
 SELECT 1\; SELECT 2\; SELECT 3;
 
 -- this implicitly commits:
@@ -567,12 +580,16 @@ START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (16)\
 SHOW transaction_isolation;  -- transaction is active at this point
 ROLLBACK;
 
+SET default_transaction_isolation = 'read committed';
+
 -- START TRANSACTION + COMMIT/ROLLBACK + COMMIT/ROLLBACK AND CHAIN
 START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (17)\; COMMIT\; INSERT INTO abc VALUES (18)\; COMMIT AND CHAIN;  -- 17 commit, 18 error
 SHOW transaction_isolation;  -- out of transaction block
 
 START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (19)\; ROLLBACK\; INSERT INTO abc VALUES (20)\; ROLLBACK AND CHAIN;  -- 19 rollback, 20 error
 SHOW transaction_isolation;  -- out of transaction block
+
+RESET default_transaction_isolation;
 
 SELECT * FROM abc ORDER BY 1;
 

@@ -18,7 +18,7 @@ CREATE TABLE pg_catalog.test (a int);
 CREATE TABLE t1x (a int, b anyarray);
 
 -- index on system catalog
-ALTER TABLE pg_namespace ADD UNIQUE USING INDEX pg_namespace_oid_index;
+ALTER TABLE pg_namespace ADD CONSTRAINT foo UNIQUE USING INDEX pg_namespace_nspname_index;
 
 -- write to system catalog table as superuser
 -- (allowed even without allow_system_table_mods)
@@ -55,7 +55,7 @@ ALTER TABLE pg_description ALTER COLUMN description SET STATISTICS -1;
 CREATE TABLE foo (a oid, b oid, c int, FOREIGN KEY (a, b, c) REFERENCES pg_description);
 
 -- RangeVarCallbackOwnsRelation()
-CREATE INDEX pg_descripton_test_index ON pg_description (description);
+CREATE INDEX pg_description_test_index ON pg_description (description);
 
 -- RangeVarCallbackForAlterRelation()
 ALTER TABLE pg_description RENAME TO pg_comment;
@@ -104,7 +104,7 @@ ROLLBACK;
 
 -- index on system catalog
 BEGIN;
-ALTER TABLE pg_namespace ADD UNIQUE USING INDEX pg_namespace_oid_index;
+ALTER TABLE pg_namespace ADD CONSTRAINT foo UNIQUE USING INDEX pg_namespace_nspname_index;
 ROLLBACK;
 
 -- write to system catalog table as superuser
@@ -156,13 +156,12 @@ ROLLBACK;
 
 -- foreign key referencing catalog
 BEGIN;
-ALTER TABLE pg_description ADD PRIMARY KEY USING INDEX pg_description_o_c_o_index;
 CREATE TABLE foo (a oid, b oid, c int, FOREIGN KEY (a, b, c) REFERENCES pg_description);
 ROLLBACK;
 
 -- RangeVarCallbackOwnsRelation()
 BEGIN;
-CREATE INDEX pg_descripton_test_index ON pg_description (description);
+CREATE INDEX pg_description_test_index ON pg_description (description);
 ROLLBACK;
 
 -- RangeVarCallbackForAlterRelation()

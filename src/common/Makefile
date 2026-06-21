@@ -49,6 +49,7 @@ OBJS_COMMON = \
 	archive.o \
 	base64.o \
 	checksum_helper.o \
+	compression.o \
 	config_info.o \
 	controldata_utils.o \
 	d2s.o \
@@ -56,6 +57,7 @@ OBJS_COMMON = \
 	exec.o \
 	f2s.o \
 	file_perm.o \
+	file_utils.o \
 	hashfn.o \
 	ip.o \
 	jsonapi.o \
@@ -63,14 +65,18 @@ OBJS_COMMON = \
 	kwlookup.o \
 	link-canary.o \
 	md5.o \
+	md5_common.o \
 	pg_get_line.o \
 	pg_lzcompress.o \
+	pg_prng.o \
 	pgfnames.o \
 	psprintf.o \
 	relpath.o \
 	rmtree.o \
 	saslprep.o \
 	scram-common.o \
+	sha1.o \
+	sprompt.o \
 	string.o \
 	stringinfo.o \
 	unicode_norm.o \
@@ -78,12 +84,16 @@ OBJS_COMMON = \
 	wait_error.o \
 	wchar.o
 
-ifeq ($(with_openssl),yes)
+ifeq ($(with_ssl),openssl)
 OBJS_COMMON += \
-	protocol_openssl.o \
-	sha2_openssl.o
+	cryptohash_openssl.o \
+	hmac_openssl.o \
+	protocol_openssl.o
 else
-OBJS_COMMON += sha2.o
+OBJS_COMMON += \
+	cryptohash.o \
+	hmac.o \
+	sha2.o
 endif
 
 # A few files are currently only built for frontend, not server

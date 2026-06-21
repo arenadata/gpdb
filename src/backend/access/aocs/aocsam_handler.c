@@ -1172,7 +1172,7 @@ aoco_relation_set_new_filenode(Relation rel,
 	 *
 	 * Segment files will be created when / if needed.
 	 */
-	srel = RelationCreateStorage(*newrnode, persistence, SMGR_AO);
+	srel = RelationCreateStorage(*newrnode, persistence, SMGR_AO, true);
 
 	/*
 	 * If required, set up an init fork for an unlogged table so that it can
@@ -1248,7 +1248,7 @@ aoco_relation_copy_data(Relation rel, const RelFileNode *newrnode)
 	 * NOTE: any conflict in relfilenode value will be caught in
 	 * RelationCreateStorage().
 	 */
-	RelationCreateStorage(*newrnode, rel->rd_rel->relpersistence, SMGR_AO);
+	RelationCreateStorage(*newrnode, rel->rd_rel->relpersistence, SMGR_AO, true);
 
 	copy_append_only_data(rel->rd_node, *newrnode, rel->rd_backend, rel->rd_rel->relpersistence);
 
@@ -1304,6 +1304,7 @@ aoco_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 	Datum	   *values;
 	bool	   *isnull;
 	TransactionId FreezeXid;
+	MultiXactId OldestMxact;
 	MultiXactId MultiXactCutoff;
 	Tuplesortstate *tuplesort;
 	PGRUsage	ru0;
@@ -1368,8 +1369,8 @@ aoco_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 	 * VACUUM machinery to avoidconfising existing CLUSTER code.
 	 */
 	vacuum_set_xid_limits(OldHeap, 0, 0, 0, 0,
-						  &OldestXmin, &FreezeXid, NULL, &MultiXactCutoff,
-						  NULL);
+						  &OldestXmin, &OldestMxact, &FreezeXid,
+						  &MultiXactCutoff);
 
 	/*
 	 * FreezeXid will become the table's new relfrozenxid, and that mustn't go
@@ -2065,6 +2066,13 @@ aoco_scan_bitmap_next_tuple(TableScanDesc scan,
 		{
 			/* OK to return this tuple */
 			ExecStoreVirtualTuple(slot);
+			/*
+			 * GPDB: the fetch fills the data columns but not tableOid; the
+			 * tableoid junk column of multi-relation UPDATE/DELETE reads it,
+			 * and a zero there made the per-row result-relation lookup fall
+			 * through to the wrong table (heap_delete with an AO TID).
+			 */
+			slot->tts_tableOid = RelationGetRelid(aocsBitmapScan->rs_base.rs_rd);
 			pgstat_count_heap_fetch(aocsBitmapScan->rs_base.rs_rd);
 
 			return true;
@@ -2157,7 +2165,7 @@ static const TableAmRoutine ao_column_methods = {
 	.tuple_get_latest_tid = aoco_get_latest_tid,
 	.tuple_tid_valid = aoco_tuple_tid_valid,
 	.tuple_satisfies_snapshot = aoco_tuple_satisfies_snapshot,
-	.compute_xid_horizon_for_tuples = aoco_compute_xid_horizon_for_tuples,
+	.index_delete_tuples = NULL,
 
 	.relation_set_new_filenode = aoco_relation_set_new_filenode,
 	.relation_nontransactional_truncate = aoco_relation_nontransactional_truncate,

@@ -264,6 +264,7 @@ static plperl_proc_desc *compile_plperl_function(Oid fn_oid,
 
 static SV  *plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc, bool include_generated);
 static SV  *plperl_hash_from_datum(Datum attr);
+static void check_spi_usage_allowed(void);
 static SV  *plperl_ref_from_pg_array(Datum arg, Oid typid);
 static SV  *split_array(plperl_array_info *info, int first, int last, int nest);
 static SV  *make_array_ref(plperl_array_info *info, int first, int last);
@@ -298,9 +299,11 @@ static char *strip_trailing_ws(const char *msg);
 static OP  *pp_require_safe(pTHX);
 static void activate_interpreter(plperl_interp_desc *interp_desc);
 
-#ifdef WIN32
+#if defined(WIN32) && PERL_VERSION_LT(5, 28, 0)
 static char *setlocale_perl(int category, char *locale);
-#endif
+#else
+#define setlocale_perl(a,b)  Perl_setlocale(a,b)
+#endif							/* defined(WIN32) && PERL_VERSION_LT(5, 28, 0) */
 
 /*
  * Decrement the refcount of the given SV within the active Perl interpreter
@@ -334,7 +337,7 @@ hek2cstr(HE *he)
 	SAVETMPS;
 
 	/*-------------------------
-	 * Unfortunately,  while HeUTF8 is true for most things > 256, for values
+	 * Unfortunately, while HeUTF8 is true for most things > 256, for values
 	 * 128..255 it's not, but perl will treat them as unicode code points if
 	 * the utf8 flag is not set ( see The "Unicode Bug" in perldoc perlunicode
 	 * for more)
@@ -453,12 +456,11 @@ _PG_init(void)
 							   PGC_SUSET, 0,
 							   NULL, NULL, NULL);
 
-	EmitWarningsOnPlaceholders("plperl");
+	MarkGUCPrefixReserved("plperl");
 
 	/*
 	 * Create hash tables.
 	 */
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(Oid);
 	hash_ctl.entrysize = sizeof(plperl_interp_desc);
 	plperl_interp_hash = hash_create("PL/Perl interpreters",
@@ -466,7 +468,6 @@ _PG_init(void)
 									 &hash_ctl,
 									 HASH_ELEM | HASH_BLOBS);
 
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(plperl_proc_key);
 	hash_ctl.entrysize = sizeof(plperl_proc_ptr);
 	plperl_proc_hash = hash_create("PL/Perl procedures",
@@ -580,13 +581,12 @@ select_perl_context(bool trusted)
 	{
 		HASHCTL		hash_ctl;
 
-		memset(&hash_ctl, 0, sizeof(hash_ctl));
 		hash_ctl.keysize = NAMEDATALEN;
 		hash_ctl.entrysize = sizeof(plperl_query_entry);
 		interp_desc->query_hash = hash_create("PL/Perl queries",
 											  32,
 											  &hash_ctl,
-											  HASH_ELEM);
+											  HASH_ELEM | HASH_STRINGS);
 	}
 
 	/*
@@ -1430,13 +1430,15 @@ plperl_sv_to_datum(SV *sv, Oid typid, int32 typmod,
 char *
 plperl_sv_to_literal(SV *sv, char *fqtypename)
 {
-	Datum		str = CStringGetDatum(fqtypename);
-	Oid			typid = DirectFunctionCall1(regtypein, str);
+	Oid			typid;
 	Oid			typoutput;
 	Datum		datum;
 	bool		typisvarlena,
 				isnull;
 
+	check_spi_usage_allowed();
+
+	typid = DirectFunctionCall1(regtypein, CStringGetDatum(fqtypename));
 	if (!OidIsValid(typid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -2002,7 +2004,7 @@ plperl_validator(PG_FUNCTION_ARGS)
 	{
 		if (proc->prorettype == TRIGGEROID)
 			is_trigger = true;
-		else if (proc->prorettype == EVTTRIGGEROID)
+		else if (proc->prorettype == EVENT_TRIGGEROID)
 			is_event_trigger = true;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID)
@@ -2112,8 +2114,8 @@ plperl_create_sub(plperl_proc_desc *prodesc, const char *s, Oid fn_oid)
 	 * errors properly.  Perhaps it's because there's another level of eval
 	 * inside mksafefunc?
 	 */
-	count = perl_call_pv("PostgreSQL::InServer::mkfunc",
-						 G_SCALAR | G_EVAL | G_KEEPERR);
+	count = call_pv("PostgreSQL::InServer::mkfunc",
+					G_SCALAR | G_EVAL | G_KEEPERR);
 	SPAGAIN;
 
 	if (count == 1)
@@ -2218,7 +2220,7 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 	PUTBACK;
 
 	/* Do NOT use G_KEEPERR here */
-	count = perl_call_sv(desc->reference, G_SCALAR | G_EVAL);
+	count = call_sv(desc->reference, G_SCALAR | G_EVAL);
 
 	SPAGAIN;
 
@@ -2286,7 +2288,7 @@ plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo,
 	PUTBACK;
 
 	/* Do NOT use G_KEEPERR here */
-	count = perl_call_sv(desc->reference, G_SCALAR | G_EVAL);
+	count = call_sv(desc->reference, G_SCALAR | G_EVAL);
 
 	SPAGAIN;
 
@@ -2349,7 +2351,7 @@ plperl_call_perl_event_trigger_func(plperl_proc_desc *desc,
 	PUTBACK;
 
 	/* Do NOT use G_KEEPERR here */
-	count = perl_call_sv(desc->reference, G_SCALAR | G_EVAL);
+	count = call_sv(desc->reference, G_SCALAR | G_EVAL);
 
 	SPAGAIN;
 
@@ -2415,12 +2417,15 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 	if (prodesc->fn_retisset)
 	{
 		/* Check context before allowing the call to go through */
-		if (!rsi || !IsA(rsi, ReturnSetInfo) ||
-			(rsi->allowedModes & SFRM_Materialize) == 0)
+		if (!rsi || !IsA(rsi, ReturnSetInfo))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("set-valued function called in context that "
-							"cannot accept a set")));
+					 errmsg("set-valued function called in context that cannot accept a set")));
+
+		if (!(rsi->allowedModes & SFRM_Materialize))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("materialize mode required, but it is not allowed in this context")));
 	}
 
 	activate_interpreter(prodesc->interp);
@@ -2838,7 +2843,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger, bool is_event_trigger)
 					rettype == RECORDOID)
 					 /* okay */ ;
 				else if (rettype == TRIGGEROID ||
-						 rettype == EVTTRIGGEROID)
+						 rettype == EVENT_TRIGGEROID)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("trigger functions can only be called "
@@ -2853,9 +2858,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger, bool is_event_trigger)
 			prodesc->result_oid = rettype;
 			prodesc->fn_retisset = procStruct->proretset;
 			prodesc->fn_retistuple = type_is_rowtype(rettype);
-
-			prodesc->fn_retisarray =
-				(typeStruct->typlen == -1 && typeStruct->typelem);
+			prodesc->fn_retisarray = IsTrueArrayType(typeStruct);
 
 			fmgr_info_cxt(typeStruct->typinput,
 						  &(prodesc->result_in_func),
@@ -2901,7 +2904,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger, bool is_event_trigger)
 				}
 
 				/* Identify array-type arguments */
-				if (typeStruct->typelem != 0 && typeStruct->typlen == -1)
+				if (IsTrueArrayType(typeStruct))
 					prodesc->arg_arraytype[i] = argtype;
 				else
 					prodesc->arg_arraytype[i] = InvalidOid;
@@ -3097,6 +3100,21 @@ check_spi_usage_allowed(void)
 		/* simple croak as we don't want to involve PostgreSQL code */
 		croak("SPI functions can not be used in END blocks");
 	}
+
+	/*
+	 * Disallow SPI usage if we're not executing a fully-compiled plperl
+	 * function.  It might seem impossible to get here in that case, but there
+	 * are cases where Perl will try to execute code during compilation.  If
+	 * we proceed we are likely to crash trying to dereference the prodesc
+	 * pointer.  Working around that might be possible, but it seems unwise
+	 * because it'd allow code execution to happen while validating a
+	 * function, which is undesirable.
+	 */
+	if (current_call_data == NULL || current_call_data->prodesc == NULL)
+	{
+		/* simple croak as we don't want to involve PostgreSQL code */
+		croak("SPI functions can not be used during function compilation");
+	}
 }
 
 
@@ -3216,6 +3234,8 @@ void
 plperl_return_next(SV *sv)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
+
+	check_spi_usage_allowed();
 
 	PG_TRY();
 	{
@@ -3961,10 +3981,11 @@ plperl_spi_commit(void)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
 
+	check_spi_usage_allowed();
+
 	PG_TRY();
 	{
 		SPI_commit();
-		SPI_start_transaction();
 	}
 	PG_CATCH();
 	{
@@ -3986,10 +4007,11 @@ plperl_spi_rollback(void)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
 
+	check_spi_usage_allowed();
+
 	PG_TRY();
 	{
 		SPI_rollback();
-		SPI_start_transaction();
 	}
 	PG_CATCH();
 	{
@@ -4022,6 +4044,11 @@ plperl_util_elog(int level, SV *msg)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
 	char	   *volatile cmsg = NULL;
+
+	/*
+	 * We intentionally omit check_spi_usage_allowed() here, as this seems
+	 * safe to allow even in the contexts that that function rejects.
+	 */
 
 	PG_TRY();
 	{
@@ -4135,8 +4162,10 @@ plperl_inline_callback(void *arg)
 /*
  * Perl's own setlocale(), copied from POSIX.xs
  * (needed because of the calls to new_*())
+ *
+ * Starting in 5.28, perl exposes Perl_setlocale to do so.
  */
-#ifdef WIN32
+#if defined(WIN32) && PERL_VERSION_LT(5, 28, 0)
 static char *
 setlocale_perl(int category, char *locale)
 {
@@ -4204,5 +4233,4 @@ setlocale_perl(int category, char *locale)
 
 	return RETVAL;
 }
-
-#endif							/* WIN32 */
+#endif							/* defined(WIN32) && PERL_VERSION_LT(5, 28, 0) */

@@ -159,7 +159,7 @@ beginCurrentIndexScan(DynamicIndexScanState *node, EState *estate,
 	{
 		/* Very first partition */
 		// Just get the direct parent, we don't support multi-level partitioning
-		node->columnLayoutOid = get_partition_parent(tableOid);
+		node->columnLayoutOid = get_partition_parent(tableOid, false);
 	}
 	DynamicIndexScan_ReMapColumns(dynamicIndexScan,
 								  tableOid, node->columnLayoutOid);
@@ -247,7 +247,8 @@ ExecDynamicIndexScan(PlanState *pstate)
 				ExecFindMatchingSubPlans(node->as_prune_state,
 										 node->ss.ps.state,
 										 list_length(plan->partOids),
-										 plan->join_prune_paramids);
+										 plan->join_prune_paramids,
+										 false);
 
 		int i;
 		int partOidIdx = -1;

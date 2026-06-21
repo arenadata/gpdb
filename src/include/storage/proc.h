@@ -6,7 +6,8 @@
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+* Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/proc.h
@@ -45,9 +46,9 @@
 typedef struct XidCacheStatus
 {
 	/* number of cached subxids, never more than PGPROC_MAX_CACHED_SUBXIDS */
-	uint8	count;
+	uint8		count;
 	/* has PGPROC->subxids overflowed */
-	bool	overflowed;
+	bool		overflowed;
 } XidCacheStatus;
 
 struct XidCache
@@ -56,17 +57,30 @@ struct XidCache
 };
 
 /*
- * Flags for ProcGlobal->vacuumFlags[]
+ * Flags for PGPROC->statusFlags and PROC_HDR->statusFlags[]
  */
 #define		PROC_IS_AUTOVACUUM	0x01	/* is it an autovac worker? */
 #define		PROC_IN_VACUUM		0x02	/* currently running lazy vacuum */
+#define		PROC_IN_SAFE_IC		0x04	/* currently running CREATE INDEX
+										 * CONCURRENTLY or REINDEX
+										 * CONCURRENTLY on non-expressional,
+										 * non-partial index */
 #define		PROC_VACUUM_FOR_WRAPAROUND	0x08	/* set by autovac only */
 #define		PROC_IN_LOGICAL_DECODING	0x10	/* currently doing logical
 												 * decoding outside xact */
+#define		PROC_AFFECTS_ALL_HORIZONS	0x20	/* this proc's xmin must be
+												 * included in vacuum horizons
+												 * in all databases */
 
 /* flags reset at EOXact */
 #define		PROC_VACUUM_STATE_MASK \
-	(/* PROC_IN_VACUUM | */ PROC_VACUUM_FOR_WRAPAROUND)
+	(PROC_IN_VACUUM | PROC_IN_SAFE_IC | PROC_VACUUM_FOR_WRAPAROUND)
+
+/*
+ * Xmin-related flags. Make sure any flags that affect how the process' Xmin
+ * value is interpreted by VACUUM are included here.
+ */
+#define		PROC_XMIN_FLAGS (PROC_IN_VACUUM | PROC_IN_SAFE_IC)
 
 /*
  * We allow a small number of "weak" relation locks (AccessShareLock,
@@ -81,6 +95,41 @@ struct XidCache
  * structures we could possibly have.  See comments for MAX_BACKENDS.
  */
 #define INVALID_PGPROCNO		PG_INT32_MAX
+
+/*
+ * Flags for PGPROC.delayChkpt
+ *
+ * These flags can be used to delay the start or completion of a checkpoint
+ * for short periods. A flag is in effect if the corresponding bit is set in
+ * the PGPROC of any backend.
+ *
+ * For our purposes here, a checkpoint has three phases: (1) determine the
+ * location to which the redo pointer will be moved, (2) write all the
+ * data durably to disk, and (3) WAL-log the checkpoint.
+ *
+ * Setting DELAY_CHKPT_START prevents the system from moving from phase 1
+ * to phase 2. This is useful when we are performing a WAL-logged modification
+ * of data that will be flushed to disk in phase 2. By setting this flag
+ * before writing WAL and clearing it after we've both written WAL and
+ * performed the corresponding modification, we ensure that if the WAL record
+ * is inserted prior to the new redo point, the corresponding data changes will
+ * also be flushed to disk before the checkpoint can complete. (In the
+ * extremely common case where the data being modified is in shared buffers
+ * and we acquire an exclusive content lock on the relevant buffers before
+ * writing WAL, this mechanism is not needed, because phase 2 will block
+ * until we release the content lock and then flush the modified data to
+ * disk.)
+ *
+ * Setting DELAY_CHKPT_COMPLETE prevents the system from moving from phase 2
+ * to phase 3. This is useful if we are performing a WAL-logged operation that
+ * might invalidate buffers, such as relation truncation. In this case, we need
+ * to ensure that any buffers which were invalidated and thus not flushed by
+ * the checkpoint are actaully destroyed on disk. Replay can cope with a file
+ * or block that doesn't exist, but not with a block that has the wrong
+ * contents.
+ */
+#define DELAY_CHKPT_START		(1<<0)
+#define DELAY_CHKPT_COMPLETE	(1<<1)
 
 typedef enum
 {
@@ -104,6 +153,11 @@ typedef enum
  * distinguished from a real one at need by the fact that it has pid == 0.
  * The semaphore and lock-activity fields in a prepared-xact PGPROC are unused,
  * but its myProcLocks[] lists are valid.
+ *
+ * We allow many fields of this struct to be accessed without locks, such as
+ * delayChkpt and isBackgroundWorker. However, keep in mind that writing
+ * mirrored ones (see below) requires holding ProcArrayLock or XidGenLock in
+ * at least shared mode, so that pgxactoff does not change concurrently.
  *
  * Mirrored fields:
  *
@@ -154,8 +208,8 @@ struct PGPROC
 
 	int			pid;			/* Backend's process ID; 0 if prepared xact */
 
-	int			pgxactoff;		/* offset into various ProcGlobal->arrays
-								 * with data mirrored from this PGPROC */
+	int			pgxactoff;		/* offset into various ProcGlobal->arrays with
+								 * data mirrored from this PGPROC */
 	int			pgprocno;
 
 	/* These fields are zero while a backend is still starting up: */
@@ -193,12 +247,15 @@ struct PGPROC
 	LOCKMODE	waitLockMode;	/* type of lock we're waiting for */
 	LOCKMASK	heldLocks;		/* bitmask for lock types already held on this
 								 * lock object by this backend */
+	pg_atomic_uint64 waitStart; /* time at which wait for lock acquisition
+								 * started */
 
-	bool		delayChkpt;		/* true if this proc delays checkpoint start */
+	int			delayChkptFlags;	/* for DELAY_CHKPT_* flags */
 
-	uint8		vacuumFlags;    /* this backend's vacuum flags, see PROC_*
+	uint8		statusFlags;	/* this backend's status flags, see PROC_*
 								 * above. mirrored in
-								 * ProcGlobal->vacuumFlags[pgxactoff] */
+								 * ProcGlobal->statusFlags[pgxactoff] */
+
 	/*
 	 * Info to allow us to wait for synchronous replication, if needed.
 	 * waitLSN is InvalidXLogRecPtr if not waiting; set only by user backend.
@@ -216,8 +273,8 @@ struct PGPROC
 	 */
 	SHM_QUEUE	myProcLocks[NUM_LOCK_PARTITIONS];
 
-	XidCacheStatus subxidStatus; /* mirrored with
-								  * ProcGlobal->subxidStates[i] */
+	XidCacheStatus subxidStatus;	/* mirrored with
+									 * ProcGlobal->subxidStates[i] */
 	struct XidCache subxids;	/* cache for subtransaction XIDs */
 
 	/*
@@ -331,7 +388,7 @@ extern PGDLLIMPORT PGPROC *lockHolderProcPtr;
  * allow for as tight loops accessing the data as possible. Second, to prevent
  * updates of frequently changing data (e.g. xmin) from invalidating
  * cachelines also containing less frequently changing data (e.g. xid,
- * vacuumFlags). Third to condense frequently accessed data into as few
+ * statusFlags). Third to condense frequently accessed data into as few
  * cachelines as possible.
  *
  * There are two main reasons to have the data mirrored between these dense
@@ -375,10 +432,10 @@ typedef struct PROC_HDR
 	XidCacheStatus *subxidStates;
 
 	/*
-	 * Array mirroring PGPROC.vacuumFlags for each PGPROC currently in the
+	 * Array mirroring PGPROC.statusFlags for each PGPROC currently in the
 	 * procarray.
 	 */
-	uint8	   *vacuumFlags;
+	uint8	   *statusFlags;
 
 	/* Length of allProcs array */
 	uint32		allProcCount;
@@ -400,9 +457,6 @@ typedef struct PROC_HDR
 	Latch	   *checkpointerLatch;
 	/* Current shared estimate of appropriate spins_per_delay value */
 	int			spins_per_delay;
-	/* The proc of the Startup process, since not in ProcArray */
-	PGPROC	   *startupProc;
-	int			startupProcPid;
 	/* Buffer id of the buffer that Startup process waits for pin on, or -1 */
 	int			startupBufferPinWaitBufId;
 
@@ -412,7 +466,7 @@ typedef struct PROC_HDR
 
 extern PGDLLIMPORT PROC_HDR *ProcGlobal;
 
-extern PGPROC *PreparedXactProcs;
+extern PGDLLIMPORT PGPROC *PreparedXactProcs;
 
 /* Accessor for PGPROC given a pgprocno. */
 #define GetPGProcByNumber(n) (&ProcGlobal->allProcs[(n)])
@@ -421,11 +475,11 @@ extern PGPROC *PreparedXactProcs;
  * We set aside some extra PGPROC structures for auxiliary processes,
  * ie things that aren't full-fledged backends but need shmem access.
  *
- * Background writer, checkpointer and WAL writer run during normal operation.
- * Startup process and WAL receiver also consume 2 slots, but WAL writer is
- * launched only after startup has exited, so we only need 4 slots.
+ * Background writer, checkpointer, WAL writer and archiver run during normal
+ * operation.  Startup process and WAL receiver also consume 2 slots, but WAL
+ * writer is launched only after startup has exited, so we only need 5 slots.
  */
-#define NUM_AUXILIARY_PROCS		4
+#define NUM_AUXILIARY_PROCS		5
 
 /* configurable options */
 extern PGDLLIMPORT int DeadlockTimeout;
@@ -433,7 +487,8 @@ extern PGDLLIMPORT int StatementTimeout;
 extern PGDLLIMPORT int LockTimeout;
 extern PGDLLIMPORT int IdleInTransactionSessionTimeout;
 extern PGDLLIMPORT int IdleSessionGangTimeout;
-extern bool log_lock_waits;
+extern PGDLLIMPORT int IdleSessionTimeout;
+extern PGDLLIMPORT bool log_lock_waits;
 
 
 /*
@@ -446,7 +501,6 @@ extern void InitProcess(void);
 extern void InitProcessPhase2(void);
 extern void InitAuxiliaryProcess(void);
 
-extern void PublishStartupProcessInformation(void);
 extern void SetStartupBufferPinWaitBufId(int bufid);
 extern int	GetStartupBufferPinWaitBufId(void);
 
@@ -462,7 +516,7 @@ extern bool IsWaitingForLock(void);
 extern void LockErrorCleanup(void);
 
 extern void ProcWaitForSignal(uint32 wait_event_info);
-extern void ProcSendSignal(int pid);
+extern void ProcSendSignal(int pgprocno);
 
 extern PGPROC *AuxiliaryPidGetProc(int pid);
 

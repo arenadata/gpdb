@@ -1,6 +1,14 @@
 --
 -- Test for ALTER some_object {RENAME TO, OWNER TO, SET SCHEMA}
 --
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
+CREATE FUNCTION test_opclass_options_func(internal)
+    RETURNS void
+    AS :'regresslib', 'test_opclass_options_func'
+    LANGUAGE C;
 -- Clean up in case a prior regression run failed
 SET client_min_messages TO 'warning';
 DROP ROLE IF EXISTS regress_alter_generic_user1;
@@ -506,10 +514,10 @@ CREATE OPERATOR FAMILY alt_opf19 USING btree;
 ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 test_opclass_options_func(internal, text[], bool);
 ERROR:  function test_opclass_options_func(internal, text[], boolean) does not exist
 ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4) btint42cmp(int4, int2);
-ERROR:  invalid opclass options parsing function
-HINT:  Valid signature of opclass options parsing function is '(internal) RETURNS void'.
+ERROR:  invalid operator class options parsing function
+HINT:  Valid signature of operator class options parsing function is (internal) RETURNS void.
 ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4, int2) btint42cmp(int4, int2);
-ERROR:  left and right associated data types for opclass options parsing functions must match
+ERROR:  left and right associated data types for operator class options parsing functions must match
 ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4) test_opclass_options_func(internal); -- Ok
 ALTER OPERATOR FAMILY alt_opf19 USING btree DROP FUNCTION 5 (int4, int4);
 DROP OPERATOR FAMILY alt_opf19 USING btree;

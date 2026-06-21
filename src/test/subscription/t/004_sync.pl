@@ -1,17 +1,20 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 # Tests for logical replication table syncing
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 7;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Initialize publisher node
-my $node_publisher = get_new_node('publisher');
+my $node_publisher = PostgreSQL::Test::Cluster->new('publisher');
 $node_publisher->init(allows_streaming => 'logical');
 $node_publisher->start;
 
 # Create subscriber node
-my $node_subscriber = get_new_node('subscriber');
+my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
 $node_subscriber->init(allows_streaming => 'logical');
 $node_subscriber->append_conf('postgresql.conf',
 	"wal_retrieve_retry_interval = 1ms");
@@ -149,7 +152,31 @@ $result = $node_subscriber->safe_psql('postgres',
 is($result, qq(20),
 	'changes for table added after subscription initialized replicated');
 
+# clean up
+$node_publisher->safe_psql('postgres', "DROP TABLE tab_rep_next");
+$node_subscriber->safe_psql('postgres', "DROP TABLE tab_rep_next");
 $node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION tap_sub");
+
+# Table tap_rep already has the same records on both publisher and subscriber
+# at this time. Recreate the subscription which will do the initial copy of
+# the table again and fails due to unique constraint violation.
+$node_subscriber->safe_psql('postgres',
+	"CREATE SUBSCRIPTION tap_sub CONNECTION '$publisher_connstr' PUBLICATION tap_pub"
+);
+
+$result = $node_subscriber->poll_query_until('postgres', $started_query)
+  or die "Timed out while waiting for subscriber to start sync";
+
+# DROP SUBSCRIPTION must clean up slots on the publisher side when the
+# subscriber is stuck on data copy for constraint violation.
+$node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION tap_sub");
+
+$result = $node_publisher->safe_psql('postgres',
+	"SELECT count(*) FROM pg_replication_slots");
+is($result, qq(0),
+	'DROP SUBSCRIPTION during error can clean up the slots on the publisher');
 
 $node_subscriber->stop('fast');
 $node_publisher->stop('fast');
+
+done_testing();

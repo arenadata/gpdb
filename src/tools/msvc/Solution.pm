@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 package Solution;
 
 #
@@ -62,7 +65,7 @@ sub DeterminePlatform
 	if ($^O eq "MSWin32")
 	{
 		# Examine CL help output to determine if we are in 32 or 64-bit mode.
-		my $output = `cl /? 2>&1`;
+		my $output = `cl /help 2>&1`;
 		$? >> 8 == 0 or die "cl command not found";
 		$self->{platform} =
 		  ($output =~ /^\/favor:<.+AMD64/m) ? 'x64' : 'Win32';
@@ -188,7 +191,7 @@ sub GenerateFiles
 		elsif (/\bAC_DEFINE\(OPENSSL_API_COMPAT, \[([0-9xL]+)\]/)
 		{
 			$ac_define_openssl_api_compat_found = 1;
-			$openssl_api_compat = $1;
+			$openssl_api_compat                 = $1;
 		}
 	}
 	close($c);
@@ -209,10 +212,6 @@ sub GenerateFiles
 	# Every symbol in pg_config.h.in must be accounted for here.  Set
 	# to undef if the symbol should not be defined.
 	my %define = (
-		ACCEPT_TYPE_ARG1           => 'unsigned int',
-		ACCEPT_TYPE_ARG2           => 'struct sockaddr *',
-		ACCEPT_TYPE_ARG3           => 'int',
-		ACCEPT_TYPE_RETURN         => 'unsigned int PASCAL',
 		ALIGNOF_DOUBLE             => 8,
 		ALIGNOF_INT                => 4,
 		ALIGNOF_LONG               => 4,
@@ -224,6 +223,7 @@ sub GenerateFiles
 		CONFIGURE_ARGS             => '"' . $self->GetFakeConfigure() . '"',
 		DEF_PGPORT                 => $port,
 		DEF_PGPORT_STR             => qq{"$port"},
+		DLSUFFIX                   => '".dll"',
 		ENABLE_GSS                 => $self->{options}->{gss} ? 1 : undef,
 		ENABLE_NLS                 => $self->{options}->{nls} ? 1 : undef,
 		ENABLE_THREAD_SAFETY       => 1,
@@ -243,16 +243,19 @@ sub GenerateFiles
 		HAVE_CRYPTO_LOCK           => undef,
 		HAVE_DECL_FDATASYNC        => 0,
 		HAVE_DECL_F_FULLFSYNC      => 0,
-		HAVE_DECL_LLVMCREATEGDBREGISTRATIONLISTENER => undef,
-		HAVE_DECL_LLVMCREATEPERFJITEVENTLISTENER    => undef,
+		HAVE_DECL_LLVMCREATEGDBREGISTRATIONLISTENER => 0,
+		HAVE_DECL_LLVMCREATEPERFJITEVENTLISTENER    => 0,
 		HAVE_DECL_LLVMGETHOSTCPUNAME                => 0,
 		HAVE_DECL_LLVMGETHOSTCPUFEATURES            => 0,
 		HAVE_DECL_LLVMORCGETSYMBOLADDRESSIN         => 0,
-		HAVE_DECL_POSIX_FADVISE                     => undef,
+		HAVE_DECL_POSIX_FADVISE                     => 0,
+		HAVE_DECL_PREADV                            => 0,
+		HAVE_DECL_PWRITEV                           => 0,
 		HAVE_DECL_RTLD_GLOBAL                       => 0,
 		HAVE_DECL_RTLD_NOW                          => 0,
-		HAVE_DECL_STRLCAT                           => undef,
-		HAVE_DECL_STRLCPY                           => undef,
+		HAVE_DECL_SIGWAIT                           => 0,
+		HAVE_DECL_STRLCAT                           => 0,
+		HAVE_DECL_STRLCPY                           => 0,
 		HAVE_DECL_STRNLEN                           => 1,
 		HAVE_DECL_STRTOLL                           => 1,
 		HAVE_DECL_STRTOULL                          => 1,
@@ -286,10 +289,13 @@ sub GenerateFiles
 		HAVE_GETTIMEOFDAY                           => undef,
 		HAVE_GSSAPI_GSSAPI_H                        => undef,
 		HAVE_GSSAPI_H                               => undef,
+		HAVE_HMAC_CTX_FREE                          => undef,
+		HAVE_HMAC_CTX_NEW                           => undef,
 		HAVE_HISTORY_H                              => undef,
 		HAVE_HISTORY_TRUNCATE_FILE                  => undef,
 		HAVE_IFADDRS_H                              => undef,
 		HAVE_INET_ATON                              => undef,
+		HAVE_INET_PTON                              => 1,
 		HAVE_INT_TIMEZONE                           => 1,
 		HAVE_INT64                                  => undef,
 		HAVE_INT8                                   => undef,
@@ -304,7 +310,7 @@ sub GenerateFiles
 		HAVE_LDAP_INITIALIZE                        => undef,
 		HAVE_LIBCRYPTO                              => undef,
 		HAVE_LIBLDAP                                => undef,
-		HAVE_LIBLDAP_R                              => undef,
+		HAVE_LIBLZ4                                 => undef,
 		HAVE_LIBM                                   => undef,
 		HAVE_LIBPAM                                 => undef,
 		HAVE_LIBREADLINE                            => undef,
@@ -314,6 +320,7 @@ sub GenerateFiles
 		HAVE_LIBXML2                                => undef,
 		HAVE_LIBXSLT                                => undef,
 		HAVE_LIBZ                   => $self->{options}->{zlib} ? 1 : undef,
+		HAVE_LIBZSTD                => undef,
 		HAVE_LINK                   => undef,
 		HAVE_LOCALE_T               => 1,
 		HAVE_LONG_INT_64            => undef,
@@ -331,6 +338,7 @@ sub GenerateFiles
 		HAVE_PAM_PAM_APPL_H         => undef,
 		HAVE_POLL                   => undef,
 		HAVE_POLL_H                 => undef,
+		HAVE_POSIX_DECL_SIGWAIT     => undef,
 		HAVE_POSIX_FADVISE          => undef,
 		HAVE_POSIX_FALLOCATE        => undef,
 		HAVE_PPC_LWARX_MUTEX_HINT   => undef,
@@ -339,28 +347,30 @@ sub GenerateFiles
 		HAVE_PSTAT                  => undef,
 		HAVE_PS_STRINGS             => undef,
 		HAVE_PTHREAD                => undef,
+		HAVE_PTHREAD_BARRIER_WAIT   => undef,
 		HAVE_PTHREAD_IS_THREADED_NP => undef,
 		HAVE_PTHREAD_PRIO_INHERIT   => undef,
 		HAVE_PWRITE                 => undef,
-		HAVE_RANDOM                 => undef,
 		HAVE_READLINE_H             => undef,
 		HAVE_READLINE_HISTORY_H     => undef,
 		HAVE_READLINE_READLINE_H    => undef,
 		HAVE_READLINK               => undef,
-		HAVE_RL_COMPLETION_APPEND_CHARACTER      => undef,
-		HAVE_RL_COMPLETION_MATCHES               => undef,
+		HAVE_READV                  => undef,
+		HAVE_RL_COMPLETION_MATCHES  => undef,
 		HAVE_RL_COMPLETION_SUPPRESS_QUOTE        => undef,
 		HAVE_RL_FILENAME_COMPLETION_FUNCTION     => undef,
 		HAVE_RL_FILENAME_QUOTE_CHARACTERS        => undef,
 		HAVE_RL_FILENAME_QUOTING_FUNCTION        => undef,
 		HAVE_RL_RESET_SCREEN_SIZE                => undef,
+		HAVE_RL_VARIABLE_BIND                    => undef,
 		HAVE_SECURITY_PAM_APPL_H                 => undef,
+		HAVE_SETENV                              => undef,
 		HAVE_SETPROCTITLE                        => undef,
 		HAVE_SETPROCTITLE_FAST                   => undef,
 		HAVE_SETSID                              => undef,
 		HAVE_SHM_OPEN                            => undef,
+		HAVE_SOCKLEN_T                           => 1,
 		HAVE_SPINLOCKS                           => 1,
-		HAVE_SRANDOM                             => undef,
 		HAVE_STDBOOL_H                           => 1,
 		HAVE_STDINT_H                            => 1,
 		HAVE_STDLIB_H                            => 1,
@@ -390,10 +400,12 @@ sub GenerateFiles
 		HAVE_STRUCT_TM_TM_ZONE                   => undef,
 		HAVE_SYNC_FILE_RANGE                     => undef,
 		HAVE_SYMLINK                             => 1,
+		HAVE_SYNCFS                              => undef,
 		HAVE_SYSLOG                              => undef,
 		HAVE_SYS_EPOLL_H                         => undef,
 		HAVE_SYS_EVENT_H                         => undef,
 		HAVE_SYS_IPC_H                           => undef,
+		HAVE_SYS_PERSONALITY_H                   => undef,
 		HAVE_SYS_PRCTL_H                         => undef,
 		HAVE_SYS_PROCCTL_H                       => undef,
 		HAVE_SYS_PSTAT_H                         => undef,
@@ -401,11 +413,13 @@ sub GenerateFiles
 		HAVE_SYS_SELECT_H                        => undef,
 		HAVE_SYS_SEM_H                           => undef,
 		HAVE_SYS_SHM_H                           => undef,
+		HAVE_SYS_SIGNALFD_H                      => undef,
 		HAVE_SYS_SOCKIO_H                        => undef,
 		HAVE_SYS_STAT_H                          => 1,
 		HAVE_SYS_TAS_H                           => undef,
 		HAVE_SYS_TYPES_H                         => 1,
 		HAVE_SYS_UCRED_H                         => undef,
+		HAVE_SYS_UIO_H                           => undef,
 		HAVE_SYS_UN_H                            => undef,
 		HAVE_TERMIOS_H                           => undef,
 		HAVE_TYPEOF                              => undef,
@@ -424,6 +438,7 @@ sub GenerateFiles
 		HAVE_WINLDAP_H                           => undef,
 		HAVE_WCSTOMBS_L                          => 1,
 		HAVE_WCTYPE_H                            => 1,
+		HAVE_WRITEV                              => undef,
 		HAVE_X509_GET_SIGNATURE_NID              => 1,
 		HAVE_X86_64_POPCNTQ                      => undef,
 		HAVE__BOOL                               => undef,
@@ -433,6 +448,7 @@ sub GenerateFiles
 		HAVE__BUILTIN_CLZ                        => undef,
 		HAVE__BUILTIN_CONSTANT_P                 => undef,
 		HAVE__BUILTIN_CTZ                        => undef,
+		HAVE__BUILTIN_FRAME_ADDRESS              => undef,
 		HAVE__BUILTIN_OP_OVERFLOW                => undef,
 		HAVE__BUILTIN_POPCOUNT                   => undef,
 		HAVE__BUILTIN_TYPES_COMPATIBLE_P         => undef,
@@ -484,15 +500,14 @@ sub GenerateFiles
 		USE_ASSERT_CHECKING => $self->{options}->{asserts} ? 1 : undef,
 		USE_BONJOUR         => undef,
 		USE_BSD_AUTH        => undef,
-		USE_DEV_URANDOM     => undef,
 		USE_ICU => $self->{options}->{icu} ? 1 : undef,
 		USE_LIBXML                 => undef,
 		USE_LIBXSLT                => undef,
+		USE_LZ4                    => undef,
 		USE_LDAP                   => $self->{options}->{ldap} ? 1 : undef,
 		USE_LLVM                   => undef,
 		USE_NAMED_POSIX_SEMAPHORES => undef,
 		USE_OPENSSL                => undef,
-		USE_OPENSSL_RANDOM         => undef,
 		USE_PAM                    => undef,
 		USE_SLICING_BY_8_CRC32C    => undef,
 		USE_SSE42_CRC32C           => undef,
@@ -501,9 +516,9 @@ sub GenerateFiles
 		USE_SYSV_SEMAPHORES                 => undef,
 		USE_SYSV_SHARED_MEMORY              => undef,
 		USE_UNNAMED_POSIX_SEMAPHORES        => undef,
-		USE_WIN32_RANDOM                    => 1,
 		USE_WIN32_SEMAPHORES                => 1,
 		USE_WIN32_SHARED_MEMORY             => 1,
+		USE_ZSTD                            => undef,
 		WCSTOMBS_L_IN_XLOCALE               => undef,
 		WORDS_BIGENDIAN                     => undef,
 		XLOG_BLCKSZ       => 1024 * $self->{options}->{wal_blocksize},
@@ -531,6 +546,16 @@ sub GenerateFiles
 		$define{HAVE_LIBXSLT} = 1;
 		$define{USE_LIBXSLT}  = 1;
 	}
+	if ($self->{options}->{lz4})
+	{
+		$define{HAVE_LIBLZ4} = 1;
+		$define{USE_LZ4}     = 1;
+	}
+	if ($self->{options}->{zstd})
+	{
+		$define{HAVE_LIBZSTD} = 1;
+		$define{USE_ZSTD}     = 1;
+	}
 	if ($self->{options}->{openssl})
 	{
 		$define{USE_OPENSSL} = 1;
@@ -538,11 +563,14 @@ sub GenerateFiles
 		my ($digit1, $digit2, $digit3) = $self->GetOpenSSLVersion();
 
 		# More symbols are needed with OpenSSL 1.1.0 and above.
-		if ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '0')
+		if (   ($digit1 >= '3' && $digit2 >= '0' && $digit3 >= '0')
+			|| ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '0'))
 		{
 			$define{HAVE_ASN1_STRING_GET0_DATA} = 1;
 			$define{HAVE_BIO_GET_DATA}          = 1;
 			$define{HAVE_BIO_METH_NEW}          = 1;
+			$define{HAVE_HMAC_CTX_FREE}         = 1;
+			$define{HAVE_HMAC_CTX_NEW}          = 1;
 			$define{HAVE_OPENSSL_INIT_SSL}      = 1;
 		}
 	}
@@ -671,16 +699,6 @@ sub GenerateFiles
 		);
 	}
 
-	if (IsNewer(
-			'src/backend/utils/sort/qsort_tuple.c',
-			'src/backend/utils/sort/gen_qsort_tuple.pl'))
-	{
-		print "Generating qsort_tuple.c...\n";
-		system(
-			'perl src/backend/utils/sort/gen_qsort_tuple.pl > src/backend/utils/sort/qsort_tuple.c'
-		);
-	}
-
 	if (IsNewer('src/bin/psql/sql_help.h', 'src/bin/psql/create_help.pl'))
 	{
 		print "Generating sql_help.h...\n";
@@ -771,8 +789,6 @@ EOF
 	$mf =~ /^CATALOG_HEADERS\s*:?=(.*)$/gm
 	  || croak "Could not find CATALOG_HEADERS in Makefile\n";
 	my @bki_srcs = split /\s+/, $1;
-	push @bki_srcs, 'toasting.h';
-	push @bki_srcs, 'indexing.h';
 	$mf =~ /^POSTGRES_BKI_DATA\s*:?=[^,]+,(.*)\)$/gm
 	  || croak "Could not find POSTGRES_BKI_DATA in Makefile\n";
 	my @bki_data = split /\s+/, $1;
@@ -826,6 +842,9 @@ EOF
 		copyFile(
 			'src/backend/catalog/schemapg.h',
 			'src/include/catalog/schemapg.h');
+		copyFile(
+			'src/backend/catalog/system_fk_info.h',
+			'src/include/catalog/system_fk_info.h');
 		open(my $chs, '>', 'src/include/catalog/header-stamp')
 		  || confess "Could not touch header-stamp";
 		close($chs);
@@ -953,7 +972,8 @@ sub AddProject
 		# changed their library names from:
 		# - libeay to libcrypto
 		# - ssleay to libssl
-		if ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '0')
+		if (   ($digit1 >= '3' && $digit2 >= '0' && $digit3 >= '0')
+			|| ($digit1 >= '1' && $digit2 >= '1' && $digit3 >= '0'))
 		{
 			my $dbgsuffix;
 			my $libsslpath;
@@ -1020,19 +1040,25 @@ sub AddProject
 	}
 	if ($self->{options}->{gss})
 	{
+		$proj->AddIncludeDir($self->{options}->{gss} . '\include');
+		$proj->AddIncludeDir($self->{options}->{gss} . '\include\krb5');
 		if ($self->{platform} eq 'Win32')
 		{
-			$proj->AddIncludeDir($self->{options}->{gss} . '\inc\krb5');
-			$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\krb5_32.lib');
-			$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\comerr32.lib');
-			$proj->AddLibrary($self->{options}->{gss} . '\lib\i386\gssapi32.lib');
+			$proj->AddLibrary(
+				$self->{options}->{gss} . '\lib\i386\krb5_32.lib');
+			$proj->AddLibrary(
+				$self->{options}->{gss} . '\lib\i386\comerr32.lib');
+			$proj->AddLibrary(
+				$self->{options}->{gss} . '\lib\i386\gssapi32.lib');
 		}
 		else
 		{
-			$proj->AddIncludeDir($self->{options}->{gss} . '\include');
-			$proj->AddLibrary($self->{options}->{gss} . '\lib\krb5_64.lib');
-			$proj->AddLibrary($self->{options}->{gss} . '\lib\comerr64.lib');
-			$proj->AddLibrary($self->{options}->{gss} . '\lib\gssapi64.lib');
+			$proj->AddLibrary(
+				$self->{options}->{gss} . '\lib\amd64\krb5_64.lib');
+			$proj->AddLibrary(
+				$self->{options}->{gss} . '\lib\amd64\comerr64.lib');
+			$proj->AddLibrary(
+				$self->{options}->{gss} . '\lib\amd64\gssapi64.lib');
 		}
 	}
 	if ($self->{options}->{iconv})
@@ -1066,6 +1092,16 @@ sub AddProject
 	{
 		$proj->AddIncludeDir($self->{options}->{xslt} . '\include');
 		$proj->AddLibrary($self->{options}->{xslt} . '\lib\libxslt.lib');
+	}
+	if ($self->{options}->{lz4})
+	{
+		$proj->AddIncludeDir($self->{options}->{lz4} . '\include');
+		$proj->AddLibrary($self->{options}->{lz4} . '\lib\liblz4.lib');
+	}
+	if ($self->{options}->{zstd})
+	{
+		$proj->AddIncludeDir($self->{options}->{zstd} . '\include');
+		$proj->AddLibrary($self->{options}->{zstd} . '\lib\libzstd.lib');
 	}
 	if ($self->{options}->{uuid})
 	{
@@ -1174,15 +1210,19 @@ sub GetFakeConfigure
 	$cfg .= ' --with-ldap'        if ($self->{options}->{ldap});
 	$cfg .= ' --without-zlib' unless ($self->{options}->{zlib});
 	$cfg .= ' --with-extra-version' if ($self->{options}->{extraver});
-	$cfg .= ' --with-openssl'       if ($self->{options}->{openssl});
+	$cfg .= ' --with-ssl=openssl'   if ($self->{options}->{openssl});
 	$cfg .= ' --with-uuid'          if ($self->{options}->{uuid});
 	$cfg .= ' --with-libxml'        if ($self->{options}->{xml});
 	$cfg .= ' --with-libxslt'       if ($self->{options}->{xslt});
+	$cfg .= ' --with-lz4'           if ($self->{options}->{lz4});
+	$cfg .= ' --with-zstd'          if ($self->{options}->{zstd});
 	$cfg .= ' --with-gssapi'        if ($self->{options}->{gss});
 	$cfg .= ' --with-icu'           if ($self->{options}->{icu});
 	$cfg .= ' --with-tcl'           if ($self->{options}->{tcl});
 	$cfg .= ' --with-perl'          if ($self->{options}->{perl});
 	$cfg .= ' --with-python'        if ($self->{options}->{python});
+	my $port = $self->{options}->{'--with-pgport'};
+	$cfg .= " --with-pgport=$port" if defined($port);
 
 	return $cfg;
 }
@@ -1294,6 +1334,34 @@ sub new
 	$self->{vcver}                      = '16.00';
 	$self->{visualStudioName}           = 'Visual Studio 2019';
 	$self->{VisualStudioVersion}        = '16.0.28729.10';
+	$self->{MinimumVisualStudioVersion} = '10.0.40219.1';
+
+	return $self;
+}
+
+package VS2022Solution;
+
+#
+# Package that encapsulates a Visual Studio 2022 solution file
+#
+
+use Carp;
+use strict;
+use warnings;
+use base qw(Solution);
+
+no warnings qw(redefine);    ## no critic
+
+sub new
+{
+	my $classname = shift;
+	my $self      = $classname->SUPER::_new(@_);
+	bless($self, $classname);
+
+	$self->{solutionFileVersion}        = '12.00';
+	$self->{vcver}                      = '17.00';
+	$self->{visualStudioName}           = 'Visual Studio 2022';
+	$self->{VisualStudioVersion}        = '17.0.31903.59';
 	$self->{MinimumVisualStudioVersion} = '10.0.40219.1';
 
 	return $self;

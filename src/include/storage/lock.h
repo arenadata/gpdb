@@ -4,7 +4,7 @@
  *	  POSTGRES low-level lock mechanism
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/lock.h
@@ -22,6 +22,7 @@
 #include "storage/lockdefs.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+#include "utils/timestamp.h"
 
 /* struct PGPROC is declared in proc.h, but must forward-reference it */
 typedef struct PGPROC PGPROC;
@@ -33,23 +34,24 @@ typedef struct PROC_QUEUE
 } PROC_QUEUE;
 
 /* GUC variables */
-extern int	max_locks_per_xact;
+extern PGDLLIMPORT int max_locks_per_xact;
 
 #ifdef LOCK_DEBUG
-extern int	Trace_lock_oidmin;
-extern bool Trace_locks;
-extern bool Trace_userlocks;
-extern int	Trace_lock_table;
-extern bool Debug_deadlocks;
+extern PGDLLIMPORT int Trace_lock_oidmin;
+extern PGDLLIMPORT bool Trace_locks;
+extern PGDLLIMPORT bool Trace_userlocks;
+extern PGDLLIMPORT int Trace_lock_table;
+extern PGDLLIMPORT bool Debug_deadlocks;
 #endif							/* LOCK_DEBUG */
 
 
 /*
  * Top-level transactions are identified by VirtualTransactionIDs comprising
- * the BackendId of the backend running the xact, plus a locally-assigned
- * LocalTransactionId.  These are guaranteed unique over the short term,
- * but will be reused after a database restart; hence they should never
- * be stored on disk.
+ * PGPROC fields backendId and lxid.  For recovered prepared transactions, the
+ * LocalTransactionId is an ordinary XID; LOCKTAG_VIRTUALTRANSACTION never
+ * refers to that kind.  These are guaranteed unique over the short term, but
+ * will be reused after a database restart or XID wraparound; hence they
+ * should never be stored on disk.
  *
  * Note that struct VirtualTransactionId can not be assumed to be atomically
  * assignable as a whole.  However, type LocalTransactionId is assumed to
@@ -61,15 +63,16 @@ extern bool Debug_deadlocks;
  */
 typedef struct
 {
-	BackendId	backendId;		/* determined at backend startup */
-	LocalTransactionId localTransactionId;	/* backend-local transaction id */
+	BackendId	backendId;		/* backendId from PGPROC */
+	LocalTransactionId localTransactionId;	/* lxid from PGPROC */
 } VirtualTransactionId;
 
 #define InvalidLocalTransactionId		0
 #define LocalTransactionIdIsValid(lxid) ((lxid) != InvalidLocalTransactionId)
 #define VirtualTransactionIdIsValid(vxid) \
-	(((vxid).backendId != InvalidBackendId) && \
-	 LocalTransactionIdIsValid((vxid).localTransactionId))
+	(LocalTransactionIdIsValid((vxid).localTransactionId))
+#define VirtualTransactionIdIsRecoveredPreparedXact(vxid) \
+	((vxid).backendId == InvalidBackendId)
 #define VirtualTransactionIdEquals(vxid1, vxid2) \
 	((vxid1).backendId == (vxid2).backendId && \
 	 (vxid1).localTransactionId == (vxid2).localTransactionId)
@@ -169,7 +172,7 @@ typedef enum LockTagType
 
 #define LOCKTAG_LAST_TYPE	LOCKTAG_ADVISORY
 
-extern const char *const LockTagTypeNames[];
+extern PGDLLIMPORT const char *const LockTagTypeNames[];
 
 /*
  * The LOCKTAG struct is defined with malice aforethought to fit into 16
@@ -489,6 +492,8 @@ typedef struct LockInstanceData
 	LOCKMODE	waitLockMode;	/* lock awaited by this PGPROC, if any */
 	BackendId	backend;		/* backend ID of this PGPROC */
 	LocalTransactionId lxid;	/* local transaction ID of this PGPROC */
+	TimestampTz waitStart;		/* time at which this PGPROC started waiting
+								 * for lock */
 	int			pid;			/* pid of this PGPROC */
 	int			leaderPid;		/* pid of group leader; = pid if no group */
 	bool		fastpath;		/* taken via fastpath? */

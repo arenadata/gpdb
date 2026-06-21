@@ -396,7 +396,7 @@ leafs. If first stage detects at least one empty page, then at the second stage
 ginScanToDelete() deletes empty pages.
 
 ginScanToDelete() traverses the whole tree in depth-first manner.  It starts
-from the super-exclusive lock on the tree root.  This lock prevents all the
+from the full cleanup lock on the tree root.  This lock prevents all the
 concurrent insertions into this tree while we're deleting pages.  However,
 there are still might be some in-progress readers, who traversed root before
 we locked it.
@@ -413,7 +413,7 @@ leftmost leaf of the tree.
 Deletion algorithm keeps exclusive locks on left siblings of pages comprising
 currently investigated path.  Thus, if current page is to be removed, all
 required pages to remove both downlink and rightlink are already locked.  That
-evades potential right to left page locking order, which could deadlock with
+avoids potential right to left page locking order, which could deadlock with
 concurrent stepping right.
 
 A search concurrent to page deletion might already have read a pointer to the

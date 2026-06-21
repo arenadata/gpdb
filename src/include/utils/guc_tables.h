@@ -8,6 +8,7 @@
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+* Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  *
  *	  src/include/utils/guc_tables.h
  *
@@ -50,16 +51,13 @@ typedef struct config_var_value
 } config_var_value;
 
 /*
- * Groupings to help organize all the run-time options for display
- *
- * Note: When you modify this, you need to modify config_group_names[]
- *       as well, which is located in guc.c.
+* Groupings to help organize all the run-time options for display.
+ * Be sure this agrees with the way the options are categorized in config.sgml!
  */
 enum config_group
 {
-	UNGROUPED,
+	UNGROUPED,					/* use for options not shown in pg_settings */
 	FILE_LOCATIONS,
-	CONN_AUTH,
 	CONN_AUTH_SETTINGS,
 	CONN_AUTH_AUTH,
 	CONN_AUTH_SSL,
@@ -78,14 +76,13 @@ enum config_group
 	WAL_SETTINGS,
 	WAL_CHECKPOINTS,
 	WAL_ARCHIVING,
+	WAL_RECOVERY,
 	WAL_ARCHIVE_RECOVERY,
 	WAL_RECOVERY_TARGET,
-	REPLICATION,
 	REPLICATION_SENDING,
 	REPLICATION_PRIMARY,
 	REPLICATION_STANDBY,
 	REPLICATION_SUBSCRIBERS,
-	QUERY_TUNING,
 	QUERY_TUNING_METHOD,
 	QUERY_TUNING_COST,
 	QUERY_TUNING_OTHER,
@@ -98,10 +95,9 @@ enum config_group
 	STATS,
 	STATS_ANALYZE,                      /*CDB*/
 	STATS_MONITORING,
-	STATS_COLLECTOR,
+	STATS_CUMULATIVE,
 	AUTOVACUUM,
 	CLIENT_CONN,
-
 	CLIENT_CONN_STATEMENT,
 	CLIENT_CONN_LOCALE,
 	CLIENT_CONN_PRELOAD,
@@ -199,6 +195,8 @@ struct config_generic
 	GucContext	reset_scontext; /* context that set the reset value */
 	GucStack   *stack;			/* stacked prior values */
 	void	   *extra;			/* "extra" pointer for current actual value */
+	char	   *last_reported;	/* if variable is GUC_REPORT, value last sent
+								 * to client (NULL if not yet sent) */
 	char	   *sourcefile;		/* file current setting is from (NULL if not
 								 * set in config file) */
 	int			sourceline;		/* line in source file */
@@ -210,7 +208,8 @@ struct config_generic
  * Caution: the GUC_IS_IN_FILE bit is transient state for ProcessConfigFile.
  * Do not assume that its value represents useful information elsewhere.
  */
-#define GUC_PENDING_RESTART 0x0002
+#define GUC_PENDING_RESTART 0x0002	/* changed value cannot be applied yet */
+#define GUC_NEEDS_REPORT	0x0004	/* new value must be reported to client */
 
 /* upper limit for GUC variables measured in kilobytes of memory */
 /* note that various places assume the byte size fits in a "long" variable */
@@ -298,10 +297,10 @@ struct config_enum
 };
 
 /* constant tables corresponding to enums above and in guc.h */
-extern const char *const config_group_names[];
-extern const char *const config_type_names[];
-extern const char *const GucContext_Names[];
-extern const char *const GucSource_Names[];
+extern PGDLLIMPORT const char *const config_group_names[];
+extern PGDLLIMPORT const char *const config_type_names[];
+extern PGDLLIMPORT const char *const GucContext_Names[];
+extern PGDLLIMPORT const char *const GucSource_Names[];
 
 /* get the current set of variables */
 extern struct config_generic **get_guc_variables(void);

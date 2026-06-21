@@ -7,6 +7,7 @@
  * Portions Copyright (c) 2005-2009, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+* Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/executor.h
@@ -183,11 +184,24 @@ extern AttrNumber ExecFindJunkAttribute(JunkFilter *junkfilter,
 										const char *attrName);
 extern AttrNumber ExecFindJunkAttributeInTlist(List *targetlist,
 											   const char *attrName);
-extern Datum ExecGetJunkAttribute(TupleTableSlot *slot, AttrNumber attno,
-								  bool *isNull);
 extern TupleTableSlot *ExecFilterJunk(JunkFilter *junkfilter,
 									  TupleTableSlot *slot);
 
+/*
+ * ExecGetJunkAttribute
+ *
+ * Given a junk filter's input tuple (slot) and a junk attribute's number
+ * previously found by ExecFindJunkAttribute, extract & return the value and
+ * isNull flag of the attribute.
+ */
+#ifndef FRONTEND
+static inline Datum
+ExecGetJunkAttribute(TupleTableSlot *slot, AttrNumber attno, bool *isNull)
+{
+	Assert(attno > 0);
+	return slot_getattr(slot, attno, isNull);
+}
+#endif
 
 /*
  * prototypes from functions in execMain.c
@@ -208,10 +222,11 @@ extern void CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation)
 extern void InitResultRelInfo(ResultRelInfo *resultRelInfo,
 							  Relation resultRelationDesc,
 							  Index resultRelationIndex,
-							  Relation partition_root,
+							  ResultRelInfo *partition_root_rri,
 							  int instrument_options);
-extern ResultRelInfo *ExecGetTriggerResultRel(EState *estate, Oid relid);
-extern void ExecCleanUpTriggerState(EState *estate);
+extern ResultRelInfo *ExecGetTriggerResultRel(EState *estate, Oid relid,
+											  ResultRelInfo *rootRelInfo);
+extern List *ExecGetAncestorResultRels(EState *estate, ResultRelInfo *resultRelInfo);
 extern void ExecConstraints(ResultRelInfo *resultRelInfo,
 							TupleTableSlot *slot, EState *estate);
 extern bool ExecPartitionCheck(ResultRelInfo *resultRelInfo,
@@ -290,6 +305,8 @@ planstate_walk_node(PlanState      *planstate,
  */
 extern ExprState *ExecInitExpr(Expr *node, PlanState *parent);
 extern ExprState *ExecInitExprWithParams(Expr *node, ParamListInfo ext_params);
+extern ExprState *ExecInitExprWithCaseValue(Expr *node, PlanState *parent,
+											Datum *caseval, bool *casenull);
 extern ExprState *ExecInitQual(List *qual, PlanState *parent);
 extern ExprState *ExecInitCheck(List *qual, PlanState *parent);
 extern List *ExecInitExprList(List *nodes, PlanState *parent);
@@ -302,11 +319,25 @@ extern ExprState *ExecBuildGroupingEqual(TupleDesc ldesc, TupleDesc rdesc,
 										 const Oid *eqfunctions,
 										 const Oid *collations,
 										 PlanState *parent);
+extern ExprState *ExecBuildParamSetEqual(TupleDesc desc,
+										 const TupleTableSlotOps *lops,
+										 const TupleTableSlotOps *rops,
+										 const Oid *eqfunctions,
+										 const Oid *collations,
+										 const List *param_exprs,
+										 PlanState *parent);
 extern ProjectionInfo *ExecBuildProjectionInfo(List *targetList,
 											   ExprContext *econtext,
 											   TupleTableSlot *slot,
 											   PlanState *parent,
 											   TupleDesc inputDesc);
+extern ProjectionInfo *ExecBuildUpdateProjection(List *targetList,
+												 bool evalTargetList,
+												 List *targetColnos,
+												 TupleDesc relDesc,
+												 ExprContext *econtext,
+												 TupleTableSlot *slot,
+												 PlanState *parent);
 extern ExprState *ExecPrepareExpr(Expr *node, EState *estate);
 extern ExprState *ExecPrepareQual(List *qual, EState *estate);
 extern ExprState *ExecPrepareCheck(List *qual, EState *estate);
@@ -475,7 +506,7 @@ typedef bool (*ExecScanRecheckMtd) (ScanState *node, TupleTableSlot *slot);
 extern TupleTableSlot *ExecScan(ScanState *node, ExecScanAccessMtd accessMtd,
 								ExecScanRecheckMtd recheckMtd);
 extern void ExecAssignScanProjectionInfo(ScanState *node);
-extern void ExecAssignScanProjectionInfoWithVarno(ScanState *node, Index varno);
+extern void ExecAssignScanProjectionInfoWithVarno(ScanState *node, int varno);
 extern void ExecScanReScan(ScanState *node);
 
 /*
@@ -569,7 +600,7 @@ extern const TupleTableSlotOps *ExecGetResultSlotOps(PlanState *planstate,
 extern void ExecAssignProjectionInfo(PlanState *planstate,
 									 TupleDesc inputDesc);
 extern void ExecConditionalAssignProjectionInfo(PlanState *planstate,
-												TupleDesc inputDesc, Index varno);
+												TupleDesc inputDesc, int varno);
 extern void ExecFreeExprContext(PlanState *planstate);
 extern void ExecAssignScanType(ScanState *scanstate, TupleDesc tupDesc);
 extern void ExecCreateScanSlotFromOuterPlan(EState *estate,
@@ -582,6 +613,8 @@ extern Relation ExecOpenScanRelation(EState *estate, Index scanrelid, int eflags
 extern Relation ExecOpenScanExternalRelation(EState *estate, Index scanrelid);
 
 extern void ExecInitRangeTable(EState *estate, List *rangeTable);
+extern void ExecCloseRangeTableRelations(EState *estate);
+extern void ExecCloseResultRelations(EState *estate);
 
 static inline RangeTblEntry *
 exec_rt_fetch(Index rti, EState *estate)
@@ -590,6 +623,8 @@ exec_rt_fetch(Index rti, EState *estate)
 }
 
 extern Relation ExecGetRangeTableRelation(EState *estate, Index rti);
+extern void ExecInitResultRelation(EState *estate, ResultRelInfo *resultRelInfo,
+								   Index rti);
 
 extern void executor_errposition(EState *estate, int location);
 
@@ -611,16 +646,27 @@ extern int	ExecCleanTargetListLength(List *targetlist);
 extern TupleTableSlot *ExecGetTriggerOldSlot(EState *estate, ResultRelInfo *relInfo);
 extern TupleTableSlot *ExecGetTriggerNewSlot(EState *estate, ResultRelInfo *relInfo);
 extern TupleTableSlot *ExecGetReturningSlot(EState *estate, ResultRelInfo *relInfo);
+extern TupleConversionMap *ExecGetChildToRootMap(ResultRelInfo *resultRelInfo);
+
+extern Bitmapset *ExecGetInsertedCols(ResultRelInfo *relinfo, EState *estate);
+extern Bitmapset *ExecGetUpdatedCols(ResultRelInfo *relinfo, EState *estate);
+extern Bitmapset *ExecGetExtraUpdatedCols(ResultRelInfo *relinfo, EState *estate);
+extern Bitmapset *ExecGetAllUpdatedCols(ResultRelInfo *relinfo, EState *estate);
 
 /*
  * prototypes from functions in execIndexing.c
  */
 extern void ExecOpenIndices(ResultRelInfo *resultRelInfo, bool speculative);
 extern void ExecCloseIndices(ResultRelInfo *resultRelInfo);
-extern List *ExecInsertIndexTuples(TupleTableSlot *slot, EState *estate, bool noDupErr,
+extern List *ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
+								   TupleTableSlot *slot, EState *estate,
+								   bool update,
+								   bool noDupErr,
 								   bool *specConflict, List *arbiterIndexes);
-extern bool ExecCheckIndexConstraints(TupleTableSlot *slot, EState *estate,
-									  ItemPointer conflictTid, List *arbiterIndexes);
+extern bool ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo,
+									  TupleTableSlot *slot,
+									  EState *estate, ItemPointer conflictTid,
+									  List *arbiterIndexes);
 extern void check_exclusion_constraint(Relation heap, Relation index,
 									   IndexInfo *indexInfo,
 									   ItemPointer tupleid,
@@ -636,10 +682,13 @@ extern bool RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 										 TupleTableSlot *outslot);
 extern bool RelationFindReplTupleSeq(Relation rel, LockTupleMode lockmode,
 									 TupleTableSlot *searchslot, TupleTableSlot *outslot);
-extern void ExecSimpleRelationInsert(EState *estate, TupleTableSlot *slot);
-extern void ExecSimpleRelationUpdate(EState *estate, EPQState *epqstate,
+extern void ExecSimpleRelationInsert(ResultRelInfo *resultRelInfo,
+									 EState *estate, TupleTableSlot *slot);
+extern void ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
+									 EState *estate, EPQState *epqstate,
 									 TupleTableSlot *searchslot, TupleTableSlot *slot);
-extern void ExecSimpleRelationDelete(EState *estate, EPQState *epqstate,
+extern void ExecSimpleRelationDelete(ResultRelInfo *resultRelInfo,
+									 EState *estate, EPQState *epqstate,
 									 TupleTableSlot *searchslot);
 extern void CheckCmdReplicaIdentity(Relation rel, CmdType cmd);
 
@@ -661,4 +710,14 @@ extern ResultRelInfo *slot_get_partition(TupleTableSlot *slot, EState *estate, b
 
 extern void
 change_varattnos_of_a_varno(Node *node, const AttrMap *newattno, Index varno);
+/*
+ * prototypes from functions in nodeModifyTable.c
+ */
+extern TupleTableSlot *ExecGetUpdateNewTuple(ResultRelInfo *relinfo,
+											 TupleTableSlot *planSlot,
+											 TupleTableSlot *oldSlot);
+extern ResultRelInfo *ExecLookupResultRelByOid(ModifyTableState *node,
+											   Oid resultoid,
+											   bool missing_ok,
+											   bool update_cache);
 #endif							/* EXECUTOR_H  */

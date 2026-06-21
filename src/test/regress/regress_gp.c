@@ -1505,7 +1505,7 @@ check_foreign_key(PG_FUNCTION_ARGS)
 		/* internal error */
 		elog(ERROR, "check_foreign_key: too short %d (< 5) list of arguments", nargs);
 
-	nrefs = pg_atoi(args[0], sizeof(int), 0);
+	nrefs = pg_strtoint32(args[0]);
 	if (nrefs < 1)
 		/* internal error */
 		elog(ERROR, "check_foreign_key: %d (< 1) number of references specified", nrefs);
@@ -1969,7 +1969,7 @@ test_consume_xids(PG_FUNCTION_ARGS)
 	/* make sure we have a top-XID first */
 	topxid = GetCurrentTransactionId();
 
-	xid = ReadNewTransactionId();
+	xid = ReadNextTransactionId();
 
 	targetxid = xid + nxids;
 	while (targetxid < FirstNormalTransactionId)

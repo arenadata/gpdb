@@ -20,7 +20,7 @@
  * appropriate value for a free lock.  The meaning of the variable is up to
  * the caller, the lightweight lock code just assigns and compares it.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -79,6 +79,7 @@
 #include "miscadmin.h"
 #include "pg_trace.h"
 #include "pgstat.h"
+#include "port/pg_bitutils.h"
 #include "postmaster/postmaster.h"
 #include "replication/slot.h"
 #include "storage/ipc.h"
@@ -146,8 +147,6 @@ static const char *const BuiltinTrancheNames[] = {
 	"WALInsert",
 	/* LWTRANCHE_BUFFER_CONTENT: */
 	"BufferContent",
-	/* LWTRANCHE_BUFFER_IO: */
-	"BufferIO",
 	/* LWTRANCHE_REPLICATION_ORIGIN_STATE: */
 	"ReplicationOriginState",
 	/* LWTRANCHE_REPLICATION_SLOT_IO: */
@@ -179,8 +178,13 @@ static const char *const BuiltinTrancheNames[] = {
 	/* LWTRANCHE_PER_XACT_PREDICATE_LIST: */
 	"PerXactPredicateList",
 	/* LWTRANCHE_DISTRIBUTEDLOG_BUFFERS: */
-	"DistributedBuffers"
-};
+	"DistributedBuffers",
+	/* LWTRANCHE_PGSTATS_DSA: */
+	"PgStatsDSA",
+	/* LWTRANCHE_PGSTATS_HASH: */
+	"PgStatsHash",
+	/* LWTRANCHE_PGSTATS_DATA: */
+	"PgStatsData",};
 
 StaticAssertDecl(lengthof(BuiltinTrancheNames) ==
 				 LWTRANCHE_FIRST_USER_DEFINED - NUM_INDIVIDUAL_LWLOCKS,
@@ -239,8 +243,6 @@ int			NamedLWLockTrancheRequests = 0;
 
 /* points to data in shared memory: */
 NamedLWLockTranche *NamedLWLockTrancheArray = NULL;
-
-static bool lock_named_request_allowed = true;
 
 static void InitializeLWLocks(void);
 static inline void LWLockReportWaitStart(LWLock *lock);
@@ -344,7 +346,6 @@ init_lwlock_stats(void)
 											 ALLOCSET_DEFAULT_SIZES);
 	MemoryContextAllowInCriticalSection(lwlock_stats_cxt, true);
 
-	MemSet(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(lwlock_stats_key);
 	ctl.entrysize = sizeof(lwlock_stats);
 	ctl.hcxt = lwlock_stats_cxt;
@@ -456,9 +457,6 @@ LWLockShmemSize(void)
 	for (i = 0; i < NamedLWLockTrancheRequests; i++)
 		size = add_size(size, strlen(NamedLWLockTrancheRequestArray[i].tranche_name) + 1);
 
-	/* Disallow adding any more named tranches. */
-	lock_named_request_allowed = false;
-
 	return size;
 }
 
@@ -472,8 +470,7 @@ CreateLWLocks(void)
 	StaticAssertStmt(LW_VAL_EXCLUSIVE > (uint32) MAX_BACKENDS,
 					 "MAX_BACKENDS too big for lwlock.c");
 
-	StaticAssertStmt(sizeof(LWLock) <= LWLOCK_MINIMAL_SIZE &&
-					 sizeof(LWLock) <= LWLOCK_PADDED_SIZE,
+	StaticAssertStmt(sizeof(LWLock) <= LWLOCK_PADDED_SIZE,
 					 "Miscalculated LWLock padding");
 
 	if (!IsUnderPostmaster)
@@ -527,18 +524,17 @@ InitializeLWLocks(void)
 		LWLockInitialize(&lock->lock, id);
 
 	/* Initialize buffer mapping LWLocks in main array */
-	lock = MainLWLockArray + NUM_INDIVIDUAL_LWLOCKS;
+	lock = MainLWLockArray + BUFFER_MAPPING_LWLOCK_OFFSET;
 	for (id = 0; id < NUM_BUFFER_PARTITIONS; id++, lock++)
 		LWLockInitialize(&lock->lock, LWTRANCHE_BUFFER_MAPPING);
 
 	/* Initialize lmgrs' LWLocks in main array */
-	lock = MainLWLockArray + NUM_INDIVIDUAL_LWLOCKS + NUM_BUFFER_PARTITIONS;
+	lock = MainLWLockArray + LOCK_MANAGER_LWLOCK_OFFSET;
 	for (id = 0; id < NUM_LOCK_PARTITIONS; id++, lock++)
 		LWLockInitialize(&lock->lock, LWTRANCHE_LOCK_MANAGER);
 
 	/* Initialize predicate lmgrs' LWLocks in main array */
-	lock = MainLWLockArray + NUM_INDIVIDUAL_LWLOCKS +
-		NUM_BUFFER_PARTITIONS + NUM_LOCK_PARTITIONS;
+	lock = MainLWLockArray + PREDICATELOCK_MANAGER_LWLOCK_OFFSET;
 	for (id = 0; id < NUM_PREDICATELOCK_PARTITIONS; id++, lock++)
 		LWLockInitialize(&lock->lock, LWTRANCHE_PREDICATE_LOCK_MANAGER);
 
@@ -666,9 +662,7 @@ LWLockRegisterTranche(int tranche_id, const char *tranche_name)
 	{
 		int			newalloc;
 
-		newalloc = Max(LWLockTrancheNamesAllocated, 8);
-		while (newalloc <= tranche_id)
-			newalloc *= 2;
+		newalloc = pg_nextpower2_32(Max(8, tranche_id + 1));
 
 		if (LWLockTrancheNames == NULL)
 			LWLockTrancheNames = (const char **)
@@ -693,12 +687,9 @@ LWLockRegisterTranche(int tranche_id, const char *tranche_name)
  *		Request that extra LWLocks be allocated during postmaster
  *		startup.
  *
- * This is only useful for extensions if called from the _PG_init hook
- * of a library that is loaded into the postmaster via
- * shared_preload_libraries.  Once shared memory has been allocated, calls
- * will be ignored.  (We could raise an error, but it seems better to make
- * it a no-op, so that libraries containing such calls can be reloaded if
- * needed.)
+ * This may only be called via the shmem_request_hook of a library that is
+ * loaded into the postmaster via shared_preload_libraries.  Calls from
+ * elsewhere will fail.
  *
  * The tranche name will be user-visible as a wait event name, so try to
  * use a name that fits the style for those.
@@ -708,8 +699,8 @@ RequestNamedLWLockTranche(const char *tranche_name, int num_lwlocks)
 {
 	NamedLWLockTrancheRequest *request;
 
-	if (IsUnderPostmaster || !lock_named_request_allowed)
-		return;					/* too late */
+	if (!process_shmem_requests_in_progress)
+		elog(FATAL, "cannot request additional LWLocks outside shmem_request_hook");
 
 	if (NamedLWLockTrancheRequestArray == NULL)
 	{
@@ -722,10 +713,7 @@ RequestNamedLWLockTranche(const char *tranche_name, int num_lwlocks)
 
 	if (NamedLWLockTrancheRequests >= NamedLWLockTrancheRequestsAllocated)
 	{
-		int			i = NamedLWLockTrancheRequestsAllocated;
-
-		while (i <= NamedLWLockTrancheRequests)
-			i *= 2;
+		int			i = pg_nextpower2_32(NamedLWLockTrancheRequests + 1);
 
 		NamedLWLockTrancheRequestArray = (NamedLWLockTrancheRequest *)
 			repalloc(NamedLWLockTrancheRequestArray,
@@ -1101,7 +1089,6 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 #ifdef LOCK_DEBUG
 	pg_atomic_fetch_add_u32(&lock->nwaiters, 1);
 #endif
-
 }
 
 /*
@@ -1309,14 +1296,10 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 		/*
 		 * Wait until awakened.
 		 *
-		 * Since we share the process wait semaphore with the regular lock
-		 * manager and ProcWaitForSignal, and we may need to acquire an LWLock
-		 * while one of those is pending, it is possible that we get awakened
-		 * for a reason other than being signaled by LWLockRelease. If so,
-		 * loop back and wait again.  Once we've gotten the LWLock,
-		 * re-increment the sema by the number of additional signals received,
-		 * so that the lock manager or signal manager will see the received
-		 * signal when it next waits.
+		 * It is possible that we get awakened for a reason other than being
+		 * signaled by LWLockRelease.  If so, loop back and wait again.  Once
+		 * we've gotten the LWLock, re-increment the sema by the number of
+		 * additional signals received.
 		 */
 		LOG_LWDEBUG("LWLockAcquire", lock, "waiting");
 
@@ -1325,7 +1308,8 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 #endif
 
 		LWLockReportWaitStart(lock);
-		TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), mode);
+		if (TRACE_POSTGRESQL_LWLOCK_WAIT_START_ENABLED())
+			TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), mode);
 
 		for (;;)
 		{
@@ -1347,7 +1331,8 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 		}
 #endif
 
-		TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), mode);
+		if (TRACE_POSTGRESQL_LWLOCK_WAIT_DONE_ENABLED())
+			TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), mode);
 		LWLockReportWaitEnd();
 
 		LOG_LWDEBUG("LWLockAcquire", lock, "awakened");
@@ -1356,7 +1341,8 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 		result = false;
 	}
 
-	TRACE_POSTGRESQL_LWLOCK_ACQUIRE(T_NAME(lock), mode);
+	if (TRACE_POSTGRESQL_LWLOCK_ACQUIRE_ENABLED())
+		TRACE_POSTGRESQL_LWLOCK_ACQUIRE(T_NAME(lock), mode);
 
 	/* Add lock to list of locks held by this backend */
 	held_lwlocks[num_held_lwlocks].lock = lock;
@@ -1407,14 +1393,16 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 		RESUME_INTERRUPTS();
 
 		LOG_LWDEBUG("LWLockConditionalAcquire", lock, "failed");
-		TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE_FAIL(T_NAME(lock), mode);
+		if (TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE_FAIL_ENABLED())
+			TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE_FAIL(T_NAME(lock), mode);
 	}
 	else
 	{
 		/* Add lock to list of locks held by this backend */
 		held_lwlocks[num_held_lwlocks].lock = lock;
 		held_lwlocks[num_held_lwlocks++].mode = mode;
-		TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE(T_NAME(lock), mode);
+		if (TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE_ENABLED())
+			TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE(T_NAME(lock), mode);
 	}
 	return !mustwait;
 }
@@ -1476,8 +1464,7 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 		{
 			/*
 			 * Wait until awakened.  Like in LWLockAcquire, be prepared for
-			 * bogus wakeups, because we share the semaphore with
-			 * ProcWaitForSignal.
+			 * bogus wakeups.
 			 */
 			LOG_LWDEBUG("LWLockAcquireOrWait", lock, "waiting");
 
@@ -1486,7 +1473,8 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 #endif
 
 			LWLockReportWaitStart(lock);
-			TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), mode);
+			if (TRACE_POSTGRESQL_LWLOCK_WAIT_START_ENABLED())
+				TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), mode);
 
 			for (;;)
 			{
@@ -1504,7 +1492,8 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 				Assert(nwaiters < MAX_BACKENDS);
 			}
 #endif
-			TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), mode);
+			if (TRACE_POSTGRESQL_LWLOCK_WAIT_DONE_ENABLED())
+				TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), mode);
 			LWLockReportWaitEnd();
 
 			LOG_LWDEBUG("LWLockAcquireOrWait", lock, "awakened");
@@ -1534,7 +1523,8 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 		/* Failed to get lock, so release interrupt holdoff */
 		RESUME_INTERRUPTS();
 		LOG_LWDEBUG("LWLockAcquireOrWait", lock, "failed");
-		TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT_FAIL(T_NAME(lock), mode);
+		if (TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT_FAIL_ENABLED())
+			TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT_FAIL(T_NAME(lock), mode);
 	}
 	else
 	{
@@ -1542,7 +1532,8 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 		/* Add lock to list of locks held by this backend */
 		held_lwlocks[num_held_lwlocks].lock = lock;
 		held_lwlocks[num_held_lwlocks++].mode = mode;
-		TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT(T_NAME(lock), mode);
+		if (TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT_ENABLED())
+			TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT(T_NAME(lock), mode);
 	}
 
 	return !mustwait;
@@ -1686,14 +1677,10 @@ LWLockWaitForVar(LWLock *lock, uint64 *valptr, uint64 oldval, uint64 *newval)
 		/*
 		 * Wait until awakened.
 		 *
-		 * Since we share the process wait semaphore with the regular lock
-		 * manager and ProcWaitForSignal, and we may need to acquire an LWLock
-		 * while one of those is pending, it is possible that we get awakened
-		 * for a reason other than being signaled by LWLockRelease. If so,
-		 * loop back and wait again.  Once we've gotten the LWLock,
-		 * re-increment the sema by the number of additional signals received,
-		 * so that the lock manager or signal manager will see the received
-		 * signal when it next waits.
+		 * It is possible that we get awakened for a reason other than being
+		 * signaled by LWLockRelease.  If so, loop back and wait again.  Once
+		 * we've gotten the LWLock, re-increment the sema by the number of
+		 * additional signals received.
 		 */
 		LOG_LWDEBUG("LWLockWaitForVar", lock, "waiting");
 
@@ -1702,7 +1689,8 @@ LWLockWaitForVar(LWLock *lock, uint64 *valptr, uint64 oldval, uint64 *newval)
 #endif
 
 		LWLockReportWaitStart(lock);
-		TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), LW_EXCLUSIVE);
+		if (TRACE_POSTGRESQL_LWLOCK_WAIT_START_ENABLED())
+			TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), LW_EXCLUSIVE);
 
 		for (;;)
 		{
@@ -1721,15 +1709,14 @@ LWLockWaitForVar(LWLock *lock, uint64 *valptr, uint64 oldval, uint64 *newval)
 		}
 #endif
 
-		TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), LW_EXCLUSIVE);
+		if (TRACE_POSTGRESQL_LWLOCK_WAIT_DONE_ENABLED())
+			TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), LW_EXCLUSIVE);
 		LWLockReportWaitEnd();
 
 		LOG_LWDEBUG("LWLockWaitForVar", lock, "awakened");
 
 		/* Now loop back and check the status of the lock again. */
 	}
-
-	TRACE_POSTGRESQL_LWLOCK_ACQUIRE(T_NAME(lock), LW_EXCLUSIVE);
 
 	/*
 	 * Fix the process wait semaphore's count for any absorbed wakeups.
@@ -1849,6 +1836,8 @@ LWLockRelease(LWLock *lock)
 	/* nobody else can have that kind of lock */
 	Assert(!(oldstate & LW_VAL_EXCLUSIVE));
 
+	if (TRACE_POSTGRESQL_LWLOCK_RELEASE_ENABLED())
+		TRACE_POSTGRESQL_LWLOCK_RELEASE(T_NAME(lock));
 
 	/*
 	 * We're still waiting for backends to get scheduled, don't wake them up
@@ -1871,8 +1860,6 @@ LWLockRelease(LWLock *lock)
 		LOG_LWDEBUG("LWLockRelease", lock, "releasing waiters");
 		LWLockWakeup(lock);
 	}
-
-	TRACE_POSTGRESQL_LWLOCK_RELEASE(T_NAME(lock));
 
 	/*
 	 * Now okay to allow cancel/die interrupts.
@@ -1940,6 +1927,32 @@ LWLockHeldByMe(LWLock *l)
 }
 
 /*
+ * LWLockAnyHeldByMe - test whether my process holds any of an array of locks
+ *
+ * This is meant as debug support only.
+ */
+bool
+LWLockAnyHeldByMe(LWLock *l, int nlocks, size_t stride)
+{
+	char	   *held_lock_addr;
+	char	   *begin;
+	char	   *end;
+	int			i;
+
+	begin = (char *) l;
+	end = begin + nlocks * stride;
+	for (i = 0; i < num_held_lwlocks; i++)
+	{
+		held_lock_addr = (char *) held_lwlocks[i].lock;
+		if (held_lock_addr >= begin &&
+			held_lock_addr < end &&
+			(held_lock_addr - begin) % stride == 0)
+			return true;
+	}
+	return false;
+}
+
+/*
  * LWLockHeldByMeInMode - test whether my process holds a lock in given mode
  *
  * This is meant as debug support only.
@@ -1955,4 +1968,11 @@ LWLockHeldByMeInMode(LWLock *l, LWLockMode mode)
 			return true;
 	}
 	return false;
+}
+
+/* temp debugging aid to analyze 019_replslot_limit failures */
+int
+LWLockHeldCount(void)
+{
+	return num_held_lwlocks;
 }

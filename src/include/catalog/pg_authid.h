@@ -8,7 +8,7 @@
  *
  * Portions Copyright (c) 2006-2010, Greenplum inc.
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_authid.h
@@ -40,7 +40,7 @@ CATALOG(pg_authid,1260,AuthIdRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(284
 	bool		rolcreatedb;	/* allowed to create databases? */
 	bool		rolcanlogin;	/* allowed to log in as session user? */
 	bool		rolreplication; /* role used for streaming replication */
-	bool		rolbypassrls;	/* bypasses row level security? */
+	bool		rolbypassrls;	/* bypasses row-level security? */
 	int32		rolconnlimit;	/* max connections allowed (-1=no limit) */
 
 	/* remaining fields may be null; use heap_getattr to read them! */
@@ -79,5 +79,15 @@ FOREIGN_KEY(rolresgroup REFERENCES pg_resgroup(oid));
  * ----------------
  */
 typedef FormData_pg_authid *Form_pg_authid;
+
+DECLARE_TOAST_WITH_MACRO(pg_authid, 4175, 4176, PgAuthidToastTable, PgAuthidToastIndex);
+
+DECLARE_UNIQUE_INDEX(pg_authid_rolname_index, 2676, AuthIdRolnameIndexId, on pg_authid using btree(rolname name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_authid_oid_index, 2677, AuthIdOidIndexId, on pg_authid using btree(oid oid_ops));
+
+
+/* GPDB-specific index(es) (moved from indexing.h: PG15 genbki emits IndexId per-catalog) */
+DECLARE_INDEX(pg_authid_rolresqueue_index, 6029, AuthIdRolResQueueIndexId, on pg_authid using btree(rolresqueue oid_ops));
+DECLARE_INDEX(pg_authid_rolresgroup_index, 6440, AuthIdRolResGroupIndexId, on pg_authid using btree(rolresgroup oid_ops));
 
 #endif							/* PG_AUTHID_H */

@@ -15,7 +15,7 @@
  * re-perform the status update on redo; so we need make no additional XLOG
  * entry here.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/commit_ts.c
@@ -28,6 +28,8 @@
 #include "access/htup_details.h"
 #include "access/slru.h"
 #include "access/transam.h"
+#include "access/xloginsert.h"
+#include "access/xlogutils.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -96,7 +98,7 @@ typedef struct CommitTimestampShared
 	bool		commitTsActive;
 } CommitTimestampShared;
 
-CommitTimestampShared *commitTsShared;
+static CommitTimestampShared *commitTsShared;
 
 
 /* GUC variable */
@@ -114,9 +116,6 @@ static void ActivateCommitTs(void);
 static void DeactivateCommitTs(void);
 static void WriteZeroPageXlogRec(int pageno);
 static void WriteTruncateXlogRec(int pageno, TransactionId oldestXid);
-static void WriteSetTimestampXlogRec(TransactionId mainxid, int nsubxids,
-									 TransactionId *subxids, TimestampTz timestamp,
-									 RepOriginId nodeid);
 
 /*
  * TransactionTreeSetCommitTsData
@@ -133,18 +132,11 @@ static void WriteSetTimestampXlogRec(TransactionId mainxid, int nsubxids,
  * permanent) so we need to keep the information about them here. If the
  * subtrans implementation changes in the future, we might want to revisit the
  * decision of storing timestamp info for each subxid.
- *
- * The write_xlog parameter tells us whether to include an XLog record of this
- * or not.  Normally, this is called from transaction commit routines (both
- * normal and prepared) and the information will be stored in the transaction
- * commit XLog record, and so they should pass "false" for this.  The XLog redo
- * code should use "false" here as well.  Other callers probably want to pass
- * true, so that the given values persist in case of crashes.
  */
 void
 TransactionTreeSetCommitTsData(TransactionId xid, int nsubxids,
 							   TransactionId *subxids, TimestampTz timestamp,
-							   RepOriginId nodeid, bool write_xlog)
+							   RepOriginId nodeid)
 {
 	int			i;
 	TransactionId headxid;
@@ -162,13 +154,6 @@ TransactionTreeSetCommitTsData(TransactionId xid, int nsubxids,
 		return;
 
 	/*
-	 * Comply with the WAL-before-data rule: if caller specified it wants this
-	 * value to be recorded in WAL, do so before touching the data.
-	 */
-	if (write_xlog)
-		WriteSetTimestampXlogRec(xid, nsubxids, subxids, timestamp, nodeid);
-
-	/*
 	 * Figure out the latest Xid in this batch: either the last subxid if
 	 * there's any, otherwise the parent xid.
 	 */
@@ -184,7 +169,9 @@ TransactionTreeSetCommitTsData(TransactionId xid, int nsubxids,
 	 * subxid not on the previous page as head.  This way, we only have to
 	 * lock/modify each SLRU page once.
 	 */
-	for (i = 0, headxid = xid;;)
+	headxid = xid;
+	i = 0;
+	for (;;)
 	{
 		int			pageno = TransactionIdToCTsPage(headxid);
 		int			j;
@@ -200,7 +187,7 @@ TransactionTreeSetCommitTsData(TransactionId xid, int nsubxids,
 							 pageno);
 
 		/* if we wrote out all subxids, we're done. */
-		if (j + 1 >= nsubxids)
+		if (j >= nsubxids)
 			break;
 
 		/*
@@ -208,7 +195,7 @@ TransactionTreeSetCommitTsData(TransactionId xid, int nsubxids,
 		 * just wrote.
 		 */
 		headxid = subxids[j];
-		i += j - i + 1;
+		i = j + 1;
 	}
 
 	/* update the cached value in shared memory */
@@ -404,7 +391,7 @@ error_commit_ts_disabled(void)
 Datum
 pg_xact_commit_timestamp(PG_FUNCTION_ARGS)
 {
-	TransactionId xid = PG_GETARG_UINT32(0);
+	TransactionId xid = PG_GETARG_TRANSACTIONID(0);
 	TimestampTz ts;
 	bool		found;
 
@@ -481,7 +468,7 @@ pg_last_committed_xact(PG_FUNCTION_ARGS)
 Datum
 pg_xact_commit_timestamp_origin(PG_FUNCTION_ARGS)
 {
-	TransactionId xid = PG_GETARG_UINT32(0);
+	TransactionId xid = PG_GETARG_TRANSACTIONID(0);
 	RepOriginId nodeid;
 	TimestampTz ts;
 	Datum		values[2];
@@ -524,13 +511,14 @@ pg_xact_commit_timestamp_origin(PG_FUNCTION_ARGS)
 /*
  * Number of shared CommitTS buffers.
  *
- * We use a very similar logic as for the number of CLOG buffers; see comments
- * in CLOGShmemBuffers.
+ * We use a very similar logic as for the number of CLOG buffers (except we
+ * scale up twice as fast with shared buffers, and the maximum is twice as
+ * high); see comments in CLOGShmemBuffers.
  */
 Size
 CommitTsShmemBuffers(void)
 {
-	return Min(16, Max(4, NBuffers / 1024));
+	return Min(256, Max(4, NBuffers / 256));
 }
 
 /*
@@ -555,7 +543,9 @@ CommitTsShmemInit(void)
 	CommitTsCtl->PagePrecedes = CommitTsPagePrecedes;
 	SimpleLruInit(CommitTsCtl, "CommitTs", CommitTsShmemBuffers(), 0,
 				  CommitTsSLRULock, "pg_commit_ts",
-				  LWTRANCHE_COMMITTS_BUFFER);
+				  LWTRANCHE_COMMITTS_BUFFER,
+				  SYNC_HANDLER_COMMIT_TS);
+	SlruPagePrecedesUnitTests(CommitTsCtl, COMMIT_TS_XACTS_PER_PAGE);
 
 	commitTsShared = ShmemInitStruct("CommitTs shared",
 									 sizeof(CommitTimestampShared),
@@ -731,7 +721,7 @@ ActivateCommitTs(void)
 	if (ShmemVariableCache->oldestCommitTsXid == InvalidTransactionId)
 	{
 		ShmemVariableCache->oldestCommitTsXid =
-			ShmemVariableCache->newestCommitTsXid = ReadNewTransactionId();
+			ShmemVariableCache->newestCommitTsXid = ReadNextTransactionId();
 	}
 	LWLockRelease(CommitTsLock);
 
@@ -799,35 +789,17 @@ DeactivateCommitTs(void)
 }
 
 /*
- * This must be called ONCE during postmaster or standalone-backend shutdown
- */
-void
-ShutdownCommitTs(void)
-{
-	/* Flush dirty CommitTs pages to disk */
-	SimpleLruFlush(CommitTsCtl, false);
-
-	/*
-	 * fsync pg_commit_ts to ensure that any files flushed previously are
-	 * durably on disk.
-	 */
-	fsync_fname("pg_commit_ts", true);
-}
-
-/*
  * Perform a checkpoint --- either during shutdown, or on-the-fly
  */
 void
 CheckPointCommitTs(void)
 {
-	/* Flush dirty CommitTs pages to disk */
-	SimpleLruFlush(CommitTsCtl, true);
-
 	/*
-	 * fsync pg_commit_ts to ensure that any files flushed previously are
-	 * durably on disk.
+	 * Write dirty CommitTs pages to disk.  This may result in sync requests
+	 * queued for later handling by ProcessSyncRequests(), as part of the
+	 * checkpoint.
 	 */
-	fsync_fname("pg_commit_ts", true);
+	SimpleLruWriteAll(CommitTsCtl, true);
 }
 
 /*
@@ -944,14 +916,27 @@ AdvanceOldestCommitTsXid(TransactionId oldestXact)
 
 
 /*
- * Decide which of two commitTS page numbers is "older" for truncation
- * purposes.
+ * Decide whether a commitTS page number is "older" for truncation purposes.
+ * Analogous to CLOGPagePrecedes().
  *
- * We need to use comparison of TransactionIds here in order to do the right
- * thing with wraparound XID arithmetic.  However, if we are asked about
- * page number zero, we don't want to hand InvalidTransactionId to
- * TransactionIdPrecedes: it'll get weird about permanent xact IDs.  So,
- * offset both xids by FirstNormalTransactionId to avoid that.
+ * At default BLCKSZ, (1 << 31) % COMMIT_TS_XACTS_PER_PAGE == 128.  This
+ * introduces differences compared to CLOG and the other SLRUs having (1 <<
+ * 31) % per_page == 0.  This function never tests exactly
+ * TransactionIdPrecedes(x-2^31, x).  When the system reaches xidStopLimit,
+ * there are two possible counts of page boundaries between oldestXact and the
+ * latest XID assigned, depending on whether oldestXact is within the first
+ * 128 entries of its page.  Since this function doesn't know the location of
+ * oldestXact within page2, it returns false for one page that actually is
+ * expendable.  This is a wider (yet still negligible) version of the
+ * truncation opportunity that CLOGPagePrecedes() cannot recognize.
+ *
+ * For the sake of a worked example, number entries with decimal values such
+ * that page1==1 entries range from 1.0 to 1.999.  Let N+0.15 be the number of
+ * pages that 2^31 entries will span (N is an integer).  If oldestXact=N+2.1,
+ * then the final safe XID assignment leaves newestXact=1.95.  We keep page 2,
+ * because entry=2.85 is the border that toggles whether entries precede the
+ * last entry of the oldestXact page.  While page 2 is expendable at
+ * oldestXact=N+2.1, it would be precious at oldestXact=N+2.9.
  */
 static bool
 CommitTsPagePrecedes(int page1, int page2)
@@ -960,11 +945,12 @@ CommitTsPagePrecedes(int page1, int page2)
 	TransactionId xid2;
 
 	xid1 = ((TransactionId) page1) * COMMIT_TS_XACTS_PER_PAGE;
-	xid1 += FirstNormalTransactionId;
+	xid1 += FirstNormalTransactionId + 1;
 	xid2 = ((TransactionId) page2) * COMMIT_TS_XACTS_PER_PAGE;
-	xid2 += FirstNormalTransactionId;
+	xid2 += FirstNormalTransactionId + 1;
 
-	return TransactionIdPrecedes(xid1, xid2);
+	return (TransactionIdPrecedes(xid1, xid2) &&
+			TransactionIdPrecedes(xid1, xid2 + COMMIT_TS_XACTS_PER_PAGE - 1));
 }
 
 
@@ -993,28 +979,6 @@ WriteTruncateXlogRec(int pageno, TransactionId oldestXid)
 	XLogBeginInsert();
 	XLogRegisterData((char *) (&xlrec), SizeOfCommitTsTruncate);
 	(void) XLogInsert(RM_COMMIT_TS_ID, COMMIT_TS_TRUNCATE);
-}
-
-/*
- * Write a SETTS xlog record
- */
-static void
-WriteSetTimestampXlogRec(TransactionId mainxid, int nsubxids,
-						 TransactionId *subxids, TimestampTz timestamp,
-						 RepOriginId nodeid)
-{
-	xl_commit_ts_set record;
-
-	record.timestamp = timestamp;
-	record.nodeid = nodeid;
-	record.mainxid = mainxid;
-
-	XLogBeginInsert();
-	XLogRegisterData((char *) &record,
-					 offsetof(xl_commit_ts_set, mainxid) +
-					 sizeof(TransactionId));
-	XLogRegisterData((char *) subxids, nsubxids * sizeof(TransactionId));
-	XLogInsert(RM_COMMIT_TS_ID, COMMIT_TS_SETTS);
 }
 
 /*
@@ -1057,29 +1021,15 @@ commit_ts_redo(XLogReaderState *record)
 
 		SimpleLruTruncate(CommitTsCtl, trunc->pageno);
 	}
-	else if (info == COMMIT_TS_SETTS)
-	{
-		xl_commit_ts_set *setts = (xl_commit_ts_set *) XLogRecGetData(record);
-		int			nsubxids;
-		TransactionId *subxids;
-
-		nsubxids = ((XLogRecGetDataLen(record) - SizeOfCommitTsSet) /
-					sizeof(TransactionId));
-		if (nsubxids > 0)
-		{
-			subxids = palloc(sizeof(TransactionId) * nsubxids);
-			memcpy(subxids,
-				   XLogRecGetData(record) + SizeOfCommitTsSet,
-				   sizeof(TransactionId) * nsubxids);
-		}
-		else
-			subxids = NULL;
-
-		TransactionTreeSetCommitTsData(setts->mainxid, nsubxids, subxids,
-									   setts->timestamp, setts->nodeid, true);
-		if (subxids)
-			pfree(subxids);
-	}
 	else
 		elog(PANIC, "commit_ts_redo: unknown op code %u", info);
+}
+
+/*
+ * Entrypoint for sync.c to sync commit_ts files.
+ */
+int
+committssyncfiletag(const FileTag *ftag, char *path)
+{
+	return SlruSyncFileTag(CommitTsCtl, ftag, path);
 }

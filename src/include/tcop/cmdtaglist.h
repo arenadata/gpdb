@@ -8,7 +8,7 @@
  * determined by the PG_CMDTAG macro, which is not defined in this file;
  * it can be defined by the caller for special purposes.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/tcop/cmdtaglist.h
@@ -158,7 +158,6 @@ PG_CMDTAG(CMDTAG_DROP_OWNED, "DROP OWNED", true, false, false)
 PG_CMDTAG(CMDTAG_DROP_POLICY, "DROP POLICY", true, false, false)
 PG_CMDTAG(CMDTAG_DROP_PROCEDURE, "DROP PROCEDURE", true, false, false)
 PG_CMDTAG(CMDTAG_DROP_PUBLICATION, "DROP PUBLICATION", true, false, false)
-PG_CMDTAG(CMDTAG_DROP_REPLICATION_SLOT, "DROP REPLICATION SLOT", false, false, false)
 PG_CMDTAG(CMDTAG_DROP_ROLE, "DROP ROLE", false, false, false)
 PG_CMDTAG(CMDTAG_DROP_ROUTINE, "DROP ROUTINE", true, false, false)
 PG_CMDTAG(CMDTAG_DROP_RULE, "DROP RULE", true, false, false)
@@ -188,6 +187,7 @@ PG_CMDTAG(CMDTAG_INSERT, "INSERT", false, false, true)
 PG_CMDTAG(CMDTAG_LISTEN, "LISTEN", false, false, false)
 PG_CMDTAG(CMDTAG_LOAD, "LOAD", false, false, false)
 PG_CMDTAG(CMDTAG_LOCK_TABLE, "LOCK TABLE", false, false, false)
+PG_CMDTAG(CMDTAG_MERGE, "MERGE", false, false, true)
 PG_CMDTAG(CMDTAG_MOVE, "MOVE", false, false, true)
 PG_CMDTAG(CMDTAG_NOTIFY, "NOTIFY", false, false, false)
 PG_CMDTAG(CMDTAG_PREPARE, "PREPARE", false, false, false)
@@ -250,6 +250,7 @@ PG_CMDTAG(CMDTAG_MPPDTX_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL, "Rollback Curr
 PG_CMDTAG(CMDTAG_MPPDTX_COMMAND_UNKNOWN, "Unknown", false, false, false)
 PG_CMDTAG(CMDTAG_MPPEXEC_DELETE, "MPPEXEC DELETE", false, false, true)
 PG_CMDTAG(CMDTAG_MPPEXEC_INSERT, "MPPEXEC INSERT", false, false, true)
+PG_CMDTAG(CMDTAG_MPPEXEC_MERGE, "MPPEXEC MERGE", false, false, true)
 PG_CMDTAG(CMDTAG_MPPEXEC, "MPPEXEC", false, false, false)
 PG_CMDTAG(CMDTAG_MPPEXEC_SELECT, "MPPEXEC SELECT", false, false, true)
 PG_CMDTAG(CMDTAG_MPPEXEC_UPDATE, "MPPEXEC UPDATE", false, false, true)

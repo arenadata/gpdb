@@ -43,8 +43,8 @@ VACUUM
 SELECT DISTINCT segno, tupcount, state FROM gp_toolkit.__gp_aocsseg('uaocs_threshold');
  segno | tupcount | state 
 -------+----------+-------
-     2 |       89 |     1
      1 |        0 |     1
+     2 |       89 |     1
 (2 rows)
 
 -- no invisible tuples, no vacuum
@@ -53,8 +53,8 @@ VACUUM
 SELECT DISTINCT segno, tupcount, state FROM gp_toolkit.__gp_aocsseg('uaocs_threshold');
  segno | tupcount | state 
 -------+----------+-------
-     2 |       89 |     1
      1 |        0 |     1
+     2 |       89 |     1
 (2 rows)
 
 DELETE FROM uaocs_threshold WHERE a < 15;
@@ -72,8 +72,8 @@ VACUUM
 SELECT DISTINCT segno, tupcount, state FROM gp_toolkit.__gp_aocsseg('uaocs_threshold');
  segno | tupcount | state 
 -------+----------+-------
-     2 |       89 |     1
      1 |        0 |     1
+     2 |       89 |     1
 (2 rows)
 
 SET gp_appendonly_compaction_threshold=2;
@@ -95,9 +95,9 @@ DELETE 74
 SELECT DISTINCT segno, tupcount, state FROM gp_toolkit.__gp_aocsseg('uaocs_threshold');
  segno | tupcount | state 
 -------+----------+-------
-     1 |       32 |     1
-     1 |       40 |     1
      1 |       86 |     1
+     1 |       40 |     1
+     1 |       32 |     1
      2 |       29 |     1
 (4 rows)
 
@@ -106,11 +106,11 @@ VACUUM
 SELECT DISTINCT segno, tupcount, state FROM gp_toolkit.__gp_aocsseg('uaocs_threshold');
  segno | tupcount | state 
 -------+----------+-------
-     1 |        0 |     1
-     1 |       86 |     1
      2 |        0 |     1
-     2 |        9 |     1
+     1 |        0 |     1
      2 |       11 |     1
+     2 |        9 |     1
+     1 |       86 |     1
      3 |        7 |     1
 (6 rows)
 
@@ -123,6 +123,8 @@ CREATE TABLE
 INSERT INTO uaocs_threshold_boundary SELECT 1, i from generate_series(1, 1000) i;
 INSERT 0 1000
 DELETE FROM uaocs_threshold_boundary WHERE b < 102;
+NOTICE:  One or more columns in the following table(s) do not have statistics: uaocs_threshold_boundary
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
 DELETE 101
 VACUUM uaocs_threshold_boundary;
 VACUUM

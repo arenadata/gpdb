@@ -10,7 +10,7 @@
  * scan where each backend reads an arbitrary subset of the tuples that were
  * written.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -312,7 +312,8 @@ sts_puttuple(SharedTuplestoreAccessor *accessor, void *meta_data,
 		/* Create one.  Only this backend will write into it. */
 		sts_filename(name, accessor, accessor->participant);
 		work_set = workfile_mgr_create_set("SharedTupleStore", name, false /* hold pin */);
-		accessor->write_file = BufFileCreateShared(accessor->fileset, name, work_set);
+		accessor->write_file =
+			BufFileCreateFileSet(&accessor->fileset->fs, name, work_set);
 
 		/* Set up the shared state for this backend's file. */
 		participant = &accessor->sts->participants[accessor->participant];
@@ -561,14 +562,15 @@ sts_parallel_scan_next(SharedTuplestoreAccessor *accessor, void *meta_data)
 
 				sts_filename(name, accessor, accessor->read_participant);
 				accessor->read_file =
-					BufFileOpenShared(accessor->fileset, name);
+					BufFileOpenFileSet(&accessor->fileset->fs, name, O_RDONLY,
+									   false);
 			}
 
 			/* Seek and load the chunk header. */
 			if (BufFileSeekBlock(accessor->read_file, read_page) != 0)
 				ereport(ERROR,
 						(errcode_for_file_access(),
-						 errmsg("could not seek block %u in shared tuplestore temporary file",
+						 errmsg("could not seek to block %u in shared tuplestore temporary file",
 								read_page)));
 			nread = BufFileRead(accessor->read_file, &chunk_header,
 								STS_CHUNK_HEADER_SIZE);

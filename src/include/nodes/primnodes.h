@@ -9,7 +9,7 @@
  *
  * Portions Copyright (c) 2005-2009, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/primnodes.h
@@ -36,7 +36,7 @@
  *	  specifies an alias for a range variable; the alias might also
  *	  specify renaming of columns within the table.
  *
- * Note: colnames is a list of Value nodes (always strings).  In Alias structs
+ * Note: colnames is a list of String nodes.  In Alias structs
  * associated with RTEs, there may be entries corresponding to dropped
  * columns; these are normally empty strings ("").  See parsenodes.h for info.
  */
@@ -77,15 +77,22 @@ typedef struct RangeVar
 	int			location;		/* token location, or -1 if unknown */
 } RangeVar;
 
+typedef enum TableFuncType
+{
+	TFT_XMLTABLE,
+	TFT_JSON_TABLE
+} TableFuncType;
+
 /*
- * TableFunc - node for a table function, such as XMLTABLE.
+ * TableFunc - node for a table function, such as XMLTABLE or JSON_TABLE.
  *
- * Entries in the ns_names list are either string Value nodes containing
+ * Entries in the ns_names list are either String nodes containing
  * literal namespace names, or NULL pointers to represent DEFAULT.
  */
 typedef struct TableFunc
 {
 	NodeTag		type;
+	TableFuncType functype;		/* XMLTABLE or JSON_TABLE */
 	List	   *ns_uris;		/* list of namespace URI expressions */
 	List	   *ns_names;		/* list of namespace names or NULL */
 	Node	   *docexpr;		/* input document expression */
@@ -96,7 +103,9 @@ typedef struct TableFunc
 	List	   *colcollations;	/* OID list of column collation OIDs */
 	List	   *colexprs;		/* list of column filter expressions */
 	List	   *coldefexprs;	/* list of column default expressions */
+	List	   *colvalexprs;	/* list of column value expressions */
 	Bitmapset  *notnulls;		/* nullability flag for each output column */
+	Node	   *plan;			/* JSON_TABLE plan */
 	int			ordinalitycol;	/* counts from 0; -1 if none specified */
 	int			location;		/* token location, or -1 if unknown */
 } TableFunc;
@@ -183,6 +192,10 @@ typedef struct Expr
  * than a heap column.  (In ForeignScan and CustomScan plan nodes, INDEX_VAR
  * is abused to signify references to columns of a custom scan tuple type.)
  *
+ * ROWID_VAR is used in the planner to identify nonce variables that carry
+ * row identity information during UPDATE/DELETE.  This value should never
+ * be seen outside the planner.
+ *
  * In the parser, varnosyn and varattnosyn are either identical to
  * varno/varattno, or they specify the column's position in an aliased JOIN
  * RTE that hides the semantic referent RTE's refname.  This is a syntactic
@@ -193,11 +206,12 @@ typedef struct Expr
  * in the planner and doesn't correspond to any simple relation column may
  * have varnosyn = varattnosyn = 0.
  */
-#define    INNER_VAR		65000	/* reference to inner subplan */
-#define    OUTER_VAR		65001	/* reference to outer subplan */
-#define    INDEX_VAR		65002	/* reference to index column */
+#define    INNER_VAR		(-1)	/* reference to inner subplan */
+#define    OUTER_VAR		(-2)	/* reference to outer subplan */
+#define    INDEX_VAR		(-3)	/* reference to index column */
+#define    ROWID_VAR		(-4)	/* row identity column during planning */
 
-#define IS_SPECIAL_VARNO(varno)		((varno) >= INNER_VAR)
+#define IS_SPECIAL_VARNO(varno)		((int) (varno) < 0)
 
 /* Symbols for the indexes of the special RTE entries in rules */
 #define    PRS2_OLD_VARNO			1
@@ -206,8 +220,8 @@ typedef struct Expr
 typedef struct Var
 {
 	Expr		xpr;
-	Index		varno;			/* index of this var's relation in the range
-								 * table, or INNER_VAR/OUTER_VAR/INDEX_VAR */
+	int			varno;			/* index of this var's relation in the range
+								 * table, or INNER_VAR/OUTER_VAR/etc */
 	AttrNumber	varattno;		/* attribute number of this var, or zero for
 								 * all attrs ("whole-row Var") */
 	Oid			vartype;		/* pg_type OID for the type of this var */
@@ -331,6 +345,12 @@ typedef struct Param
  * a crosscheck that the Aggrefs match the plan; but note that when aggsplit
  * indicates a non-final mode, aggtype reflects the transition data type
  * not the SQL-level output type of the aggregate.
+ *
+ * aggno and aggtransno are -1 in the parse stage, and are set in planning.
+ * Aggregates with the same 'aggno' represent the same aggregate expression,
+ * and can share the result.  Aggregates with same 'transno' but different
+ * 'aggno' can share the same transition state, only the final function needs
+ * to be called separately.
  */
 typedef struct Aggref
 {
@@ -352,6 +372,8 @@ typedef struct Aggref
 	char		aggkind;		/* aggregate kind (see pg_aggregate.h) */
 	Index		agglevelsup;	/* > 0 if agg belongs to outer query */
 	AggSplit	aggsplit;		/* expected agg-splitting mode of parent Agg */
+	int			aggno;			/* unique ID within the Agg node */
+	int			aggtransno;		/* unique ID of transition state in the Agg */
 	int			location;		/* token location, or -1 if unknown */
 
 	int         agg_expr_id;    /* gpdb private, if aggref is distinct qualified, record AggExprId value in tuple split */
@@ -500,14 +522,14 @@ typedef struct WindowFunc
 	int			location;		/* token location, or -1 if unknown */
 } WindowFunc;
 
-/* ----------------
- *	SubscriptingRef: describes a subscripting operation over a container
- *			(array, etc).
+/*
+ * SubscriptingRef: describes a subscripting operation over a container
+ * (array, etc).
  *
  * A SubscriptingRef can describe fetching a single element from a container,
- * fetching a part of container (e.g. array slice), storing a single element into
- * a container, or storing a slice.  The "store" cases work with an
- * initial container value and a source value that is inserted into the
+ * fetching a part of a container (e.g. an array slice), storing a single
+ * element into a container, or storing a slice.  The "store" cases work with
+ * an initial container value and a source value that is inserted into the
  * appropriate part of the container; the result of the operation is an
  * entire new modified container value.
  *
@@ -520,23 +542,32 @@ typedef struct WindowFunc
  *
  * In the slice case, individual expressions in the subscript lists can be
  * NULL, meaning "substitute the array's current lower or upper bound".
+ * (Non-array containers may or may not support this.)
  *
- * Note: the result datatype is the element type when fetching a single
- * element; but it is the array type when doing subarray fetch or either
- * type of store.
+ * refcontainertype is the actual container type that determines the
+ * subscripting semantics.  (This will generally be either the exposed type of
+ * refexpr, or the base type if that is a domain.)  refelemtype is the type of
+ * the container's elements; this is saved for the use of the subscripting
+ * functions, but is not used by the core code.  refrestype, reftypmod, and
+ * refcollid describe the type of the SubscriptingRef's result.  In a store
+ * expression, refrestype will always match refcontainertype; in a fetch,
+ * it could be refelemtype for an element fetch, or refcontainertype for a
+ * slice fetch, or possibly something else as determined by type-specific
+ * subscripting logic.  Likewise, reftypmod and refcollid will match the
+ * container's properties in a store, but could be different in a fetch.
  *
  * Note: for the cases where a container is returned, if refexpr yields a R/W
- * expanded container, then the implementation is allowed to modify that object
- * in-place and return the same object.)
- * ----------------
+ * expanded container, then the implementation is allowed to modify that
+ * object in-place and return the same object.
  */
 typedef struct SubscriptingRef
 {
 	Expr		xpr;
 	Oid			refcontainertype;	/* type of the container proper */
-	Oid			refelemtype;	/* type of the container elements */
-	int32		reftypmod;		/* typmod of the container (and elements too) */
-	Oid			refcollid;		/* OID of collation, or InvalidOid if none */
+	Oid			refelemtype;	/* the container type's pg_type.typelem */
+	Oid			refrestype;		/* type of the SubscriptingRef's result */
+	int32		reftypmod;		/* typmod of the result */
+	Oid			refcollid;		/* collation of result, or InvalidOid if none */
 	List	   *refupperindexpr;	/* expressions that evaluate to upper
 									 * container indexes */
 	List	   *reflowerindexpr;	/* expressions that evaluate to lower
@@ -544,7 +575,6 @@ typedef struct SubscriptingRef
 									 * container element */
 	Expr	   *refexpr;		/* the expression that evaluates to a
 								 * container value */
-
 	Expr	   *refassgnexpr;	/* expression for the source value, or NULL if
 								 * fetch */
 } SubscriptingRef;
@@ -559,11 +589,15 @@ typedef enum CoercionContext
 {
 	COERCION_IMPLICIT,			/* coercion in context of expression */
 	COERCION_ASSIGNMENT,		/* coercion in context of assignment */
+	COERCION_PLPGSQL,			/* if no assignment cast, use CoerceViaIO */
 	COERCION_EXPLICIT			/* explicit cast operation */
 } CoercionContext;
 
 /*
- * CoercionForm - how to display a node that could have come from a cast
+ * CoercionForm - how to display a FuncExpr or related node
+ *
+ * "Coercion" is a bit of a misnomer, since this value records other
+ * special syntaxes besides casts, but for now we'll keep this naming.
  *
  * NB: equal() ignores CoercionForm fields, therefore this *must* not carry
  * any semantically significant information.  We need that behavior so that
@@ -575,7 +609,8 @@ typedef enum CoercionForm
 {
 	COERCE_EXPLICIT_CALL,		/* display as a function call */
 	COERCE_EXPLICIT_CAST,		/* display as an explicit cast */
-	COERCE_IMPLICIT_CAST		/* implicit cast, so hide it */
+	COERCE_IMPLICIT_CAST,		/* implicit cast, so hide it */
+	COERCE_SQL_SYNTAX			/* display with SQL-mandated special syntax */
 } CoercionForm;
 
 /*
@@ -671,12 +706,29 @@ typedef OpExpr NullIfExpr;
  * is almost the same as for the underlying operator, but we need a useOr
  * flag to remember whether it's ANY or ALL, and we don't have to store
  * the result type (or the collation) because it must be boolean.
+ *
+ * A ScalarArrayOpExpr with a valid hashfuncid is evaluated during execution
+ * by building a hash table containing the Const values from the RHS arg.
+ * This table is probed during expression evaluation.  The planner will set
+ * hashfuncid to the hash function which must be used to build and probe the
+ * hash table.  The executor determines if it should use hash-based checks or
+ * the more traditional means based on if the hashfuncid is set or not.
+ *
+ * When performing hashed NOT IN, the negfuncid will also be set to the
+ * equality function which the hash table must use to build and probe the hash
+ * table.  opno and opfuncid will remain set to the <> operator and its
+ * corresponding function and won't be used during execution.  For
+ * non-hashtable based NOT INs, negfuncid will be set to InvalidOid.  See
+ * convert_saop_to_hashed_saop().
  */
 typedef struct ScalarArrayOpExpr
 {
 	Expr		xpr;
 	Oid			opno;			/* PG_OPERATOR OID of the operator */
-	Oid			opfuncid;		/* PG_PROC OID of underlying function */
+	Oid			opfuncid;		/* PG_PROC OID of comparison function */
+	Oid			hashfuncid;		/* PG_PROC OID of hash func or InvalidOid */
+	Oid			negfuncid;		/* PG_PROC OID of negator of opfuncid function
+								 * or InvalidOid.  See above */
 	bool		useOr;			/* true for ANY, false for ALL */
 	Oid			inputcollid;	/* OID of collation that operator should use */
 	List	   *args;			/* the scalar and array operands */
@@ -885,6 +937,9 @@ typedef struct SubPlan
 
 /*
  * AlternativeSubPlan - expression node for a choice among SubPlans
+ *
+ * This is used only transiently during planning: by the time the plan
+ * reaches the executor, all AlternativeSubPlan nodes have been removed.
  *
  * The subplans are given as a List so that the node definition need not
  * change if there's ever more than two alternatives.  For the moment,
@@ -1156,15 +1211,13 @@ typedef struct ArrayExpr
  * than vice versa.)  It is important not to assume that length(args) is
  * the same as the number of columns logically present in the rowtype.
  *
- * colnames provides field names in cases where the names can't easily be
- * obtained otherwise.  Names *must* be provided if row_typeid is RECORDOID.
- * If row_typeid identifies a known composite type, colnames can be NIL to
- * indicate the type's cataloged field names apply.  Note that colnames can
- * be non-NIL even for a composite type, and typically is when the RowExpr
- * was created by expanding a whole-row Var.  This is so that we can retain
- * the column alias names of the RTE that the Var referenced (which would
- * otherwise be very difficult to extract from the parsetree).  Like the
- * args list, colnames is one-for-one with physical fields of the rowtype.
+ * colnames provides field names if the ROW() result is of type RECORD.
+ * Names *must* be provided if row_typeid is RECORDOID; but if it is a
+ * named composite type, colnames will be ignored in favor of using the
+ * type's cataloged field names, so colnames should be NIL.  Like the
+ * args list, colnames is defined to be one-for-one with physical fields
+ * of the rowtype (although dropped columns shouldn't appear in the
+ * RECORD case, so this fine point is currently moot).
  */
 typedef struct RowExpr
 {
@@ -1319,7 +1372,7 @@ typedef enum XmlExprOp
 	IS_DOCUMENT					/* xmlval IS DOCUMENT */
 } XmlExprOp;
 
-typedef enum
+typedef enum XmlOptionType
 {
 	XMLOPTION_DOCUMENT,
 	XMLOPTION_CONTENT
@@ -1331,13 +1384,267 @@ typedef struct XmlExpr
 	XmlExprOp	op;				/* xml function ID */
 	char	   *name;			/* name in xml(NAME foo ...) syntaxes */
 	List	   *named_args;		/* non-XML expressions for xml_attributes */
-	List	   *arg_names;		/* parallel list of Value strings */
+	List	   *arg_names;		/* parallel list of String values */
 	List	   *args;			/* list of expressions */
 	XmlOptionType xmloption;	/* DOCUMENT or CONTENT */
 	Oid			type;			/* target type/typmod for XMLSERIALIZE */
 	int32		typmod;
 	int			location;		/* token location, or -1 if unknown */
 } XmlExpr;
+
+/*
+ * JsonExprOp -
+ *		enumeration of JSON functions using JSON path
+ */
+typedef enum JsonExprOp
+{
+	JSON_VALUE_OP,				/* JSON_VALUE() */
+	JSON_QUERY_OP,				/* JSON_QUERY() */
+	JSON_EXISTS_OP,				/* JSON_EXISTS() */
+	JSON_TABLE_OP				/* JSON_TABLE() */
+} JsonExprOp;
+
+/*
+ * JsonEncoding -
+ *		representation of JSON ENCODING clause
+ */
+typedef enum JsonEncoding
+{
+	JS_ENC_DEFAULT,				/* unspecified */
+	JS_ENC_UTF8,
+	JS_ENC_UTF16,
+	JS_ENC_UTF32,
+} JsonEncoding;
+
+/*
+ * JsonFormatType -
+ *		enumeration of JSON formats used in JSON FORMAT clause
+ */
+typedef enum JsonFormatType
+{
+	JS_FORMAT_DEFAULT,			/* unspecified */
+	JS_FORMAT_JSON,				/* FORMAT JSON [ENCODING ...] */
+	JS_FORMAT_JSONB				/* implicit internal format for RETURNING
+								 * jsonb */
+} JsonFormatType;
+
+/*
+ * JsonBehaviorType -
+ *		enumeration of behavior types used in JSON ON ... BEHAVIOR clause
+ *
+ * 		If enum members are reordered, get_json_behavior() from ruleutils.c
+ * 		must be updated accordingly.
+ */
+typedef enum JsonBehaviorType
+{
+	JSON_BEHAVIOR_NULL = 0,
+	JSON_BEHAVIOR_ERROR,
+	JSON_BEHAVIOR_EMPTY,
+	JSON_BEHAVIOR_TRUE,
+	JSON_BEHAVIOR_FALSE,
+	JSON_BEHAVIOR_UNKNOWN,
+	JSON_BEHAVIOR_EMPTY_ARRAY,
+	JSON_BEHAVIOR_EMPTY_OBJECT,
+	JSON_BEHAVIOR_DEFAULT
+} JsonBehaviorType;
+
+/*
+ * JsonWrapper -
+ *		representation of WRAPPER clause for JSON_QUERY()
+ */
+typedef enum JsonWrapper
+{
+	JSW_NONE,
+	JSW_CONDITIONAL,
+	JSW_UNCONDITIONAL,
+} JsonWrapper;
+
+/*
+ * JsonFormat -
+ *		representation of JSON FORMAT clause
+ */
+typedef struct JsonFormat
+{
+	NodeTag		type;
+	JsonFormatType format_type; /* format type */
+	JsonEncoding encoding;		/* JSON encoding */
+	int			location;		/* token location, or -1 if unknown */
+} JsonFormat;
+
+/*
+ * JsonReturning -
+ *		transformed representation of JSON RETURNING clause
+ */
+typedef struct JsonReturning
+{
+	NodeTag		type;
+	JsonFormat *format;			/* output JSON format */
+	Oid			typid;			/* target type Oid */
+	int32		typmod;			/* target type modifier */
+} JsonReturning;
+
+/*
+ * JsonValueExpr -
+ *		representation of JSON value expression (expr [FORMAT json_format])
+ */
+typedef struct JsonValueExpr
+{
+	NodeTag		type;
+	Expr	   *raw_expr;		/* raw expression */
+	Expr	   *formatted_expr; /* formatted expression or NULL */
+	JsonFormat *format;			/* FORMAT clause, if specified */
+} JsonValueExpr;
+
+typedef enum JsonConstructorType
+{
+	JSCTOR_JSON_OBJECT = 1,
+	JSCTOR_JSON_ARRAY = 2,
+	JSCTOR_JSON_OBJECTAGG = 3,
+	JSCTOR_JSON_ARRAYAGG = 4,
+	JSCTOR_JSON_SCALAR = 5,
+	JSCTOR_JSON_SERIALIZE = 6,
+	JSCTOR_JSON_PARSE = 7
+} JsonConstructorType;
+
+/*
+ * JsonConstructorExpr -
+ *		wrapper over FuncExpr/Aggref/WindowFunc for SQL/JSON constructors
+ */
+typedef struct JsonConstructorExpr
+{
+	Expr		xpr;
+	JsonConstructorType type;	/* constructor type */
+	List	   *args;
+	Expr	   *func;			/* underlying json[b]_xxx() function call */
+	Expr	   *coercion;		/* coercion to RETURNING type */
+	JsonReturning *returning;	/* RETURNING clause */
+	bool		absent_on_null; /* ABSENT ON NULL? */
+	bool		unique;			/* WITH UNIQUE KEYS? (JSON_OBJECT[AGG] only) */
+	int			location;
+} JsonConstructorExpr;
+
+/*
+ * JsonValueType -
+ *		representation of JSON item type in IS JSON predicate
+ */
+typedef enum JsonValueType
+{
+	JS_TYPE_ANY,				/* IS JSON [VALUE] */
+	JS_TYPE_OBJECT,				/* IS JSON OBJECT */
+	JS_TYPE_ARRAY,				/* IS JSON ARRAY */
+	JS_TYPE_SCALAR				/* IS JSON SCALAR */
+} JsonValueType;
+
+/*
+ * JsonIsPredicate -
+ *		representation of IS JSON predicate
+ */
+typedef struct JsonIsPredicate
+{
+	NodeTag		type;
+	Node	   *expr;			/* subject expression */
+	JsonFormat *format;			/* FORMAT clause, if specified */
+	JsonValueType item_type;	/* JSON item type */
+	bool		unique_keys;	/* check key uniqueness? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonIsPredicate;
+
+/*
+ * JsonBehavior -
+ *		representation of JSON ON ... BEHAVIOR clause
+ */
+typedef struct JsonBehavior
+{
+	NodeTag		type;
+	JsonBehaviorType btype;		/* behavior type */
+	Node	   *default_expr;	/* default expression, if any */
+} JsonBehavior;
+
+/*
+ * JsonCoercion -
+ *		coercion from SQL/JSON item types to SQL types
+ */
+typedef struct JsonCoercion
+{
+	NodeTag		type;
+	Node	   *expr;			/* resulting expression coerced to target type */
+	bool		via_populate;	/* coerce result using json_populate_type()? */
+	bool		via_io;			/* coerce result using type input function? */
+	Oid			collation;		/* collation for coercion via I/O or populate */
+} JsonCoercion;
+
+/*
+ * JsonItemCoercions -
+ *		expressions for coercion from SQL/JSON item types directly to the
+ *		output SQL type
+ */
+typedef struct JsonItemCoercions
+{
+	NodeTag		type;
+	JsonCoercion *null;
+	JsonCoercion *string;
+	JsonCoercion *numeric;
+	JsonCoercion *boolean;
+	JsonCoercion *date;
+	JsonCoercion *time;
+	JsonCoercion *timetz;
+	JsonCoercion *timestamp;
+	JsonCoercion *timestamptz;
+	JsonCoercion *composite;	/* arrays and objects */
+} JsonItemCoercions;
+
+/*
+ * JsonExpr -
+ *		transformed representation of JSON_VALUE(), JSON_QUERY(), JSON_EXISTS()
+ */
+typedef struct JsonExpr
+{
+	Expr		xpr;
+	JsonExprOp	op;				/* json function ID */
+	Node	   *formatted_expr; /* formatted context item expression */
+	JsonCoercion *result_coercion;	/* resulting coercion to RETURNING type */
+	JsonFormat *format;			/* context item format (JSON/JSONB) */
+	Node	   *path_spec;		/* JSON path specification expression */
+	List	   *passing_names;	/* PASSING argument names */
+	List	   *passing_values; /* PASSING argument values */
+	JsonReturning *returning;	/* RETURNING clause type/format info */
+	JsonBehavior *on_empty;		/* ON EMPTY behavior */
+	JsonBehavior *on_error;		/* ON ERROR behavior */
+	JsonItemCoercions *coercions;	/* coercions for JSON_VALUE */
+	JsonWrapper wrapper;		/* WRAPPER for JSON_QUERY */
+	bool		omit_quotes;	/* KEEP/OMIT QUOTES for JSON_QUERY */
+	int			location;		/* token location, or -1 if unknown */
+} JsonExpr;
+
+/*
+ * JsonTableParent -
+ *		transformed representation of parent JSON_TABLE plan node
+ */
+typedef struct JsonTableParent
+{
+	NodeTag		type;
+	Const	   *path;			/* jsonpath constant */
+	char	   *name;			/* path name */
+	Node	   *child;			/* nested columns, if any */
+	bool		outerJoin;		/* outer or inner join for nested columns? */
+	int			colMin;			/* min column index in the resulting column
+								 * list */
+	int			colMax;			/* max column index in the resulting column
+								 * list */
+	bool		errorOnError;	/* ERROR/EMPTY ON ERROR behavior */
+} JsonTableParent;
+
+/*
+ * JsonTableSibling -
+ *		transformed representation of joined sibling JSON_TABLE plan node
+ */
+typedef struct JsonTableSibling
+{
+	NodeTag		type;
+	Node	   *larg;			/* left join node */
+	Node	   *rarg;			/* right join node */
+	bool		cross;			/* cross or union join? */
+} JsonTableSibling;
 
 /* ----------------
  * NullTest
@@ -1455,6 +1762,7 @@ typedef struct SetToDefault
  * of the target relation being constrained; this aids placing the expression
  * correctly during planning.  We can assume however that its "levelsup" is
  * always zero, due to the syntactic constraints on where it can appear.
+ * Also, cvarno will always be a true RT index, never INNER_VAR etc.
  *
  * CURRENT OF is a bit like a stable function, in that it must be evaluated
  * once during constant folding to give the QEs a consistent view of the query.
@@ -1519,13 +1827,14 @@ typedef struct InferenceElem
  * column for the item; so there may be missing or out-of-order resnos.
  * It is even legal to have duplicated resnos; consider
  *		UPDATE table SET arraycol[1] = ..., arraycol[2] = ..., ...
- * The two meanings come together in the executor, because the planner
- * transforms INSERT/UPDATE tlists into a normalized form with exactly
- * one entry for each column of the destination table.  Before that's
- * happened, however, it is risky to assume that resno == position.
- * Generally get_tle_by_resno() should be used rather than list_nth()
- * to fetch tlist entries by resno, and only in SELECT should you assume
- * that resno is a unique identifier.
+ * In an INSERT, the rewriter and planner will normalize the tlist by
+ * reordering it into physical column order and filling in default values
+ * for any columns not assigned values by the original query.  In an UPDATE,
+ * after the rewriter merges multiple assignments for the same column, the
+ * planner extracts the target-column numbers into a separate "update_colnos"
+ * list, and then renumbers the tlist elements serially.  Thus, tlist resnos
+ * match ordinal position in all tlists seen by the executor; but it is wrong
+ * to assume that before planning has happened.
  *
  * resname is required to represent the correct column name in non-resjunk
  * entries of top-level SELECT targetlists, since it will be used as the
@@ -1632,6 +1941,11 @@ typedef struct RangeTblRef
  * alias has a critical impact on semantics, because a join with an alias
  * restricts visibility of the tables/columns inside it.
  *
+ * join_using_alias is an Alias node representing the join correlation
+ * name that SQL:2016 and later allow to be attached to JOIN/USING.
+ * Its column alias list includes only the common column names from USING,
+ * and it does not restrict visibility of the join's input tables.
+ *
  * During parse analysis, an RTE is created for the Join, and its index
  * is filled into rtindex.  This RTE is present mainly so that Vars can
  * be created that refer to the outputs of the join.  The planner sometimes
@@ -1647,6 +1961,7 @@ typedef struct JoinExpr
 	Node	   *larg;			/* left subtree */
 	Node	   *rarg;			/* right subtree */
 	List	   *usingClause;	/* USING clause, if any (list of String) */
+	Alias	   *join_using_alias;	/* alias attached to USING clause, if any */
 	Node	   *quals;			/* qualifiers on join, if any */
 	Alias	   *alias;			/* user-written alias clause, if any */
 	int			rtindex;		/* RT index assigned for join, or 0 */

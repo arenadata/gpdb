@@ -13,7 +13,7 @@
  * - circle
  * - polygon
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1055,12 +1055,19 @@ line_send(PG_FUNCTION_ARGS)
 static inline void
 line_construct(LINE *result, Point *pt, float8 m)
 {
-	if (m == DBL_MAX)
+	if (isinf(m))
 	{
 		/* vertical - use "x = C" */
 		result->A = -1.0;
 		result->B = 0.0;
 		result->C = pt->x;
+	}
+	else if (m == 0)
+	{
+		/* horizontal - use "y = C" */
+		result->A = 0.0;
+		result->B = -1.0;
+		result->C = pt->y;
 	}
 	else
 	{
@@ -1155,9 +1162,6 @@ line_horizontal(PG_FUNCTION_ARGS)
 
 /*
  * Check whether the two lines are the same
- *
- * We consider NaNs values to be equal to each other to let those lines
- * to be found.
  */
 Datum
 line_eq(PG_FUNCTION_ARGS)
@@ -1166,21 +1170,28 @@ line_eq(PG_FUNCTION_ARGS)
 	LINE	   *l2 = PG_GETARG_LINE_P(1);
 	float8		ratio;
 
-	if (!FPzero(l2->A) && !isnan(l2->A))
+	/* If any NaNs are involved, insist on exact equality */
+	if (unlikely(isnan(l1->A) || isnan(l1->B) || isnan(l1->C) ||
+				 isnan(l2->A) || isnan(l2->B) || isnan(l2->C)))
+	{
+		PG_RETURN_BOOL(float8_eq(l1->A, l2->A) &&
+					   float8_eq(l1->B, l2->B) &&
+					   float8_eq(l1->C, l2->C));
+	}
+
+	/* Otherwise, lines whose parameters are proportional are the same */
+	if (!FPzero(l2->A))
 		ratio = float8_div(l1->A, l2->A);
-	else if (!FPzero(l2->B) && !isnan(l2->B))
+	else if (!FPzero(l2->B))
 		ratio = float8_div(l1->B, l2->B);
-	else if (!FPzero(l2->C) && !isnan(l2->C))
+	else if (!FPzero(l2->C))
 		ratio = float8_div(l1->C, l2->C);
 	else
 		ratio = 1.0;
 
-	PG_RETURN_BOOL((FPeq(l1->A, float8_mul(ratio, l2->A)) &&
-					FPeq(l1->B, float8_mul(ratio, l2->B)) &&
-					FPeq(l1->C, float8_mul(ratio, l2->C))) ||
-				   (float8_eq(l1->A, l2->A) &&
-					float8_eq(l1->B, l2->B) &&
-					float8_eq(l1->C, l2->C)));
+	PG_RETURN_BOOL(FPeq(l1->A, float8_mul(ratio, l2->A)) &&
+				   FPeq(l1->B, float8_mul(ratio, l2->B)) &&
+				   FPeq(l1->C, float8_mul(ratio, l2->C)));
 }
 
 
@@ -1197,7 +1208,7 @@ line_sl(LINE *line)
 	if (FPzero(line->A))
 		return 0.0;
 	if (FPzero(line->B))
-		return DBL_MAX;
+		return get_float8_infinity();
 	return float8_div(line->A, -line->B);
 }
 
@@ -1209,7 +1220,7 @@ static inline float8
 line_invsl(LINE *line)
 {
 	if (FPzero(line->A))
-		return DBL_MAX;
+		return get_float8_infinity();
 	if (FPzero(line->B))
 		return 0.0;
 	return float8_div(line->B, line->A);
@@ -1930,15 +1941,16 @@ point_ne(PG_FUNCTION_ARGS)
 
 /*
  * Check whether the two points are the same
- *
- * We consider NaNs coordinates to be equal to each other to let those points
- * to be found.
  */
 static inline bool
 point_eq_point(Point *pt1, Point *pt2)
 {
-	return ((FPeq(pt1->x, pt2->x) && FPeq(pt1->y, pt2->y)) ||
-			(float8_eq(pt1->x, pt2->x) && float8_eq(pt1->y, pt2->y)));
+	/* If any NaNs are involved, insist on exact equality */
+	if (unlikely(isnan(pt1->x) || isnan(pt1->y) ||
+				 isnan(pt2->x) || isnan(pt2->y)))
+		return (float8_eq(pt1->x, pt2->x) && float8_eq(pt1->y, pt2->y));
+
+	return (FPeq(pt1->x, pt2->x) && FPeq(pt1->y, pt2->y));
 }
 
 
@@ -1974,13 +1986,13 @@ point_slope(PG_FUNCTION_ARGS)
 /*
  * Return slope of two points
  *
- * Note that this function returns DBL_MAX when the points are the same.
+ * Note that this function returns Inf when the points are the same.
  */
 static inline float8
 point_sl(Point *pt1, Point *pt2)
 {
 	if (FPeq(pt1->x, pt2->x))
-		return DBL_MAX;
+		return get_float8_infinity();
 	if (FPeq(pt1->y, pt2->y))
 		return 0.0;
 	return float8_div(float8_mi(pt1->y, pt2->y), float8_mi(pt1->x, pt2->x));
@@ -1998,7 +2010,7 @@ point_invsl(Point *pt1, Point *pt2)
 	if (FPeq(pt1->x, pt2->x))
 		return 0.0;
 	if (FPeq(pt1->y, pt2->y))
-		return DBL_MAX;
+		return get_float8_infinity();
 	return float8_div(float8_mi(pt1->x, pt2->x), float8_mi(pt2->y, pt1->y));
 }
 
@@ -2520,44 +2532,6 @@ dist_bs(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(box_closept_lseg(NULL, box, lseg));
 }
 
-/*
- * Distance from a line to a box
- */
-Datum
-dist_lb(PG_FUNCTION_ARGS)
-{
-#ifdef NOT_USED
-	LINE	   *line = PG_GETARG_LINE_P(0);
-	BOX		   *box = PG_GETARG_BOX_P(1);
-#endif
-
-	/* need to think about this one for a while */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("function \"dist_lb\" not implemented")));
-
-	PG_RETURN_NULL();
-}
-
-/*
- * Distance from a box to a line
- */
-Datum
-dist_bl(PG_FUNCTION_ARGS)
-{
-#ifdef NOT_USED
-	BOX		   *box = PG_GETARG_BOX_P(0);
-	LINE	   *line = PG_GETARG_LINE_P(1);
-#endif
-
-	/* need to think about this one for a while */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("function \"dist_bl\" not implemented")));
-
-	PG_RETURN_NULL();
-}
-
 static float8
 dist_cpoly_internal(CIRCLE *circle, POLYGON *poly)
 {
@@ -2935,48 +2909,6 @@ close_pb(PG_FUNCTION_ARGS)
 	PG_RETURN_POINT_P(result);
 }
 
-
-/* close_sl()
- * Closest point on line to line segment.
- *
- * XXX THIS CODE IS WRONG
- * The code is actually calculating the point on the line segment
- *	which is backwards from the routine naming convention.
- * Copied code to new routine close_ls() but haven't fixed this one yet.
- * - thomas 1998-01-31
- */
-Datum
-close_sl(PG_FUNCTION_ARGS)
-{
-#ifdef NOT_USED
-	LSEG	   *lseg = PG_GETARG_LSEG_P(0);
-	LINE	   *line = PG_GETARG_LINE_P(1);
-	Point	   *result;
-	float8		d1,
-				d2;
-
-	result = (Point *) palloc(sizeof(Point));
-
-	if (lseg_interpt_line(result, lseg, line))
-		PG_RETURN_POINT_P(result);
-
-	d1 = line_closept_point(NULL, line, &lseg->p[0]);
-	d2 = line_closept_point(NULL, line, &lseg->p[1]);
-	if (float8_lt(d1, d2))
-		*result = lseg->p[0];
-	else
-		*result = lseg->p[1];
-
-	PG_RETURN_POINT_P(result);
-#endif
-
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("function \"close_sl\" not implemented")));
-
-	PG_RETURN_NULL();
-}
-
 /*
  * Closest point on line segment to line.
  *
@@ -3107,22 +3039,6 @@ close_sb(PG_FUNCTION_ARGS)
 	PG_RETURN_POINT_P(result);
 }
 
-
-Datum
-close_lb(PG_FUNCTION_ARGS)
-{
-#ifdef NOT_USED
-	LINE	   *line = PG_GETARG_LINE_P(0);
-	BOX		   *box = PG_GETARG_BOX_P(1);
-#endif
-
-	/* think about this one for a while */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("function \"close_lb\" not implemented")));
-
-	PG_RETURN_NULL();
-}
 
 /*---------------------------------------------------------------------
  *		on_
@@ -3786,11 +3702,9 @@ poly_same(PG_FUNCTION_ARGS)
 /*-----------------------------------------------------------------
  * Determine if polygon A overlaps polygon B
  *-----------------------------------------------------------------*/
-Datum
-poly_overlap(PG_FUNCTION_ARGS)
+static bool
+poly_overlap_internal(POLYGON *polya, POLYGON *polyb)
 {
-	POLYGON    *polya = PG_GETARG_POLYGON_P(0);
-	POLYGON    *polyb = PG_GETARG_POLYGON_P(1);
 	bool		result;
 
 	Assert(polya->npts > 0 && polyb->npts > 0);
@@ -3841,6 +3755,18 @@ poly_overlap(PG_FUNCTION_ARGS)
 					  point_inside(polyb->p, polya->npts, polya->p));
 		}
 	}
+
+	return result;
+}
+
+Datum
+poly_overlap(PG_FUNCTION_ARGS)
+{
+	POLYGON    *polya = PG_GETARG_POLYGON_P(0);
+	POLYGON    *polyb = PG_GETARG_POLYGON_P(1);
+	bool		result;
+
+	result = poly_overlap_internal(polya, polyb);
 
 	/*
 	 * Avoid leaking memory for toasted inputs ... needed for rtree indexes
@@ -3952,7 +3878,7 @@ lseg_inside_poly(Point *a, Point *b, POLYGON *poly, int start)
 		Point		p;
 
 		/*
-		 * if X-intersection wasn't found  then check central point of tested
+		 * if X-intersection wasn't found, then check central point of tested
 		 * segment. In opposite case we already check all subsegments
 		 */
 		p.x = float8_div(float8_pl(t.p[0].x, t.p[1].x), 2.0);
@@ -4059,16 +3985,63 @@ pt_contained_poly(PG_FUNCTION_ARGS)
 Datum
 poly_distance(PG_FUNCTION_ARGS)
 {
-#ifdef NOT_USED
 	POLYGON    *polya = PG_GETARG_POLYGON_P(0);
 	POLYGON    *polyb = PG_GETARG_POLYGON_P(1);
-#endif
+	float8		min = 0.0;		/* initialize to keep compiler quiet */
+	bool		have_min = false;
+	float8		tmp;
+	int			i,
+				j;
+	LSEG		seg1,
+				seg2;
 
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("function \"poly_distance\" not implemented")));
+	/*
+	 * Distance is zero if polygons overlap.  We must check this because the
+	 * path distance will not give the right answer if one poly is entirely
+	 * within the other.
+	 */
+	if (poly_overlap_internal(polya, polyb))
+		PG_RETURN_FLOAT8(0.0);
 
-	PG_RETURN_NULL();
+	/*
+	 * When they don't overlap, the distance calculation is identical to that
+	 * for closed paths (i.e., we needn't care about the fact that polygons
+	 * include their contained areas).  See path_distance().
+	 */
+	for (i = 0; i < polya->npts; i++)
+	{
+		int			iprev;
+
+		if (i > 0)
+			iprev = i - 1;
+		else
+			iprev = polya->npts - 1;
+
+		for (j = 0; j < polyb->npts; j++)
+		{
+			int			jprev;
+
+			if (j > 0)
+				jprev = j - 1;
+			else
+				jprev = polyb->npts - 1;
+
+			statlseg_construct(&seg1, &polya->p[iprev], &polya->p[i]);
+			statlseg_construct(&seg2, &polyb->p[jprev], &polyb->p[j]);
+
+			tmp = lseg_closept_lseg(NULL, &seg1, &seg2);
+			if (!have_min || float8_lt(tmp, min))
+			{
+				min = tmp;
+				have_min = true;
+			}
+		}
+	}
+
+	if (!have_min)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(min);
 }
 
 
@@ -4433,20 +4406,6 @@ path_div_pt(PG_FUNCTION_ARGS)
 	PG_RETURN_PATH_P(path);
 }
 
-
-Datum
-path_center(PG_FUNCTION_ARGS)
-{
-#ifdef NOT_USED
-	PATH	   *path = PG_GETARG_PATH_P(0);
-#endif
-
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("function \"path_center\" not implemented")));
-
-	PG_RETURN_NULL();
-}
 
 Datum
 path_poly(PG_FUNCTION_ARGS)

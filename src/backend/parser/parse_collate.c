@@ -29,7 +29,7 @@
  * at runtime.  If we knew exactly which functions require collation
  * information, we could throw those errors at parse time instead.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -489,6 +489,7 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 		case T_OnConflictExpr:
 		case T_SortGroupClause:
 		case T_WindowClause:
+		case T_MergeAction:
 			(void) expression_tree_walker(node,
 										  assign_collations_walker,
 										  (void *) &loccontext);
@@ -672,6 +673,36 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 							(void) assign_collations_walker((Node *) expr->defresult,
 															&loccontext);
 						}
+						break;
+					case T_SubscriptingRef:
+						{
+							/*
+							 * The subscripts are treated as independent
+							 * expressions not contributing to the node's
+							 * collation.  Only the container, and the source
+							 * expression if any, contribute.  (This models
+							 * the old behavior, in which the subscripts could
+							 * be counted on to be integers and thus not
+							 * contribute anything.)
+							 */
+							SubscriptingRef *sbsref = (SubscriptingRef *) node;
+
+							assign_expr_collations(context->pstate,
+												   (Node *) sbsref->refupperindexpr);
+							assign_expr_collations(context->pstate,
+												   (Node *) sbsref->reflowerindexpr);
+							(void) assign_collations_walker((Node *) sbsref->refexpr,
+															&loccontext);
+							(void) assign_collations_walker((Node *) sbsref->refassgnexpr,
+															&loccontext);
+						}
+						break;
+					case T_JsonExpr:
+
+						/*
+						 * Context item and PASSING arguments are already
+						 * marked with collations in parse_expr.c.
+						 */
 						break;
 					default:
 

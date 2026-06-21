@@ -4,7 +4,7 @@
  *	  definition of the "attribute defaults" system catalog (pg_attrdef)
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_attrdef.h
@@ -19,6 +19,7 @@
 #define PG_ATTRDEF_H
 
 #include "catalog/genbki.h"
+#include "catalog/objectaddress.h"
 #include "catalog/pg_attrdef_d.h"
 
 /* ----------------
@@ -30,7 +31,8 @@ CATALOG(pg_attrdef,2604,AttrDefaultRelationId)
 {
 	Oid			oid;			/* oid */
 
-	Oid			adrelid;		/* OID of table containing attribute */
+	Oid			adrelid BKI_LOOKUP(pg_class);	/* OID of table containing
+												 * attribute */
 	int16		adnum;			/* attnum of attribute */
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
@@ -48,5 +50,26 @@ FOREIGN_KEY(adrelid REFERENCES pg_attribute(attrelid));
  * ----------------
  */
 typedef FormData_pg_attrdef *Form_pg_attrdef;
+
+
+DECLARE_UNIQUE_INDEX(pg_attrdef_adrelid_adnum_index, 2656, AttrDefaultIndexId, on pg_attrdef using btree(adrelid oid_ops, adnum int2_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_attrdef_oid_index, 2657, AttrDefaultOidIndexId, on pg_attrdef using btree(oid oid_ops));
+
+
+
+extern Oid	StoreAttrDefault(Relation rel, AttrNumber attnum,
+							 Node *expr,
+							 bool *cookedMissingVal,
+							 Datum *missingval_p,
+							 bool *missingIsNull_p,
+							 bool is_internal,
+							 bool add_column_mode);
+extern void RemoveAttrDefault(Oid relid, AttrNumber attnum,
+							  DropBehavior behavior,
+							  bool complain, bool internal);
+extern void RemoveAttrDefaultById(Oid attrdefId);
+
+extern Oid	GetAttrDefaultOid(Oid relid, AttrNumber attnum);
+extern ObjectAddress GetAttrDefaultColumnAddress(Oid attrdefoid);
 
 #endif							/* PG_ATTRDEF_H */

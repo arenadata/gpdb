@@ -35,16 +35,19 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(top_builddir)/src/port -DFRONTEND $(CPPFLAGS) -fPIC
 LIBS += $(PTHREAD_LIBS)
 
+# If you add objects here, see also src/tools/msvc/Mkvcbuild.pm
+
 OBJS = \
 	$(LIBOBJS) \
 	$(PG_CRC32C_OBJS) \
+	bsearch_arg.o \
 	chklocale.o \
-	erand48.o \
 	inet_net_ntop.o \
 	noblock.o \
 	path.o \
 	pg_bitutils.o \
 	pg_strong_random.o \
+	pwritev.o \
 	pgcheckdir.o \
 	pgmkdirp.o \
 	pgsleep.o \
@@ -55,7 +58,6 @@ OBJS = \
 	qsort_arg.o \
 	quotes.o \
 	snprintf.o \
-	sprompt.o \
 	strerror.o \
 	tar.o \
 	thread.o
@@ -82,6 +84,10 @@ uninstall:
 libpgport.a: $(OBJS)
 	rm -f $@
 	$(AR) $(AROPT) $@ $^
+
+# getaddrinfo.o and getaddrinfo_shlib.o need PTHREAD_CFLAGS (but getaddrinfo_srv.o does not)
+getaddrinfo.o: CFLAGS+=$(PTHREAD_CFLAGS)
+getaddrinfo_shlib.o: CFLAGS+=$(PTHREAD_CFLAGS)
 
 # thread.o and thread_shlib.o need PTHREAD_CFLAGS (but thread_srv.o does not)
 thread.o: CFLAGS+=$(PTHREAD_CFLAGS)

@@ -972,7 +972,7 @@ appendonly_relation_set_new_filenode(Relation rel,
 	 *
 	 * Segment files will be created when / if needed.
 	 */
-	srel = RelationCreateStorage(*newrnode, persistence, SMGR_AO);
+	srel = RelationCreateStorage(*newrnode, persistence, SMGR_AO, true);
 
 	/*
 	 * If required, set up an init fork for an unlogged table so that it can
@@ -1037,7 +1037,7 @@ appendonly_relation_copy_data(Relation rel, const RelFileNode *newrnode)
 	 * NOTE: any conflict in relfilenode value will be caught in
 	 * RelationCreateStorage().
 	 */
-	RelationCreateStorage(*newrnode, rel->rd_rel->relpersistence, SMGR_AO);
+	RelationCreateStorage(*newrnode, rel->rd_rel->relpersistence, SMGR_AO, true);
 
 	copy_append_only_data(rel->rd_node, *newrnode, rel->rd_backend, rel->rd_rel->relpersistence);
 
@@ -1093,6 +1093,7 @@ appendonly_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 	Datum	   *values;
 	bool	   *isnull;
 	TransactionId FreezeXid;
+	MultiXactId OldestMxact;
 	MultiXactId MultiXactCutoff;
 	Tuplesortstate *tuplesort;
 	PGRUsage	ru0;
@@ -1159,8 +1160,8 @@ appendonly_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 	 * VACUUM machinery to avoidconfising existing CLUSTER code.
 	 */
 	vacuum_set_xid_limits(OldHeap, 0, 0, 0, 0,
-						  &OldestXmin, &FreezeXid, NULL, &MultiXactCutoff,
-						  NULL);
+						  &OldestXmin, &OldestMxact, &FreezeXid,
+						  &MultiXactCutoff);
 
 	/*
 	 * FreezeXid will become the table's new relfrozenxid, and that mustn't go
@@ -1806,6 +1807,7 @@ appendonly_index_validate_scan(Relation heapRelation,
 						 heapRelation,
 						 indexInfo->ii_Unique ?
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
+						 false,
 						 indexInfo);
 
 			state->tups_inserted += 1;
@@ -2088,6 +2090,8 @@ appendonly_scan_bitmap_next_tuple(TableScanDesc scan,
 		if(appendonly_fetch(aoscan->aofetch, &aoTid, slot))
 		{
 			/* OK to return this tuple */
+			/* GPDB: see aoco_scan_bitmap_next_tuple -- keep tableOid valid */
+			slot->tts_tableOid = RelationGetRelid(aoscan->aos_rd);
 			pgstat_count_heap_fetch(aoscan->aos_rd);
 
 			return true;
@@ -2168,7 +2172,7 @@ static const TableAmRoutine ao_row_methods = {
 	.tuple_get_latest_tid = appendonly_get_latest_tid,
 	.tuple_tid_valid = appendonly_tuple_tid_valid,
 	.tuple_satisfies_snapshot = appendonly_tuple_satisfies_snapshot,
-	.compute_xid_horizon_for_tuples = appendonly_compute_xid_horizon_for_tuples,
+	.index_delete_tuples = NULL,
 
 	.relation_set_new_filenode = appendonly_relation_set_new_filenode,
 	.relation_nontransactional_truncate = appendonly_relation_nontransactional_truncate,

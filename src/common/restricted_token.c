@@ -4,7 +4,7 @@
  *		helper routine to ensure restricted token on Windows
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -66,7 +66,7 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo)
 		return 0;
 	}
 
-	_CreateRestrictedToken = (__CreateRestrictedToken) GetProcAddress(Advapi32Handle, "CreateRestrictedToken");
+	_CreateRestrictedToken = (__CreateRestrictedToken) (pg_funcptr_t) GetProcAddress(Advapi32Handle, "CreateRestrictedToken");
 
 	if (_CreateRestrictedToken == NULL)
 	{
@@ -171,7 +171,7 @@ get_restricted_token(void)
 
 		cmdline = pg_strdup(GetCommandLine());
 
-		putenv("PG_RESTRICT_EXEC=1");
+		setenv("PG_RESTRICT_EXEC", "1", 1);
 
 		if ((restrictedToken = CreateRestrictedProcess(cmdline, &pi)) == 0)
 		{
@@ -190,10 +190,7 @@ get_restricted_token(void)
 			WaitForSingleObject(pi.hProcess, INFINITE);
 
 			if (!GetExitCodeProcess(pi.hProcess, &x))
-			{
-				pg_log_error("could not get exit code from subprocess: error code %lu", GetLastError());
-				exit(1);
-			}
+				pg_fatal("could not get exit code from subprocess: error code %lu", GetLastError());
 			exit(x);
 		}
 		pg_free(cmdline);

@@ -1,7 +1,7 @@
 --
 -- FLOAT8
 --
-CREATE TABLE FLOAT8_TBL(i INT DEFAULT 1, f1 float8);
+CREATE TEMP TABLE FLOAT8_TBL(i INT DEFAULT 1, f1 float8);
 INSERT INTO FLOAT8_TBL(f1) VALUES ('    0.0   ');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('1004.30  ');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('   -34.84');
@@ -278,8 +278,8 @@ SELECT '' AS three, f.f1, f.f1 / '-10' AS x
    WHERE f.f1 > '0.0' ORDER BY 2;
  three |          f1          |           x           
 -------+----------------------+-----------------------
-       |               1004.3 |   -100.42999999999999
        | 1.2345678901234e-200 | -1.2345678901234e-201
+       |               1004.3 |   -100.42999999999999
        | 1.2345678901234e+200 | -1.2345678901234e+199
 (3 rows)
 
@@ -305,11 +305,11 @@ SELECT '' AS five, f.f1, @f.f1 AS abs_f1
    FROM FLOAT8_TBL f;
  five |          f1          |        abs_f1        
 ------+----------------------+----------------------
-      |               -34.84 |                34.84
       |                    0 |                    0
-      | 1.2345678901234e-200 | 1.2345678901234e-200
       |               1004.3 |               1004.3
+      |               -34.84 |                34.84
       | 1.2345678901234e+200 | 1.2345678901234e+200
+      | 1.2345678901234e-200 | 1.2345678901234e-200
 (5 rows)
 
 -- truncate
@@ -652,9 +652,9 @@ UPDATE FLOAT8_TBL
    SET f1 = FLOAT8_TBL.f1 * '-1'
    WHERE FLOAT8_TBL.f1 > '0.0';
 SELECT '' AS bad, f.f1 * '1e200' from FLOAT8_TBL f;
-ERROR:  value out of range: overflow
+ERROR:  value out of range: overflow  (seg1 slice1 172.17.0.3:7003 pid=540075)
 SELECT '' AS bad, f.f1 ^ '1e200' from FLOAT8_TBL f;
-ERROR:  value out of range: overflow
+ERROR:  value out of range: overflow  (seg1 slice1 172.17.0.3:7003 pid=540075)
 SELECT 0 ^ 0 + 0 ^ 1 + 0 ^ 0.0 + 0 ^ 0.5;
  ?column? 
 ----------
@@ -662,13 +662,13 @@ SELECT 0 ^ 0 + 0 ^ 1 + 0 ^ 0.0 + 0 ^ 0.5;
 (1 row)
 
 SELECT '' AS bad, ln(f.f1) from FLOAT8_TBL f where f.f1 = '0.0' ;
-ERROR:  cannot take logarithm of zero  (seg0 slice1 localhost:50001 pid=1946)
+ERROR:  cannot take logarithm of zero  (seg1 slice1 172.17.0.3:7003 pid=540075)
 SELECT '' AS bad, ln(f.f1) from FLOAT8_TBL f where f.f1 < '0.0' ;
-ERROR:  cannot take logarithm of a negative number  (seg0 slice1 localhost:50001 pid=1946)
+ERROR:  cannot take logarithm of a negative number  (seg1 slice1 172.17.0.3:7003 pid=540075)
 SELECT '' AS bad, exp(f.f1) from FLOAT8_TBL f;
-ERROR:  value out of range: underflow
+ERROR:  value out of range: underflow  (seg1 slice1 172.17.0.3:7003 pid=540075)
 SELECT '' AS bad, f.f1 / '0.0' from FLOAT8_TBL f;
-ERROR:  division by zero  (seg0 slice1 localhost:50001 pid=1946)
+ERROR:  division by zero  (seg1 slice1 172.17.0.3:7003 pid=540075)
 SELECT '' AS five, f1 FROM FLOAT8_TBL ORDER BY 2;
  five |          f1           
 ------+-----------------------
@@ -902,12 +902,7 @@ DELETE FROM FLOAT8_TBL WHERE f1='+naN'::float8;
 DELETE FROM FLOAT8_TBL WHERE f1='NaN'::float8;
 -- maintain external table consistency across platforms
 -- delete all values and reinsert well-behaved ones
-DELETE FROM FLOAT8_TBL;
-INSERT INTO FLOAT8_TBL(f1) VALUES ('0.0');
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-34.84');
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1004.30');
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e+200');
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e-200');
+-- Check the float8 values exported for use by other tests
 SELECT '' AS five, f1 FROM FLOAT8_TBL ORDER BY 2;
  five |          f1           
 ------+-----------------------
@@ -915,8 +910,9 @@ SELECT '' AS five, f1 FROM FLOAT8_TBL ORDER BY 2;
       |               -1004.3
       |                -34.84
       | -1.2345678901234e-200
-      |                     0
-(5 rows)
+      |                1e-323
+      |                1e+308
+(6 rows)
 
 -- test edge-case coercions to integer
 SELECT '32767.4'::float8::int2;

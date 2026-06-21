@@ -1,9 +1,12 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 # Test for recovery targets: name, timestamp, XID
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 9;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 use Time::HiRes qw(usleep);
 
 # Create and test a standby from given backup, with a certain recovery target.
@@ -11,14 +14,16 @@ use Time::HiRes qw(usleep);
 # count to reach $num_rows, yet not later than the recovery target.
 sub test_recovery_standby
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my $test_name       = shift;
 	my $node_name       = shift;
-	my $node_primary     = shift;
+	my $node_primary    = shift;
 	my $recovery_params = shift;
 	my $num_rows        = shift;
 	my $until_lsn       = shift;
 
-	my $node_standby = get_new_node($node_name);
+	my $node_standby = PostgreSQL::Test::Cluster->new($node_name);
 	$node_standby->init_from_backup($node_primary, 'my_backup',
 		has_restoring => 1);
 
@@ -47,8 +52,12 @@ sub test_recovery_standby
 }
 
 # Initialize primary node
-my $node_primary = get_new_node('primary');
+my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(has_archiving => 1, allows_streaming => 1);
+
+# Bump the transaction ID epoch.  This is useful to stress the portability
+# of recovery_target_xid parsing.
+system_or_bail('pg_resetwal', '--epoch', '1', $node_primary->data_dir);
 
 # Start it
 $node_primary->start;
@@ -129,7 +138,7 @@ test_recovery_standby('LSN', 'standby_5', $node_primary, \@recovery_params,
 test_recovery_standby('multiple overriding settings',
 	'standby_6', $node_primary, \@recovery_params, "3000", $lsn3);
 
-my $node_standby = get_new_node('standby_7');
+my $node_standby = PostgreSQL::Test::Cluster->new('standby_7');
 $node_standby->init_from_backup($node_primary, 'my_backup',
 	has_restoring => 1);
 $node_standby->append_conf(
@@ -149,7 +158,7 @@ ok($logfile =~ qr/multiple recovery targets specified/,
 
 # Check behavior when recovery ends before target is reached
 
-$node_standby = get_new_node('standby_8');
+$node_standby = PostgreSQL::Test::Cluster->new('standby_8');
 $node_standby->init_from_backup(
 	$node_primary, 'my_backup',
 	has_restoring => 1,
@@ -165,13 +174,15 @@ run_log(
 		$node_standby->logfile, 'start'
 	]);
 
-# wait up to 180s for postgres to terminate
-foreach my $i (0 .. 1800)
+# wait for postgres to terminate
+foreach my $i (0 .. 10 * $PostgreSQL::Test::Utils::timeout_default)
 {
 	last if !-f $node_standby->data_dir . '/postmaster.pid';
 	usleep(100_000);
 }
 $logfile = slurp_file($node_standby->logfile());
 ok( $logfile =~
-	  qr/FATAL:  recovery ended before configured recovery target was reached/,
+	  qr/FATAL: .* recovery ended before configured recovery target was reached/,
 	'recovery end before target reached is a fatal error');
+
+done_testing();

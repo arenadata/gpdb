@@ -5,7 +5,7 @@
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -29,6 +29,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/supportnodes.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
@@ -111,13 +112,13 @@ static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static bool has_multiple_baserels(PlannerInfo *root);
 static void generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 										 List *live_childrels,
-										 List *all_child_pathkeys,
-										 List *partitioned_rels);
+										 List *all_child_pathkeys);
 static Path *get_cheapest_parameterized_child_path(PlannerInfo *root,
 												   RelOptInfo *rel,
 												   Relids required_outer);
 static void accumulate_append_subpath(Path *path,
-									  List **subpaths, List **special_subpaths);
+									  List **subpaths,
+									  List **special_subpaths);
 static Path *get_singleton_append_subpath(Path *path);
 static void set_dummy_rel_pathlist(PlannerInfo *root, RelOptInfo *rel);
 static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
@@ -150,13 +151,15 @@ static void check_output_expressions(Query *subquery,
 static void compare_tlist_datatypes(List *tlist, List *colTypes,
 									pushdown_safety_info *safetyInfo);
 static bool targetIsInAllPartitionLists(TargetEntry *tle, Query *query);
-static bool qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
+static bool qual_is_pushdown_safe(Query *subquery, Index rti,
+								  RestrictInfo *rinfo,
 								  pushdown_safety_info *safetyInfo);
 static void subquery_push_qual(Query *subquery,
 							   RangeTblEntry *rte, Index rti, Node *qual);
 static void recurse_push_qual(Node *setOp, Query *topquery,
 							  RangeTblEntry *rte, Index rti, Node *qual);
-static void remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel);
+static void remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel,
+										   Bitmapset *extra_used_attrs);
 
 static void bring_to_outer_query(PlannerInfo *root, RelOptInfo *rel, List *outer_quals);
 static void bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel);
@@ -636,7 +639,7 @@ bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel)
 											  false,
 											  target_locus);
 
-			path = (Path *) create_material_path(root, rel, path);
+			path = (Path *) create_material_path(rel, path);
 		}
 
 		add_path(rel, path);
@@ -1142,7 +1145,7 @@ set_tablesample_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *
 		 bms_membership(root->all_baserels) != BMS_SINGLETON) &&
 		!(GetTsmRoutine(rte->tablesample->tsmhandler)->repeatable_across_scans))
 	{
-		path = (Path *) create_material_path(root, rel, path);
+		path = (Path *) create_material_path(rel, path);
 	}
 
 	add_path(rel, path);
@@ -1166,7 +1169,11 @@ set_foreign_size(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	/* ... but do not let it set the rows estimate to zero */
 	rel->rows = clamp_row_est(rel->rows);
 
-	/* also, make sure rel->tuples is not insane relative to rel->rows */
+	/*
+	 * Also, make sure rel->tuples is not insane relative to rel->rows.
+	 * Notably, this ensures sanity if pg_class.reltuples contains -1 and the
+	 * FDW doesn't do anything to replace that.
+	 */
 	rel->tuples = Max(rel->tuples, rel->rows);
 }
 
@@ -1208,17 +1215,6 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 	check_stack_depth();
 
 	Assert(IS_SIMPLE_REL(rel));
-
-	/*
-	 * Initialize partitioned_child_rels to contain this RT index.
-	 *
-	 * Note that during the set_append_rel_pathlist() phase, we will bubble up
-	 * the indexes of partitioned relations that appear down in the tree, so
-	 * that when we've created Paths for all the children, the root
-	 * partitioned table's list will contain all such indexes.
-	 */
-	if (rte->relkind == RELKIND_PARTITIONED_TABLE)
-		rel->partitioned_child_rels = list_make1_int(rti);
 
 	/*
 	 * If this is a partitioned baserel, set the consider_partitionwise_join
@@ -1409,7 +1405,7 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 			Var		   *parentvar = (Var *) lfirst(parentvars);
 			Node	   *childvar = (Node *) lfirst(childvars);
 
-			if (IsA(parentvar, Var))
+			if (IsA(parentvar, Var) && parentvar->varno == parentRTindex)
 			{
 				int			pndx = parentvar->varattno - rel->min_attr;
 				int32		child_width = 0;
@@ -1519,12 +1515,6 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		if (IS_DUMMY_REL(childrel))
 			continue;
 
-		/* Bubble up childrel's partitioned children. */
-		if (rel->part_scheme)
-			rel->partitioned_child_rels =
-				list_concat(rel->partitioned_child_rels,
-							childrel->partitioned_child_rels);
-
 		/*
 		 * Child is live, so add it to the live_childrels list for use below.
 		 */
@@ -1561,58 +1551,10 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	List	   *all_child_pathkeys = NIL;
 	List	   *all_child_outers = NIL;
 	ListCell   *l;
-	List	   *partitioned_rels = NIL;
 	double		partial_rows = -1;
 
 	/* If appropriate, consider parallel append */
 	pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
-
-	/*
-	 * AppendPath generated for partitioned tables must record the RT indexes
-	 * of partitioned tables that are direct or indirect children of this
-	 * Append rel.
-	 *
-	 * AppendPath may be for a sub-query RTE (UNION ALL), in which case, 'rel'
-	 * itself does not represent a partitioned relation, but the child sub-
-	 * queries may contain references to partitioned relations.  The loop
-	 * below will look for such children and collect them in a list to be
-	 * passed to the path creation function.  (This assumes that we don't need
-	 * to look through multiple levels of subquery RTEs; if we ever do, we
-	 * could consider stuffing the list we generate here into sub-query RTE's
-	 * RelOptInfo, just like we do for partitioned rels, which would be used
-	 * when populating our parent rel with paths.  For the present, that
-	 * appears to be unnecessary.)
-	 */
-	if (rel->part_scheme != NULL)
-	{
-		if (IS_SIMPLE_REL(rel))
-			partitioned_rels = list_make1(rel->partitioned_child_rels);
-		else if (IS_JOIN_REL(rel))
-		{
-			int			relid = -1;
-			List	   *partrels = NIL;
-
-			/*
-			 * For a partitioned joinrel, concatenate the component rels'
-			 * partitioned_child_rels lists.
-			 */
-			while ((relid = bms_next_member(rel->relids, relid)) >= 0)
-			{
-				RelOptInfo *component;
-
-				Assert(relid >= 1 && relid < root->simple_rel_array_size);
-				component = root->simple_rel_array[relid];
-				Assert(component->part_scheme != NULL);
-				Assert(list_length(component->partitioned_child_rels) >= 1);
-				partrels = list_concat(partrels,
-									   component->partitioned_child_rels);
-			}
-
-			partitioned_rels = list_make1(partrels);
-		}
-
-		Assert(list_length(partitioned_rels) >= 1);
-	}
 
 	/*
 	 * For every non-dummy child, remember the cheapest path.  Also, identify
@@ -1624,14 +1566,6 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 		RelOptInfo *childrel = lfirst(l);
 		ListCell   *lcp;
 		Path	   *cheapest_partial_path = NULL;
-
-		/*
-		 * For UNION ALLs with non-empty partitioned_child_rels, accumulate
-		 * the Lists of child relations.
-		 */
-		if (rel->rtekind == RTE_SUBQUERY && childrel->partitioned_child_rels != NIL)
-			partitioned_rels = lappend(partitioned_rels,
-									   childrel->partitioned_child_rels);
 
 		/*
 		 * If child has an unparameterized cheapest-total path, add that to
@@ -1683,7 +1617,6 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 				accumulate_append_subpath(cheapest_partial_path,
 										  &pa_partial_subpaths,
 										  &pa_nonpartial_subpaths);
-
 			}
 			else
 			{
@@ -1779,7 +1712,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	if (subpaths_valid)
 		add_path(rel, (Path *) create_append_path(root, rel, subpaths, NIL,
 												  NIL, NULL, 0, false,
-												  partitioned_rels, -1));
+												  -1));
 
 	/*
 	 * Consider an append of unordered, unparameterized partial paths.  Make
@@ -1822,7 +1755,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 		appendpath = create_append_path(root, rel, NIL, partial_subpaths,
 										NIL, NULL, parallel_workers,
 										enable_parallel_append,
-										partitioned_rels, -1);
+										-1);
 
 		/*
 		 * Make sure any subsequent partial paths use the same row count
@@ -1871,7 +1804,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 		appendpath = create_append_path(root, rel, pa_nonpartial_subpaths,
 										pa_partial_subpaths,
 										NIL, NULL, parallel_workers, true,
-										partitioned_rels, partial_rows);
+										partial_rows);
 		add_partial_path(rel, (Path *) appendpath);
 	}
 
@@ -1881,8 +1814,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	if (subpaths_valid)
 		generate_orderedappend_paths(root, rel, live_childrels,
-									 all_child_pathkeys,
-									 partitioned_rels);
+									 all_child_pathkeys);
 
 	/*
 	 * Build Append paths for each parameterization seen among the child rels.
@@ -1933,7 +1865,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 			add_path(rel, (Path *)
 					 create_append_path(root, rel, subpaths, NIL,
 										NIL, required_outer, 0, false,
-										partitioned_rels, -1));
+										-1));
 	}
 
 	/*
@@ -1947,23 +1879,20 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	{
 		RelOptInfo *childrel = (RelOptInfo *) linitial(live_childrels);
 
-		foreach(l, childrel->partial_pathlist)
+		/* skip the cheapest partial path, since we already used that above */
+		for_each_from(l, childrel->partial_pathlist, 1)
 		{
 			Path	   *path = (Path *) lfirst(l);
 			AppendPath *appendpath;
 
-			/*
-			 * Skip paths with no pathkeys.  Also skip the cheapest partial
-			 * path, since we already used that above.
-			 */
-			if (path->pathkeys == NIL ||
-				path == linitial(childrel->partial_pathlist))
+			/* skip paths with no pathkeys. */
+			if (path->pathkeys == NIL)
 				continue;
 
 			appendpath = create_append_path(root, rel, NIL, list_make1(path),
 											NIL, NULL,
 											path->parallel_workers, true,
-											partitioned_rels, partial_rows);
+											partial_rows);
 			add_partial_path(rel, (Path *) appendpath);
 		}
 	}
@@ -1999,8 +1928,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 static void
 generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 							 List *live_childrels,
-							 List *all_child_pathkeys,
-							 List *partitioned_rels)
+							 List *all_child_pathkeys)
 {
 	ListCell   *lcp;
 	List	   *partition_pathkeys = NIL;
@@ -2017,7 +1945,7 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * for both forward and reverse scans.
 	 */
 	if (rel->part_scheme != NULL && IS_SIMPLE_REL(rel) &&
-		partitions_are_ordered(rel->boundinfo, rel->nparts))
+		partitions_are_ordered(rel->boundinfo, rel->live_parts))
 	{
 		partition_pathkeys = build_partition_pathkeys(root, rel,
 													  ForwardScanDirection,
@@ -2044,6 +1972,7 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 		List	   *pathkeys = (List *) lfirst(lcp);
 		List	   *startup_subpaths = NIL;
 		List	   *total_subpaths = NIL;
+		List	   *fractional_subpaths = NIL;
 		bool		startup_neq_total = false;
 		ListCell   *lcr;
 		bool		match_partition_order;
@@ -2073,7 +2002,8 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 		{
 			RelOptInfo *childrel = (RelOptInfo *) lfirst(lcr);
 			Path	   *cheapest_startup,
-					   *cheapest_total;
+					   *cheapest_total,
+					   *cheapest_fractional = NULL;
 
 			/* Locate the right paths, if they are available. */
 			cheapest_startup =
@@ -2102,6 +2032,38 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 			}
 
 			/*
+			 * When building a fractional path, determine a cheapest
+			 * fractional path for each child relation too. Looking at startup
+			 * and total costs is not enough, because the cheapest fractional
+			 * path may be dominated by two separate paths (one for startup,
+			 * one for total).
+			 *
+			 * When needed (building fractional path), determine the cheapest
+			 * fractional path too.
+			 */
+			if (root->tuple_fraction > 0)
+			{
+				double		path_fraction = (1.0 / root->tuple_fraction);
+
+				cheapest_fractional =
+					get_cheapest_fractional_path_for_pathkeys(childrel->pathlist,
+															  pathkeys,
+															  NULL,
+															  path_fraction);
+
+				/*
+				 * If we found no path with matching pathkeys, use the
+				 * cheapest total path instead.
+				 *
+				 * XXX We might consider partially sorted paths too (with an
+				 * incremental sort on top). But we'd have to build all the
+				 * incremental paths, do the costing etc.
+				 */
+				if (!cheapest_fractional)
+					cheapest_fractional = cheapest_total;
+			}
+
+			/*
 			 * Notice whether we actually have different paths for the
 			 * "cheapest" and "total" cases; frequently there will be no point
 			 * in two create_merge_append_path() calls.
@@ -2127,6 +2089,12 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 
 				startup_subpaths = lappend(startup_subpaths, cheapest_startup);
 				total_subpaths = lappend(total_subpaths, cheapest_total);
+
+				if (cheapest_fractional)
+				{
+					cheapest_fractional = get_singleton_append_subpath(cheapest_fractional);
+					fractional_subpaths = lappend(fractional_subpaths, cheapest_fractional);
+				}
 			}
 			else if (match_partition_order_desc)
 			{
@@ -2140,6 +2108,12 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 
 				startup_subpaths = lcons(cheapest_startup, startup_subpaths);
 				total_subpaths = lcons(cheapest_total, total_subpaths);
+
+				if (cheapest_fractional)
+				{
+					cheapest_fractional = get_singleton_append_subpath(cheapest_fractional);
+					fractional_subpaths = lcons(cheapest_fractional, fractional_subpaths);
+				}
 			}
 			else
 			{
@@ -2151,6 +2125,10 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 										  &startup_subpaths, NULL);
 				accumulate_append_subpath(cheapest_total,
 										  &total_subpaths, NULL);
+
+				if (cheapest_fractional)
+					accumulate_append_subpath(cheapest_fractional,
+											  &fractional_subpaths, NULL);
 			}
 		}
 
@@ -2166,7 +2144,6 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 													  NULL,
 													  0,
 													  false,
-													  partitioned_rels,
 													  -1));
 			if (startup_neq_total)
 				add_path(rel, (Path *) create_append_path(root,
@@ -2177,7 +2154,17 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 														  NULL,
 														  0,
 														  false,
-														  partitioned_rels,
+														  -1));
+
+			if (fractional_subpaths)
+				add_path(rel, (Path *) create_append_path(root,
+														  rel,
+														  fractional_subpaths,
+														  NIL,
+														  pathkeys,
+														  NULL,
+														  0,
+														  false,
 														  -1));
 		}
 		else
@@ -2187,15 +2174,20 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 															rel,
 															startup_subpaths,
 															pathkeys,
-															NULL,
-															partitioned_rels));
+															NULL));
 			if (startup_neq_total)
 				add_path(rel, (Path *) create_merge_append_path(root,
 																rel,
 																total_subpaths,
 																pathkeys,
-																NULL,
-																partitioned_rels));
+																NULL));
+
+			if (fractional_subpaths)
+				add_path(rel, (Path *) create_merge_append_path(root,
+																rel,
+																fractional_subpaths,
+																pathkeys,
+																NULL));
 		}
 	}
 }
@@ -2389,7 +2381,7 @@ set_dummy_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
 	/* Set up the dummy path */
 	add_path(rel, (Path *) create_append_path(root, rel, NIL, NIL,
 											  NIL, rel->lateral_relids,
-											  0, false, NIL, -1));
+											  0, false, -1));
 
 	/*
 	 * We set the cheapest-path fields immediately, just in case they were
@@ -2423,6 +2415,280 @@ has_multiple_baserels(PlannerInfo *root)
 }
 
 /*
+ * find_window_run_conditions
+ *		Determine if 'wfunc' is really a WindowFunc and call its prosupport
+ *		function to determine the function's monotonic properties.  We then
+ *		see if 'opexpr' can be used to short-circuit execution.
+ *
+ * For example row_number() over (order by ...) always produces a value one
+ * higher than the previous.  If someone has a window function in a subquery
+ * and has a WHERE clause in the outer query to filter rows <= 10, then we may
+ * as well stop processing the windowagg once the row number reaches 11.  Here
+ * we check if 'opexpr' might help us to stop doing needless extra processing
+ * in WindowAgg nodes.
+ *
+ * '*keep_original' is set to true if the caller should also use 'opexpr' for
+ * its original purpose.  This is set to false if the caller can assume that
+ * the run condition will handle all of the required filtering.
+ *
+ * Returns true if 'opexpr' was found to be useful and was added to the
+ * WindowClauses runCondition.  We also set *keep_original accordingly and add
+ * 'attno' to *run_cond_attrs offset by FirstLowInvalidHeapAttributeNumber.
+ * If the 'opexpr' cannot be used then we set *keep_original to true and
+ * return false.
+ */
+static bool
+find_window_run_conditions(Query *subquery, RangeTblEntry *rte, Index rti,
+						   AttrNumber attno, WindowFunc *wfunc, OpExpr *opexpr,
+						   bool wfunc_left, bool *keep_original,
+						   Bitmapset **run_cond_attrs)
+{
+	Oid			prosupport;
+	Expr	   *otherexpr;
+	SupportRequestWFuncMonotonic req;
+	SupportRequestWFuncMonotonic *res;
+	WindowClause *wclause;
+	List	   *opinfos;
+	OpExpr	   *runopexpr;
+	Oid			runoperator;
+	ListCell   *lc;
+
+	*keep_original = true;
+
+	while (IsA(wfunc, RelabelType))
+		wfunc = (WindowFunc *) ((RelabelType *) wfunc)->arg;
+
+	/* we can only work with window functions */
+	if (!IsA(wfunc, WindowFunc))
+		return false;
+
+	prosupport = get_func_support(wfunc->winfnoid);
+
+	/* Check if there's a support function for 'wfunc' */
+	if (!OidIsValid(prosupport))
+		return false;
+
+	/* get the Expr from the other side of the OpExpr */
+	if (wfunc_left)
+		otherexpr = lsecond(opexpr->args);
+	else
+		otherexpr = linitial(opexpr->args);
+
+	/*
+	 * The value being compared must not change during the evaluation of the
+	 * window partition.
+	 */
+	if (!is_pseudo_constant_clause((Node *) otherexpr))
+		return false;
+
+	/* find the window clause belonging to the window function */
+	wclause = (WindowClause *) list_nth(subquery->windowClause,
+										wfunc->winref - 1);
+
+	req.type = T_SupportRequestWFuncMonotonic;
+	req.window_func = wfunc;
+	req.window_clause = wclause;
+
+	/* call the support function */
+	res = (SupportRequestWFuncMonotonic *)
+		DatumGetPointer(OidFunctionCall1(prosupport,
+										 PointerGetDatum(&req)));
+
+	/*
+	 * Nothing to do if the function is neither monotonically increasing nor
+	 * monotonically decreasing.
+	 */
+	if (res == NULL || res->monotonic == MONOTONICFUNC_NONE)
+		return false;
+
+	runopexpr = NULL;
+	runoperator = InvalidOid;
+	opinfos = get_op_btree_interpretation(opexpr->opno);
+
+	foreach(lc, opinfos)
+	{
+		OpBtreeInterpretation *opinfo = (OpBtreeInterpretation *) lfirst(lc);
+		int			strategy = opinfo->strategy;
+
+		/* handle < / <= */
+		if (strategy == BTLessStrategyNumber ||
+			strategy == BTLessEqualStrategyNumber)
+		{
+			/*
+			 * < / <= is supported for monotonically increasing functions in
+			 * the form <wfunc> op <pseudoconst> and <pseudoconst> op <wfunc>
+			 * for monotonically decreasing functions.
+			 */
+			if ((wfunc_left && (res->monotonic & MONOTONICFUNC_INCREASING)) ||
+				(!wfunc_left && (res->monotonic & MONOTONICFUNC_DECREASING)))
+			{
+				*keep_original = false;
+				runopexpr = opexpr;
+				runoperator = opexpr->opno;
+			}
+			break;
+		}
+		/* handle > / >= */
+		else if (strategy == BTGreaterStrategyNumber ||
+				 strategy == BTGreaterEqualStrategyNumber)
+		{
+			/*
+			 * > / >= is supported for monotonically decreasing functions in
+			 * the form <wfunc> op <pseudoconst> and <pseudoconst> op <wfunc>
+			 * for monotonically increasing functions.
+			 */
+			if ((wfunc_left && (res->monotonic & MONOTONICFUNC_DECREASING)) ||
+				(!wfunc_left && (res->monotonic & MONOTONICFUNC_INCREASING)))
+			{
+				*keep_original = false;
+				runopexpr = opexpr;
+				runoperator = opexpr->opno;
+			}
+			break;
+		}
+		/* handle = */
+		else if (strategy == BTEqualStrategyNumber)
+		{
+			int16		newstrategy;
+
+			/*
+			 * When both monotonically increasing and decreasing then the
+			 * return value of the window function will be the same each time.
+			 * We can simply use 'opexpr' as the run condition without
+			 * modifying it.
+			 */
+			if ((res->monotonic & MONOTONICFUNC_BOTH) == MONOTONICFUNC_BOTH)
+			{
+				*keep_original = false;
+				runopexpr = opexpr;
+				break;
+			}
+
+			/*
+			 * When monotonically increasing we make a qual with <wfunc> <=
+			 * <value> or <value> >= <wfunc> in order to filter out values
+			 * which are above the value in the equality condition.  For
+			 * monotonically decreasing functions we want to filter values
+			 * below the value in the equality condition.
+			 */
+			if (res->monotonic & MONOTONICFUNC_INCREASING)
+				newstrategy = wfunc_left ? BTLessEqualStrategyNumber : BTGreaterEqualStrategyNumber;
+			else
+				newstrategy = wfunc_left ? BTGreaterEqualStrategyNumber : BTLessEqualStrategyNumber;
+
+			/* We must keep the original equality qual */
+			*keep_original = true;
+			runopexpr = opexpr;
+
+			/* determine the operator to use for the runCondition qual */
+			runoperator = get_opfamily_member(opinfo->opfamily_id,
+											  opinfo->oplefttype,
+											  opinfo->oprighttype,
+											  newstrategy);
+			break;
+		}
+	}
+
+	if (runopexpr != NULL)
+	{
+		Expr	   *newexpr;
+
+		/*
+		 * Build the qual required for the run condition keeping the
+		 * WindowFunc on the same side as it was originally.
+		 */
+		if (wfunc_left)
+			newexpr = make_opclause(runoperator,
+									runopexpr->opresulttype,
+									runopexpr->opretset, (Expr *) wfunc,
+									otherexpr, runopexpr->opcollid,
+									runopexpr->inputcollid);
+		else
+			newexpr = make_opclause(runoperator,
+									runopexpr->opresulttype,
+									runopexpr->opretset,
+									otherexpr, (Expr *) wfunc,
+									runopexpr->opcollid,
+									runopexpr->inputcollid);
+
+		wclause->runCondition = lappend(wclause->runCondition, newexpr);
+
+		/* record that this attno was used in a run condition */
+		*run_cond_attrs = bms_add_member(*run_cond_attrs,
+										 attno - FirstLowInvalidHeapAttributeNumber);
+		return true;
+	}
+
+	/* unsupported OpExpr */
+	return false;
+}
+
+/*
+ * check_and_push_window_quals
+ *		Check if 'clause' is a qual that can be pushed into a WindowFunc's
+ *		WindowClause as a 'runCondition' qual.  These, when present, allow
+ *		some unnecessary work to be skipped during execution.
+ *
+ * 'run_cond_attrs' will be populated with all targetlist resnos of subquery
+ * targets (offset by FirstLowInvalidHeapAttributeNumber) that we pushed
+ * window quals for.
+ *
+ * Returns true if the caller still must keep the original qual or false if
+ * the caller can safely ignore the original qual because the WindowAgg node
+ * will use the runCondition to stop returning tuples.
+ */
+static bool
+check_and_push_window_quals(Query *subquery, RangeTblEntry *rte, Index rti,
+							Node *clause, Bitmapset **run_cond_attrs)
+{
+	OpExpr	   *opexpr = (OpExpr *) clause;
+	bool		keep_original = true;
+	Var		   *var1;
+	Var		   *var2;
+
+	/* We're only able to use OpExprs with 2 operands */
+	if (!IsA(opexpr, OpExpr))
+		return true;
+
+	if (list_length(opexpr->args) != 2)
+		return true;
+
+	/*
+	 * Check for plain Vars that reference window functions in the subquery.
+	 * If we find any, we'll ask find_window_run_conditions() if 'opexpr' can
+	 * be used as part of the run condition.
+	 */
+
+	/* Check the left side of the OpExpr */
+	var1 = linitial(opexpr->args);
+	if (IsA(var1, Var) && var1->varattno > 0)
+	{
+		TargetEntry *tle = list_nth(subquery->targetList, var1->varattno - 1);
+		WindowFunc *wfunc = (WindowFunc *) tle->expr;
+
+		if (find_window_run_conditions(subquery, rte, rti, tle->resno, wfunc,
+									   opexpr, true, &keep_original,
+									   run_cond_attrs))
+			return keep_original;
+	}
+
+	/* and check the right side */
+	var2 = lsecond(opexpr->args);
+	if (IsA(var2, Var) && var2->varattno > 0)
+	{
+		TargetEntry *tle = list_nth(subquery->targetList, var2->varattno - 1);
+		WindowFunc *wfunc = (WindowFunc *) tle->expr;
+
+		if (find_window_run_conditions(subquery, rte, rti, tle->resno, wfunc,
+									   opexpr, false, &keep_original,
+									   run_cond_attrs))
+			return keep_original;
+	}
+
+	return true;
+}
+
+/*
  * set_subquery_pathlist
  *		Generate SubqueryScan access paths for a subquery RTE
  *
@@ -2440,10 +2706,12 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 {
 	Query	   *subquery = rte->subquery;
 	Relids		required_outer;
+	pushdown_safety_info safetyInfo;
 	double		tuple_fraction;
 	bool		forceDistRand;
 	PlannerConfig *config;
 	RelOptInfo *sub_final_rel;
+	Bitmapset  *run_cond_attrs = NULL;
 	ListCell   *lc;
 
 	/*
@@ -2460,28 +2728,108 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	required_outer = rel->lateral_relids;
 
+	/*
+	 * Zero out result area for subquery_is_pushdown_safe, so that it can set
+	 * flags as needed while recursing.  In particular, we need a workspace
+	 * for keeping track of unsafe-to-reference columns.  unsafeColumns[i]
+	 * will be set true if we find that output column i of the subquery is
+	 * unsafe to use in a pushed-down qual.
+	 */
+	memset(&safetyInfo, 0, sizeof(safetyInfo));
+	safetyInfo.unsafeColumns = (bool *)
+		palloc0((list_length(subquery->targetList) + 1) * sizeof(bool));
+
+	/*
+	 * If the subquery has the "security_barrier" flag, it means the subquery
+	 * originated from a view that must enforce row-level security.  Then we
+	 * must not push down quals that contain leaky functions.  (Ideally this
+	 * would be checked inside subquery_is_pushdown_safe, but since we don't
+	 * currently pass the RTE to that function, we must do it here.)
+	 */
+	safetyInfo.unsafeLeaky = rte->security_barrier;
+
 	forceDistRand = rte->forceDistRandom;
 
 	/* CDB: Could be a preplanned subquery from window_planner. */
 	if (rte->subquery_root == NULL)
 	{
 		/*
-		 * push down quals if possible. Note subquery might be
-		 * different pointer from original one.
+		 * If there are any restriction clauses that have been attached to the
+		 * subquery relation, consider pushing them down to become WHERE or
+		 * HAVING quals of the subquery itself.  This transformation is useful
+		 * because it may allow us to generate a better plan for the subquery
+		 * than evaluating all the subquery output rows and then filtering
+		 * them.
+		 *
+		 * There are several cases where we cannot push down clauses.
+		 * Restrictions involving the subquery are checked by
+		 * subquery_is_pushdown_safe().  Restrictions on individual clauses
+		 * are checked by qual_is_pushdown_safe().  Also, we don't want to
+		 * push down pseudoconstant clauses; better to have the gating node
+		 * above the subquery.
+		 *
+		 * Non-pushed-down clauses will get evaluated as qpquals of the
+		 * SubqueryScan node.
+		 *
+		 * XXX Are there any cases where we want to make a policy decision
+		 * not to push down a pushable qual, because it'd result in a worse
+		 * plan?
 		 */
-		subquery = push_down_restrict(root, rel, rte, rti, subquery);
+		if (rel->baserestrictinfo != NIL &&
+			subquery_is_pushdown_safe(subquery, subquery, &safetyInfo))
+		{
+			/* OK to consider pushing down individual quals */
+			List	   *upperrestrictlist = NIL;
+			ListCell   *l;
+
+			foreach(l, rel->baserestrictinfo)
+			{
+				RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+				Node	   *clause = (Node *) rinfo->clause;
+
+				if (!rinfo->pseudoconstant &&
+					qual_is_pushdown_safe(subquery, rti, rinfo, &safetyInfo))
+				{
+					/* Push it down */
+					subquery_push_qual(subquery, rte, rti, clause);
+				}
+				else
+				{
+					/*
+					 * Since we can't push the qual down into the subquery, check
+					 * if it happens to reference a window function.  If so then
+					 * it might be useful to use for the WindowAgg's runCondition.
+					 */
+					if (!subquery->hasWindowFuncs ||
+						check_and_push_window_quals(subquery, rte, rti, clause,
+													&run_cond_attrs))
+					{
+						/*
+						 * subquery has no window funcs or the clause is not a
+						 * suitable window run condition qual or it is, but the
+						 * original must also be kept in the upper query.
+						 */
+						upperrestrictlist = lappend(upperrestrictlist, rinfo);
+					}
+				}
+			}
+			rel->baserestrictinfo = upperrestrictlist;
+			/* We don't bother recomputing baserestrict_min_security */
+		}
 
 		/*
 		 * The upper query might not use all the subquery's output columns; if
-		 * not, we can simplify.
+		 * not, we can simplify.  Pass the attributes that were pushed down into
+		 * WindowAgg run conditions to ensure we don't accidentally think those
+		 * are unused.
 		 */
-		remove_unused_subquery_outputs(subquery, rel);
+		remove_unused_subquery_outputs(subquery, rel, run_cond_attrs);
 
 		/*
-		 * We can safely pass the outer tuple_fraction down to the subquery if the
-		 * outer level has no joining, aggregation, or sorting to do. Otherwise
-		 * we'd better tell the subquery to plan for full retrieval. (XXX This
-		 * could probably be made more intelligent ...)
+		 * We can safely pass the outer tuple_fraction down to the subquery
+		 * if the outer level has no joining, aggregation, or sorting to do.
+		 * Otherwise we'd better tell the subquery to plan for full retrieval.
+		 * (XXX This could probably be made more intelligent ...)
 		 */
 		if (subquery->hasAggs ||
 			subquery->groupClause ||
@@ -2874,7 +3222,6 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	}
 	if (lc == NULL)				/* shouldn't happen */
 		elog(ERROR, "could not find CTE \"%s\"", rte->ctename);
-
 	Assert(IsA(cte->ctequery, Query));
 	/*
 	 * Copy query node since subquery_planner may trash it, and we need it
@@ -3210,8 +3557,31 @@ set_worktable_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 	required_outer = rel->lateral_relids;
 
-	/* Generate appropriate path */
-	add_path(rel, create_worktablescan_path(root, rel, ctepath->locus, required_outer));
+	/*
+	 * GPDB: pick a truthful locus for the worktable.
+	 *
+	 * The non-recursive term's locus only describes where the *anchor* rows
+	 * are placed.  Rows appended by the recursive term stay on whichever
+	 * segment produced them, so a hashed claim is wrong from the second
+	 * iteration on (joins would then colocate against the wrong segment and
+	 * silently lose rows).  Declare the worktable Strewn instead: joins
+	 * against it must broadcast or gather the other side, which is correct
+	 * for rows living anywhere.  Bottleneck loci (SingleQE/Entry) stay as
+	 * they are: there the whole recursion runs in one process.
+	 */
+	{
+		CdbPathLocus ctelocus;
+
+		if (CdbPathLocus_IsHashed(ctepath->locus) ||
+			CdbPathLocus_IsHashedOJ(ctepath->locus) ||
+			CdbPathLocus_IsStrewn(ctepath->locus))
+			CdbPathLocus_MakeStrewn(&ctelocus,
+									CdbPathLocus_NumSegments(ctepath->locus));
+		else
+			ctelocus = ctepath->locus;
+
+		add_path(rel, create_worktablescan_path(root, rel, ctelocus, required_outer));
+	}
 }
 
 /*
@@ -3291,6 +3661,9 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_rows)
  * This allows us to do incremental sort on top of an index scan under a gather
  * merge node, i.e. parallelized.
  *
+ * If the require_parallel_safe is true, we also require the expressions to
+ * be parallel safe (which allows pushing the sort below Gather Merge).
+ *
  * XXX At the moment this can only ever return a list with a single element,
  * because it looks at query_pathkeys only. So we might return the pathkeys
  * directly, but it seems plausible we'll want to consider other orderings
@@ -3298,14 +3671,16 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_rows)
  * merge joins.
  */
 static List *
-get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
+get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel,
+								 bool require_parallel_safe)
 {
 	List	   *useful_pathkeys_list = NIL;
 
 	/*
 	 * Considering query_pathkeys is always worth it, because it might allow
 	 * us to avoid a total sort when we have a partially presorted path
-	 * available.
+	 * available or to push the total sort into the parallel portion of the
+	 * query.
 	 */
 	if (root->query_pathkeys)
 	{
@@ -3318,17 +3693,19 @@ get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
 			EquivalenceClass *pathkey_ec = pathkey->pk_eclass;
 
 			/*
-			 * We can only build an Incremental Sort for pathkeys which
-			 * contain an EC member in the current relation, so ignore any
-			 * suffix of the list as soon as we find a pathkey without an EC
-			 * member the relation.
+			 * We can only build a sort for pathkeys that contain a
+			 * safe-to-compute-early EC member computable from the current
+			 * relation's reltarget, so ignore the remainder of the list as
+			 * soon as we find a pathkey without such a member.
 			 *
-			 * By still returning the prefix of the pathkeys list that does
-			 * meet criteria of EC membership in the current relation, we
-			 * enable not just an incremental sort on the entirety of
-			 * query_pathkeys but also incremental sort below a JOIN.
+			 * It's still worthwhile to return any prefix of the pathkeys list
+			 * that meets this requirement, as we may be able to do an
+			 * incremental sort.
+			 *
+			 * If requested, ensure the sort expression is parallel-safe too.
 			 */
-			if (!find_em_expr_for_rel(pathkey_ec, rel))
+			if (!relation_can_be_sorted_early(root, rel, pathkey_ec,
+											  require_parallel_safe))
 				break;
 
 			npathkeys++;
@@ -3382,13 +3759,14 @@ generate_useful_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_r
 	generate_gather_paths(root, rel, override_rows);
 
 	/* consider incremental sort for interesting orderings */
-	useful_pathkeys_list = get_useful_pathkeys_for_relation(root, rel);
+	useful_pathkeys_list = get_useful_pathkeys_for_relation(root, rel, true);
 
 	/* used for explicit (full) sort paths */
 	cheapest_partial_path = linitial(rel->partial_pathlist);
 
 	/*
-	 * Consider incremental sort paths for each interesting ordering.
+	 * Consider sorted paths for each interesting ordering. We generate both
+	 * incremental and full sort.
 	 */
 	foreach(lc, useful_pathkeys_list)
 	{
@@ -3402,14 +3780,6 @@ generate_useful_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_r
 			Path	   *subpath = (Path *) lfirst(lc2);
 			GatherMergePath *path;
 
-			/*
-			 * If the path has no ordering at all, then we can't use either
-			 * incremental sort or rely on implict sorting with a gather
-			 * merge.
-			 */
-			if (subpath->pathkeys == NIL)
-				continue;
-
 			is_sorted = pathkeys_count_contained_in(useful_pathkeys,
 													subpath->pathkeys,
 													&presorted_keys);
@@ -3420,8 +3790,8 @@ generate_useful_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_r
 			 * gather merge path for every subpath that has pathkeys present.
 			 *
 			 * But since the subpath is already sorted, we know we don't need
-			 * to consider adding a sort (other either kind) on top of it, so
-			 * we can continue here.
+			 * to consider adding a sort (full or incremental) on top of it,
+			 * so we can continue here.
 			 */
 			if (is_sorted)
 				continue;
@@ -3655,10 +4025,11 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 		join_search_one_level(root, lev);
 
 		/*
-		 * Run generate_partitionwise_join_paths() and generate_gather_paths()
-		 * for each just-processed joinrel.  We could not do this earlier
-		 * because both regular and partial paths can get added to a
-		 * particular joinrel at multiple times within join_search_one_level.
+		 * Run generate_partitionwise_join_paths() and
+		 * generate_useful_gather_paths() for each just-processed joinrel.  We
+		 * could not do this earlier because both regular and partial paths
+		 * can get added to a particular joinrel at multiple times within
+		 * join_search_one_level.
 		 *
 		 * After that, we're done creating paths for the joinrel, so run
 		 * set_cheapest().
@@ -3775,7 +4146,7 @@ push_down_restrict(PlannerInfo *root, RelOptInfo *rel,
 			Node	   *clause = (Node *) rinfo->clause;
 
 			if (!rinfo->pseudoconstant &&
-				qual_is_pushdown_safe(subquery, rti, clause, &safetyInfo))
+				qual_is_pushdown_safe(subquery, rti, rinfo, &safetyInfo))
 			{
 				/* Push it down */
 				subquery_push_qual(subquery, rte, rti, clause);
@@ -3830,6 +4201,17 @@ push_down_restrict(PlannerInfo *root, RelOptInfo *rel,
  * volatile qual could succeed for some SRF output rows and fail for others,
  * a behavior that cannot occur if it's evaluated before SRF expansion.
  *
+ * 6. If the subquery has nonempty grouping sets, we cannot push down any
+ * quals.  The concern here is that a qual referencing a "constant" grouping
+ * column could get constant-folded, which would be improper because the value
+ * is potentially nullable by grouping-set expansion.  This restriction could
+ * be removed if we had a parsetree representation that shows that such
+ * grouping columns are not really constant.  (There are other ideas that
+ * could be used to relax this restriction, but that's the approach most
+ * likely to get taken in the future.  Note that there's not much to be gained
+ * so long as subquery_planner can't move HAVING clauses to WHERE within such
+ * a subquery.)
+ *
  * In addition, we make several checks on the subquery's output columns to see
  * if it is safe to reference them in pushed-down quals.  If output column k
  * is found to be unsafe to reference, we set safetyInfo->unsafeColumns[k]
@@ -3872,6 +4254,10 @@ subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 
 	/* Check point 1 */
 	if (subquery->limitOffset != NULL || subquery->limitCount != NULL)
+		return false;
+
+	/* Check point 6 */
+	if (subquery->groupClause && subquery->groupingSets)
 		return false;
 
 	/* Check points 3, 4, and 5 */
@@ -4107,37 +4493,39 @@ targetIsInAllPartitionLists(TargetEntry *tle, Query *query)
 }
 
 /*
- * qual_is_pushdown_safe - is a particular qual safe to push down?
+ * qual_is_pushdown_safe - is a particular rinfo safe to push down?
  *
- * qual is a restriction clause applying to the given subquery (whose RTE
+ * rinfo is a restriction clause applying to the given subquery (whose RTE
  * has index rti in the parent query).
  *
  * Conditions checked here:
  *
- * 1. The qual must not contain any SubPlans (mainly because I'm not sure
- * it will work correctly: SubLinks will already have been transformed into
- * SubPlans in the qual, but not in the subquery).  Note that SubLinks that
- * transform to initplans are safe, and will be accepted here because what
- * we'll see in the qual is just a Param referencing the initplan output.
+ * 1. rinfo's clause must not contain any SubPlans (mainly because it's
+ * unclear that it will work correctly: SubLinks will already have been
+ * transformed into SubPlans in the qual, but not in the subquery).  Note that
+ * SubLinks that transform to initplans are safe, and will be accepted here
+ * because what we'll see in the qual is just a Param referencing the initplan
+ * output.
  *
- * 2. If unsafeVolatile is set, the qual must not contain any volatile
+ * 2. If unsafeVolatile is set, rinfo's clause must not contain any volatile
  * functions.
  *
- * 3. If unsafeLeaky is set, the qual must not contain any leaky functions
- * that are passed Var nodes, and therefore might reveal values from the
- * subquery as side effects.
+ * 3. If unsafeLeaky is set, rinfo's clause must not contain any leaky
+ * functions that are passed Var nodes, and therefore might reveal values from
+ * the subquery as side effects.
  *
- * 4. The qual must not refer to the whole-row output of the subquery
+ * 4. rinfo's clause must not refer to the whole-row output of the subquery
  * (since there is no easy way to name that within the subquery itself).
  *
- * 5. The qual must not refer to any subquery output columns that were
+ * 5. rinfo's clause must not refer to any subquery output columns that were
  * found to be unsafe to reference by subquery_is_pushdown_safe().
  */
 static bool
-qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
+qual_is_pushdown_safe(Query *subquery, Index rti, RestrictInfo *rinfo,
 					  pushdown_safety_info *safetyInfo)
 {
 	bool		safe = true;
+	Node	   *qual = (Node *) rinfo->clause;
 	List	   *vars;
 	ListCell   *vl;
 
@@ -4147,7 +4535,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 
 	/* Refuse volatile quals if we found they'd be unsafe (point 2) */
 	if (safetyInfo->unsafeVolatile &&
-		contain_volatile_functions(qual))
+		contain_volatile_functions((Node *) rinfo))
 		return false;
 
 	/* Refuse leaky quals if told to (point 3) */
@@ -4314,15 +4702,27 @@ recurse_push_qual(Node *setOp, Query *topquery,
  * compute expressions, but because deletion of output columns might allow
  * optimizations such as join removal to occur within the subquery.
  *
+ * extra_used_attrs can be passed as non-NULL to mark any columns (offset by
+ * FirstLowInvalidHeapAttributeNumber) that we should not remove.  This
+ * parameter is modifed by the function, so callers must make a copy if they
+ * need to use the passed in Bitmapset after calling this function.
+ *
  * To avoid affecting column numbering in the targetlist, we don't physically
  * remove unused tlist entries, but rather replace their expressions with NULL
  * constants.  This is implemented by modifying subquery->targetList.
  */
 static void
-remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel)
+remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel,
+							   Bitmapset *extra_used_attrs)
 {
-	Bitmapset  *attrs_used = NULL;
+	Bitmapset  *attrs_used;
 	ListCell   *lc;
+
+	/*
+	 * Just point directly to extra_used_attrs. No need to bms_copy as none of
+	 * the current callers use the Bitmapset after calling this function.
+	 */
+	attrs_used = extra_used_attrs;
 
 	/*
 	 * Do nothing if subquery has UNION/INTERSECT/EXCEPT: in principle we
@@ -4769,6 +5169,10 @@ print_path(PlannerInfo *root, Path *path, int indent)
 		case T_MaterialPath:
 			ptype = "Material";
 			subpath = ((MaterialPath *) path)->subpath;
+			break;
+		case T_MemoizePath:
+			ptype = "Memoize";
+			subpath = ((MemoizePath *) path)->subpath;
 			break;
 		case T_UniquePath:
 			ptype = "Unique";

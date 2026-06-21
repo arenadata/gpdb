@@ -3,7 +3,7 @@
  * genam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -276,11 +276,18 @@ BuildIndexValueDescription(Relation indexRelation,
 
 /*
  * Get the latestRemovedXid from the table entries pointed at by the index
- * tuples being deleted.
+ * tuples being deleted using an AM-generic approach.
  *
- * Note: index access methods that don't consistently use the standard
- * IndexTuple + heap TID item pointer representation will need to provide
- * their own version of this function.
+ * This is a table_index_delete_tuples() shim used by index AMs that have
+ * simple requirements.  These callers only need to consult the tableam to get
+ * a latestRemovedXid value, and only expect to delete tuples that are already
+ * known deletable.  When a latestRemovedXid value isn't needed in index AM's
+ * deletion WAL record, it is safe for it to skip calling here entirely.
+ *
+ * We assume that caller index AM uses the standard IndexTuple representation,
+ * with table TIDs stored in the t_tid field.  We also expect (and assert)
+ * that the line pointers on page for 'itemnos' offsets are already marked
+ * LP_DEAD.
  */
 TransactionId
 index_compute_xid_horizon_for_tuples(Relation irel,
@@ -289,28 +296,50 @@ index_compute_xid_horizon_for_tuples(Relation irel,
 									 OffsetNumber *itemnos,
 									 int nitems)
 {
-	ItemPointerData *ttids =
-	(ItemPointerData *) palloc(sizeof(ItemPointerData) * nitems);
+	TM_IndexDeleteOp delstate;
 	TransactionId latestRemovedXid = InvalidTransactionId;
 	Page		ipage = BufferGetPage(ibuf);
 	IndexTuple	itup;
 
+	Assert(nitems > 0);
+
+	delstate.irel = irel;
+	delstate.iblknum = BufferGetBlockNumber(ibuf);
+	delstate.bottomup = false;
+	delstate.bottomupfreespace = 0;
+	delstate.ndeltids = 0;
+	delstate.deltids = palloc(nitems * sizeof(TM_IndexDelete));
+	delstate.status = palloc(nitems * sizeof(TM_IndexStatus));
+
 	/* identify what the index tuples about to be deleted point to */
 	for (int i = 0; i < nitems; i++)
 	{
+		OffsetNumber offnum = itemnos[i];
 		ItemId		iitemid;
 
-		iitemid = PageGetItemId(ipage, itemnos[i]);
+		iitemid = PageGetItemId(ipage, offnum);
 		itup = (IndexTuple) PageGetItem(ipage, iitemid);
 
-		ItemPointerCopy(&itup->t_tid, &ttids[i]);
+		Assert(ItemIdIsDead(iitemid));
+
+		ItemPointerCopy(&itup->t_tid, &delstate.deltids[i].tid);
+		delstate.deltids[i].id = delstate.ndeltids;
+		delstate.status[i].idxoffnum = offnum;
+		delstate.status[i].knowndeletable = true;	/* LP_DEAD-marked */
+		delstate.status[i].promising = false;	/* unused */
+		delstate.status[i].freespace = 0;	/* unused */
+
+		delstate.ndeltids++;
 	}
 
 	/* determine the actual xid horizon */
-	latestRemovedXid =
-		table_compute_xid_horizon_for_tuples(hrel, ttids, nitems);
+	latestRemovedXid = table_index_delete_tuples(hrel, &delstate);
 
-	pfree(ttids);
+	/* assert tableam agrees that all items are deletable */
+	Assert(delstate.ndeltids == nitems);
+
+	pfree(delstate.deltids);
+	pfree(delstate.status);
 
 	return latestRemovedXid;
 }
@@ -586,8 +615,8 @@ systable_endscan(SysScanDesc sysscan)
 		UnregisterSnapshot(sysscan->snapshot);
 
 	/*
-	 * Reset the bsysscan flag at the end of the systable scan.  See
-	 * detailed comments in xact.c where these variables are declared.
+	 * Reset the bsysscan flag at the end of the systable scan.  See detailed
+	 * comments in xact.c where these variables are declared.
 	 */
 	if (TransactionIdIsValid(CheckXidAlive))
 		bsysscan = false;
@@ -607,7 +636,7 @@ systable_endscan(SysScanDesc sysscan)
  * Currently we do not support non-index-based scans here.  (In principle
  * we could do a heapscan and sort, but the uses are in places that
  * probably don't need to still work with corrupted catalog indexes.)
- * For the moment, therefore, these functions are merely the thinnest of
+ * For the moment, therefore, these functions are merely the thinest of
  * wrappers around index_beginscan/index_getnext_slot.  The main reason for
  * their existence is to centralize possible future support of lossy operators
  * in catalog scans.

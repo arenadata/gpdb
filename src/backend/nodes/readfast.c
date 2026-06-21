@@ -382,6 +382,7 @@ _readSelectStmt(void)
 	READ_NODE_FIELD(fromClause);
 	READ_NODE_FIELD(whereClause);
 	READ_NODE_FIELD(groupClause);
+	READ_BOOL_FIELD(groupDistinct);
 	READ_NODE_FIELD(havingClause);
 	READ_NODE_FIELD(windowClause);
 	READ_NODE_FIELD(valuesLists);
@@ -400,6 +401,16 @@ _readSelectStmt(void)
 	READ_DONE();
 }
 
+static ParamRef *
+_readParamRef(void)
+{
+	READ_LOCALS(ParamRef);
+
+	READ_INT_FIELD(number);
+	READ_LOCATION_FIELD(location);
+	READ_DONE();
+}
+
 static InsertStmt *
 _readInsertStmt(void)
 {
@@ -408,8 +419,10 @@ _readInsertStmt(void)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(cols);
 	READ_NODE_FIELD(selectStmt);
+	READ_NODE_FIELD(onConflictClause);
 	READ_NODE_FIELD(returningList);
 	READ_NODE_FIELD(withClause);
+	READ_ENUM_FIELD(override, OverridingKind);
 	READ_DONE();
 }
 
@@ -444,33 +457,48 @@ static A_Const *
 _readAConst(void)
 {
 	READ_LOCALS(A_Const);
+	bool isnull;
 
-	READ_ENUM_FIELD(val.type, NodeTag);
-
-	switch (local_node->val.type)
+	memcpy(&isnull, read_str_ptr, sizeof(bool)); read_str_ptr+=sizeof(bool);
+	local_node->isnull = isnull;
+	if (!isnull)
 	{
-		case T_Integer:
-			memcpy(&local_node->val.val.ival, read_str_ptr, sizeof(long)); read_str_ptr+=sizeof(long);
-			break;
-		case T_Float:
-		case T_String:
-		case T_BitString:
+		int16 vt;
+		memcpy(&vt, read_str_ptr, sizeof(int16)); read_str_ptr+=sizeof(int16);
+		local_node->val.node.type = (NodeTag) vt;
+		switch ((NodeTag) vt)
 		{
-			int slen; char * nn;
-			memcpy(&slen, read_str_ptr, sizeof(int));
-			read_str_ptr+=sizeof(int);
-			nn = palloc(slen+1);
-			memcpy(nn,read_str_ptr,slen);
-			nn[slen] = '\0';
-			local_node->val.val.str = nn; read_str_ptr+=slen;
+			case T_Integer:
+			{
+				long ival;
+				memcpy(&ival, read_str_ptr, sizeof(long)); read_str_ptr+=sizeof(long);
+				local_node->val.ival.ival = (int) ival;
+				break;
+			}
+			case T_Float:
+			case T_String:
+			case T_BitString:
+			{
+				int slen; char *nn;
+				memcpy(&slen, read_str_ptr, sizeof(int)); read_str_ptr+=sizeof(int);
+				nn = palloc(slen+1);
+				if (slen > 0) memcpy(nn, read_str_ptr, slen);
+				read_str_ptr+=slen; nn[slen]='\0';
+				local_node->val.sval.sval = nn;
+				break;
+			}
+			case T_Boolean:
+			{
+				bool bval;
+				memcpy(&bval, read_str_ptr, sizeof(bool)); read_str_ptr+=sizeof(bool);
+				local_node->val.boolval.boolval = bval;
+				break;
+			}
+			default:
+				break;
 		}
-			break;
-	 	case T_Null:
-	 	default:
-	 		break;
 	}
-
-    READ_LOCATION_FIELD(location);   /*CDB*/
+	READ_LOCATION_FIELD(location);   /*CDB*/
 	READ_DONE();
 }
 
@@ -520,7 +548,7 @@ _readAExpr(void)
 
 	READ_ENUM_FIELD(kind, A_Expr_Kind);
 
-	Assert(local_node->kind <= AEXPR_PAREN);
+	Assert(local_node->kind <= AEXPR_NOT_BETWEEN_SYM);
 
 	switch (local_node->kind)
 	{
@@ -539,6 +567,10 @@ _readAExpr(void)
 
 			break;
 		case AEXPR_DISTINCT:
+
+			READ_NODE_FIELD(name);
+			break;
+		case AEXPR_NOT_DISTINCT:
 
 			READ_NODE_FIELD(name);
 			break;
@@ -579,10 +611,6 @@ _readAExpr(void)
 			READ_NODE_FIELD(name);
 			break;
 		case AEXPR_NOT_BETWEEN_SYM:
-
-			READ_NODE_FIELD(name);
-			break;
-		case AEXPR_PAREN:
 
 			READ_NODE_FIELD(name);
 			break;
@@ -1554,6 +1582,64 @@ _readLockingClause(void)
 
 	READ_NODE_FIELD(lockedRels);
 	READ_ENUM_FIELD(strength, LockClauseStrength);
+	READ_ENUM_FIELD(waitPolicy, LockWaitPolicy);
+
+	READ_DONE();
+}
+
+static WindowDef *
+_readWindowDef(void)
+{
+	READ_LOCALS(WindowDef);
+
+	READ_STRING_FIELD(name);
+	READ_STRING_FIELD(refname);
+	READ_NODE_FIELD(partitionClause);
+	READ_NODE_FIELD(orderClause);
+	READ_INT_FIELD(frameOptions);
+	READ_NODE_FIELD(startOffset);
+	READ_NODE_FIELD(endOffset);
+	READ_LOCATION_FIELD(location);
+
+	READ_DONE();
+}
+
+static RangeFunction *
+_readRangeFunction(void)
+{
+	READ_LOCALS(RangeFunction);
+
+	READ_BOOL_FIELD(lateral);
+	READ_BOOL_FIELD(ordinality);
+	READ_BOOL_FIELD(is_rowsfrom);
+	READ_NODE_FIELD(functions);
+	READ_NODE_FIELD(alias);
+	READ_NODE_FIELD(coldeflist);
+
+	READ_DONE();
+}
+
+static XmlSerialize *
+_readXmlSerialize(void)
+{
+	READ_LOCALS(XmlSerialize);
+
+	READ_ENUM_FIELD(xmloption, XmlOptionType);
+	READ_NODE_FIELD(expr);
+	READ_NODE_FIELD(typeName);
+	READ_LOCATION_FIELD(location);
+
+	READ_DONE();
+}
+
+static TableLikeClause *
+_readTableLikeClause(void)
+{
+	READ_LOCALS(TableLikeClause);
+
+	READ_NODE_FIELD(relation);
+	READ_UINT_FIELD(options);
+	READ_OID_FIELD(relationOid);
 
 	READ_DONE();
 }
@@ -1581,13 +1667,13 @@ _readValue(NodeTag nt)
 	{
 		long ival;
 		memcpy(&ival, read_str_ptr, sizeof(long)); read_str_ptr+=sizeof(long);
-		result = (Node *) makeInteger(ival);
+		result = (Node *) makeInteger((int) ival);
 	}
-	else if (nt == T_Null)
+	else if (nt == T_Boolean)
 	{
-		Value *val = makeNode(Value);
-		val->type = T_Null;
-		result = (Node *)val;
+		bool bval;
+		memcpy(&bval, read_str_ptr, sizeof(bool)); read_str_ptr+=sizeof(bool);
+		result = (Node *) makeBoolean(bval);
 	}
 	else
 	{
@@ -1595,23 +1681,14 @@ _readValue(NodeTag nt)
 		char * nn = NULL;
 		memcpy(&slen, read_str_ptr, sizeof(int));
 		read_str_ptr+=sizeof(int);
-
-		/*
-		 * For the String case we want to create an empty string if slen is
-		 * equal to zero, since otherwise we'll set the string to NULL, which
-		 * has a different meaning and the NULL case is handed above.
-		 */
 		if (slen > 0 || nt == T_String)
 		{
 		    nn = palloc(slen + 1);
-
 			if (slen > 0)
 			    memcpy(nn, read_str_ptr, slen);
-
 		    read_str_ptr += (slen);
 			nn[slen] = '\0';
 		}
-
 		if (nt == T_Float)
 			result = (Node *) makeFloat(nn);
 		else if (nt == T_String)
@@ -1621,9 +1698,7 @@ _readValue(NodeTag nt)
 		else
 			elog(ERROR, "unknown Value node type %i", nt);
 	}
-
 	return result;
-
 }
 
 /*
@@ -1703,7 +1778,7 @@ readNodeBinary(void)
 	}
 
 	if (nt == T_Integer || nt == T_Float || nt == T_String ||
-	   	nt == T_BitString || nt == T_Null)
+	   	nt == T_BitString || nt == T_Boolean)
 	{
 		return _readValue(nt);
 	}
@@ -2113,6 +2188,63 @@ readNodeBinary(void)
 			case T_AppendRelInfo:
 				return_value = _readAppendRelInfo();
 				break;
+			case T_MergeAction:
+				return_value = _readMergeAction();
+				break;
+
+			/* GPDB: PG15 SQL/JSON nodes (bodies from readfuncs.c) */
+			case T_JsonFormat:
+				return_value = _readJsonFormat();
+				break;
+			case T_JsonReturning:
+				return_value = _readJsonReturning();
+				break;
+			case T_JsonValueExpr:
+				return_value = _readJsonValueExpr();
+				break;
+			case T_JsonConstructorExpr:
+				return_value = _readJsonConstructorExpr();
+				break;
+			case T_JsonBehavior:
+				return_value = _readJsonBehavior();
+				break;
+			case T_JsonExpr:
+				return_value = _readJsonExpr();
+				break;
+			case T_JsonCoercion:
+				return_value = _readJsonCoercion();
+				break;
+			case T_JsonItemCoercions:
+				return_value = _readJsonItemCoercions();
+				break;
+			case T_JsonTableParent:
+				return_value = _readJsonTableParent();
+				break;
+			case T_JsonTableSibling:
+				return_value = _readJsonTableSibling();
+				break;
+			case T_JsonIsPredicate:
+				return_value = _readJsonIsPredicate();
+				break;
+			case T_JsonFuncExpr:
+				return_value = _readJsonFuncExpr();
+				break;
+			case T_JsonCommon:
+				return_value = _readJsonCommon();
+				break;
+			case T_JsonOutput:
+				return_value = _readJsonOutput();
+				break;
+			case T_JsonArgument:
+				return_value = _readJsonArgument();
+				break;
+			case T_PublicationObjSpec:
+				return_value = _readPublicationObjSpec();
+				break;
+			case T_PublicationTable:
+				return_value = _readPublicationTable();
+				break;
+
 			case T_ExtensibleNode:
 				return_value = _readExtensibleNode();
 				break;
@@ -2150,6 +2282,12 @@ readNodeBinary(void)
 
 			case T_CreateFunctionStmt:
 				return_value = _readCreateFunctionStmt();
+				break;
+			case T_ReturnStmt:
+				return_value = _readReturnStmt();
+				break;
+			case T_RawStmt:
+				return_value = _readRawStmt();
 				break;
 			case T_FunctionParameter:
 				return_value = _readFunctionParameter();
@@ -2312,6 +2450,9 @@ readNodeBinary(void)
 			case T_InsertStmt:
 				return_value = _readInsertStmt();
 				break;
+			case T_ParamRef:
+				return_value = _readParamRef();
+				break;
 			case T_DeleteStmt:
 				return_value = _readDeleteStmt();
 				break;
@@ -2336,6 +2477,12 @@ readNodeBinary(void)
 			case T_IndexElem:
 				return_value = _readIndexElem();
 				break;
+			case T_StatsElem:
+				return_value = _readStatsElem();
+				break;
+			case T_CreateStatsStmt:
+				return_value = _readCreateStatsStmt();
+				break;
 			case T_Query:
 				return_value = _readQuery();
 				break;
@@ -2359,6 +2506,12 @@ readNodeBinary(void)
 				break;
 			case T_WithClause:
 				return_value = _readWithClause();
+				break;
+			case T_CTESearchClause:
+				return_value = _readCTESearchClause();
+				break;
+			case T_CTECycleClause:
+				return_value = _readCTECycleClause();
 				break;
 			case T_CommonTableExpr:
 				return_value = _readCommonTableExpr();
@@ -2483,6 +2636,9 @@ readNodeBinary(void)
 			case T_AlterTypeStmtSetDefaultEnc:
 				return_value = _readAlterTypeStmtSetDefaultEnc();
 				break;
+			case T_AlterTypeStmt:
+				return_value = _readAlterTypeStmt();
+				break;
 			case T_AlterExtensionStmt:
 				return_value = _readAlterExtensionStmt();
 				break;
@@ -2575,6 +2731,27 @@ readNodeBinary(void)
 				break;
 			case T_CreateAmStmt:
 				return_value = _readCreateAmStmt();
+				break;
+			case T_WindowDef:
+				return_value = _readWindowDef();
+				break;
+			case T_RangeSubselect:
+				return_value = _readRangeSubselect();
+				break;
+			case T_InferClause:
+				return_value = _readInferClause();
+				break;
+			case T_OnConflictClause:
+				return_value = _readOnConflictClause();
+				break;
+			case T_RangeFunction:
+				return_value = _readRangeFunction();
+				break;
+			case T_XmlSerialize:
+				return_value = _readXmlSerialize();
+				break;
+			case T_TableLikeClause:
+				return_value = _readTableLikeClause();
 				break;
 			case T_LockingClause:
 				return_value = _readLockingClause();

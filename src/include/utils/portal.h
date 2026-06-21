@@ -36,7 +36,7 @@
  * to look like NO SCROLL cursors.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/portal.h
@@ -131,6 +131,7 @@ typedef struct PortalData
 	 */
 	SubTransactionId createSubid;	/* the creating subxact */
 	SubTransactionId activeSubid;	/* the last subxact with activity */
+	int			createLevel;	/* creating subxact's nesting level */
 
 	/*
 	 * if Resource Scheduling is enabled, we need to save the original
@@ -172,6 +173,14 @@ typedef struct PortalData
 	TupleDesc	tupDesc;		/* descriptor for result tuples */
 	/* and these are the format codes to use for the columns: */
 	int16	   *formats;		/* a format code for each column */
+
+	/*
+	 * Outermost ActiveSnapshot for execution of the portal's queries.  For
+	 * all but a few utility commands, we require such a snapshot to exist.
+	 * This ensures that TOAST references in query results can be detoasted,
+	 * and helps to reduce thrashing of the process's exposed xmin.
+	 */
+	Snapshot	portalSnapshot; /* active snapshot, or NULL if none */
 
 	/*
 	 * Where we store tuples for a held cursor or a PORTAL_ONE_RETURNING or
@@ -231,6 +240,7 @@ extern void AtCleanup_Portals(void);
 extern void PortalErrorCleanup(void);
 extern void AtSubCommit_Portals(SubTransactionId mySubid,
 								SubTransactionId parentSubid,
+								int parentLevel,
 								ResourceOwner parentXactOwner);
 extern void AtSubAbort_Portals(SubTransactionId mySubid,
 							   SubTransactionId parentSubid,
@@ -258,6 +268,7 @@ extern void PortalCreateHoldStore(Portal portal);
 extern void PortalHashTableDeleteAll(void);
 extern bool ThereAreNoReadyPortals(void);
 extern void HoldPinnedPortals(void);
+extern void ForgetPortalSnapshots(void);
 
 extern void AtExitCleanup_ResPortals(void);
 extern void TotalResPortalIncrements(int pid, Oid queueid,

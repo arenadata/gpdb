@@ -14,7 +14,7 @@
  *	plan --- consider improving this someday.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/ri_triggers.c
  *
@@ -73,11 +73,14 @@
 #define RI_PLAN_CHECK_LOOKUPPK_FROM_PK	2
 #define RI_PLAN_LAST_ON_PK				RI_PLAN_CHECK_LOOKUPPK_FROM_PK
 /* these queries are executed against the FK (referencing) table: */
-#define RI_PLAN_CASCADE_DEL_DODELETE	3
-#define RI_PLAN_CASCADE_UPD_DOUPDATE	4
-#define RI_PLAN_RESTRICT_CHECKREF		5
-#define RI_PLAN_SETNULL_DOUPDATE		6
-#define RI_PLAN_SETDEFAULT_DOUPDATE		7
+#define RI_PLAN_CASCADE_ONDELETE		3
+#define RI_PLAN_CASCADE_ONUPDATE		4
+/* For RESTRICT, the same plan can be used for both ON DELETE and ON UPDATE triggers. */
+#define RI_PLAN_RESTRICT				5
+#define RI_PLAN_SETNULL_ONDELETE		6
+#define RI_PLAN_SETNULL_ONUPDATE		7
+#define RI_PLAN_SETDEFAULT_ONDELETE		8
+#define RI_PLAN_SETDEFAULT_ONUPDATE		9
 
 #define MAX_QUOTED_NAME_LEN  (NAMEDATALEN*2+3)
 #define MAX_QUOTED_REL_NAME_LEN  (MAX_QUOTED_NAME_LEN*2)
@@ -101,12 +104,19 @@ typedef struct RI_ConstraintInfo
 {
 	Oid			constraint_id;	/* OID of pg_constraint entry (hash key) */
 	bool		valid;			/* successfully initialized? */
-	uint32		oidHashValue;	/* hash value of pg_constraint OID */
+	Oid			constraint_root_id; /* OID of topmost ancestor constraint;
+									 * same as constraint_id if not inherited */
+	uint32		oidHashValue;	/* hash value of constraint_id */
+	uint32		rootHashValue;	/* hash value of constraint_root_id */
 	NameData	conname;		/* name of the FK constraint */
 	Oid			pk_relid;		/* referenced relation */
 	Oid			fk_relid;		/* referencing relation */
 	char		confupdtype;	/* foreign key's ON UPDATE action */
 	char		confdeltype;	/* foreign key's ON DELETE action */
+	int			ndelsetcols;	/* number of columns referenced in ON DELETE
+								 * SET clause */
+	int16		confdelsetcols[RI_MAX_NUMKEYS]; /* attnums of cols to set on
+												 * delete */
 	char		confmatchtype;	/* foreign key's match type */
 	int			nkeys;			/* number of key columns */
 	int16		pk_attnums[RI_MAX_NUMKEYS]; /* attnums of referenced cols */
@@ -177,7 +187,7 @@ static bool ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 							  TupleTableSlot *oldslot,
 							  const RI_ConstraintInfo *riinfo);
 static Datum ri_restrict(TriggerData *trigdata, bool is_no_action);
-static Datum ri_set(TriggerData *trigdata, bool is_set_null);
+static Datum ri_set(TriggerData *trigdata, bool is_set_null, int tgkind);
 static void quoteOneName(char *buffer, const char *name);
 static void quoteRelationName(char *buffer, Relation rel);
 static void ri_GenerateQual(StringInfo buf,
@@ -207,6 +217,7 @@ static void ri_CheckTrigger(FunctionCallInfo fcinfo, const char *funcname,
 static const RI_ConstraintInfo *ri_FetchConstraintInfo(Trigger *trigger,
 													   Relation trig_rel, bool rel_is_pk);
 static const RI_ConstraintInfo *ri_LoadConstraintInfo(Oid constraintOid);
+static Oid	get_ri_constraint_root(Oid constrOid);
 static SPIPlanPtr ri_PlanCheck(const char *querystr, int nargs, Oid *argtypes,
 							   RI_QueryKey *qkey, Relation fk_rel, Relation pk_rel);
 static bool ri_PerformCheck(const RI_ConstraintInfo *riinfo,
@@ -388,11 +399,15 @@ RI_FKey_check(TriggerData *trigdata)
 
 	/*
 	 * Now check that foreign key exists in PK table
+	 *
+	 * XXX detectNewRows must be true when a partitioned table is on the
+	 * referenced side.  The reason is that our snapshot must be fresh in
+	 * order for the hack in find_inheritance_children() to work.
 	 */
 	ri_PerformCheck(riinfo, &qkey, qplan,
 					fk_rel, pk_rel,
 					NULL, newslot,
-					false,
+					pk_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE,
 					SPI_OK_SELECT);
 
 	if (SPI_finish() != SPI_OK_FINISH)
@@ -652,7 +667,7 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 	 * Fetch or prepare a saved plan for the restrict lookup (it's the same
 	 * query for delete and update cases)
 	 */
-	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_RESTRICT_CHECKREF);
+	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_RESTRICT);
 
 	if ((qplan = ri_FetchPreparedPlan(&qkey)) == NULL)
 	{
@@ -759,7 +774,7 @@ RI_FKey_cascade_del(PG_FUNCTION_ARGS)
 		elog(ERROR, "SPI_connect failed");
 
 	/* Fetch or prepare a saved plan for the cascaded delete */
-	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CASCADE_DEL_DODELETE);
+	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CASCADE_ONDELETE);
 
 	if ((qplan = ri_FetchPreparedPlan(&qkey)) == NULL)
 	{
@@ -868,7 +883,7 @@ RI_FKey_cascade_upd(PG_FUNCTION_ARGS)
 		elog(ERROR, "SPI_connect failed");
 
 	/* Fetch or prepare a saved plan for the cascaded update */
-	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CASCADE_UPD_DOUPDATE);
+	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CASCADE_ONUPDATE);
 
 	if ((qplan = ri_FetchPreparedPlan(&qkey)) == NULL)
 	{
@@ -962,7 +977,7 @@ RI_FKey_setnull_del(PG_FUNCTION_ARGS)
 	ri_CheckTrigger(fcinfo, "RI_FKey_setnull_del", RI_TRIGTYPE_DELETE);
 
 	/* Share code with UPDATE case */
-	return ri_set((TriggerData *) fcinfo->context, true);
+	return ri_set((TriggerData *) fcinfo->context, true, RI_TRIGTYPE_DELETE);
 }
 
 /*
@@ -977,7 +992,7 @@ RI_FKey_setnull_upd(PG_FUNCTION_ARGS)
 	ri_CheckTrigger(fcinfo, "RI_FKey_setnull_upd", RI_TRIGTYPE_UPDATE);
 
 	/* Share code with DELETE case */
-	return ri_set((TriggerData *) fcinfo->context, true);
+	return ri_set((TriggerData *) fcinfo->context, true, RI_TRIGTYPE_UPDATE);
 }
 
 /*
@@ -992,7 +1007,7 @@ RI_FKey_setdefault_del(PG_FUNCTION_ARGS)
 	ri_CheckTrigger(fcinfo, "RI_FKey_setdefault_del", RI_TRIGTYPE_DELETE);
 
 	/* Share code with UPDATE case */
-	return ri_set((TriggerData *) fcinfo->context, false);
+	return ri_set((TriggerData *) fcinfo->context, false, RI_TRIGTYPE_DELETE);
 }
 
 /*
@@ -1007,7 +1022,7 @@ RI_FKey_setdefault_upd(PG_FUNCTION_ARGS)
 	ri_CheckTrigger(fcinfo, "RI_FKey_setdefault_upd", RI_TRIGTYPE_UPDATE);
 
 	/* Share code with DELETE case */
-	return ri_set((TriggerData *) fcinfo->context, false);
+	return ri_set((TriggerData *) fcinfo->context, false, RI_TRIGTYPE_UPDATE);
 }
 
 /*
@@ -1017,7 +1032,7 @@ RI_FKey_setdefault_upd(PG_FUNCTION_ARGS)
  * NULL, and ON UPDATE SET DEFAULT.
  */
 static Datum
-ri_set(TriggerData *trigdata, bool is_set_null)
+ri_set(TriggerData *trigdata, bool is_set_null, int tgkind)
 {
 	const RI_ConstraintInfo *riinfo;
 	Relation	fk_rel;
@@ -1025,6 +1040,7 @@ ri_set(TriggerData *trigdata, bool is_set_null)
 	TupleTableSlot *oldslot;
 	RI_QueryKey qkey;
 	SPIPlanPtr	qplan;
+	int32		queryno;
 
 	riinfo = ri_FetchConstraintInfo(trigdata->tg_trigger,
 									trigdata->tg_relation, true);
@@ -1043,18 +1059,29 @@ ri_set(TriggerData *trigdata, bool is_set_null)
 		elog(ERROR, "SPI_connect failed");
 
 	/*
-	 * Fetch or prepare a saved plan for the set null/default operation (it's
-	 * the same query for delete and update cases)
+	 * Fetch or prepare a saved plan for the trigger.
 	 */
-	ri_BuildQueryKey(&qkey, riinfo,
-					 (is_set_null
-					  ? RI_PLAN_SETNULL_DOUPDATE
-					  : RI_PLAN_SETDEFAULT_DOUPDATE));
+	switch (tgkind)
+	{
+		case RI_TRIGTYPE_UPDATE:
+			queryno = is_set_null
+				? RI_PLAN_SETNULL_ONUPDATE
+				: RI_PLAN_SETDEFAULT_ONUPDATE;
+			break;
+		case RI_TRIGTYPE_DELETE:
+			queryno = is_set_null
+				? RI_PLAN_SETNULL_ONDELETE
+				: RI_PLAN_SETDEFAULT_ONDELETE;
+			break;
+		default:
+			elog(ERROR, "invalid tgkind passed to ri_set");
+	}
+
+	ri_BuildQueryKey(&qkey, riinfo, queryno);
 
 	if ((qplan = ri_FetchPreparedPlan(&qkey)) == NULL)
 	{
 		StringInfoData querybuf;
-		StringInfoData qualbuf;
 		char		fkrelname[MAX_QUOTED_REL_NAME_LEN];
 		char		attname[MAX_QUOTED_NAME_LEN];
 		char		paramname[16];
@@ -1062,6 +1089,36 @@ ri_set(TriggerData *trigdata, bool is_set_null)
 		const char *qualsep;
 		Oid			queryoids[RI_MAX_NUMKEYS];
 		const char *fk_only;
+		int			num_cols_to_set;
+		const int16 *set_cols;
+
+		switch (tgkind)
+		{
+			case RI_TRIGTYPE_UPDATE:
+				num_cols_to_set = riinfo->nkeys;
+				set_cols = riinfo->fk_attnums;
+				break;
+			case RI_TRIGTYPE_DELETE:
+
+				/*
+				 * If confdelsetcols are present, then we only update the
+				 * columns specified in that array, otherwise we update all
+				 * the referencing columns.
+				 */
+				if (riinfo->ndelsetcols != 0)
+				{
+					num_cols_to_set = riinfo->ndelsetcols;
+					set_cols = riinfo->confdelsetcols;
+				}
+				else
+				{
+					num_cols_to_set = riinfo->nkeys;
+					set_cols = riinfo->fk_attnums;
+				}
+				break;
+			default:
+				elog(ERROR, "invalid tgkind passed to ri_set");
+		}
 
 		/* ----------
 		 * The query string built is
@@ -1072,13 +1129,29 @@ ri_set(TriggerData *trigdata, bool is_set_null)
 		 * ----------
 		 */
 		initStringInfo(&querybuf);
-		initStringInfo(&qualbuf);
 		fk_only = fk_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ?
 			"" : "ONLY ";
 		quoteRelationName(fkrelname, fk_rel);
 		appendStringInfo(&querybuf, "UPDATE %s%s SET",
 						 fk_only, fkrelname);
+
+		/*
+		 * Add assignment clauses
+		 */
 		querysep = "";
+		for (int i = 0; i < num_cols_to_set; i++)
+		{
+			quoteOneName(attname, RIAttName(fk_rel, set_cols[i]));
+			appendStringInfo(&querybuf,
+							 "%s %s = %s",
+							 querysep, attname,
+							 is_set_null ? "NULL" : "DEFAULT");
+			querysep = ",";
+		}
+
+		/*
+		 * Add WHERE clause
+		 */
 		qualsep = "WHERE";
 		for (int i = 0; i < riinfo->nkeys; i++)
 		{
@@ -1089,22 +1162,17 @@ ri_set(TriggerData *trigdata, bool is_set_null)
 
 			quoteOneName(attname,
 						 RIAttName(fk_rel, riinfo->fk_attnums[i]));
-			appendStringInfo(&querybuf,
-							 "%s %s = %s",
-							 querysep, attname,
-							 is_set_null ? "NULL" : "DEFAULT");
+
 			sprintf(paramname, "$%d", i + 1);
-			ri_GenerateQual(&qualbuf, qualsep,
+			ri_GenerateQual(&querybuf, qualsep,
 							paramname, pk_type,
 							riinfo->pf_eq_oprs[i],
 							attname, fk_type);
 			if (pk_coll != fk_coll && !get_collation_isdeterministic(pk_coll))
 				ri_GenerateQualCollation(&querybuf, pk_coll);
-			querysep = ",";
 			qualsep = "AND";
 			queryoids[i] = pk_type;
 		}
-		appendBinaryStringInfo(&querybuf, qualbuf.data, qualbuf.len);
 
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -1199,6 +1267,12 @@ RI_FKey_fk_upd_check_required(Trigger *trigger, Relation fk_rel,
 	Datum		xminDatum;
 	TransactionId xmin;
 	bool		isnull;
+
+	/*
+	 * AfterTriggerSaveEvent() handles things such that this function is never
+	 * called for partitioned tables.
+	 */
+	Assert(fk_rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE);
 
 	riinfo = ri_FetchConstraintInfo(trigger, fk_rel, false);
 
@@ -1663,7 +1737,7 @@ RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 		appendStringInfo(&querybuf, ") WHERE %s AND (",
 						 constraintDef);
 	else
-		appendStringInfo(&querybuf, ") WHERE (");
+		appendStringInfoString(&querybuf, ") WHERE (");
 
 	sep = "";
 	for (i = 0; i < riinfo->nkeys; i++)
@@ -1892,7 +1966,7 @@ ri_GenerateQualCollation(StringInfo buf, Oid collation)
  *	Construct a hashtable key for a prepared SPI plan of an FK constraint.
  *
  *		key: output argument, *key is filled in based on the other arguments
- *		riinfo: info from pg_constraint entry
+ *		riinfo: info derived from pg_constraint entry
  *		constr_queryno: an internal number identifying the query type
  *			(see RI_PLAN_XXX constants at head of file)
  * ----------
@@ -1902,10 +1976,27 @@ ri_BuildQueryKey(RI_QueryKey *key, const RI_ConstraintInfo *riinfo,
 				 int32 constr_queryno)
 {
 	/*
+	 * Inherited constraints with a common ancestor can share ri_query_cache
+	 * entries for all query types except RI_PLAN_CHECK_LOOKUPPK_FROM_PK.
+	 * Except in that case, the query processes the other table involved in
+	 * the FK constraint (i.e., not the table on which the trigger has been
+	 * fired), and so it will be the same for all members of the inheritance
+	 * tree.  So we may use the root constraint's OID in the hash key, rather
+	 * than the constraint's own OID.  This avoids creating duplicate SPI
+	 * plans, saving lots of work and memory when there are many partitions
+	 * with similar FK constraints.
+	 *
+	 * (Note that we must still have a separate RI_ConstraintInfo for each
+	 * constraint, because partitions can have different column orders,
+	 * resulting in different pk_attnums[] or fk_attnums[] array contents.)
+	 *
 	 * We assume struct RI_QueryKey contains no padding bytes, else we'd need
 	 * to use memset to clear them.
 	 */
-	key->constr_id = riinfo->constraint_id;
+	if (constr_queryno != RI_PLAN_CHECK_LOOKUPPK_FROM_PK)
+		key->constr_id = riinfo->constraint_root_id;
+	else
+		key->constr_id = riinfo->constraint_id;
 	key->constr_queryno = constr_queryno;
 }
 
@@ -2051,8 +2142,15 @@ ri_LoadConstraintInfo(Oid constraintOid)
 
 	/* And extract data */
 	Assert(riinfo->constraint_id == constraintOid);
+	if (OidIsValid(conForm->conparentid))
+		riinfo->constraint_root_id =
+			get_ri_constraint_root(conForm->conparentid);
+	else
+		riinfo->constraint_root_id = constraintOid;
 	riinfo->oidHashValue = GetSysCacheHashValue1(CONSTROID,
 												 ObjectIdGetDatum(constraintOid));
+	riinfo->rootHashValue = GetSysCacheHashValue1(CONSTROID,
+												  ObjectIdGetDatum(riinfo->constraint_root_id));
 	memcpy(&riinfo->conname, &conForm->conname, sizeof(NameData));
 	riinfo->pk_relid = conForm->confrelid;
 	riinfo->fk_relid = conForm->conrelid;
@@ -2066,7 +2164,9 @@ ri_LoadConstraintInfo(Oid constraintOid)
 							   riinfo->pk_attnums,
 							   riinfo->pf_eq_oprs,
 							   riinfo->pp_eq_oprs,
-							   riinfo->ff_eq_oprs);
+							   riinfo->ff_eq_oprs,
+							   &riinfo->ndelsetcols,
+							   riinfo->confdelsetcols);
 
 	ReleaseSysCache(tup);
 
@@ -2080,6 +2180,30 @@ ri_LoadConstraintInfo(Oid constraintOid)
 	riinfo->valid = true;
 
 	return riinfo;
+}
+
+/*
+ * get_ri_constraint_root
+ *		Returns the OID of the constraint's root parent
+ */
+static Oid
+get_ri_constraint_root(Oid constrOid)
+{
+	for (;;)
+	{
+		HeapTuple	tuple;
+		Oid			constrParentOid;
+
+		tuple = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constrOid));
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for constraint %u", constrOid);
+		constrParentOid = ((Form_pg_constraint) GETSTRUCT(tuple))->conparentid;
+		ReleaseSysCache(tuple);
+		if (!OidIsValid(constrParentOid))
+			break;				/* we reached the root constraint */
+		constrOid = constrParentOid;
+	}
+	return constrOid;
 }
 
 /*
@@ -2117,7 +2241,14 @@ InvalidateConstraintCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
 		RI_ConstraintInfo *riinfo = dlist_container(RI_ConstraintInfo,
 													valid_link, iter.cur);
 
-		if (hashvalue == 0 || riinfo->oidHashValue == hashvalue)
+		/*
+		 * We must invalidate not only entries directly matching the given
+		 * hash value, but also child entries, in case the invalidation
+		 * affects a root constraint.
+		 */
+		if (hashvalue == 0 ||
+			riinfo->oidHashValue == hashvalue ||
+			riinfo->rootHashValue == hashvalue)
 		{
 			riinfo->valid = false;
 			/* Remove invalidated entries from the list, too */
@@ -2130,9 +2261,6 @@ InvalidateConstraintCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
 
 /*
  * Prepare execution plan for a query to enforce an RI restriction
- *
- * If cache_plan is true, the plan is saved into our plan hashtable
- * so that we don't need to plan it again.
  */
 static SPIPlanPtr
 ri_PlanCheck(const char *querystr, int nargs, Oid *argtypes,
@@ -2543,7 +2671,6 @@ ri_InitHashTables(void)
 {
 	HASHCTL		ctl;
 
-	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(RI_ConstraintInfo);
 	ri_constraint_cache = hash_create("RI constraint cache",
@@ -2555,14 +2682,12 @@ ri_InitHashTables(void)
 								  InvalidateConstraintCacheCallBack,
 								  (Datum) 0);
 
-	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(RI_QueryKey);
 	ctl.entrysize = sizeof(RI_QueryHashEntry);
 	ri_query_cache = hash_create("RI query cache",
 								 RI_INIT_QUERYHASHSIZE,
 								 &ctl, HASH_ELEM | HASH_BLOBS);
 
-	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(RI_CompareKey);
 	ctl.entrysize = sizeof(RI_CompareHashEntry);
 	ri_compare_cache = hash_create("RI compare cache",

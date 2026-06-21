@@ -4,7 +4,7 @@
  *	  POSTGRES define and remove utility definitions.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/defrem.h
@@ -37,10 +37,7 @@ extern ObjectAddress DefineIndex(Oid relationId,
 								 bool skip_build,
 								 bool quiet,
 								 bool is_new_table);
-extern void ReindexIndex(ReindexStmt *stmt, bool isTopLevel);
-extern Oid	ReindexTable(ReindexStmt *stmt, bool isTopLevel);
-extern void ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
-								  int options, bool concurrent);
+extern void ExecReindex(ParseState *pstate, ReindexStmt *stmt, bool isTopLevel);
 extern char *makeObjectName(const char *name1, const char *name2,
 							const char *label);
 extern char *ChooseRelationName(const char *name1, const char *name2,
@@ -70,7 +67,7 @@ extern ObjectAddress CreateCast(CreateCastStmt *stmt);
 extern ObjectAddress CreateTransform(CreateTransformStmt *stmt);
 extern void IsThereFunctionInNamespace(const char *proname, int pronargs,
 									   oidvector *proargtypes, Oid nspOid);
-extern void ExecuteDoStmt(DoStmt *stmt, bool atomic);
+extern void ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic);
 extern void ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver *dest);
 extern TupleDesc CallStmtResultDesc(CallStmt *stmt);
 extern Oid	get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok);
@@ -79,9 +76,11 @@ extern void interpret_function_parameter_list(ParseState *pstate,
 											  Oid languageOid,
 											  ObjectType objtype,
 											  oidvector **parameterTypes,
+											  List **parameterTypes_list,
 											  ArrayType **allParameterTypes,
 											  ArrayType **parameterModes,
 											  ArrayType **parameterNames,
+											  List **inParameterNames_list,
 											  List **parameterDefaults,
 											  Oid *variadicArgType,
 											  Oid *requiredResultType);
@@ -95,9 +94,8 @@ extern ObjectAddress AlterOperator(AlterOperatorStmt *stmt);
 extern ObjectAddress CreateStatistics(CreateStatsStmt *stmt);
 extern ObjectAddress AlterStatistics(AlterStatsStmt *stmt);
 extern void RemoveStatisticsById(Oid statsOid);
-extern void UpdateStatisticsForTypeChange(Oid statsOid,
-										  Oid relationOid, int attnum,
-										  Oid oldColumnType, Oid newColumnType);
+extern void RemoveStatisticsDataById(Oid statsOid, bool inh);
+extern Oid	StatisticsGetRelation(Oid statId, bool missing_ok);
 
 /* commands/aggregatecmds.c */
 extern ObjectAddress DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle,
@@ -135,8 +133,8 @@ extern ObjectAddress AlterForeignServerOwner(const char *name, Oid newOwnerId);
 extern void AlterForeignServerOwner_oid(Oid, Oid newOwnerId);
 extern ObjectAddress AlterForeignDataWrapperOwner(const char *name, Oid newOwnerId);
 extern void AlterForeignDataWrapperOwner_oid(Oid fwdId, Oid newOwnerId);
-extern ObjectAddress CreateForeignDataWrapper(CreateFdwStmt *stmt);
-extern ObjectAddress AlterForeignDataWrapper(AlterFdwStmt *stmt);
+extern ObjectAddress CreateForeignDataWrapper(ParseState *pstate, CreateFdwStmt *stmt);
+extern ObjectAddress AlterForeignDataWrapper(ParseState *pstate, AlterFdwStmt *stmt);
 extern ObjectAddress CreateForeignServer(CreateForeignServerStmt *stmt);
 extern ObjectAddress AlterForeignServer(AlterForeignServerStmt *stmt);
 extern ObjectAddress CreateUserMapping(CreateUserMappingStmt *stmt);
@@ -167,5 +165,6 @@ extern List *defGetQualifiedName(DefElem *def);
 extern TypeName *defGetTypeName(DefElem *def);
 extern int	defGetTypeLength(DefElem *def);
 extern List *defGetStringList(DefElem *def);
+extern void errorConflictingDefElem(DefElem *defel, ParseState *pstate) pg_attribute_noreturn();
 
 #endif							/* DEFREM_H */

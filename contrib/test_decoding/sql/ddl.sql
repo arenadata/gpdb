@@ -93,6 +93,22 @@ COMMIT;
 /* display results */
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
 
+-- MERGE support
+BEGIN;
+MERGE INTO replication_example t
+	USING (SELECT i as id, i as data, i as num FROM generate_series(-20, 5) i) s
+	ON t.id = s.id
+	WHEN MATCHED AND t.id < 0 THEN
+		UPDATE SET somenum = somenum + 1
+	WHEN MATCHED AND t.id >= 0 THEN
+		DELETE
+	WHEN NOT MATCHED THEN
+		INSERT VALUES (s.*);
+COMMIT;
+
+/* display results */
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
+
 CREATE TABLE tr_unique(id2 serial unique NOT NULL, data int);
 INSERT INTO tr_unique(data) VALUES(10);
 ALTER TABLE tr_unique RENAME TO tr_pkey;
@@ -344,6 +360,37 @@ UPDATE table_with_unique_not_null SET data = 3 WHERE data = 2;
 UPDATE table_with_unique_not_null SET id = -id;
 UPDATE table_with_unique_not_null SET id = -id;
 DELETE FROM table_with_unique_not_null WHERE data = 3;
+
+-- check tables with dropped indexes used in REPLICA IDENTITY
+-- table with primary key
+CREATE TABLE table_dropped_index_with_pk (a int PRIMARY KEY, b int, c int);
+CREATE UNIQUE INDEX table_dropped_index_with_pk_idx
+  ON table_dropped_index_with_pk(a);
+ALTER TABLE table_dropped_index_with_pk REPLICA IDENTITY
+  USING INDEX table_dropped_index_with_pk_idx;
+DROP INDEX table_dropped_index_with_pk_idx;
+INSERT INTO table_dropped_index_with_pk VALUES (1,1,1), (2,2,2), (3,3,3);
+UPDATE table_dropped_index_with_pk SET a = 4 WHERE a = 1;
+UPDATE table_dropped_index_with_pk SET b = 5 WHERE a = 2;
+UPDATE table_dropped_index_with_pk SET b = 6, c = 7 WHERE a = 3;
+DELETE FROM table_dropped_index_with_pk WHERE b = 1;
+DELETE FROM table_dropped_index_with_pk WHERE a = 3;
+DROP TABLE table_dropped_index_with_pk;
+
+-- table without primary key
+CREATE TABLE table_dropped_index_no_pk (a int NOT NULL, b int, c int);
+CREATE UNIQUE INDEX table_dropped_index_no_pk_idx
+  ON table_dropped_index_no_pk(a);
+ALTER TABLE table_dropped_index_no_pk REPLICA IDENTITY
+  USING INDEX table_dropped_index_no_pk_idx;
+DROP INDEX table_dropped_index_no_pk_idx;
+INSERT INTO table_dropped_index_no_pk VALUES (1,1,1), (2,2,2), (3,3,3);
+UPDATE table_dropped_index_no_pk SET a = 4 WHERE a = 1;
+UPDATE table_dropped_index_no_pk SET b = 5 WHERE a = 2;
+UPDATE table_dropped_index_no_pk SET b = 6, c = 7 WHERE a = 3;
+DELETE FROM table_dropped_index_no_pk WHERE b = 1;
+DELETE FROM table_dropped_index_no_pk WHERE a = 3;
+DROP TABLE table_dropped_index_no_pk;
 
 -- check toast support
 BEGIN;

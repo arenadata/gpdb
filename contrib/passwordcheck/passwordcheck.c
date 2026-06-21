@@ -3,7 +3,7 @@
  * passwordcheck.c
  *
  *
- * Copyright (c) 2009-2020, PostgreSQL Global Development Group
+ * Copyright (c) 2009-2022, PostgreSQL Global Development Group
  *
  * Author: Laurenz Albe <laurenz.albe@wien.gv.at>
  *
@@ -33,7 +33,6 @@ static check_password_hook_type prev_check_password_hook = NULL;
 #define MIN_PWD_LENGTH 8
 
 extern void _PG_init(void);
-extern void _PG_fini(void);
 
 /*
  * check_password
@@ -74,7 +73,7 @@ check_password(const char *username,
 		 *
 		 * We only check for username = password.
 		 */
-		char	   *logdetail;
+		const char *logdetail = NULL;
 
 		if (plain_crypt_verify(username, shadow_pass, username, &logdetail) == STATUS_OK)
 			ereport(ERROR,
@@ -91,6 +90,9 @@ check_password(const char *username,
 		int			i;
 		bool		pwd_has_letter,
 					pwd_has_nonletter;
+#ifdef USE_CRACKLIB
+		const char *reason;
+#endif
 
 		/* enforce minimum length */
 		if (pwdlen < MIN_PWD_LENGTH)
@@ -125,10 +127,11 @@ check_password(const char *username,
 
 #ifdef USE_CRACKLIB
 		/* call cracklib to check password */
-		if (FascistCheck(password, CRACKLIB_DICTPATH))
+		if ((reason = FascistCheck(password, CRACKLIB_DICTPATH)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("password is easily cracked")));
+					 errmsg("password is easily cracked"),
+					 errdetail_log("cracklib diagnostic: %s", reason)));
 #endif
 	}
 
@@ -144,14 +147,4 @@ _PG_init(void)
 	/* activate password checks when the module is loaded */
 	prev_check_password_hook = check_password_hook;
 	check_password_hook = check_password;
-}
-
-/*
- * Module unload function
- */
-void
-_PG_fini(void)
-{
-	/* uninstall hook */
-	check_password_hook = prev_check_password_hook;
 }

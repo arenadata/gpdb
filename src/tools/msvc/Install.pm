@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 package Install;
 
 #
@@ -20,12 +23,12 @@ our (@ISA, @EXPORT_OK);
 my $insttype;
 my @client_contribs = ('oid2name', 'pgbench', 'vacuumlo');
 my @client_program_files = (
-	'clusterdb',      'createdb',   'createuser',    'dropdb',
-	'dropuser',       'ecpg',       'libecpg',       'libecpg_compat',
-	'libpgtypes',     'libpq',      'pg_basebackup', 'pg_config',
-	'pg_dump',        'pg_dumpall', 'pg_isready',    'pg_receivewal',
-	'pg_recvlogical', 'pg_restore', 'psql',          'reindexdb',
-	'vacuumdb',       @client_contribs);
+	'clusterdb',     'createdb',       'createuser', 'dropdb',
+	'dropuser',      'ecpg',           'libecpg',    'libecpg_compat',
+	'libpgtypes',    'libpq',          'pg_amcheck', 'pg_basebackup',
+	'pg_config',     'pg_dump',        'pg_dumpall', 'pg_isready',
+	'pg_receivewal', 'pg_recvlogical', 'pg_restore', 'psql',
+	'reindexdb',     'vacuumdb',       @client_contribs);
 
 sub lcopy
 {
@@ -381,8 +384,7 @@ sub GenerateTimezoneFiles
 
 	print "Generating timezone files...";
 
-	my @args = (
-		"$conf/zic/zic", '-d', "$target/share/timezone", '-b', 'slim');
+	my @args = ("$conf/zic/zic", '-d', "$target/share/timezone");
 	foreach (@tzfiles)
 	{
 		my $tzfile = $_;
@@ -452,6 +454,7 @@ sub CopyContribFiles
 			# These configuration-based exclusions must match vcregress.pl
 			next if ($d eq "uuid-ossp"  && !defined($config->{uuid}));
 			next if ($d eq "sslinfo"    && !defined($config->{openssl}));
+			next if ($d eq "pgcrypto"   && !defined($config->{openssl}));
 			next if ($d eq "xml2"       && !defined($config->{xml}));
 			next if ($d =~ /_plperl$/   && !defined($config->{perl}));
 			next if ($d =~ /_plpython$/ && !defined($config->{python}));
@@ -644,7 +647,8 @@ sub CopyIncludeFiles
 	CopyFiles(
 		'Libpq internal headers',
 		$target . '/include/internal/',
-		'src/interfaces/libpq/', 'libpq-int.h', 'pqexpbuffer.h');
+		'src/interfaces/libpq/', 'libpq-int.h', 'fe-auth-sasl.h',
+		'pqexpbuffer.h');
 
 	CopyFiles(
 		'Internal headers',

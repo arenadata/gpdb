@@ -4,7 +4,7 @@
  *	  Functions to convert stored expressions/querytrees back to
  *	  source text
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,8 +24,6 @@
 #include "access/relation.h"
 #include "access/sysattr.h"
 #include "access/table.h"
-#include "catalog/dependency.h"
-#include "catalog/indexing.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_authid.h"
@@ -96,6 +94,11 @@
 #define PRETTYFLAG_PAREN		0x0001
 #define PRETTYFLAG_INDENT		0x0002
 #define PRETTYFLAG_SCHEMA		0x0004
+
+/* Standard conversion of a "bool pretty" option to detailed flags */
+#define GET_PRETTY_FLAGS(pretty) \
+	((pretty) ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) \
+	 : PRETTYFLAG_INDENT)
 
 /* Default line length for pretty-print wrapping: 0 means wrap always */
 #define WRAP_COLUMN_DEFAULT		0
@@ -180,6 +183,10 @@ typedef struct
 	List	   *outer_tlist;	/* referent for OUTER_VAR Vars */
 	List	   *inner_tlist;	/* referent for INNER_VAR Vars */
 	List	   *index_tlist;	/* referent for INDEX_VAR Vars */
+	/* Special namespace representing a function signature: */
+	char	   *funcname;
+	int			numargs;
+	char	  **argnames;
 } deparse_namespace;
 
 /*
@@ -344,7 +351,8 @@ static char *pg_get_indexdef_worker(Oid indexrelid, int colno,
 									bool attrsOnly, bool keysOnly,
 									bool showTblSpc, bool inherits,
 									int prettyFlags, bool missing_ok);
-static char *pg_get_statisticsobj_worker(Oid statextid, bool missing_ok);
+static char *pg_get_statisticsobj_worker(Oid statextid, bool columns_only,
+										 bool missing_ok);
 static char *pg_get_partkeydef_worker(Oid relid, int prettyFlags,
 									  bool attrsOnly, bool missing_ok);
 static char *pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
@@ -355,6 +363,7 @@ static int	print_function_arguments(StringInfo buf, HeapTuple proctup,
 									 bool print_table_args, bool print_defaults);
 static void print_function_rettype(StringInfo buf, HeapTuple proctup);
 static void print_function_trftypes(StringInfo buf, HeapTuple proctup);
+static void print_function_sqlbody(StringInfo buf, HeapTuple proctup);
 static void set_rtable_names(deparse_namespace *dpns, List *parent_namespaces,
 							 Bitmapset *rels_used);
 static void set_deparse_for_query(deparse_namespace *dpns, Query *query,
@@ -377,6 +386,8 @@ static void identify_join_columns(JoinExpr *j, RangeTblEntry *jrte,
 								  deparse_columns *colinfo);
 static char *get_rtable_name(int rtindex, deparse_context *context);
 static void set_deparse_plan(deparse_namespace *dpns, Plan *plan);
+static Plan *find_recursive_union(deparse_namespace *dpns,
+								  WorkTableScan *wtscan);
 static void push_child_plan(deparse_namespace *dpns, Plan *plan,
 							deparse_namespace *save_dpns);
 static void pop_child_plan(deparse_namespace *dpns,
@@ -390,26 +401,29 @@ static void make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 static void make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 						 int prettyFlags, int wrapColumn);
 static void get_query_def(Query *query, StringInfo buf, List *parentnamespace,
-						  TupleDesc resultDesc,
+						  TupleDesc resultDesc, bool colNamesVisible,
 						  int prettyFlags, int wrapColumn, int startIndent);
 static void get_values_def(List *values_lists, deparse_context *context);
 static void get_with_clause(Query *query, deparse_context *context);
 static void get_select_query_def(Query *query, deparse_context *context,
-								 TupleDesc resultDesc);
-static void get_insert_query_def(Query *query, deparse_context *context);
-static void get_update_query_def(Query *query, deparse_context *context);
+								 TupleDesc resultDesc, bool colNamesVisible);
+static void get_insert_query_def(Query *query, deparse_context *context,
+								 bool colNamesVisible);
+static void get_update_query_def(Query *query, deparse_context *context,
+								 bool colNamesVisible);
 static void get_update_query_targetlist_def(Query *query, List *targetList,
 											deparse_context *context,
 											RangeTblEntry *rte);
-static void get_delete_query_def(Query *query, deparse_context *context);
+static void get_delete_query_def(Query *query, deparse_context *context,
+								 bool colNamesVisible);
 static void get_utility_query_def(Query *query, deparse_context *context);
 static void get_basic_select_query(Query *query, deparse_context *context,
-								   TupleDesc resultDesc);
+								   TupleDesc resultDesc, bool colNamesVisible);
 static void get_target_list(List *targetList, deparse_context *context,
-							TupleDesc resultDesc);
+							TupleDesc resultDesc, bool colNamesVisible);
 static void get_setop_query(Node *setOp, Query *query,
 							deparse_context *context,
-							TupleDesc resultDesc);
+							TupleDesc resultDesc, bool colNamesVisible);
 static Node *get_rule_sortgroupclause(Index ref, List *tlist,
 									  bool force_colno,
 									  deparse_context *context);
@@ -437,6 +451,8 @@ static void get_rule_expr(Node *node, deparse_context *context,
 						  bool showimplicit);
 static void get_rule_expr_toplevel(Node *node, deparse_context *context,
 								   bool showimplicit);
+static void get_rule_list_toplevel(List *lst, deparse_context *context,
+								   bool showimplicit);
 static void get_rule_expr_funccall(Node *node, deparse_context *context,
 								   bool showimplicit);
 static bool looks_like_function(Node *node);
@@ -449,11 +465,18 @@ static void get_agg_expr(Aggref *aggref, deparse_context *context,
 static void get_agg_combine_expr(Node *node, deparse_context *context,
 								 void *callback_arg);
 static void get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context);
+static bool get_func_sql_syntax(FuncExpr *expr, deparse_context *context);
 static void get_coercion_expr(Node *arg, deparse_context *context,
 							  Oid resulttype, int32 resulttypmod,
 							  Node *parentNode);
 static void get_const_expr(Const *constval, deparse_context *context,
 						   int showtype);
+static void get_json_constructor(JsonConstructorExpr *ctor,
+								 deparse_context *context, bool showimplicit);
+static void get_json_agg_constructor(JsonConstructorExpr *ctor,
+									 deparse_context *context,
+									 const char *funcname,
+									 bool is_json_objectagg);
 static void get_const_collation(Const *constval, deparse_context *context);
 static void simple_quote_literal(StringInfo buf, const char *val);
 static void get_sublink_expr(SubLink *sublink, deparse_context *context);
@@ -487,6 +510,10 @@ static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
 static void get_reloptions(StringInfo buf, Datum reloptions);
+static void get_json_path_spec(Node *path_spec, deparse_context *context,
+							   bool showimplicit);
+static void get_json_table_columns(TableFunc *tf, JsonTableParent *node,
+								   deparse_context *context, bool showimplicit);
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -523,7 +550,7 @@ pg_get_ruledef_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *res;
 
-	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	res = pg_get_ruledef_worker(ruleoid, prettyFlags);
 
@@ -644,7 +671,7 @@ pg_get_viewdef_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *res;
 
-	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	res = pg_get_viewdef_worker(viewoid, prettyFlags, WRAP_COLUMN_DEFAULT);
 
@@ -664,7 +691,7 @@ pg_get_viewdef_wrap(PG_FUNCTION_ARGS)
 	char	   *res;
 
 	/* calling this implies we want pretty printing */
-	prettyFlags = PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA;
+	prettyFlags = GET_PRETTY_FLAGS(true);
 
 	res = pg_get_viewdef_worker(viewoid, prettyFlags, wrap);
 
@@ -710,7 +737,7 @@ pg_get_viewdef_name_ext(PG_FUNCTION_ARGS)
 	Oid			viewoid;
 	char	   *res;
 
-	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	/* Look up view name.  Can't lock it - we might not have privileges. */
 	viewrel = makeRangeVarFromNameList(textToQualifiedNameList(viewname));
@@ -1053,7 +1080,7 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 		context.windowClause = NIL;
 		context.windowTList = NIL;
 		context.varprefix = true;
-		context.prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+		context.prettyFlags = GET_PRETTY_FLAGS(pretty);
 		context.wrapColumn = WRAP_COLUMN_DEFAULT;
 		context.indentLevel = PRETTYINDENT_STD;
 		context.special_exprkind = EXPR_KIND_NONE;
@@ -1143,7 +1170,7 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *res;
 
-	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	res = pg_get_indexdef_worker(indexrelid, colno, NULL,
 								 colno != 0, false,
@@ -1176,7 +1203,7 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 {
 	int			prettyFlags;
 
-	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	return pg_get_indexdef_worker(indexrelid, 0, NULL,
 								  true, true,
@@ -1441,6 +1468,9 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 	{
 		appendStringInfoChar(&buf, ')');
 
+		if (idxrec->indnullsnotdistinct)
+			appendStringInfo(&buf, " NULLS NOT DISTINCT");
+
 		/*
 		 * If it has options, append "WITH (options)"
 		 */
@@ -1504,6 +1534,31 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 	return buf.data;
 }
 
+/* ----------
+ * pg_get_querydef
+ *
+ * Public entry point to deparse one query parsetree.
+ * The pretty flags are determined by GET_PRETTY_FLAGS(pretty).
+ *
+ * The result is a palloc'd C string.
+ * ----------
+ */
+char *
+pg_get_querydef(Query *query, bool pretty)
+{
+	StringInfoData buf;
+	int			prettyFlags;
+
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
+
+	initStringInfo(&buf);
+
+	get_query_def(query, &buf, NIL, NULL, true,
+				  prettyFlags, WRAP_COLUMN_DEFAULT, 0);
+
+	return buf.data;
+}
+
 /*
  * pg_get_statisticsobjdef
  *		Get the definition of an extended statistics object
@@ -1514,7 +1569,36 @@ pg_get_statisticsobjdef(PG_FUNCTION_ARGS)
 	Oid			statextid = PG_GETARG_OID(0);
 	char	   *res;
 
-	res = pg_get_statisticsobj_worker(statextid, true);
+	res = pg_get_statisticsobj_worker(statextid, false, true);
+
+	if (res == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(string_to_text(res));
+}
+
+/*
+ * Internal version for use by ALTER TABLE.
+ * Includes a tablespace clause in the result.
+ * Returns a palloc'd C string; no pretty-printing.
+ */
+char *
+pg_get_statisticsobjdef_string(Oid statextid)
+{
+	return pg_get_statisticsobj_worker(statextid, false, false);
+}
+
+/*
+ * pg_get_statisticsobjdef_columns
+ *		Get columns and expressions for an extended statistics object
+ */
+Datum
+pg_get_statisticsobjdef_columns(PG_FUNCTION_ARGS)
+{
+	Oid			statextid = PG_GETARG_OID(0);
+	char	   *res;
+
+	res = pg_get_statisticsobj_worker(statextid, true, true);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1526,7 +1610,7 @@ pg_get_statisticsobjdef(PG_FUNCTION_ARGS)
  * Internal workhorse to decompile an extended statistics object.
  */
 static char *
-pg_get_statisticsobj_worker(Oid statextid, bool missing_ok)
+pg_get_statisticsobj_worker(Oid statextid, bool columns_only, bool missing_ok)
 {
 	Form_pg_statistic_ext statextrec;
 	HeapTuple	statexttup;
@@ -1541,6 +1625,11 @@ pg_get_statisticsobj_worker(Oid statextid, bool missing_ok)
 	bool		dependencies_enabled;
 	bool		mcv_enabled;
 	int			i;
+	List	   *context;
+	ListCell   *lc;
+	List	   *exprs = NIL;
+	bool		has_exprs;
+	int			ncolumns;
 
 	statexttup = SearchSysCache1(STATEXTOID, ObjectIdGetDatum(statextid));
 
@@ -1551,75 +1640,114 @@ pg_get_statisticsobj_worker(Oid statextid, bool missing_ok)
 		elog(ERROR, "cache lookup failed for statistics object %u", statextid);
 	}
 
+	/* has the statistics expressions? */
+	has_exprs = !heap_attisnull(statexttup, Anum_pg_statistic_ext_stxexprs, NULL);
+
 	statextrec = (Form_pg_statistic_ext) GETSTRUCT(statexttup);
+
+	/*
+	 * Get the statistics expressions, if any.  (NOTE: we do not use the
+	 * relcache versions of the expressions, because we want to display
+	 * non-const-folded expressions.)
+	 */
+	if (has_exprs)
+	{
+		Datum		exprsDatum;
+		bool		isnull;
+		char	   *exprsString;
+
+		exprsDatum = SysCacheGetAttr(STATEXTOID, statexttup,
+									 Anum_pg_statistic_ext_stxexprs, &isnull);
+		Assert(!isnull);
+		exprsString = TextDatumGetCString(exprsDatum);
+		exprs = (List *) stringToNode(exprsString);
+		pfree(exprsString);
+	}
+	else
+		exprs = NIL;
+
+	/* count the number of columns (attributes and expressions) */
+	ncolumns = statextrec->stxkeys.dim1 + list_length(exprs);
 
 	initStringInfo(&buf);
 
-	nsp = get_namespace_name(statextrec->stxnamespace);
-	appendStringInfo(&buf, "CREATE STATISTICS %s",
-					 quote_qualified_identifier(nsp,
-												NameStr(statextrec->stxname)));
-
-	/*
-	 * Decode the stxkind column so that we know which stats types to print.
-	 */
-	datum = SysCacheGetAttr(STATEXTOID, statexttup,
-							Anum_pg_statistic_ext_stxkind, &isnull);
-	Assert(!isnull);
-	arr = DatumGetArrayTypeP(datum);
-	if (ARR_NDIM(arr) != 1 ||
-		ARR_HASNULL(arr) ||
-		ARR_ELEMTYPE(arr) != CHAROID)
-		elog(ERROR, "stxkind is not a 1-D char array");
-	enabled = (char *) ARR_DATA_PTR(arr);
-
-	ndistinct_enabled = false;
-	dependencies_enabled = false;
-	mcv_enabled = false;
-
-	for (i = 0; i < ARR_DIMS(arr)[0]; i++)
+	if (!columns_only)
 	{
-		if (enabled[i] == STATS_EXT_NDISTINCT)
-			ndistinct_enabled = true;
-		if (enabled[i] == STATS_EXT_DEPENDENCIES)
-			dependencies_enabled = true;
-		if (enabled[i] == STATS_EXT_MCV)
-			mcv_enabled = true;
-	}
+		nsp = get_namespace_name_or_temp(statextrec->stxnamespace);
+		appendStringInfo(&buf, "CREATE STATISTICS %s",
+						 quote_qualified_identifier(nsp,
+													NameStr(statextrec->stxname)));
 
-	/*
-	 * If any option is disabled, then we'll need to append the types clause
-	 * to show which options are enabled.  We omit the types clause on purpose
-	 * when all options are enabled, so a pg_dump/pg_restore will create all
-	 * statistics types on a newer postgres version, if the statistics had all
-	 * options enabled on the original version.
-	 */
-	if (!ndistinct_enabled || !dependencies_enabled || !mcv_enabled)
-	{
-		bool		gotone = false;
+		/*
+		 * Decode the stxkind column so that we know which stats types to
+		 * print.
+		 */
+		datum = SysCacheGetAttr(STATEXTOID, statexttup,
+								Anum_pg_statistic_ext_stxkind, &isnull);
+		Assert(!isnull);
+		arr = DatumGetArrayTypeP(datum);
+		if (ARR_NDIM(arr) != 1 ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != CHAROID)
+			elog(ERROR, "stxkind is not a 1-D char array");
+		enabled = (char *) ARR_DATA_PTR(arr);
 
-		appendStringInfoString(&buf, " (");
+		ndistinct_enabled = false;
+		dependencies_enabled = false;
+		mcv_enabled = false;
 
-		if (ndistinct_enabled)
+		for (i = 0; i < ARR_DIMS(arr)[0]; i++)
 		{
-			appendStringInfoString(&buf, "ndistinct");
-			gotone = true;
+			if (enabled[i] == STATS_EXT_NDISTINCT)
+				ndistinct_enabled = true;
+			else if (enabled[i] == STATS_EXT_DEPENDENCIES)
+				dependencies_enabled = true;
+			else if (enabled[i] == STATS_EXT_MCV)
+				mcv_enabled = true;
+
+			/* ignore STATS_EXT_EXPRESSIONS (it's built automatically) */
 		}
 
-		if (dependencies_enabled)
+		/*
+		 * If any option is disabled, then we'll need to append the types
+		 * clause to show which options are enabled.  We omit the types clause
+		 * on purpose when all options are enabled, so a pg_dump/pg_restore
+		 * will create all statistics types on a newer postgres version, if
+		 * the statistics had all options enabled on the original version.
+		 *
+		 * But if the statistics is defined on just a single column, it has to
+		 * be an expression statistics. In that case we don't need to specify
+		 * kinds.
+		 */
+		if ((!ndistinct_enabled || !dependencies_enabled || !mcv_enabled) &&
+			(ncolumns > 1))
 		{
-			appendStringInfo(&buf, "%sdependencies", gotone ? ", " : "");
-			gotone = true;
+			bool		gotone = false;
+
+			appendStringInfoString(&buf, " (");
+
+			if (ndistinct_enabled)
+			{
+				appendStringInfoString(&buf, "ndistinct");
+				gotone = true;
+			}
+
+			if (dependencies_enabled)
+			{
+				appendStringInfo(&buf, "%sdependencies", gotone ? ", " : "");
+				gotone = true;
+			}
+
+			if (mcv_enabled)
+				appendStringInfo(&buf, "%smcv", gotone ? ", " : "");
+
+			appendStringInfoChar(&buf, ')');
 		}
 
-		if (mcv_enabled)
-			appendStringInfo(&buf, "%smcv", gotone ? ", " : "");
-
-		appendStringInfoChar(&buf, ')');
+		appendStringInfoString(&buf, " ON ");
 	}
 
-	appendStringInfoString(&buf, " ON ");
-
+	/* decode simple column references */
 	for (colno = 0; colno < statextrec->stxkeys.dim1; colno++)
 	{
 		AttrNumber	attnum = statextrec->stxkeys.values[colno];
@@ -1633,12 +1761,107 @@ pg_get_statisticsobj_worker(Oid statextid, bool missing_ok)
 		appendStringInfoString(&buf, quote_identifier(attname));
 	}
 
-	appendStringInfo(&buf, " FROM %s",
-					 generate_relation_name(statextrec->stxrelid, NIL));
+	context = deparse_context_for(get_relation_name(statextrec->stxrelid),
+								  statextrec->stxrelid);
+
+	foreach(lc, exprs)
+	{
+		Node	   *expr = (Node *) lfirst(lc);
+		char	   *str;
+		int			prettyFlags = PRETTYFLAG_PAREN;
+
+		str = deparse_expression_pretty(expr, context, false, false,
+										prettyFlags, 0);
+
+		if (colno > 0)
+			appendStringInfoString(&buf, ", ");
+
+		/* Need parens if it's not a bare function call */
+		if (looks_like_function(expr))
+			appendStringInfoString(&buf, str);
+		else
+			appendStringInfo(&buf, "(%s)", str);
+
+		colno++;
+	}
+
+	if (!columns_only)
+		appendStringInfo(&buf, " FROM %s",
+						 generate_relation_name(statextrec->stxrelid, NIL));
 
 	ReleaseSysCache(statexttup);
 
 	return buf.data;
+}
+
+/*
+ * Generate text array of expressions for statistics object.
+ */
+Datum
+pg_get_statisticsobjdef_expressions(PG_FUNCTION_ARGS)
+{
+	Oid			statextid = PG_GETARG_OID(0);
+	Form_pg_statistic_ext statextrec;
+	HeapTuple	statexttup;
+	Datum		datum;
+	bool		isnull;
+	List	   *context;
+	ListCell   *lc;
+	List	   *exprs = NIL;
+	bool		has_exprs;
+	char	   *tmp;
+	ArrayBuildState *astate = NULL;
+
+	statexttup = SearchSysCache1(STATEXTOID, ObjectIdGetDatum(statextid));
+
+	if (!HeapTupleIsValid(statexttup))
+		PG_RETURN_NULL();
+
+	/* Does the stats object have expressions? */
+	has_exprs = !heap_attisnull(statexttup, Anum_pg_statistic_ext_stxexprs, NULL);
+
+	/* no expressions? we're done */
+	if (!has_exprs)
+	{
+		ReleaseSysCache(statexttup);
+		PG_RETURN_NULL();
+	}
+
+	statextrec = (Form_pg_statistic_ext) GETSTRUCT(statexttup);
+
+	/*
+	 * Get the statistics expressions, and deparse them into text values.
+	 */
+	datum = SysCacheGetAttr(STATEXTOID, statexttup,
+							Anum_pg_statistic_ext_stxexprs, &isnull);
+
+	Assert(!isnull);
+	tmp = TextDatumGetCString(datum);
+	exprs = (List *) stringToNode(tmp);
+	pfree(tmp);
+
+	context = deparse_context_for(get_relation_name(statextrec->stxrelid),
+								  statextrec->stxrelid);
+
+	foreach(lc, exprs)
+	{
+		Node	   *expr = (Node *) lfirst(lc);
+		char	   *str;
+		int			prettyFlags = PRETTYFLAG_INDENT;
+
+		str = deparse_expression_pretty(expr, context, false, false,
+										prettyFlags, 0);
+
+		astate = accumArrayResult(astate,
+								  PointerGetDatum(cstring_to_text(str)),
+								  false,
+								  TEXTOID,
+								  CurrentMemoryContext);
+	}
+
+	ReleaseSysCache(statexttup);
+
+	PG_RETURN_DATUM(makeArrayResult(astate, CurrentMemoryContext));
 }
 
 /*
@@ -1668,7 +1891,7 @@ pg_get_partkeydef_columns(Oid relid, bool pretty)
 {
 	int			prettyFlags;
 
-	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	return pg_get_partkeydef_worker(relid, prettyFlags, true, false);
 }
@@ -1915,7 +2138,7 @@ pg_get_constraintdef_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *res;
 
-	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	res = pg_get_constraintdef_worker(constraintId, false, prettyFlags, true);
 
@@ -2125,6 +2348,19 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				if (string)
 					appendStringInfo(&buf, " ON DELETE %s", string);
 
+				/*
+				 * Add columns specified to SET NULL or SET DEFAULT if
+				 * provided.
+				 */
+				val = SysCacheGetAttr(CONSTROID, tup,
+									  Anum_pg_constraint_confdelsetcols, &isnull);
+				if (!isnull)
+				{
+					appendStringInfo(&buf, " (");
+					decompile_column_index_array(val, conForm->conrelid, &buf);
+					appendStringInfo(&buf, ")");
+				}
+
 				break;
 			}
 		case CONSTRAINT_PRIMARY:
@@ -2138,9 +2374,20 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 
 				/* Start off the constraint definition */
 				if (conForm->contype == CONSTRAINT_PRIMARY)
-					appendStringInfoString(&buf, "PRIMARY KEY (");
+					appendStringInfoString(&buf, "PRIMARY KEY ");
 				else
-					appendStringInfoString(&buf, "UNIQUE (");
+					appendStringInfoString(&buf, "UNIQUE ");
+
+				indexId = conForm->conindid;
+
+				indtup = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(indexId));
+				if (!HeapTupleIsValid(indtup))
+					elog(ERROR, "cache lookup failed for index %u", indexId);
+				if (conForm->contype == CONSTRAINT_UNIQUE &&
+					((Form_pg_index) GETSTRUCT(indtup))->indnullsnotdistinct)
+					appendStringInfoString(&buf, "NULLS NOT DISTINCT ");
+
+				appendStringInfoString(&buf, "(");
 
 				/* Fetch and build target column list */
 				val = SysCacheGetAttr(CONSTROID, tup,
@@ -2153,12 +2400,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 
 				appendStringInfoChar(&buf, ')');
 
-				indexId = get_constraint_index(constraintId);
-
 				/* Build including column list (from pg_index.indkeys) */
-				indtup = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(indexId));
-				if (!HeapTupleIsValid(indtup))
-					elog(ERROR, "cache lookup failed for index %u", indexId);
 				val = SysCacheGetAttr(INDEXRELID, indtup,
 									  Anum_pg_index_indnatts, &isnull);
 				if (isnull)
@@ -2389,6 +2631,12 @@ decompile_column_index_array(Datum column_index_array, Oid relId,
  * the one specified by the second parameter.  This is sufficient for
  * partial indexes, column default expressions, etc.  We also support
  * Var-free expressions, for which the OID can be InvalidOid.
+ *
+ * We expect this function to work, or throw a reasonably clean error,
+ * for any node tree that can appear in a catalog pg_node_tree column.
+ * Query trees, such as those appearing in pg_rewrite.ev_action, are
+ * not supported.  Nor are expressions in more than one relation, which
+ * can appear in places like pg_rewrite.ev_qual.
  * ----------
  */
 Datum
@@ -2430,7 +2678,7 @@ pg_get_expr_ext(PG_FUNCTION_ARGS)
 	int			prettyFlags;
 	char	   *relname;
 
-	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
+	prettyFlags = GET_PRETTY_FLAGS(pretty);
 
 	if (OidIsValid(relid))
 	{
@@ -2450,17 +2698,53 @@ static text *
 pg_get_expr_worker(text *expr, Oid relid, const char *relname, int prettyFlags)
 {
 	Node	   *node;
+	Node	   *tst;
+	Relids		relids;
 	List	   *context;
 	char	   *exprstr;
 	char	   *str;
 
-	/* Convert input TEXT object to C string */
+	/* Convert input pg_node_tree (really TEXT) object to C string */
 	exprstr = text_to_cstring(expr);
 
 	/* Convert expression to node tree */
 	node = (Node *) stringToNode(exprstr);
 
 	pfree(exprstr);
+
+	/*
+	 * Throw error if the input is a querytree rather than an expression tree.
+	 * While we could support queries here, there seems no very good reason
+	 * to.  In most such catalog columns, we'll see a List of Query nodes, or
+	 * even nested Lists, so drill down to a non-List node before checking.
+	 */
+	tst = node;
+	while (tst && IsA(tst, List))
+		tst = linitial((List *) tst);
+	if (tst && IsA(tst, Query))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("input is a query, not an expression")));
+
+	/*
+	 * Throw error if the expression contains Vars we won't be able to
+	 * deparse.
+	 */
+	relids = pull_varnos(NULL, node);
+	if (OidIsValid(relid))
+	{
+		if (!bms_is_subset(relids, bms_make_singleton(1)))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("expression contains variables of more than one relation")));
+	}
+	else
+	{
+		if (!bms_is_empty(relids))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("expression contains variables")));
+	}
 
 	/* Prepare deparse context if needed */
 	if (OidIsValid(relid))
@@ -2651,7 +2935,7 @@ pg_get_functiondef(PG_FUNCTION_ARGS)
 	 * We always qualify the function name, to ensure the right function gets
 	 * replaced.
 	 */
-	nsp = get_namespace_name(proc->pronamespace);
+	nsp = get_namespace_name_or_temp(proc->pronamespace);
 	appendStringInfo(&buf, "CREATE OR REPLACE %s %s(",
 					 isfunction ? "FUNCTION" : "PROCEDURE",
 					 quote_qualified_identifier(nsp, name));
@@ -2813,37 +3097,46 @@ pg_get_functiondef(PG_FUNCTION_ARGS)
 	}
 
 	/* And finally the function definition ... */
-	appendStringInfoString(&buf, "AS ");
-
-	tmp = SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_probin, &isnull);
-	if (!isnull)
+	(void) SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_prosqlbody, &isnull);
+	if (proc->prolang == SQLlanguageId && !isnull)
 	{
-		simple_quote_literal(&buf, TextDatumGetCString(tmp));
-		appendStringInfoString(&buf, ", "); /* assume prosrc isn't null */
+		print_function_sqlbody(&buf, proctup);
 	}
+	else
+	{
+		appendStringInfoString(&buf, "AS ");
 
-	tmp = SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_prosrc, &isnull);
-	if (isnull)
-		elog(ERROR, "null prosrc");
-	prosrc = TextDatumGetCString(tmp);
+		tmp = SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_probin, &isnull);
+		if (!isnull)
+		{
+			simple_quote_literal(&buf, TextDatumGetCString(tmp));
+			appendStringInfoString(&buf, ", "); /* assume prosrc isn't null */
+		}
 
-	/*
-	 * We always use dollar quoting.  Figure out a suitable delimiter.
-	 *
-	 * Since the user is likely to be editing the function body string, we
-	 * shouldn't use a short delimiter that he might easily create a conflict
-	 * with.  Hence prefer "$function$"/"$procedure$", but extend if needed.
-	 */
-	initStringInfo(&dq);
-	appendStringInfoChar(&dq, '$');
-	appendStringInfoString(&dq, (isfunction ? "function" : "procedure"));
-	while (strstr(prosrc, dq.data) != NULL)
-		appendStringInfoChar(&dq, 'x');
-	appendStringInfoChar(&dq, '$');
+		tmp = SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_prosrc, &isnull);
+		if (isnull)
+			elog(ERROR, "null prosrc");
+		prosrc = TextDatumGetCString(tmp);
 
-	appendBinaryStringInfo(&buf, dq.data, dq.len);
-	appendStringInfoString(&buf, prosrc);
-	appendBinaryStringInfo(&buf, dq.data, dq.len);
+		/*
+		 * We always use dollar quoting.  Figure out a suitable delimiter.
+		 *
+		 * Since the user is likely to be editing the function body string, we
+		 * shouldn't use a short delimiter that he might easily create a
+		 * conflict with.  Hence prefer "$function$"/"$procedure$", but extend
+		 * if needed.
+		 */
+		initStringInfo(&dq);
+		appendStringInfoChar(&dq, '$');
+		appendStringInfoString(&dq, (isfunction ? "function" : "procedure"));
+		while (strstr(prosrc, dq.data) != NULL)
+			appendStringInfoChar(&dq, 'x');
+		appendStringInfoChar(&dq, '$');
+
+		appendBinaryStringInfo(&buf, dq.data, dq.len);
+		appendStringInfoString(&buf, prosrc);
+		appendBinaryStringInfo(&buf, dq.data, dq.len);
+	}
 
 	appendStringInfoChar(&buf, '\n');
 
@@ -3048,7 +3341,15 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 		switch (argmode)
 		{
 			case PROARGMODE_IN:
-				modename = "";
+
+				/*
+				 * For procedures, explicitly mark all argument modes, so as
+				 * to avoid ambiguity with the SQL syntax for DROP PROCEDURE.
+				 */
+				if (proc->prokind == PROKIND_PROCEDURE)
+					modename = "IN ";
+				else
+					modename = "";
 				isinput = true;
 				break;
 			case PROARGMODE_INOUT:
@@ -3140,13 +3441,14 @@ print_function_trftypes(StringInfo buf, HeapTuple proctup)
 	{
 		int			i;
 
-		appendStringInfoString(buf, "\n TRANSFORM ");
+		appendStringInfoString(buf, " TRANSFORM ");
 		for (i = 0; i < ntypes; i++)
 		{
 			if (i != 0)
 				appendStringInfoString(buf, ", ");
 			appendStringInfo(buf, "FOR TYPE %s", format_type_be(trftypes[i]));
 		}
+		appendStringInfoChar(buf, '\n');
 	}
 }
 
@@ -3224,6 +3526,91 @@ pg_get_function_arg_default(PG_FUNCTION_ARGS)
 	ReleaseSysCache(proctup);
 
 	PG_RETURN_TEXT_P(string_to_text(str));
+}
+
+static void
+print_function_sqlbody(StringInfo buf, HeapTuple proctup)
+{
+	int			numargs;
+	Oid		   *argtypes;
+	char	  **argnames;
+	char	   *argmodes;
+	deparse_namespace dpns = {0};
+	Datum		tmp;
+	bool		isnull;
+	Node	   *n;
+
+	dpns.funcname = pstrdup(NameStr(((Form_pg_proc) GETSTRUCT(proctup))->proname));
+	numargs = get_func_arg_info(proctup,
+								&argtypes, &argnames, &argmodes);
+	dpns.numargs = numargs;
+	dpns.argnames = argnames;
+
+	tmp = SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_prosqlbody, &isnull);
+	Assert(!isnull);
+	n = stringToNode(TextDatumGetCString(tmp));
+
+	if (IsA(n, List))
+	{
+		List	   *stmts;
+		ListCell   *lc;
+
+		stmts = linitial(castNode(List, n));
+
+		appendStringInfoString(buf, "BEGIN ATOMIC\n");
+
+		foreach(lc, stmts)
+		{
+			Query	   *query = lfirst_node(Query, lc);
+
+			/* It seems advisable to get at least AccessShareLock on rels */
+			AcquireRewriteLocks(query, false, false);
+			get_query_def(query, buf, list_make1(&dpns), NULL, false,
+						  PRETTYFLAG_INDENT, WRAP_COLUMN_DEFAULT, 1);
+			appendStringInfoChar(buf, ';');
+			appendStringInfoChar(buf, '\n');
+		}
+
+		appendStringInfoString(buf, "END");
+	}
+	else
+	{
+		Query	   *query = castNode(Query, n);
+
+		/* It seems advisable to get at least AccessShareLock on rels */
+		AcquireRewriteLocks(query, false, false);
+		get_query_def(query, buf, list_make1(&dpns), NULL, false,
+					  0, WRAP_COLUMN_DEFAULT, 0);
+	}
+}
+
+Datum
+pg_get_function_sqlbody(PG_FUNCTION_ARGS)
+{
+	Oid			funcid = PG_GETARG_OID(0);
+	StringInfoData buf;
+	HeapTuple	proctup;
+	bool		isnull;
+
+	initStringInfo(&buf);
+
+	/* Look up the function */
+	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+	if (!HeapTupleIsValid(proctup))
+		PG_RETURN_NULL();
+
+	(void) SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_prosqlbody, &isnull);
+	if (isnull)
+	{
+		ReleaseSysCache(proctup);
+		PG_RETURN_NULL();
+	}
+
+	print_function_sqlbody(&buf, proctup);
+
+	ReleaseSysCache(proctup);
+
+	PG_RETURN_TEXT_P(cstring_to_text(buf.data));
 }
 
 
@@ -3417,8 +3804,8 @@ set_deparse_context_plan(List *dpcontext, Plan *plan, List *ancestors)
 	dpns = (deparse_namespace *) linitial(dpcontext);
 
 	/* Set our attention on the specific plan node passed in */
-	set_deparse_plan(dpns, plan);
 	dpns->ancestors = ancestors;
+	set_deparse_plan(dpns, plan);
 
 	return dpcontext;
 }
@@ -3479,14 +3866,14 @@ set_rtable_names(deparse_namespace *dpns, List *parent_namespaces,
 	 * We use a hash table to hold known names, so that this process is O(N)
 	 * not O(N^2) for N names.
 	 */
-	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = NAMEDATALEN;
 	hash_ctl.entrysize = sizeof(NameHashEntry);
 	hash_ctl.hcxt = CurrentMemoryContext;
 	names_hash = hash_create("set_rtable_names names",
 							 list_length(dpns->rtable),
 							 &hash_ctl,
-							 HASH_ELEM | HASH_CONTEXT);
+							 HASH_ELEM | HASH_STRINGS | HASH_CONTEXT);
+
 	/* Preload the hash table with names appearing in parent_namespaces */
 	foreach(lc, parent_namespaces)
 	{
@@ -4572,7 +4959,7 @@ get_rtable_name(int rtindex, deparse_context *context)
  * of a given Plan node
  *
  * This sets the plan, outer_plan, inner_plan, outer_tlist, inner_tlist,
- * and index_tlist fields.  Caller is responsible for adjusting the ancestors
+ * and index_tlist fields.  Caller must already have adjusted the ancestors
  * list if necessary.  Note that the rtable, subplans, and ctes fields do
  * not need to change when shifting attention to different plan nodes in a
  * single plan tree.
@@ -4586,9 +4973,7 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 	 * We special-case Append and MergeAppend to pretend that the first child
 	 * plan is the OUTER referent; we have to interpret OUTER Vars in their
 	 * tlists according to one of the children, and the first one is the most
-	 * natural choice.  Likewise special-case ModifyTable to pretend that the
-	 * first child plan is the OUTER referent; this is to support RETURNING
-	 * lists containing references to non-target relations.
+	 * natural choice.
 	 */
 	if (IsA(plan, Append))
 		dpns->outer_plan = linitial(((Append *) plan)->appendplans);
@@ -4606,8 +4991,6 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 	}
 	else if (IsA(plan, MergeAppend))
 		dpns->outer_plan = linitial(((MergeAppend *) plan)->mergeplans);
-	else if (IsA(plan, ModifyTable))
-		dpns->outer_plan = linitial(((ModifyTable *) plan)->plans);
 	else
 		dpns->outer_plan = outerPlan(plan);
 
@@ -4620,6 +5003,11 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 	 * For a SubqueryScan, pretend the subplan is INNER referent.  (We don't
 	 * use OUTER because that could someday conflict with the normal meaning.)
 	 * Likewise, for a CteScan, pretend the subquery's plan is INNER referent.
+	 * For a WorkTableScan, locate the parent RecursiveUnion plan node and use
+	 * that as INNER referent.
+	 *
+	 * For MERGE, make the inner tlist point to the merge source tlist, which
+	 * is same as the targetlist that the ModifyTable's source plan provides.
 	 * For ON CONFLICT .. UPDATE we just need the inner tlist to point to the
 	 * excluded expression's tlist. (Similar to the SubqueryScan we don't want
 	 * to reuse OUTER, it's used for RETURNING in some modify table cases,
@@ -4640,6 +5028,9 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 		Assert(list_length(((Sequence *) plan)->subplans) == 2);
 		dpns->inner_plan = linitial(((Sequence *) plan)->subplans);
 	}
+	else if (IsA(plan, WorkTableScan))
+		dpns->inner_plan = find_recursive_union(dpns,
+												(WorkTableScan *) plan);
 	else if (IsA(plan, ModifyTable))
 		dpns->inner_plan = plan;
 	else if (IsA(plan, ShareInputScan))
@@ -4648,7 +5039,12 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 		dpns->inner_plan = innerPlan(plan);
 
 	if (IsA(plan, ModifyTable))
-		dpns->inner_tlist = ((ModifyTable *) plan)->exclRelTlist;
+	{
+		if (((ModifyTable *) plan)->operation == CMD_MERGE)
+			dpns->inner_tlist = dpns->outer_tlist;
+		else
+			dpns->inner_tlist = ((ModifyTable *) plan)->exclRelTlist;
+	}
 	else if (dpns->inner_plan)
 		dpns->inner_tlist = dpns->inner_plan->targetlist;
 	else
@@ -4663,6 +5059,29 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 		dpns->index_tlist = ((CustomScan *) plan)->custom_scan_tlist;
 	else
 		dpns->index_tlist = NIL;
+}
+
+/*
+ * Locate the ancestor plan node that is the RecursiveUnion generating
+ * the WorkTableScan's work table.  We can match on wtParam, since that
+ * should be unique within the plan tree.
+ */
+static Plan *
+find_recursive_union(deparse_namespace *dpns, WorkTableScan *wtscan)
+{
+	ListCell   *lc;
+
+	foreach(lc, dpns->ancestors)
+	{
+		Plan	   *ancestor = (Plan *) lfirst(lc);
+
+		if (IsA(ancestor, RecursiveUnion) &&
+			((RecursiveUnion *) ancestor)->wtParam == wtscan->wtParam)
+			return ancestor;
+	}
+	elog(ERROR, "could not find RecursiveUnion for WorkTableScan with wtParam %d",
+		 wtscan->wtParam);
+	return NULL;
 }
 
 /*
@@ -4771,7 +5190,7 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 	bool		is_instead;
 	char	   *ev_qual;
 	char	   *ev_action;
-	List	   *actions = NIL;
+	List	   *actions;
 	Relation	ev_relation;
 	TupleDesc	viewResultDesc = NULL;
 	int			fno;
@@ -4801,14 +5220,16 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 	Assert(!isnull);
 	is_instead = DatumGetBool(dat);
 
-	/* these could be nulls */
 	fno = SPI_fnumber(rulettc, "ev_qual");
 	ev_qual = SPI_getvalue(ruletup, rulettc, fno);
+	Assert(ev_qual != NULL);
 
 	fno = SPI_fnumber(rulettc, "ev_action");
 	ev_action = SPI_getvalue(ruletup, rulettc, fno);
-	if (ev_action != NULL)
-		actions = (List *) stringToNode(ev_action);
+	Assert(ev_action != NULL);
+	actions = (List *) stringToNode(ev_action);
+	if (actions == NIL)
+		elog(ERROR, "invalid empty ev_action list");
 
 	ev_relation = table_open(ev_class, AccessShareLock);
 
@@ -4858,9 +5279,7 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 					 generate_qualified_relation_name(ev_class));
 
 	/* If the rule has an event qualification, add it */
-	if (ev_qual == NULL)
-		ev_qual = "";
-	if (strlen(ev_qual) > 0 && strcmp(ev_qual, "<>") != 0)
+	if (strcmp(ev_qual, "<>") != 0)
 	{
 		Node	   *qual;
 		Query	   *query;
@@ -4923,7 +5342,7 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 		foreach(action, actions)
 		{
 			query = (Query *) lfirst(action);
-			get_query_def(query, buf, NIL, viewResultDesc,
+			get_query_def(query, buf, NIL, viewResultDesc, true,
 						  prettyFlags, WRAP_COLUMN_DEFAULT, 0);
 			if (prettyFlags)
 				appendStringInfoString(buf, ";\n");
@@ -4932,16 +5351,12 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 		}
 		appendStringInfoString(buf, ");");
 	}
-	else if (list_length(actions) == 0)
-	{
-		appendStringInfoString(buf, "NOTHING;");
-	}
 	else
 	{
 		Query	   *query;
 
 		query = (Query *) linitial(actions);
-		get_query_def(query, buf, NIL, viewResultDesc,
+		get_query_def(query, buf, NIL, viewResultDesc, true,
 					  prettyFlags, WRAP_COLUMN_DEFAULT, 0);
 		appendStringInfoChar(buf, ';');
 	}
@@ -4965,7 +5380,7 @@ make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 	bool		is_instead;
 	char	   *ev_qual;
 	char	   *ev_action;
-	List	   *actions = NIL;
+	List	   *actions;
 	Relation	ev_relation;
 	int			fno;
 	Datum		dat;
@@ -4989,14 +5404,14 @@ make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 	Assert(!isnull);
 	is_instead = DatumGetBool(dat);
 
-	/* these could be nulls */
 	fno = SPI_fnumber(rulettc, "ev_qual");
 	ev_qual = SPI_getvalue(ruletup, rulettc, fno);
+	Assert(ev_qual != NULL);
 
 	fno = SPI_fnumber(rulettc, "ev_action");
 	ev_action = SPI_getvalue(ruletup, rulettc, fno);
-	if (ev_action != NULL)
-		actions = (List *) stringToNode(ev_action);
+	Assert(ev_action != NULL);
+	actions = (List *) stringToNode(ev_action);
 
 	if (list_length(actions) != 1)
 	{
@@ -5024,7 +5439,7 @@ make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 		return;
 	}
 
-	get_query_def(query, buf, NIL, RelationGetDescr(ev_relation),
+	get_query_def(query, buf, NIL, RelationGetDescr(ev_relation), true,
 				  prettyFlags, wrapColumn, 0);
 	appendStringInfoChar(buf, ';');
 
@@ -5035,13 +5450,23 @@ make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 /* ----------
  * get_query_def			- Parse back one query parsetree
  *
- * If resultDesc is not NULL, then it is the output tuple descriptor for
- * the view represented by a SELECT query.
+ * query: parsetree to be displayed
+ * buf: output text is appended to buf
+ * parentnamespace: list (initially empty) of outer-level deparse_namespace's
+ * resultDesc: if not NULL, the output tuple descriptor for the view
+ *		represented by a SELECT query.  We use the column names from it
+ *		to label SELECT output columns, in preference to names in the query
+ * colNamesVisible: true if the surrounding context cares about the output
+ *		column names at all (as, for example, an EXISTS() context does not);
+ *		when false, we can suppress dummy column labels such as "?column?"
+ * prettyFlags: bitmask of PRETTYFLAG_XXX options
+ * wrapColumn: maximum line length, or -1 to disable wrapping
+ * startIndent: initial indentation amount
  * ----------
  */
 static void
 get_query_def(Query *query, StringInfo buf, List *parentnamespace,
-			  TupleDesc resultDesc,
+			  TupleDesc resultDesc, bool colNamesVisible,
 			  int prettyFlags, int wrapColumn, int startIndent)
 {
 	deparse_context context;
@@ -5080,19 +5505,19 @@ get_query_def(Query *query, StringInfo buf, List *parentnamespace,
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
-			get_select_query_def(query, &context, resultDesc);
+			get_select_query_def(query, &context, resultDesc, colNamesVisible);
 			break;
 
 		case CMD_UPDATE:
-			get_update_query_def(query, &context);
+			get_update_query_def(query, &context, colNamesVisible);
 			break;
 
 		case CMD_INSERT:
-			get_insert_query_def(query, &context);
+			get_insert_query_def(query, &context, colNamesVisible);
 			break;
 
 		case CMD_DELETE:
-			get_delete_query_def(query, &context);
+			get_delete_query_def(query, &context, colNamesVisible);
 			break;
 
 		case CMD_NOTHING:
@@ -5216,11 +5641,70 @@ get_with_clause(Query *query, deparse_context *context)
 		if (PRETTY_INDENT(context))
 			appendContextKeyword(context, "", 0, 0, 0);
 		get_query_def((Query *) cte->ctequery, buf, context->namespaces, NULL,
+					  true,
 					  context->prettyFlags, context->wrapColumn,
 					  context->indentLevel);
 		if (PRETTY_INDENT(context))
 			appendContextKeyword(context, "", 0, 0, 0);
 		appendStringInfoChar(buf, ')');
+
+		if (cte->search_clause)
+		{
+			bool		first = true;
+			ListCell   *lc;
+
+			appendStringInfo(buf, " SEARCH %s FIRST BY ",
+							 cte->search_clause->search_breadth_first ? "BREADTH" : "DEPTH");
+
+			foreach(lc, cte->search_clause->search_col_list)
+			{
+				if (first)
+					first = false;
+				else
+					appendStringInfoString(buf, ", ");
+				appendStringInfoString(buf,
+									   quote_identifier(strVal(lfirst(lc))));
+			}
+
+			appendStringInfo(buf, " SET %s", quote_identifier(cte->search_clause->search_seq_column));
+		}
+
+		if (cte->cycle_clause)
+		{
+			bool		first = true;
+			ListCell   *lc;
+
+			appendStringInfoString(buf, " CYCLE ");
+
+			foreach(lc, cte->cycle_clause->cycle_col_list)
+			{
+				if (first)
+					first = false;
+				else
+					appendStringInfoString(buf, ", ");
+				appendStringInfoString(buf,
+									   quote_identifier(strVal(lfirst(lc))));
+			}
+
+			appendStringInfo(buf, " SET %s", quote_identifier(cte->cycle_clause->cycle_mark_column));
+
+			{
+				Const	   *cmv = castNode(Const, cte->cycle_clause->cycle_mark_value);
+				Const	   *cmd = castNode(Const, cte->cycle_clause->cycle_mark_default);
+
+				if (!(cmv->consttype == BOOLOID && !cmv->constisnull && DatumGetBool(cmv->constvalue) == true &&
+					  cmd->consttype == BOOLOID && !cmd->constisnull && DatumGetBool(cmd->constvalue) == false))
+				{
+					appendStringInfoString(buf, " TO ");
+					get_rule_expr(cte->cycle_clause->cycle_mark_value, context, false);
+					appendStringInfoString(buf, " DEFAULT ");
+					get_rule_expr(cte->cycle_clause->cycle_mark_default, context, false);
+				}
+			}
+
+			appendStringInfo(buf, " USING %s", quote_identifier(cte->cycle_clause->cycle_path_column));
+		}
+
 		sep = ", ";
 	}
 
@@ -5239,7 +5723,7 @@ get_with_clause(Query *query, deparse_context *context)
  */
 static void
 get_select_query_def(Query *query, deparse_context *context,
-					 TupleDesc resultDesc)
+					 TupleDesc resultDesc, bool colNamesVisible)
 {
 	StringInfo	buf = context->buf;
 	List	   *save_windowclause;
@@ -5266,13 +5750,14 @@ get_select_query_def(Query *query, deparse_context *context,
 	 */
 	if (query->setOperations)
 	{
-		get_setop_query(query->setOperations, query, context, resultDesc);
+		get_setop_query(query->setOperations, query, context, resultDesc,
+						colNamesVisible);
 		/* ORDER BY clauses must be simple in this case */
 		force_colno = true;
 	}
 	else
 	{
-		get_basic_select_query(query, context, resultDesc);
+		get_basic_select_query(query, context, resultDesc, colNamesVisible);
 		force_colno = false;
 	}
 
@@ -5302,7 +5787,7 @@ get_select_query_def(Query *query, deparse_context *context,
 			appendContextKeyword(context, " FETCH FIRST ",
 								 -PRETTYINDENT_STD, PRETTYINDENT_STD, 0);
 			get_rule_expr(query->limitCount, context, false);
-			appendStringInfo(buf, " ROWS WITH TIES");
+			appendStringInfoString(buf, " ROWS WITH TIES");
 		}
 		else
 		{
@@ -5471,7 +5956,7 @@ get_simple_values_rte(Query *query, TupleDesc resultDesc)
 
 static void
 get_basic_select_query(Query *query, deparse_context *context,
-					   TupleDesc resultDesc)
+					   TupleDesc resultDesc, bool colNamesVisible)
 {
 	StringInfo	buf = context->buf;
 	RangeTblEntry *values_rte;
@@ -5499,7 +5984,10 @@ get_basic_select_query(Query *query, deparse_context *context,
 	/*
 	 * Build up the query string - first we say SELECT
 	 */
-	appendStringInfoString(buf, "SELECT");
+	if (query->isReturn)
+		appendStringInfoString(buf, "RETURN");
+	else
+		appendStringInfoString(buf, "SELECT");
 
 	/* Add the DISTINCT clause if given */
 	if (query->distinctClause != NIL)
@@ -5524,7 +6012,7 @@ get_basic_select_query(Query *query, deparse_context *context,
 	}
 
 	/* Then we tell what to select (the targetlist) */
-	get_target_list(query->targetList, context, resultDesc);
+	get_target_list(query->targetList, context, resultDesc, colNamesVisible);
 
 	/* Add the FROM clause if needed */
 	get_from_clause(query, " FROM ", context);
@@ -5544,6 +6032,8 @@ get_basic_select_query(Query *query, deparse_context *context,
 
 		appendContextKeyword(context, " GROUP BY ",
 							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
+		if (query->groupDistinct)
+			appendStringInfoString(buf, "DISTINCT ");
 
 		save_exprkind = context->special_exprkind;
 		context->special_exprkind = EXPR_KIND_GROUP_BY;
@@ -5616,11 +6106,13 @@ get_basic_select_query(Query *query, deparse_context *context,
  * get_target_list			- Parse back a SELECT target list
  *
  * This is also used for RETURNING lists in INSERT/UPDATE/DELETE.
+ *
+ * resultDesc and colNamesVisible are as for get_query_def()
  * ----------
  */
 static void
 get_target_list(List *targetList, deparse_context *context,
-				TupleDesc resultDesc)
+				TupleDesc resultDesc, bool colNamesVisible)
 {
 	StringInfo	buf = context->buf;
 	StringInfoData targetbuf;
@@ -5671,8 +6163,13 @@ get_target_list(List *targetList, deparse_context *context,
 		else
 		{
 			get_rule_expr((Node *) tle->expr, context, true);
-			/* We'll show the AS name unless it's this: */
-			attname = "?column?";
+
+			/*
+			 * When colNamesVisible is true, we should always show the
+			 * assigned column name explicitly.  Otherwise, show it only if
+			 * it's not FigureColname's fallback.
+			 */
+			attname = colNamesVisible ? NULL : "?column?";
 		}
 
 		/*
@@ -5751,7 +6248,7 @@ get_target_list(List *targetList, deparse_context *context,
 
 static void
 get_setop_query(Node *setOp, Query *query, deparse_context *context,
-				TupleDesc resultDesc)
+				TupleDesc resultDesc, bool colNamesVisible)
 {
 	StringInfo	buf = context->buf;
 	bool		need_paren;
@@ -5777,6 +6274,7 @@ get_setop_query(Node *setOp, Query *query, deparse_context *context,
 		if (need_paren)
 			appendStringInfoChar(buf, '(');
 		get_query_def(subquery, buf, context->namespaces, resultDesc,
+					  colNamesVisible,
 					  context->prettyFlags, context->wrapColumn,
 					  context->indentLevel);
 		if (need_paren)
@@ -5819,7 +6317,7 @@ get_setop_query(Node *setOp, Query *query, deparse_context *context,
 		else
 			subindent = 0;
 
-		get_setop_query(op->larg, query, context, resultDesc);
+		get_setop_query(op->larg, query, context, resultDesc, colNamesVisible);
 
 		if (need_paren)
 			appendContextKeyword(context, ") ", -subindent, 0, 0);
@@ -5863,7 +6361,7 @@ get_setop_query(Node *setOp, Query *query, deparse_context *context,
 			subindent = 0;
 		appendContextKeyword(context, "", subindent, 0, 0);
 
-		get_setop_query(op->rarg, query, context, resultDesc);
+		get_setop_query(op->rarg, query, context, resultDesc, false);
 
 		if (PRETTY_INDENT(context))
 			context->indentLevel -= subindent;
@@ -5923,7 +6421,8 @@ get_rule_sortgroupclause(Index ref, List *tlist, bool force_colno,
 		bool		need_paren = (PRETTY_PAREN(context)
 								  || IsA(expr, FuncExpr)
 								  || IsA(expr, Aggref)
-								  || IsA(expr, WindowFunc));
+								  || IsA(expr, WindowFunc)
+								  || IsA(expr, JsonConstructorExpr));
 
 		if (need_paren)
 			appendStringInfoChar(context->buf, '(');
@@ -6163,7 +6662,8 @@ get_rule_windowspec(WindowClause *wc, List *targetList,
  * ----------
  */
 static void
-get_insert_query_def(Query *query, deparse_context *context)
+get_insert_query_def(Query *query, deparse_context *context,
+					 bool colNamesVisible)
 {
 	StringInfo	buf = context->buf;
 	RangeTblEntry *select_rte = NULL;
@@ -6272,7 +6772,8 @@ get_insert_query_def(Query *query, deparse_context *context)
 	if (select_rte)
 	{
 		/* Add the SELECT */
-		get_query_def(select_rte->subquery, buf, NIL, NULL,
+		get_query_def(select_rte->subquery, buf, context->namespaces, NULL,
+					  false,
 					  context->prettyFlags, context->wrapColumn,
 					  context->indentLevel);
 	}
@@ -6286,7 +6787,7 @@ get_insert_query_def(Query *query, deparse_context *context)
 		/* Add the single-VALUES expression list */
 		appendContextKeyword(context, "VALUES (",
 							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 2);
-		get_rule_expr((Node *) strippedexprs, context, false);
+		get_rule_list_toplevel(strippedexprs, context, false);
 		appendStringInfoChar(buf, ')');
 	}
 	else
@@ -6366,7 +6867,7 @@ get_insert_query_def(Query *query, deparse_context *context)
 	{
 		appendContextKeyword(context, " RETURNING",
 							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
-		get_target_list(query->returningList, context, NULL);
+		get_target_list(query->returningList, context, NULL, colNamesVisible);
 	}
 }
 
@@ -6376,7 +6877,8 @@ get_insert_query_def(Query *query, deparse_context *context)
  * ----------
  */
 static void
-get_update_query_def(Query *query, deparse_context *context)
+get_update_query_def(Query *query, deparse_context *context,
+					 bool colNamesVisible)
 {
 	StringInfo	buf = context->buf;
 	RangeTblEntry *rte;
@@ -6421,7 +6923,7 @@ get_update_query_def(Query *query, deparse_context *context)
 	{
 		appendContextKeyword(context, " RETURNING",
 							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
-		get_target_list(query->returningList, context, NULL);
+		get_target_list(query->returningList, context, NULL, colNamesVisible);
 	}
 }
 
@@ -6583,7 +7085,8 @@ get_update_query_targetlist_def(Query *query, List *targetList,
  * ----------
  */
 static void
-get_delete_query_def(Query *query, deparse_context *context)
+get_delete_query_def(Query *query, deparse_context *context,
+					 bool colNamesVisible)
 {
 	StringInfo	buf = context->buf;
 	RangeTblEntry *rte;
@@ -6624,7 +7127,7 @@ get_delete_query_def(Query *query, deparse_context *context)
 	{
 		appendContextKeyword(context, " RETURNING",
 							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
-		get_target_list(query->returningList, context, NULL);
+		get_target_list(query->returningList, context, NULL, colNamesVisible);
 	}
 }
 
@@ -6686,7 +7189,7 @@ get_variable(Var *var, int levelsup, bool istoplevel, deparse_context *context)
 	AttrNumber	attnum;
 	int			netlevelsup;
 	deparse_namespace *dpns;
-	Index		varno;
+	int			varno;
 	AttrNumber	varattno;
 	deparse_columns *colinfo;
 	char	   *refname;
@@ -6732,7 +7235,7 @@ get_variable(Var *var, int levelsup, bool istoplevel, deparse_context *context)
 		 */
 		if (context->appendparents && dpns->appendrels)
 		{
-			Index		pvarno = varno;
+			int			pvarno = varno;
 			AttrNumber	pvarattno = varattno;
 			AppendRelInfo *appinfo = dpns->appendrels[pvarno];
 			bool		found = false;
@@ -7042,7 +7545,7 @@ get_name_for_var_field(Var *var, int fieldno,
 	AttrNumber	attnum;
 	int			netlevelsup;
 	deparse_namespace *dpns;
-	Index		varno;
+	int			varno;
 	AttrNumber	varattno;
 	TupleDesc	tupleDesc;
 	Node	   *expr;
@@ -7392,9 +7895,12 @@ get_name_for_var_field(Var *var, int fieldno,
 				{
 					/*
 					 * We're deparsing a Plan tree so we don't have a CTE
-					 * list.  But the only place we'd see a Var directly
-					 * referencing a CTE RTE is in a CteScan plan node, and we
-					 * can look into the subplan's tlist instead.
+					 * list.  But the only places we'd see a Var directly
+					 * referencing a CTE RTE are in CteScan or WorkTableScan
+					 * plan nodes.  For those cases, set_deparse_plan arranged
+					 * for dpns->inner_plan to be the plan node that emits the
+					 * CTE or RecursiveUnion result, and we can look at its
+					 * tlist instead.
 					 */
 					TargetEntry *tle;
 					deparse_namespace save_dpns;
@@ -7550,7 +8056,7 @@ find_param_referent(Param *param, deparse_context *context,
 			 */
 			foreach(lc2, ((Plan *) ancestor)->initPlan)
 			{
-				SubPlan    *subplan = castNode(SubPlan, lfirst(lc2));
+				SubPlan    *subplan = lfirst_node(SubPlan, lc2);
 
 				if (child_plan != (Plan *) list_nth(dpns->subplans,
 													subplan->plan_id - 1))
@@ -7608,12 +8114,13 @@ get_parameter(Param *param, deparse_context *context)
 		context->varprefix = true;
 
 		/*
-		 * A Param's expansion is typically a Var, Aggref, or upper-level
-		 * Param, which wouldn't need extra parentheses.  Otherwise, insert
-		 * parens to ensure the expression looks atomic.
+		 * A Param's expansion is typically a Var, Aggref, GroupingFunc, or
+		 * upper-level Param, which wouldn't need extra parentheses.
+		 * Otherwise, insert parens to ensure the expression looks atomic.
 		 */
 		need_paren = !(IsA(expr, Var) ||
 					   IsA(expr, Aggref) ||
+					   IsA(expr, GroupingFunc) ||
 					   IsA(expr, Param));
 		if (need_paren)
 			appendStringInfoChar(context->buf, '(');
@@ -7628,6 +8135,52 @@ get_parameter(Param *param, deparse_context *context)
 		pop_ancestor_plan(dpns, &save_dpns);
 
 		return;
+	}
+
+	/*
+	 * If it's an external parameter, see if the outermost namespace provides
+	 * function argument names.
+	 */
+	if (param->paramkind == PARAM_EXTERN && context->namespaces != NIL)
+	{
+		dpns = llast(context->namespaces);
+		if (dpns->argnames &&
+			param->paramid > 0 &&
+			param->paramid <= dpns->numargs)
+		{
+			char	   *argname = dpns->argnames[param->paramid - 1];
+
+			if (argname)
+			{
+				bool		should_qualify = false;
+				ListCell   *lc;
+
+				/*
+				 * Qualify the parameter name if there are any other deparse
+				 * namespaces with range tables.  This avoids qualifying in
+				 * trivial cases like "RETURN a + b", but makes it safe in all
+				 * other cases.
+				 */
+				foreach(lc, context->namespaces)
+				{
+					deparse_namespace *dpns = lfirst(lc);
+
+					if (list_length(dpns->rtable_names) > 0)
+					{
+						should_qualify = true;
+						break;
+					}
+				}
+				if (should_qualify)
+				{
+					appendStringInfoString(context->buf, quote_identifier(dpns->funcname));
+					appendStringInfoChar(context->buf, '.');
+				}
+
+				appendStringInfoString(context->buf, quote_identifier(argname));
+				return;
+			}
+		}
 	}
 
 	/*
@@ -7695,7 +8248,11 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_NextValueExpr:
 		case T_NullIfExpr:
 		case T_Aggref:
+		case T_GroupingFunc:
+		case T_WindowFunc:
 		case T_FuncExpr:
+		case T_JsonConstructorExpr:
+		case T_JsonExpr:
 			/* function-like: name(..) or name[..] */
 			return true;
 
@@ -7709,14 +8266,14 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 			 * appears simple since . has top precedence, unless parent is
 			 * T_FieldSelect itself!
 			 */
-			return (IsA(parentNode, FieldSelect) ? false : true);
+			return !IsA(parentNode, FieldSelect);
 
 		case T_FieldStore:
 
 			/*
 			 * treat like FieldSelect (probably doesn't matter)
 			 */
-			return (IsA(parentNode, FieldStore) ? false : true);
+			return !IsA(parentNode, FieldStore);
 
 		case T_CoerceToDomain:
 			/* maybe simple, check args */
@@ -7789,6 +8346,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_NullTest:
 		case T_BooleanTest:
 		case T_DistinctExpr:
+		case T_JsonIsPredicate:
 			switch (nodeTag(parentNode))
 			{
 				case T_FuncExpr:
@@ -7810,8 +8368,10 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				case T_XmlExpr: /* own parentheses */
 				case T_NullIfExpr:	/* other separators */
 				case T_Aggref:	/* own parentheses */
+				case T_GroupingFunc:	/* own parentheses */
 				case T_WindowFunc:	/* own parentheses */
 				case T_CaseExpr:	/* other separators */
+				case T_JsonExpr:	/* own parentheses */
 					return true;
 				default:
 					return false;
@@ -7860,12 +8420,18 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				case T_XmlExpr: /* own parentheses */
 				case T_NullIfExpr:	/* other separators */
 				case T_Aggref:	/* own parentheses */
+				case T_GroupingFunc:	/* own parentheses */
 				case T_WindowFunc:	/* own parentheses */
 				case T_CaseExpr:	/* other separators */
 					return true;
 				default:
 					return false;
 			}
+
+		case T_JsonValueExpr:
+			/* maybe simple, check args */
+			return isSimpleNode((Node *) ((JsonValueExpr *) node)->raw_expr,
+								node, prettyFlags);
 
 		default:
 			break;
@@ -7972,6 +8538,122 @@ get_rule_expr_paren(Node *node, deparse_context *context,
 		appendStringInfoChar(context->buf, ')');
 }
 
+
+/*
+ * get_json_path_spec		- Parse back a JSON path specification
+ */
+static void
+get_json_path_spec(Node *path_spec, deparse_context *context, bool showimplicit)
+{
+	if (IsA(path_spec, Const))
+		get_const_expr((Const *) path_spec, context, -1);
+	else
+		get_rule_expr(path_spec, context, showimplicit);
+}
+
+/*
+ * get_json_format			- Parse back a JsonFormat node
+ */
+static void
+get_json_format(JsonFormat *format, StringInfo buf)
+{
+	if (format->format_type == JS_FORMAT_DEFAULT)
+		return;
+
+	appendStringInfoString(buf,
+						   format->format_type == JS_FORMAT_JSONB ?
+						   " FORMAT JSONB" : " FORMAT JSON");
+
+	if (format->encoding != JS_ENC_DEFAULT)
+	{
+		const char *encoding =
+		format->encoding == JS_ENC_UTF16 ? "UTF16" :
+		format->encoding == JS_ENC_UTF32 ? "UTF32" : "UTF8";
+
+		appendStringInfo(buf, " ENCODING %s", encoding);
+	}
+}
+
+/*
+ * get_json_returning		- Parse back a JsonReturning structure
+ */
+static void
+get_json_returning(JsonReturning *returning, StringInfo buf,
+				   bool json_format_by_default)
+{
+	if (!OidIsValid(returning->typid))
+		return;
+
+	appendStringInfo(buf, " RETURNING %s",
+					 format_type_with_typemod(returning->typid,
+											  returning->typmod));
+
+	if (!json_format_by_default ||
+		returning->format->format_type !=
+		(returning->typid == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON))
+		get_json_format(returning->format, buf);
+}
+
+static void
+get_json_behavior(JsonBehavior *behavior, deparse_context *context,
+				  const char *on)
+{
+	/*
+	 * The order of array elements must correspond to the order of
+	 * JsonBehaviorType members.
+	 */
+	const char *behavior_names[] =
+	{
+		" NULL",
+		" ERROR",
+		" EMPTY",
+		" TRUE",
+		" FALSE",
+		" UNKNOWN",
+		" EMPTY ARRAY",
+		" EMPTY OBJECT",
+		" DEFAULT "
+	};
+
+	if ((int) behavior->btype < 0 || behavior->btype >= lengthof(behavior_names))
+		elog(ERROR, "invalid json behavior type: %d", behavior->btype);
+
+	appendStringInfoString(context->buf, behavior_names[behavior->btype]);
+
+	if (behavior->btype == JSON_BEHAVIOR_DEFAULT)
+		get_rule_expr(behavior->default_expr, context, false);
+
+	appendStringInfo(context->buf, " ON %s", on);
+}
+
+/*
+ * get_json_expr_options
+ *
+ * Parse back common options for JSON_QUERY, JSON_VALUE, JSON_EXISTS and
+ * JSON_TABLE columns.
+ */
+static void
+get_json_expr_options(JsonExpr *jsexpr, deparse_context *context,
+					  JsonBehaviorType default_behavior)
+{
+	if (jsexpr->op == JSON_QUERY_OP)
+	{
+		if (jsexpr->wrapper == JSW_CONDITIONAL)
+			appendStringInfo(context->buf, " WITH CONDITIONAL WRAPPER");
+		else if (jsexpr->wrapper == JSW_UNCONDITIONAL)
+			appendStringInfo(context->buf, " WITH UNCONDITIONAL WRAPPER");
+
+		if (jsexpr->omit_quotes)
+			appendStringInfo(context->buf, " OMIT QUOTES");
+	}
+
+	if (jsexpr->op != JSON_EXISTS_OP &&
+		jsexpr->on_empty->btype != default_behavior)
+		get_json_behavior(jsexpr->on_empty, context, "EMPTY");
+
+	if (jsexpr->on_error->btype != default_behavior)
+		get_json_behavior(jsexpr->on_error, context, "ERROR");
+}
 
 /* ----------
  * get_rule_expr			- Parse back an expression
@@ -8202,7 +8884,7 @@ get_rule_expr(Node *node, deparse_context *context,
 			{
 				BoolExpr   *expr = (BoolExpr *) node;
 				Node	   *first_arg = linitial(expr->args);
-				ListCell   *arg = list_second_cell(expr->args);
+				ListCell   *arg;
 
 				switch (expr->boolop)
 				{
@@ -8211,12 +8893,11 @@ get_rule_expr(Node *node, deparse_context *context,
 							appendStringInfoChar(buf, '(');
 						get_rule_expr_paren(first_arg, context,
 											false, node);
-						while (arg)
+						for_each_from(arg, expr->args, 1)
 						{
 							appendStringInfoString(buf, " AND ");
 							get_rule_expr_paren((Node *) lfirst(arg), context,
 												false, node);
-							arg = lnext(expr->args, arg);
 						}
 						if (!PRETTY_PAREN(context))
 							appendStringInfoChar(buf, ')');
@@ -8227,12 +8908,11 @@ get_rule_expr(Node *node, deparse_context *context,
 							appendStringInfoChar(buf, '(');
 						get_rule_expr_paren(first_arg, context,
 											false, node);
-						while (arg)
+						for_each_from(arg, expr->args, 1)
 						{
 							appendStringInfoString(buf, " OR ");
 							get_rule_expr_paren((Node *) lfirst(arg), context,
 												false, node);
-							arg = lnext(expr->args, arg);
 						}
 						if (!PRETTY_PAREN(context))
 							appendStringInfoChar(buf, ')');
@@ -8281,7 +8961,12 @@ get_rule_expr(Node *node, deparse_context *context,
 				AlternativeSubPlan *asplan = (AlternativeSubPlan *) node;
 				ListCell   *lc;
 
-				/* As above, this can only happen during EXPLAIN */
+				/*
+				 * This case cannot be reached in normal usage, since no
+				 * AlternativeSubPlan can appear either in parsetrees or
+				 * finished plan trees.  We keep it just in case somebody
+				 * wants to use this code to print planner data structures.
+				 */
 				appendStringInfoString(buf, "(alternatives: ");
 				foreach(lc, asplan->subplans)
 				{
@@ -8589,6 +9274,7 @@ get_rule_expr(Node *node, deparse_context *context,
 
 				appendStringInfo(buf, "TABLE(");
 				get_query_def(subquery, buf, context->namespaces, NULL,
+							  true,
 							  context->prettyFlags, context->wrapColumn,
 							  context->indentLevel);
 				appendStringInfoChar(buf, ')');
@@ -8660,23 +9346,15 @@ get_rule_expr(Node *node, deparse_context *context,
 		case T_RowCompareExpr:
 			{
 				RowCompareExpr *rcexpr = (RowCompareExpr *) node;
-				ListCell   *arg;
-				char	   *sep;
 
 				/*
 				 * SQL99 allows "ROW" to be omitted when there is more than
-				 * one column, but for simplicity we always print it.
+				 * one column, but for simplicity we always print it.  Within
+				 * a ROW expression, whole-row Vars need special treatment, so
+				 * use get_rule_list_toplevel.
 				 */
 				appendStringInfoString(buf, "(ROW(");
-				sep = "";
-				foreach(arg, rcexpr->largs)
-				{
-					Node	   *e = (Node *) lfirst(arg);
-
-					appendStringInfoString(buf, sep);
-					get_rule_expr(e, context, true);
-					sep = ", ";
-				}
+				get_rule_list_toplevel(rcexpr->largs, context, true);
 
 				/*
 				 * We assume that the name of the first-column operator will
@@ -8689,15 +9367,7 @@ get_rule_expr(Node *node, deparse_context *context,
 								 generate_operator_name(linitial_oid(rcexpr->opnos),
 														exprType(linitial(rcexpr->largs)),
 														exprType(linitial(rcexpr->rargs))));
-				sep = "";
-				foreach(arg, rcexpr->rargs)
-				{
-					Node	   *e = (Node *) lfirst(arg);
-
-					appendStringInfoString(buf, sep);
-					get_rule_expr(e, context, true);
-					sep = ", ";
-				}
+				get_rule_list_toplevel(rcexpr->rargs, context, true);
 				appendStringInfoString(buf, "))");
 			}
 			break;
@@ -8933,7 +9603,6 @@ get_rule_expr(Node *node, deparse_context *context,
 							get_rule_expr_paren((Node *) xexpr->args, context, false, node);
 							break;
 					}
-
 				}
 				if (xexpr->op == IS_XMLSERIALIZE)
 					appendStringInfo(buf, " AS %s",
@@ -9167,7 +9836,7 @@ get_rule_expr(Node *node, deparse_context *context,
 						sep = "";
 						foreach(cell, spec->listdatums)
 						{
-							Const	   *val = castNode(Const, lfirst(cell));
+							Const	   *val = lfirst_node(Const, cell);
 
 							appendStringInfoString(buf, sep);
 							get_const_expr(val, context, -1);
@@ -9193,6 +9862,116 @@ get_rule_expr(Node *node, deparse_context *context,
 							 (int) spec->strategy);
 						break;
 				}
+			}
+			break;
+
+
+		case T_JsonValueExpr:
+			{
+				JsonValueExpr *jve = (JsonValueExpr *) node;
+
+				get_rule_expr((Node *) jve->raw_expr, context, false);
+				get_json_format(jve->format, context->buf);
+			}
+			break;
+
+		case T_JsonConstructorExpr:
+			get_json_constructor((JsonConstructorExpr *) node, context, false);
+			break;
+
+		case T_JsonIsPredicate:
+			{
+				JsonIsPredicate *pred = (JsonIsPredicate *) node;
+
+				if (!PRETTY_PAREN(context))
+					appendStringInfoChar(context->buf, '(');
+
+				get_rule_expr_paren(pred->expr, context, true, node);
+
+				appendStringInfoString(context->buf, " IS JSON");
+
+				/* TODO: handle FORMAT clause */
+
+				switch (pred->item_type)
+				{
+					case JS_TYPE_SCALAR:
+						appendStringInfoString(context->buf, " SCALAR");
+						break;
+					case JS_TYPE_ARRAY:
+						appendStringInfoString(context->buf, " ARRAY");
+						break;
+					case JS_TYPE_OBJECT:
+						appendStringInfoString(context->buf, " OBJECT");
+						break;
+					default:
+						break;
+				}
+
+				if (pred->unique_keys)
+					appendStringInfoString(context->buf, " WITH UNIQUE KEYS");
+
+				if (!PRETTY_PAREN(context))
+					appendStringInfoChar(context->buf, ')');
+			}
+			break;
+
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = (JsonExpr *) node;
+
+				switch (jexpr->op)
+				{
+					case JSON_QUERY_OP:
+						appendStringInfoString(buf, "JSON_QUERY(");
+						break;
+					case JSON_VALUE_OP:
+						appendStringInfoString(buf, "JSON_VALUE(");
+						break;
+					case JSON_EXISTS_OP:
+						appendStringInfoString(buf, "JSON_EXISTS(");
+						break;
+					default:
+						elog(ERROR, "unexpected JsonExpr type: %d", jexpr->op);
+						break;
+				}
+
+				get_rule_expr(jexpr->formatted_expr, context, showimplicit);
+
+				appendStringInfoString(buf, ", ");
+
+				get_json_path_spec(jexpr->path_spec, context, showimplicit);
+
+				if (jexpr->passing_values)
+				{
+					ListCell   *lc1,
+							   *lc2;
+					bool		needcomma = false;
+
+					appendStringInfoString(buf, " PASSING ");
+
+					forboth(lc1, jexpr->passing_names,
+							lc2, jexpr->passing_values)
+					{
+						if (needcomma)
+							appendStringInfoString(buf, ", ");
+						needcomma = true;
+
+						get_rule_expr((Node *) lfirst(lc2), context, showimplicit);
+						appendStringInfo(buf, " AS %s",
+										 ((String *) lfirst_node(String, lc1))->sval);
+					}
+				}
+
+				if (jexpr->op != JSON_EXISTS_OP ||
+					jexpr->returning->typid != BOOLOID)
+					get_json_returning(jexpr->returning, context->buf,
+									   jexpr->op == JSON_QUERY_OP);
+
+				get_json_expr_options(jexpr, context,
+									  jexpr->op == JSON_EXISTS_OP ?
+									  JSON_BEHAVIOR_FALSE : JSON_BEHAVIOR_NULL);
+
+				appendStringInfoString(buf, ")");
 			}
 			break;
 
@@ -9419,6 +10198,32 @@ get_rule_expr_toplevel(Node *node, deparse_context *context,
 }
 
 /*
+ * get_rule_list_toplevel		- Parse back a list of toplevel expressions
+ *
+ * Apply get_rule_expr_toplevel() to each element of a List.
+ *
+ * This adds commas between the expressions, but caller is responsible
+ * for printing surrounding decoration.
+ */
+static void
+get_rule_list_toplevel(List *lst, deparse_context *context,
+					   bool showimplicit)
+{
+	const char *sep;
+	ListCell   *lc;
+
+	sep = "";
+	foreach(lc, lst)
+	{
+		Node	   *e = (Node *) lfirst(lc);
+
+		appendStringInfoString(context->buf, sep);
+		get_rule_expr_toplevel(e, context, showimplicit);
+		sep = ", ";
+	}
+}
+
+/*
  * get_rule_expr_funccall		- Parse back a function-call expression
  *
  * Same as get_rule_expr(), except that we guarantee that the output will
@@ -9462,12 +10267,14 @@ looks_like_function(Node *node)
 	{
 		case T_FuncExpr:
 			/* OK, unless it's going to deparse as a cast */
-			return (((FuncExpr *) node)->funcformat == COERCE_EXPLICIT_CALL);
+			return (((FuncExpr *) node)->funcformat == COERCE_EXPLICIT_CALL ||
+					((FuncExpr *) node)->funcformat == COERCE_SQL_SYNTAX);
 		case T_NullIfExpr:
 		case T_CoalesceExpr:
 		case T_MinMaxExpr:
 		case T_SQLValueFunction:
 		case T_XmlExpr:
+		case T_JsonExpr:
 			/* these are all accepted by func_expr_common_subexpr */
 			return true;
 		default:
@@ -9504,35 +10311,14 @@ get_oper_expr(OpExpr *expr, deparse_context *context)
 	}
 	else
 	{
-		/* unary operator --- but which side? */
+		/* prefix operator */
 		Node	   *arg = (Node *) linitial(args);
-		HeapTuple	tp;
-		Form_pg_operator optup;
 
-		tp = SearchSysCache1(OPEROID, ObjectIdGetDatum(opno));
-		if (!HeapTupleIsValid(tp))
-			elog(ERROR, "cache lookup failed for operator %u", opno);
-		optup = (Form_pg_operator) GETSTRUCT(tp);
-		switch (optup->oprkind)
-		{
-			case 'l':
-				appendStringInfo(buf, "%s ",
-								 generate_operator_name(opno,
-														InvalidOid,
-														exprType(arg)));
-				get_rule_expr_paren(arg, context, true, (Node *) expr);
-				break;
-			case 'r':
-				get_rule_expr_paren(arg, context, true, (Node *) expr);
-				appendStringInfo(buf, " %s",
-								 generate_operator_name(opno,
-														exprType(arg),
-														InvalidOid));
-				break;
-			default:
-				elog(ERROR, "bogus oprkind: %d", optup->oprkind);
-		}
-		ReleaseSysCache(tp);
+		appendStringInfo(buf, "%s ",
+						 generate_operator_name(opno,
+												InvalidOid,
+												exprType(arg)));
+		get_rule_expr_paren(arg, context, true, (Node *) expr);
 	}
 	if (!PRETTY_PAREN(context))
 		appendStringInfoChar(buf, ')');
@@ -9586,6 +10372,17 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	}
 
 	/*
+	 * If the function was called using one of the SQL spec's random special
+	 * syntaxes, try to reproduce that.  If we don't recognize the function,
+	 * fall through.
+	 */
+	if (expr->funcformat == COERCE_SQL_SYNTAX)
+	{
+		if (get_func_sql_syntax(expr, context))
+			return;
+	}
+
+	/*
 	 * Normal function: display as proname(args).  First we need to extract
 	 * the argument datatypes.
 	 */
@@ -9622,6 +10419,91 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	}
 	appendStringInfoChar(buf, ')');
 }
+
+static void
+get_json_constructor_options(JsonConstructorExpr *ctor, StringInfo buf)
+{
+	if (ctor->absent_on_null)
+	{
+		if (ctor->type == JSCTOR_JSON_OBJECT ||
+			ctor->type == JSCTOR_JSON_OBJECTAGG)
+			appendStringInfoString(buf, " ABSENT ON NULL");
+	}
+	else
+	{
+		if (ctor->type == JSCTOR_JSON_ARRAY ||
+			ctor->type == JSCTOR_JSON_ARRAYAGG)
+			appendStringInfoString(buf, " NULL ON NULL");
+	}
+
+	if (ctor->unique)
+		appendStringInfoString(buf, " WITH UNIQUE KEYS");
+
+	if (!((ctor->type == JSCTOR_JSON_PARSE ||
+		   ctor->type == JSCTOR_JSON_SCALAR) &&
+		  ctor->returning->typid == JSONOID))
+		get_json_returning(ctor->returning, buf, true);
+}
+
+static void
+get_json_constructor(JsonConstructorExpr *ctor, deparse_context *context,
+					 bool showimplicit)
+{
+	StringInfo	buf = context->buf;
+	const char *funcname;
+	int			nargs;
+	ListCell   *lc;
+
+	switch (ctor->type)
+	{
+		case JSCTOR_JSON_PARSE:
+			funcname = "JSON";
+			break;
+		case JSCTOR_JSON_SCALAR:
+			funcname = "JSON_SCALAR";
+			break;
+		case JSCTOR_JSON_SERIALIZE:
+			funcname = "JSON_SERIALIZE";
+			break;
+		case JSCTOR_JSON_OBJECT:
+			funcname = "JSON_OBJECT";
+			break;
+		case JSCTOR_JSON_ARRAY:
+			funcname = "JSON_ARRAY";
+			break;
+		case JSCTOR_JSON_OBJECTAGG:
+			get_json_agg_constructor(ctor, context, "JSON_OBJECTAGG", true);
+			return;
+		case JSCTOR_JSON_ARRAYAGG:
+			get_json_agg_constructor(ctor, context, "JSON_ARRAYAGG", false);
+			return;
+		default:
+			elog(ERROR, "invalid JsonConstructorExprType %d", ctor->type);
+	}
+
+	appendStringInfo(buf, "%s(", funcname);
+
+	nargs = 0;
+	foreach(lc, ctor->args)
+	{
+		if (nargs > 0)
+		{
+			const char *sep = ctor->type == JSCTOR_JSON_OBJECT &&
+			(nargs % 2) != 0 ? " : " : ", ";
+
+			appendStringInfoString(buf, sep);
+		}
+
+		get_rule_expr((Node *) lfirst(lc), context, true);
+
+		nargs++;
+	}
+
+	get_json_constructor_options(ctor, buf);
+
+	appendStringInfo(buf, ")");
+}
+
 
 /*
  * Deparse an Aggref as a special MEDIAN() construct, if it looks like
@@ -9702,16 +10584,17 @@ get_dqa_expr(DQAExpr *dqa_expr,deparse_context *context)
 }
 
 /*
- * get_agg_expr			- Parse back an Aggref node
+ * get_agg_expr_helper			- Parse back an Aggref node
  */
 static void
-get_agg_expr(Aggref *aggref, deparse_context *context,
-			 Aggref *original_aggref)
+get_agg_expr_helper(Aggref *aggref, deparse_context *context,
+					Aggref *original_aggref, const char *funcname,
+					const char *options, bool is_json_objectagg)
 {
 	StringInfo	buf = context->buf;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	int			nargs;
-	bool		use_variadic;
+	bool		use_variadic = false;
 
 	/* Special handling of MEDIAN */
 	if (get_median_expr(aggref, context))
@@ -9745,13 +10628,14 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 	/* Extract the argument types as seen by the parser */
 	nargs = get_aggregate_argtypes(aggref, argtypes);
 
+	if (!funcname)
+		funcname = generate_function_name(aggref->aggfnoid, nargs, NIL,
+										  argtypes, aggref->aggvariadic,
+										  &use_variadic,
+										  context->special_exprkind);
+
 	/* Print the aggregate name, schema-qualified if needed */
-	appendStringInfo(buf, "%s(%s",
-					 generate_function_name(aggref->aggfnoid, nargs,
-											NIL, argtypes,
-											aggref->aggvariadic,
-											&use_variadic,
-											context->special_exprkind),
+	appendStringInfo(buf, "%s(%s", funcname,
 					 (aggref->aggdistinct != NIL) ? "DISTINCT " : "");
 
 	if (AGGKIND_IS_ORDERED_SET(aggref->aggkind))
@@ -9787,7 +10671,18 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 				if (tle->resjunk)
 					continue;
 				if (i++ > 0)
-					appendStringInfoString(buf, ", ");
+				{
+					if (is_json_objectagg)
+					{
+						if (i > 2)
+							break;	/* skip ABSENT ON NULL and WITH UNIQUE
+									 * args */
+
+						appendStringInfoString(buf, " : ");
+					}
+					else
+						appendStringInfoString(buf, ", ");
+				}
 				if (use_variadic && i == nargs)
 					appendStringInfoString(buf, "VARIADIC ");
 				get_rule_expr(arg, context, true);
@@ -9801,6 +10696,9 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 		}
 	}
 
+	if (options)
+		appendStringInfoString(buf, options);
+
 	if (aggref->aggfilter != NULL)
 	{
 		appendStringInfoString(buf, ") FILTER (WHERE ");
@@ -9808,6 +10706,16 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 	}
 
 	appendStringInfoChar(buf, ')');
+}
+
+/*
+ * get_agg_expr			- Parse back an Aggref node
+ */
+static void
+get_agg_expr(Aggref *aggref, deparse_context *context, Aggref *original_aggref)
+{
+	get_agg_expr_helper(aggref, context, original_aggref, NULL, NULL,
+						false);
 }
 
 /*
@@ -9829,10 +10737,12 @@ get_agg_combine_expr(Node *node, deparse_context *context, void *callback_arg)
 }
 
 /*
- * get_windowfunc_expr	- Parse back a WindowFunc node
+ * get_windowfunc_expr_helper	- Parse back a WindowFunc node
  */
 static void
-get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
+get_windowfunc_expr_helper(WindowFunc *wfunc, deparse_context *context,
+						   const char *funcname, const char *options,
+						   bool is_json_objectagg)
 {
 	StringInfo	buf = context->buf;
 	Oid			argtypes[FUNC_MAX_ARGS];
@@ -9856,17 +10766,31 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 		nargs++;
 	}
 
-	appendStringInfo(buf, "%s(%s",
-					 generate_function_name(wfunc->winfnoid, nargs,
-											argnames, argtypes,
-											false, NULL,
-											context->special_exprkind),
+	if (!funcname)
+		funcname = generate_function_name(wfunc->winfnoid, nargs, argnames,
+										  argtypes, false, NULL,
+										  context->special_exprkind);
+
+	appendStringInfo(buf, "%s(%s", funcname,
 					 wfunc->windistinct ? "DISTINCT " : "");
+
 	/* winstar can be set only in zero-argument aggregates */
 	if (wfunc->winstar)
 		appendStringInfoChar(buf, '*');
 	else
-		get_rule_expr((Node *) wfunc->args, context, true);
+	{
+		if (is_json_objectagg)
+		{
+			get_rule_expr((Node *) linitial(wfunc->args), context, false);
+			appendStringInfoString(buf, " : ");
+			get_rule_expr((Node *) lsecond(wfunc->args), context, false);
+		}
+		else
+			get_rule_expr((Node *) wfunc->args, context, true);
+	}
+
+	if (options)
+		appendStringInfoString(buf, options);
 
 	if (wfunc->aggfilter != NULL)
 	{
@@ -9901,6 +10825,280 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 		 */
 		appendStringInfoString(buf, "(?)");
 	}
+}
+
+/*
+ * get_windowfunc_expr	- Parse back a WindowFunc node
+ */
+static void
+get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
+{
+	get_windowfunc_expr_helper(wfunc, context, NULL, NULL, false);
+}
+
+/*
+ * get_func_sql_syntax		- Parse back a SQL-syntax function call
+ *
+ * Returns true if we successfully deparsed, false if we did not
+ * recognize the function.
+ */
+static bool
+get_func_sql_syntax(FuncExpr *expr, deparse_context *context)
+{
+	StringInfo	buf = context->buf;
+	Oid			funcoid = expr->funcid;
+
+	switch (funcoid)
+	{
+		case F_TIMEZONE_INTERVAL_TIMESTAMP:
+		case F_TIMEZONE_INTERVAL_TIMESTAMPTZ:
+		case F_TIMEZONE_INTERVAL_TIMETZ:
+		case F_TIMEZONE_TEXT_TIMESTAMP:
+		case F_TIMEZONE_TEXT_TIMESTAMPTZ:
+		case F_TIMEZONE_TEXT_TIMETZ:
+			/* AT TIME ZONE ... note reversed argument order */
+			appendStringInfoChar(buf, '(');
+			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			appendStringInfoString(buf, " AT TIME ZONE ");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_OVERLAPS_TIMESTAMPTZ_INTERVAL_TIMESTAMPTZ_INTERVAL:
+		case F_OVERLAPS_TIMESTAMPTZ_INTERVAL_TIMESTAMPTZ_TIMESTAMPTZ:
+		case F_OVERLAPS_TIMESTAMPTZ_TIMESTAMPTZ_TIMESTAMPTZ_INTERVAL:
+		case F_OVERLAPS_TIMESTAMPTZ_TIMESTAMPTZ_TIMESTAMPTZ_TIMESTAMPTZ:
+		case F_OVERLAPS_TIMESTAMP_INTERVAL_TIMESTAMP_INTERVAL:
+		case F_OVERLAPS_TIMESTAMP_INTERVAL_TIMESTAMP_TIMESTAMP:
+		case F_OVERLAPS_TIMESTAMP_TIMESTAMP_TIMESTAMP_INTERVAL:
+		case F_OVERLAPS_TIMESTAMP_TIMESTAMP_TIMESTAMP_TIMESTAMP:
+		case F_OVERLAPS_TIMETZ_TIMETZ_TIMETZ_TIMETZ:
+		case F_OVERLAPS_TIME_INTERVAL_TIME_INTERVAL:
+		case F_OVERLAPS_TIME_INTERVAL_TIME_TIME:
+		case F_OVERLAPS_TIME_TIME_TIME_INTERVAL:
+		case F_OVERLAPS_TIME_TIME_TIME_TIME:
+			/* (x1, x2) OVERLAPS (y1, y2) */
+			appendStringInfoString(buf, "((");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoString(buf, ", ");
+			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			appendStringInfoString(buf, ") OVERLAPS (");
+			get_rule_expr((Node *) lthird(expr->args), context, false);
+			appendStringInfoString(buf, ", ");
+			get_rule_expr((Node *) lfourth(expr->args), context, false);
+			appendStringInfoString(buf, "))");
+			return true;
+
+		case F_EXTRACT_TEXT_DATE:
+		case F_EXTRACT_TEXT_TIME:
+		case F_EXTRACT_TEXT_TIMETZ:
+		case F_EXTRACT_TEXT_TIMESTAMP:
+		case F_EXTRACT_TEXT_TIMESTAMPTZ:
+		case F_EXTRACT_TEXT_INTERVAL:
+			/* EXTRACT (x FROM y) */
+			appendStringInfoString(buf, "EXTRACT(");
+			{
+				Const	   *con = (Const *) linitial(expr->args);
+
+				Assert(IsA(con, Const) &&
+					   con->consttype == TEXTOID &&
+					   !con->constisnull);
+				appendStringInfoString(buf, TextDatumGetCString(con->constvalue));
+			}
+			appendStringInfoString(buf, " FROM ");
+			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_IS_NORMALIZED:
+			/* IS xxx NORMALIZED */
+			appendStringInfoString(buf, "((");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoString(buf, ") IS");
+			if (list_length(expr->args) == 2)
+			{
+				Const	   *con = (Const *) lsecond(expr->args);
+
+				Assert(IsA(con, Const) &&
+					   con->consttype == TEXTOID &&
+					   !con->constisnull);
+				appendStringInfo(buf, " %s",
+								 TextDatumGetCString(con->constvalue));
+			}
+			appendStringInfoString(buf, " NORMALIZED)");
+			return true;
+
+		case F_PG_COLLATION_FOR:
+			/* COLLATION FOR */
+			appendStringInfoString(buf, "COLLATION FOR (");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoChar(buf, ')');
+			return true;
+
+			/*
+			 * XXX EXTRACT, a/k/a date_part(), is intentionally not covered
+			 * yet.  Add it after we change the return type to numeric.
+			 */
+
+		case F_NORMALIZE:
+			/* NORMALIZE() */
+			appendStringInfoString(buf, "NORMALIZE(");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			if (list_length(expr->args) == 2)
+			{
+				Const	   *con = (Const *) lsecond(expr->args);
+
+				Assert(IsA(con, Const) &&
+					   con->consttype == TEXTOID &&
+					   !con->constisnull);
+				appendStringInfo(buf, ", %s",
+								 TextDatumGetCString(con->constvalue));
+			}
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_OVERLAY_BIT_BIT_INT4:
+		case F_OVERLAY_BIT_BIT_INT4_INT4:
+		case F_OVERLAY_BYTEA_BYTEA_INT4:
+		case F_OVERLAY_BYTEA_BYTEA_INT4_INT4:
+		case F_OVERLAY_TEXT_TEXT_INT4:
+		case F_OVERLAY_TEXT_TEXT_INT4_INT4:
+			/* OVERLAY() */
+			appendStringInfoString(buf, "OVERLAY(");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoString(buf, " PLACING ");
+			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			appendStringInfoString(buf, " FROM ");
+			get_rule_expr((Node *) lthird(expr->args), context, false);
+			if (list_length(expr->args) == 4)
+			{
+				appendStringInfoString(buf, " FOR ");
+				get_rule_expr((Node *) lfourth(expr->args), context, false);
+			}
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_POSITION_BIT_BIT:
+		case F_POSITION_BYTEA_BYTEA:
+		case F_POSITION_TEXT_TEXT:
+			/* POSITION() ... extra parens since args are b_expr not a_expr */
+			appendStringInfoString(buf, "POSITION((");
+			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			appendStringInfoString(buf, ") IN (");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoString(buf, "))");
+			return true;
+
+		case F_SUBSTRING_BIT_INT4:
+		case F_SUBSTRING_BIT_INT4_INT4:
+		case F_SUBSTRING_BYTEA_INT4:
+		case F_SUBSTRING_BYTEA_INT4_INT4:
+		case F_SUBSTRING_TEXT_INT4:
+		case F_SUBSTRING_TEXT_INT4_INT4:
+			/* SUBSTRING FROM/FOR (i.e., integer-position variants) */
+			appendStringInfoString(buf, "SUBSTRING(");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoString(buf, " FROM ");
+			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			if (list_length(expr->args) == 3)
+			{
+				appendStringInfoString(buf, " FOR ");
+				get_rule_expr((Node *) lthird(expr->args), context, false);
+			}
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_SUBSTRING_TEXT_TEXT_TEXT:
+			/* SUBSTRING SIMILAR/ESCAPE */
+			appendStringInfoString(buf, "SUBSTRING(");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoString(buf, " SIMILAR ");
+			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			appendStringInfoString(buf, " ESCAPE ");
+			get_rule_expr((Node *) lthird(expr->args), context, false);
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_BTRIM_BYTEA_BYTEA:
+		case F_BTRIM_TEXT:
+		case F_BTRIM_TEXT_TEXT:
+			/* TRIM() */
+			appendStringInfoString(buf, "TRIM(BOTH");
+			if (list_length(expr->args) == 2)
+			{
+				appendStringInfoChar(buf, ' ');
+				get_rule_expr((Node *) lsecond(expr->args), context, false);
+			}
+			appendStringInfoString(buf, " FROM ");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_LTRIM_BYTEA_BYTEA:
+		case F_LTRIM_TEXT:
+		case F_LTRIM_TEXT_TEXT:
+			/* TRIM() */
+			appendStringInfoString(buf, "TRIM(LEADING");
+			if (list_length(expr->args) == 2)
+			{
+				appendStringInfoChar(buf, ' ');
+				get_rule_expr((Node *) lsecond(expr->args), context, false);
+			}
+			appendStringInfoString(buf, " FROM ");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_RTRIM_BYTEA_BYTEA:
+		case F_RTRIM_TEXT:
+		case F_RTRIM_TEXT_TEXT:
+			/* TRIM() */
+			appendStringInfoString(buf, "TRIM(TRAILING");
+			if (list_length(expr->args) == 2)
+			{
+				appendStringInfoChar(buf, ' ');
+				get_rule_expr((Node *) lsecond(expr->args), context, false);
+			}
+			appendStringInfoString(buf, " FROM ");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoChar(buf, ')');
+			return true;
+
+		case F_XMLEXISTS:
+			/* XMLEXISTS ... extra parens because args are c_expr */
+			appendStringInfoString(buf, "XMLEXISTS((");
+			get_rule_expr((Node *) linitial(expr->args), context, false);
+			appendStringInfoString(buf, ") PASSING (");
+			get_rule_expr((Node *) lsecond(expr->args), context, false);
+			appendStringInfoString(buf, "))");
+			return true;
+	}
+	return false;
+}
+
+/*
+ * get_json_agg_constructor - Parse back an aggregate JsonConstructorExpr node
+ */
+static void
+get_json_agg_constructor(JsonConstructorExpr *ctor, deparse_context *context,
+						 const char *funcname, bool is_json_objectagg)
+{
+	StringInfoData options;
+
+	initStringInfo(&options);
+	get_json_constructor_options(ctor, &options);
+
+	if (IsA(ctor->func, Aggref))
+		get_agg_expr_helper((Aggref *) ctor->func, context,
+							(Aggref *) ctor->func,
+							funcname, options.data, is_json_objectagg);
+	else if (IsA(ctor->func, WindowFunc))
+		get_windowfunc_expr_helper((WindowFunc *) ctor->func, context,
+								   funcname, options.data,
+								   is_json_objectagg);
+	else
+		elog(ERROR, "invalid JsonConstructorExpr underlying node type: %d",
+			 nodeTag(ctor->func));
 }
 
 /* ----------
@@ -10260,7 +11458,7 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 	if (need_paren)
 		appendStringInfoChar(buf, '(');
 
-	get_query_def(query, buf, context->namespaces, NULL,
+	get_query_def(query, buf, context->namespaces, NULL, false,
 				  context->prettyFlags, context->wrapColumn,
 				  context->indentLevel);
 
@@ -10272,15 +11470,13 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 
 
 /* ----------
- * get_tablefunc			- Parse back a table function
+ * get_xmltable			- Parse back a XMLTABLE function
  * ----------
  */
 static void
-get_tablefunc(TableFunc *tf, deparse_context *context, bool showimplicit)
+get_xmltable(TableFunc *tf, deparse_context *context, bool showimplicit)
 {
 	StringInfo	buf = context->buf;
-
-	/* XMLTABLE is the only existing implementation.  */
 
 	appendStringInfoString(buf, "XMLTABLE(");
 
@@ -10294,7 +11490,7 @@ get_tablefunc(TableFunc *tf, deparse_context *context, bool showimplicit)
 		forboth(lc1, tf->ns_uris, lc2, tf->ns_names)
 		{
 			Node	   *expr = (Node *) lfirst(lc1);
-			Value	   *ns_node = (Value *) lfirst(lc2);
+			String	   *ns_node = lfirst_node(String, lc2);
 
 			if (!first)
 				appendStringInfoString(buf, ", ");
@@ -10370,6 +11566,271 @@ get_tablefunc(TableFunc *tf, deparse_context *context, bool showimplicit)
 	}
 
 	appendStringInfoChar(buf, ')');
+}
+
+/*
+ * get_json_nested_columns - Parse back nested JSON_TABLE columns
+ */
+static void
+get_json_table_nested_columns(TableFunc *tf, Node *node,
+							  deparse_context *context, bool showimplicit,
+							  bool needcomma)
+{
+	if (IsA(node, JsonTableSibling))
+	{
+		JsonTableSibling *n = (JsonTableSibling *) node;
+
+		get_json_table_nested_columns(tf, n->larg, context, showimplicit,
+									  needcomma);
+		get_json_table_nested_columns(tf, n->rarg, context, showimplicit, true);
+	}
+	else
+	{
+		JsonTableParent *n = castNode(JsonTableParent, node);
+
+		if (needcomma)
+			appendStringInfoChar(context->buf, ',');
+
+		appendStringInfoChar(context->buf, ' ');
+		appendContextKeyword(context, "NESTED PATH ", 0, 0, 0);
+		get_const_expr(n->path, context, -1);
+		appendStringInfo(context->buf, " AS %s", quote_identifier(n->name));
+		get_json_table_columns(tf, n, context, showimplicit);
+	}
+}
+
+/*
+ * get_json_table_plan - Parse back a JSON_TABLE plan
+ */
+static void
+get_json_table_plan(TableFunc *tf, Node *node, deparse_context *context,
+					bool parenthesize)
+{
+	if (parenthesize)
+		appendStringInfoChar(context->buf, '(');
+
+	if (IsA(node, JsonTableSibling))
+	{
+		JsonTableSibling *n = (JsonTableSibling *) node;
+
+		get_json_table_plan(tf, n->larg, context,
+							IsA(n->larg, JsonTableSibling) ||
+							castNode(JsonTableParent, n->larg)->child);
+
+		appendStringInfoString(context->buf, n->cross ? " CROSS " : " UNION ");
+
+		get_json_table_plan(tf, n->rarg, context,
+							IsA(n->rarg, JsonTableSibling) ||
+							castNode(JsonTableParent, n->rarg)->child);
+	}
+	else
+	{
+		JsonTableParent *n = castNode(JsonTableParent, node);
+
+		appendStringInfoString(context->buf, quote_identifier(n->name));
+
+		if (n->child)
+		{
+			appendStringInfoString(context->buf,
+								   n->outerJoin ? " OUTER " : " INNER ");
+			get_json_table_plan(tf, n->child, context,
+								IsA(n->child, JsonTableSibling));
+		}
+	}
+
+	if (parenthesize)
+		appendStringInfoChar(context->buf, ')');
+}
+
+/*
+ * get_json_table_columns - Parse back JSON_TABLE columns
+ */
+static void
+get_json_table_columns(TableFunc *tf, JsonTableParent *node,
+					   deparse_context *context, bool showimplicit)
+{
+	StringInfo	buf = context->buf;
+	JsonExpr   *jexpr = castNode(JsonExpr, tf->docexpr);
+	ListCell   *lc_colname;
+	ListCell   *lc_coltype;
+	ListCell   *lc_coltypmod;
+	ListCell   *lc_colvarexpr;
+	int			colnum = 0;
+
+	appendStringInfoChar(buf, ' ');
+	appendContextKeyword(context, "COLUMNS (", 0, 0, 0);
+
+	if (PRETTY_INDENT(context))
+		context->indentLevel += PRETTYINDENT_VAR;
+
+	forfour(lc_colname, tf->colnames,
+			lc_coltype, tf->coltypes,
+			lc_coltypmod, tf->coltypmods,
+			lc_colvarexpr, tf->colvalexprs)
+	{
+		char	   *colname = strVal(lfirst(lc_colname));
+		JsonExpr   *colexpr;
+		Oid			typid;
+		int32		typmod;
+		bool		ordinality;
+		JsonBehaviorType default_behavior;
+
+		typid = lfirst_oid(lc_coltype);
+		typmod = lfirst_int(lc_coltypmod);
+		colexpr = castNode(JsonExpr, lfirst(lc_colvarexpr));
+
+		if (colnum < node->colMin)
+		{
+			colnum++;
+			continue;
+		}
+
+		if (colnum > node->colMax)
+			break;
+
+		if (colnum > node->colMin)
+			appendStringInfoString(buf, ", ");
+
+		colnum++;
+
+		ordinality = !colexpr;
+
+		appendContextKeyword(context, "", 0, 0, 0);
+
+		appendStringInfo(buf, "%s %s", quote_identifier(colname),
+						 ordinality ? "FOR ORDINALITY" :
+						 format_type_with_typemod(typid, typmod));
+		if (ordinality)
+			continue;
+
+		if (colexpr->op == JSON_EXISTS_OP)
+		{
+			appendStringInfoString(buf, " EXISTS");
+			default_behavior = JSON_BEHAVIOR_FALSE;
+		}
+		else
+		{
+			if (colexpr->op == JSON_QUERY_OP)
+			{
+				char		typcategory;
+				bool		typispreferred;
+
+				get_type_category_preferred(typid, &typcategory, &typispreferred);
+
+				if (typcategory == TYPCATEGORY_STRING)
+					appendStringInfoString(buf,
+										   colexpr->format->format_type == JS_FORMAT_JSONB ?
+										   " FORMAT JSONB" : " FORMAT JSON");
+			}
+
+			default_behavior = JSON_BEHAVIOR_NULL;
+		}
+
+		if (jexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
+			default_behavior = JSON_BEHAVIOR_ERROR;
+
+		appendStringInfoString(buf, " PATH ");
+
+		get_json_path_spec(colexpr->path_spec, context, showimplicit);
+
+		get_json_expr_options(colexpr, context, default_behavior);
+	}
+
+	if (node->child)
+		get_json_table_nested_columns(tf, node->child, context, showimplicit,
+									  node->colMax >= node->colMin);
+
+	if (PRETTY_INDENT(context))
+		context->indentLevel -= PRETTYINDENT_VAR;
+
+	appendContextKeyword(context, ")", 0, 0, 0);
+}
+
+/* ----------
+ * get_json_table			- Parse back a JSON_TABLE function
+ * ----------
+ */
+static void
+get_json_table(TableFunc *tf, deparse_context *context, bool showimplicit)
+{
+	StringInfo	buf = context->buf;
+	JsonExpr   *jexpr = castNode(JsonExpr, tf->docexpr);
+	JsonTableParent *root = castNode(JsonTableParent, tf->plan);
+
+	appendStringInfoString(buf, "JSON_TABLE(");
+
+	if (PRETTY_INDENT(context))
+		context->indentLevel += PRETTYINDENT_VAR;
+
+	appendContextKeyword(context, "", 0, 0, 0);
+
+	get_rule_expr(jexpr->formatted_expr, context, showimplicit);
+
+	appendStringInfoString(buf, ", ");
+
+	get_const_expr(root->path, context, -1);
+
+	appendStringInfo(buf, " AS %s", quote_identifier(root->name));
+
+	if (jexpr->passing_values)
+	{
+		ListCell   *lc1,
+				   *lc2;
+		bool		needcomma = false;
+
+		appendStringInfoChar(buf, ' ');
+		appendContextKeyword(context, "PASSING ", 0, 0, 0);
+
+		if (PRETTY_INDENT(context))
+			context->indentLevel += PRETTYINDENT_VAR;
+
+		forboth(lc1, jexpr->passing_names,
+				lc2, jexpr->passing_values)
+		{
+			if (needcomma)
+				appendStringInfoString(buf, ", ");
+			needcomma = true;
+
+			appendContextKeyword(context, "", 0, 0, 0);
+
+			get_rule_expr((Node *) lfirst(lc2), context, false);
+			appendStringInfo(buf, " AS %s",
+							 quote_identifier((lfirst_node(String, lc1))->sval)
+				);
+		}
+
+		if (PRETTY_INDENT(context))
+			context->indentLevel -= PRETTYINDENT_VAR;
+	}
+
+	get_json_table_columns(tf, root, context, showimplicit);
+
+	appendStringInfoChar(buf, ' ');
+	appendContextKeyword(context, "PLAN ", 0, 0, 0);
+	get_json_table_plan(tf, (Node *) root, context, true);
+
+	if (jexpr->on_error->btype != JSON_BEHAVIOR_EMPTY)
+		get_json_behavior(jexpr->on_error, context, "ERROR");
+
+	if (PRETTY_INDENT(context))
+		context->indentLevel -= PRETTYINDENT_VAR;
+
+	appendContextKeyword(context, ")", 0, 0, 0);
+}
+
+/* ----------
+ * get_tablefunc			- Parse back a table function
+ * ----------
+ */
+static void
+get_tablefunc(TableFunc *tf, deparse_context *context, bool showimplicit)
+{
+	/* XMLTABLE and JSON_TABLE are the only existing implementations.  */
+
+	if (tf->functype == TFT_XMLTABLE)
+		get_xmltable(tf, context, showimplicit);
+	else if (tf->functype == TFT_JSON_TABLE)
+		get_json_table(tf, context, showimplicit);
 }
 
 /* ----------
@@ -10514,6 +11975,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 				/* Subquery RTE */
 				appendStringInfoChar(buf, '(');
 				get_query_def(rte->subquery, buf, context->namespaces, NULL,
+							  true,
 							  context->prettyFlags, context->wrapColumn,
 							  context->indentLevel);
 				appendStringInfoChar(buf, ')');
@@ -10562,7 +12024,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 						RangeTblFunction *rtfunc = (RangeTblFunction *) lfirst(lc);
 
 						if (!IsA(rtfunc->funcexpr, FuncExpr) ||
-							((FuncExpr *) rtfunc->funcexpr)->funcid != F_ARRAY_UNNEST ||
+							((FuncExpr *) rtfunc->funcexpr)->funcid != F_UNNEST_ANYARRAY ||
 							rtfunc->funccolnames != NIL)
 						{
 							all_unnest = false;
@@ -10665,9 +12127,10 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 			 */
 			printalias = true;
 		}
-		else if (rte->rtekind == RTE_VALUES)
+		else if (rte->rtekind == RTE_SUBQUERY ||
+				 rte->rtekind == RTE_VALUES)
 		{
-			/* Alias is syntactically required for VALUES */
+			/* Alias is syntactically required for SUBQUERY and VALUES */
 			printalias = true;
 		}
 		else if (rte->rtekind == RTE_CTE)
@@ -10775,6 +12238,10 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 				appendStringInfoString(buf, quote_identifier(colname));
 			}
 			appendStringInfoChar(buf, ')');
+
+			if (j->join_using_alias)
+				appendStringInfo(buf, " AS %s",
+								 quote_identifier(j->join_using_alias->aliasname));
 		}
 		else if (j->quals)
 		{
@@ -10978,7 +12445,7 @@ get_opclass_name(Oid opclass, Oid actual_datatype,
 			appendStringInfo(buf, " %s", quote_identifier(opcname));
 		else
 		{
-			nspname = get_namespace_name(opcrec->opcnamespace);
+			nspname = get_namespace_name_or_temp(opcrec->opcnamespace);
 			appendStringInfo(buf, " %s.%s",
 							 quote_identifier(nspname),
 							 quote_identifier(opcname));
@@ -11345,7 +12812,7 @@ generate_relation_name(Oid relid, List *namespaces)
 		need_qual = !RelationIsVisible(relid);
 
 	if (need_qual)
-		nspname = get_namespace_name(reltup->relnamespace);
+		nspname = get_namespace_name_or_temp(reltup->relnamespace);
 	else
 		nspname = NULL;
 
@@ -11377,7 +12844,7 @@ generate_qualified_relation_name(Oid relid)
 	reltup = (Form_pg_class) GETSTRUCT(tp);
 	relname = NameStr(reltup->relname);
 
-	nspname = get_namespace_name(reltup->relnamespace);
+	nspname = get_namespace_name_or_temp(reltup->relnamespace);
 	if (!nspname)
 		elog(ERROR, "cache lookup failed for namespace %u",
 			 reltup->relnamespace);
@@ -11473,7 +12940,7 @@ generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
 	if (!force_qualify)
 		p_result = func_get_detail(list_make1(makeString(proname)),
 								   NIL, argnames, nargs, argtypes,
-								   !use_variadic, true,
+								   !use_variadic, true, false,
 								   &p_funcid, &p_rettype,
 								   &p_retset, &p_nvargs, &p_vatype,
 								   &p_true_typeids, NULL);
@@ -11489,7 +12956,7 @@ generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
 		p_funcid == funcid)
 		nspname = NULL;
 	else
-		nspname = get_namespace_name(procform->pronamespace);
+		nspname = get_namespace_name_or_temp(procform->pronamespace);
 
 	result = quote_qualified_identifier(nspname, proname);
 
@@ -11542,10 +13009,6 @@ generate_operator_name(Oid operid, Oid arg1, Oid arg2)
 			p_result = left_oper(NULL, list_make1(makeString(oprname)), arg2,
 								 true, -1);
 			break;
-		case 'r':
-			p_result = right_oper(NULL, list_make1(makeString(oprname)), arg1,
-								  true, -1);
-			break;
 		default:
 			elog(ERROR, "unrecognized oprkind: %d", operform->oprkind);
 			p_result = NULL;	/* keep compiler quiet */
@@ -11556,7 +13019,7 @@ generate_operator_name(Oid operid, Oid arg1, Oid arg2)
 		nspname = NULL;
 	else
 	{
-		nspname = get_namespace_name(operform->oprnamespace);
+		nspname = get_namespace_name_or_temp(operform->oprnamespace);
 		appendStringInfo(&buf, "OPERATOR(%s.", quote_identifier(nspname));
 	}
 
@@ -11644,7 +13107,7 @@ add_cast_to(StringInfo buf, Oid typid)
 	typform = (Form_pg_type) GETSTRUCT(typetup);
 
 	typname = NameStr(typform->typname);
-	nspname = get_namespace_name(typform->typnamespace);
+	nspname = get_namespace_name_or_temp(typform->typnamespace);
 
 	appendStringInfo(buf, "::%s.%s",
 					 quote_identifier(nspname), quote_identifier(typname));
@@ -11676,7 +13139,7 @@ generate_qualified_type_name(Oid typid)
 	typtup = (Form_pg_type) GETSTRUCT(tp);
 	typname = NameStr(typtup->typname);
 
-	nspname = get_namespace_name(typtup->typnamespace);
+	nspname = get_namespace_name_or_temp(typtup->typnamespace);
 	if (!nspname)
 		elog(ERROR, "cache lookup failed for namespace %u",
 			 typtup->typnamespace);
@@ -11710,7 +13173,7 @@ generate_collation_name(Oid collid)
 	collname = NameStr(colltup->collname);
 
 	if (!CollationIsVisible(collid))
-		nspname = get_namespace_name(colltup->collnamespace);
+		nspname = get_namespace_name_or_temp(colltup->collnamespace);
 	else
 		nspname = NULL;
 
@@ -11933,12 +13396,12 @@ get_range_partbound_string(List *bound_datums)
 	memset(&context, 0, sizeof(deparse_context));
 	context.buf = buf;
 
-	appendStringInfoString(buf, "(");
+	appendStringInfoChar(buf, '(');
 	sep = "";
 	foreach(cell, bound_datums)
 	{
 		PartitionRangeDatum *datum =
-		castNode(PartitionRangeDatum, lfirst(cell));
+		lfirst_node(PartitionRangeDatum, cell);
 
 		appendStringInfoString(buf, sep);
 		if (datum->kind == PARTITION_RANGE_DATUM_MINVALUE)

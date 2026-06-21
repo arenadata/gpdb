@@ -43,7 +43,7 @@
  *
  * Portions Copyright (c) 2005-2010 Greenplum Inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -66,8 +66,9 @@
 #include "access/sysattr.h"
 #include "access/tableam.h"
 #include "access/xact.h"
-#include "access/xlog.h"
 #include "access/xloginsert.h"
+#include "access/xlogutils.h"
+#include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -108,7 +109,7 @@
 /* GUC variables */
 char	   *default_tablespace = NULL;
 char	   *temp_tablespaces = NULL;
-
+bool		allow_in_place_tablespaces = false;
 
 static void create_tablespace_directories(const char *location,
 										  const Oid tablespaceoid);
@@ -267,9 +268,10 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	char	   *location = NULL;
 	Oid			ownerId;
 	Datum		newOptions;
-	List       *nonContentOptions = NIL;
+	List	   *nonContentOptions = NIL;
+	bool		in_place;
 
-	/* Must be super user */
+	/* Must be superuser */
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -296,7 +298,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			if (strlen(defel->defname) > strlen("content") &&
 				strncmp(defel->defname, "content", strlen("content")) == 0)
 			{
-				int contentId = pg_atoi(defel->defname + strlen("content"), sizeof(int16), 0);
+				int contentId = pg_strtoint16(defel->defname + strlen("content"));
 
 				/*
 				 * The master validates the content ids are in [0, segCount)
@@ -321,7 +323,15 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	}
 
 	if (!location)
-		location = pstrdup(stmt->location);
+	{
+		/*
+		 * GPDB: an in-place tablespace (LOCATION '') has an empty location
+		 * string, which the binary dispatch from the QD delivers to the QE as
+		 * NULL. Treat that as the empty string so the in_place path below works
+		 * instead of crashing in pstrdup/canonicalize_path.
+		 */
+		location = pstrdup(stmt->location ? stmt->location : "");
+	}
 
 	/* Unix-ify the offered path, and strip any trailing slashes */
 	canonicalize_path(location);
@@ -332,12 +342,15 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				(errcode(ERRCODE_INVALID_NAME),
 				 errmsg("tablespace location cannot contain single quotes")));
 
+	in_place = allow_in_place_tablespaces && strlen(location) == 0;
+
 	/*
 	 * Allowing relative paths seems risky
 	 *
-	 * this also helps us ensure that location is not empty or whitespace
+	 * This also helps us ensure that location is not empty or whitespace,
+	 * unless specifying a developer-only in-place tablespace.
 	 */
-	if (!is_absolute_path(location))
+	if (!in_place && !is_absolute_path(location))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("tablespace location must be an absolute path")));
@@ -619,6 +632,8 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	Form_pg_tablespace spcform;
 	ScanKeyData entry[1];
 	Oid			tablespaceoid;
+	char	   *detail;
+	char	   *detail_log;
 
 	/*
 	 * Find the target tuple
@@ -646,7 +661,6 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 			ereport(NOTICE,
 					(errmsg("tablespace \"%s\" does not exist, skipping",
 							tablespacename)));
-			/* XXX I assume I need one or both of these next two calls */
 			table_endscan(scandesc);
 			table_close(rel, NoLock);
 		}
@@ -662,10 +676,19 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 					   tablespacename);
 
 	/* Disallow drop of the standard tablespaces, even by superuser */
-	if (tablespaceoid == GLOBALTABLESPACE_OID ||
-		tablespaceoid == DEFAULTTABLESPACE_OID)
+	if (IsPinnedObject(TableSpaceRelationId, tablespaceoid))
 		aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_TABLESPACE,
 					   tablespacename);
+
+	/* Check for pg_shdepend entries depending on this tablespace */
+	if (checkSharedDependencies(TableSpaceRelationId, tablespaceoid,
+								&detail, &detail_log))
+		ereport(ERROR,
+				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				 errmsg("tablespace \"%s\" cannot be dropped because some objects depend on it",
+						tablespacename),
+				 errdetail_internal("%s", detail),
+				 errdetail_log("%s", detail_log)));
 
 	/* DROP hook for the tablespace being removed */
 	InvokeObjectDropHook(TableSpaceRelationId, tablespaceoid, 0);
@@ -773,27 +796,67 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 	char	   *location_with_dbid_dir;
 	char	   *location_with_version_dir;
 	struct stat st;
+	bool		in_place;
 
 	elog(DEBUG5, "creating tablespace directories for tablespaceoid %d on dbid %d",
 		tablespaceoid, GpIdentity.dbid);
 
 	linkloc = psprintf("pg_tblspc/%u", tablespaceoid);
+	/*
+	 * If we're asked to make an 'in place' tablespace, create the directory
+	 * directly where the symlink would normally go.  This is a developer-only
+	 * option for now, to facilitate regression testing.
+	 */
+	in_place = strlen(location) == 0;
+
+	if (in_place)
+	{
+		if (MakePGDirectory(linkloc) < 0 && errno != EEXIST)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not create directory \"%s\": %m",
+							linkloc)));
+	}
+
+	/* In GPDB each segment uses a per-dbid subdirectory under the location. */
 	location_with_dbid_dir = psprintf("%s/%d", location, GpIdentity.dbid);
-	location_with_version_dir = psprintf("%s/%s", location_with_dbid_dir,
+	location_with_version_dir = psprintf("%s/%s",
+										 in_place ? linkloc : location_with_dbid_dir,
 										 GP_TABLESPACE_VERSION_DIRECTORY);
 
 	/*
 	 * Attempt to coerce target directory to safe permissions.  If this fails,
-	 * it doesn't exist or has the wrong owner.
+	 * it doesn't exist or has the wrong owner.  Not needed for in-place mode,
+	 * because in that case we created the directory with the desired
+	 * permissions.
+	 *
+	 * During WAL replay the location may legitimately be gone: the
+	 * tablespace was dropped later in the WAL and its directory removed
+	 * (regression tests do exactly this), or a mirror was rewound to before
+	 * the CREATE.  Erroring would kill the startup process and leave the
+	 * mirror unrecoverable, so recreate the directory and press on, in the
+	 * spirit of TablespaceCreateDbspace().
 	 */
-	if (chmod(location, pg_dir_create_mode) != 0)
+	if (!in_place && chmod(location, pg_dir_create_mode) != 0)
 	{
-		if (errno == ENOENT)
+		if (errno == ENOENT && InRecovery)
+		{
+			char	   *locbuf = pstrdup(location);
+
+			ereport(LOG,
+					(errmsg("creating missing directory \"%s\" for tablespace %u during replay",
+							location, tablespaceoid)));
+			if (pg_mkdir_p(locbuf, pg_dir_create_mode) != 0)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not create directory \"%s\": %m",
+								location)));
+			pfree(locbuf);
+		}
+		else if (errno == ENOENT)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_FILE),
-					 errmsg("directory \"%s\" does not exist", location),
-					 InRecovery ? errhint("Create this directory for the tablespace before "
-										  "restarting the server.") : 0));
+					 errmsg("directory \"%s\" does not exist", location)));
 		else
 			ereport(ERROR,
 					(errcode_for_file_access(),
@@ -801,29 +864,12 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 							location)));
 	}
 
-	if (InRecovery)
-	{
-		/*
-		 * Our theory for replaying a CREATE is to forcibly drop the target
-		 * subdirectory if present, and then recreate it. This may be more
-		 * work than needed, but it is simple to implement.
-		 */
-		if (stat(location_with_version_dir, &st) == 0 && S_ISDIR(st.st_mode))
-		{
-			if (!rmtree(location_with_version_dir, true))
-				/* If this failed, MakePGDirectory() below is going to error. */
-				ereport(WARNING,
-						(errmsg("some useless files may be left behind in old database directory \"%s\"",
-								location_with_version_dir)));
-		}
-	}
-
 	/*
 	 * In GPDB each segment has a directory with its unique dbid under the
 	 * tablespace path. Unlike the location_with_version_dir, do not error out
 	 * if it already exists.
 	 */
-	if (stat(location_with_dbid_dir, &st) < 0) 
+	if (!in_place && stat(location_with_dbid_dir, &st) < 0)
 	{
 		if (errno == ENOENT)
 		{
@@ -838,39 +884,52 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 						errmsg("could not stat directory \"%s\": %m", location_with_dbid_dir)));
 
 	}
-	else
+	else if (!in_place)
 		ereport(DEBUG1,
 				(errmsg("directory \"%s\" already exists in tablespace",
 					location_with_dbid_dir)));
 
 	/*
 	 * The creation of the version directory prevents more than one tablespace
-	 * in a single location.
+	 * in a single location.  This imitates TablespaceCreateDbspace(), but it
+	 * ignores concurrency and missing parent directories.  The chmod() would
+	 * have failed in the absence of a parent.  pg_tablespace_spcname_index
+	 * prevents concurrency.
 	 */
-	if (MakePGDirectory(location_with_version_dir) < 0)
+	if (stat(location_with_version_dir, &st) < 0)
 	{
-		if (errno == EEXIST)
+		if (errno != ENOENT)
 			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("directory \"%s\" already in use as a tablespace",
+					(errcode_for_file_access(),
+					 errmsg("could not stat directory \"%s\": %m",
 							location_with_version_dir)));
-		else
+		else if (MakePGDirectory(location_with_version_dir) < 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
 				  errmsg("could not create directory \"%s\": %m",
 						 location_with_version_dir)));
 	}
+	else if (!S_ISDIR(st.st_mode))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" exists but is not a directory",
+						location_with_version_dir)));
+	else if (!InRecovery)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("directory \"%s\" already in use as a tablespace",
+						location_with_version_dir)));
 
 	/*
 	 * In recovery, remove old symlink, in case it points to the wrong place.
 	 */
-	if (InRecovery)
+	if (!in_place && InRecovery)
 		remove_tablespace_symlink(linkloc);
 
 	/*
 	 * Create the symlink under PGDATA
 	 */
-	if (symlink(location_with_dbid_dir, linkloc) < 0)
+	if (!in_place && symlink(location_with_dbid_dir, linkloc) < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not create symbolic link \"%s\": %m",
@@ -1170,7 +1229,13 @@ remove_symlink:
 		}
 		else
 		{
-			if(directory_is_empty(link_target_dir) && rmdir(link_target_dir) < 0)
+			/*
+			 * In redo this must not ERROR: ReadDir's failure would kill the
+			 * startup process over disk space we merely failed to release
+			 * (e.g. the directory vanished after the access() check above).
+			 */
+			if(directory_is_empty_ext(link_target_dir, redo ? LOG : ERROR) &&
+			   rmdir(link_target_dir) < 0)
 				ereport(redo ? LOG : ERROR,
 						(errcode_for_file_access(),
 								errmsg("could not remove directory \"%s\": %m",
@@ -1238,12 +1303,24 @@ remove_symlink:
 bool
 directory_is_empty(const char *path)
 {
+	return directory_is_empty_ext(path, ERROR);
+}
+
+/*
+ * As above, but report problems reading the directory at the caller's
+ * chosen elevel.  WAL replay must use something weaker than ERROR, which
+ * the startup process would escalate to FATAL; an unreadable or vanished
+ * directory then counts as empty and the caller's rmdir reports the rest.
+ */
+bool
+directory_is_empty_ext(const char *path, int elevel)
+{
 	DIR		   *dirdesc;
 	struct dirent *de;
 
 	dirdesc = AllocateDir(path);
 
-	while ((de = ReadDir(dirdesc, path)) != NULL)
+	while ((de = ReadDirExtended(dirdesc, path, elevel)) != NULL)
 	{
 		if (strcmp(de->d_name, ".") == 0 ||
 			strcmp(de->d_name, "..") == 0)
@@ -1252,7 +1329,8 @@ directory_is_empty(const char *path)
 		return false;
 	}
 
-	FreeDir(dirdesc);
+	if (dirdesc)
+		FreeDir(dirdesc);
 	return true;
 }
 
@@ -1976,6 +2054,11 @@ tblspc_redo(XLogReaderState *record)
 	}
 	else if (info == XLOG_TBLSPC_DROP)
 	{
+		xl_tblspc_drop_rec *xlrec = (xl_tblspc_drop_rec *) XLogRecGetData(record);
+
+		/* Close all smgr fds in all backends. */
+		WaitForProcSignalBarrier(EmitProcSignalBarrier(PROCSIGNAL_BARRIER_SMGRRELEASE));
+
 		/*
 		 * We no longer remove tablespace directories while replaying
 		 * XLOG_TBLSPC_DROP. We wait until the commit for the tablespace drop

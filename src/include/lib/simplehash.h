@@ -41,7 +41,7 @@
  *	  - SH_SCOPE - in which scope (e.g. extern, static inline) do function
  *		declarations reside
  *	  - SH_RAW_ALLOCATOR - if defined, memory contexts are not used; instead,
- *	    use this to allocate bytes
+ *	    use this to allocate bytes. The allocator must zero the returned space.
  *	  - SH_USE_NONDEFAULT_ALLOCATOR - if defined no element allocator functions
  *		are defined, so you can supply your own
  *	  The following parameters are only relevant when SH_DEFINE is defined:
@@ -86,6 +86,11 @@
  *	  presence is relevant to determine whether a lookup needs to continue
  *	  looking or is done - buckets following a deleted element are shifted
  *	  backwards, unless they're empty or already at their optimal position.
+ *
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/include/lib/simplehash.h
  */
 
 #include "port/pg_bitutils.h"
@@ -110,6 +115,7 @@
 #define SH_RESET SH_MAKE_NAME(reset)
 #define SH_INSERT SH_MAKE_NAME(insert)
 #define SH_INSERT_HASH SH_MAKE_NAME(insert_hash)
+#define SH_DELETE_ITEM SH_MAKE_NAME(delete_item)
 #define SH_DELETE SH_MAKE_NAME(delete)
 #define SH_LOOKUP SH_MAKE_NAME(lookup)
 #define SH_LOOKUP_HASH SH_MAKE_NAME(lookup_hash)
@@ -197,8 +203,8 @@ SH_SCOPE void SH_DESTROY(SH_TYPE * tb);
 /* void <prefix>_reset(<prefix>_hash *tb) */
 SH_SCOPE void SH_RESET(SH_TYPE * tb);
 
-/* void <prefix>_grow(<prefix>_hash *tb) */
-SH_SCOPE void SH_GROW(SH_TYPE * tb, uint32 newsize);
+/* void <prefix>_grow(<prefix>_hash *tb, uint64 newsize) */
+SH_SCOPE void SH_GROW(SH_TYPE * tb, uint64 newsize);
 
 /* <element> *<prefix>_insert(<prefix>_hash *tb, <key> key, bool *found) */
 SH_SCOPE	SH_ELEMENT_TYPE *SH_INSERT(SH_TYPE * tb, SH_KEY_TYPE key, bool *found);
@@ -216,6 +222,9 @@ SH_SCOPE	SH_ELEMENT_TYPE *SH_LOOKUP(SH_TYPE * tb, SH_KEY_TYPE key);
 /* <element> *<prefix>_lookup_hash(<prefix>_hash *tb, <key> key, uint32 hash) */
 SH_SCOPE	SH_ELEMENT_TYPE *SH_LOOKUP_HASH(SH_TYPE * tb, SH_KEY_TYPE key,
 											uint32 hash);
+
+/* void <prefix>_delete_item(<prefix>_hash *tb, <element> *entry) */
+SH_SCOPE void SH_DELETE_ITEM(SH_TYPE * tb, SH_ELEMENT_TYPE * entry);
 
 /* bool <prefix>_delete(<prefix>_hash *tb, <key> key) */
 SH_SCOPE bool SH_DELETE(SH_TYPE * tb, SH_KEY_TYPE key);
@@ -284,7 +293,7 @@ SH_SCOPE void SH_STAT(SH_TYPE * tb);
 #define SIMPLEHASH_H
 
 #ifdef FRONTEND
-#define sh_error(...) pg_log_error(__VA_ARGS__)
+#define sh_error(...) pg_fatal(__VA_ARGS__)
 #define sh_log(...) pg_log_info(__VA_ARGS__)
 #else
 #define sh_error(...) elog(ERROR, __VA_ARGS__)
@@ -298,7 +307,7 @@ SH_SCOPE void SH_STAT(SH_TYPE * tb);
  * the hashtable.
  */
 static inline void
-SH_COMPUTE_PARAMETERS(SH_TYPE * tb, uint32 newsize)
+SH_COMPUTE_PARAMETERS(SH_TYPE * tb, uint64 newsize)
 {
 	uint64		size;
 
@@ -313,16 +322,12 @@ SH_COMPUTE_PARAMETERS(SH_TYPE * tb, uint32 newsize)
 	 * Verify that allocation of ->data is possible on this platform, without
 	 * overflowing Size.
 	 */
-	if ((((uint64) sizeof(SH_ELEMENT_TYPE)) * size) >= SIZE_MAX / 2)
+	if (unlikely((((uint64) sizeof(SH_ELEMENT_TYPE)) * size) >= SIZE_MAX / 2))
 		sh_error("hash table too large");
 
 	/* now set size */
 	tb->size = size;
-
-	if (tb->size == SH_MAX_SIZE)
-		tb->sizemask = 0;
-	else
-		tb->sizemask = tb->size - 1;
+	tb->sizemask = (uint32) (size - 1);
 
 	/*
 	 * Compute the next threshold at which we need to grow the hash table
@@ -472,7 +477,7 @@ SH_RESET(SH_TYPE * tb)
  * performance-wise, when known at some point.
  */
 SH_SCOPE void
-SH_GROW(SH_TYPE * tb, uint32 newsize)
+SH_GROW(SH_TYPE * tb, uint64 newsize)
 {
 	uint64		oldsize = tb->size;
 	SH_ELEMENT_TYPE *olddata = tb->data;
@@ -602,10 +607,8 @@ restart:
 	 */
 	if (unlikely(tb->members >= tb->grow_threshold))
 	{
-		if (tb->size == SH_MAX_SIZE)
-		{
+		if (unlikely(tb->size == SH_MAX_SIZE))
 			sh_error("hash table size exceeded");
-		}
 
 		/*
 		 * When optimizing, it can be very useful to print these out.
@@ -829,7 +832,7 @@ SH_LOOKUP_HASH(SH_TYPE * tb, SH_KEY_TYPE key, uint32 hash)
 }
 
 /*
- * Delete entry from hash table.  Returns whether to-be-deleted key was
+ * Delete entry from hash table by key.  Returns whether to-be-deleted key was
  * present.
  */
 SH_SCOPE bool
@@ -897,6 +900,61 @@ SH_DELETE(SH_TYPE * tb, SH_KEY_TYPE key)
 		/* TODO: return false; if distance too big */
 
 		curelem = SH_NEXT(tb, curelem, startelem);
+	}
+}
+
+/*
+ * Delete entry from hash table by entry pointer
+ */
+SH_SCOPE void
+SH_DELETE_ITEM(SH_TYPE * tb, SH_ELEMENT_TYPE * entry)
+{
+	SH_ELEMENT_TYPE *lastentry = entry;
+	uint32		hash = SH_ENTRY_HASH(tb, entry);
+	uint32		startelem = SH_INITIAL_BUCKET(tb, hash);
+	uint32		curelem;
+
+	/* Calculate the index of 'entry' */
+	curelem = entry - &tb->data[0];
+
+	tb->members--;
+
+	/*
+	 * Backward shift following elements till either an empty element or an
+	 * element at its optimal position is encountered.
+	 *
+	 * While that sounds expensive, the average chain length is short, and
+	 * deletions would otherwise require tombstones.
+	 */
+	while (true)
+	{
+		SH_ELEMENT_TYPE *curentry;
+		uint32		curhash;
+		uint32		curoptimal;
+
+		curelem = SH_NEXT(tb, curelem, startelem);
+		curentry = &tb->data[curelem];
+
+		if (curentry->status != SH_STATUS_IN_USE)
+		{
+			lastentry->status = SH_STATUS_EMPTY;
+			break;
+		}
+
+		curhash = SH_ENTRY_HASH(tb, curentry);
+		curoptimal = SH_INITIAL_BUCKET(tb, curhash);
+
+		/* current is at optimal position, done */
+		if (curoptimal == curelem)
+		{
+			lastentry->status = SH_STATUS_EMPTY;
+			break;
+		}
+
+		/* shift */
+		memcpy(lastentry, curentry, sizeof(SH_ELEMENT_TYPE));
+
+		lastentry = curentry;
 	}
 }
 
@@ -1056,7 +1114,7 @@ SH_STAT(SH_TYPE * tb)
 		avg_collisions = 0;
 	}
 
-	sh_log("size: " UINT64_FORMAT ", members: %u, filled: %f, total chain: %u, max chain: %u, avg chain: %f, total_collisions: %u, max_collisions: %i, avg_collisions: %f",
+	sh_log("size: " UINT64_FORMAT ", members: %u, filled: %f, total chain: %u, max chain: %u, avg chain: %f, total_collisions: %u, max_collisions: %u, avg_collisions: %f",
 		   tb->size, tb->members, fillfactor, total_chain_length, max_chain_length, avg_chain_length,
 		   total_collisions, max_collisions, avg_collisions);
 }
@@ -1102,6 +1160,7 @@ SH_STAT(SH_TYPE * tb)
 #undef SH_RESET
 #undef SH_INSERT
 #undef SH_INSERT_HASH
+#undef SH_DELETE_ITEM
 #undef SH_DELETE
 #undef SH_LOOKUP
 #undef SH_LOOKUP_HASH

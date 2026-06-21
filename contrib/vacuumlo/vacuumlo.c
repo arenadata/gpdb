@@ -3,7 +3,7 @@
  * vacuumlo.c
  *	  This removes orphaned large objects from a database.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,6 +24,7 @@
 #include "catalog/pg_class_d.h"
 #include "common/connect.h"
 #include "common/logging.h"
+#include "common/string.h"
 #include "getopt_long.h"
 #include "libpq-fe.h"
 #include "pg_getopt.h"
@@ -69,15 +70,11 @@ vacuumlo(const char *database, const struct _param *param)
 	int			i;
 	bool		new_pass;
 	bool		success = true;
-	static bool have_password = false;
-	static char password[100];
+	static char *password = NULL;
 
 	/* Note: password can be carried over from a previous call */
-	if (param->pg_prompt == TRI_YES && !have_password)
-	{
-		simple_prompt("Password: ", password, sizeof(password), false);
-		have_password = true;
-	}
+	if (param->pg_prompt == TRI_YES && !password)
+		password = simple_prompt("Password: ", false);
 
 	/*
 	 * Start the connection.  Loop until we have a password if requested by
@@ -97,7 +94,7 @@ vacuumlo(const char *database, const struct _param *param)
 		keywords[2] = "user";
 		values[2] = param->pg_user;
 		keywords[3] = "password";
-		values[3] = have_password ? password : NULL;
+		values[3] = password;
 		keywords[4] = "dbname";
 		values[4] = database;
 		keywords[5] = "fallback_application_name";
@@ -115,12 +112,11 @@ vacuumlo(const char *database, const struct _param *param)
 
 		if (PQstatus(conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
-			!have_password &&
+			!password &&
 			param->pg_prompt != TRI_NO)
 		{
 			PQfinish(conn);
-			simple_prompt("Password: ", password, sizeof(password), false);
-			have_password = true;
+			password = simple_prompt("Password: ", false);
 			new_pass = true;
 		}
 	} while (new_pass);
@@ -128,8 +124,7 @@ vacuumlo(const char *database, const struct _param *param)
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(conn) == CONNECTION_BAD)
 	{
-		pg_log_error("connection to database \"%s\" failed: %s",
-					 database, PQerrorMessage(conn));
+		pg_log_error("%s", PQerrorMessage(conn));
 		PQfinish(conn);
 		return -1;
 	}
@@ -497,19 +492,13 @@ main(int argc, char **argv)
 	{
 		switch (c)
 		{
-			case '?':
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
-				exit(1);
 			case 'h':
 				param.pg_host = pg_strdup(optarg);
 				break;
 			case 'l':
 				param.transaction_limit = strtol(optarg, NULL, 10);
 				if (param.transaction_limit < 0)
-				{
-					pg_log_error("transaction limit must not be negative (0 disables)");
-					exit(1);
-				}
+					pg_fatal("transaction limit must not be negative (0 disables)");
 				break;
 			case 'n':
 				param.dry_run = 1;
@@ -518,10 +507,7 @@ main(int argc, char **argv)
 			case 'p':
 				port = strtol(optarg, NULL, 10);
 				if ((port < 1) || (port > 65535))
-				{
-					pg_log_error("invalid port number: %s", optarg);
-					exit(1);
-				}
+					pg_fatal("invalid port number: %s", optarg);
 				param.pg_port = pg_strdup(optarg);
 				break;
 			case 'U':
@@ -537,7 +523,8 @@ main(int argc, char **argv)
 				param.pg_prompt = TRI_YES;
 				break;
 			default:
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 				exit(1);
 		}
 	}
@@ -546,7 +533,7 @@ main(int argc, char **argv)
 	if (optind >= argc)
 	{
 		pg_log_error("missing required argument: database name");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 

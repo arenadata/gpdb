@@ -18,6 +18,7 @@ SUBDIRS = \
 		  test_ginpostinglist \
 		  test_integerset \
 		  test_misc \
+		  test_oat_hooks \
 		  test_parser \
 		  test_pg_dump \
 		  test_predtest \
@@ -30,7 +31,7 @@ SUBDIRS = \
 # GPDB subdirs
 SUBDIRS += test_planner
 
-ifeq ($(with_openssl),yes)
+ifeq ($(with_ssl),openssl)
 SUBDIRS += ssl_passphrase_callback
 else
 ALWAYS_SUBDIRS += ssl_passphrase_callback

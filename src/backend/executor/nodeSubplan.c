@@ -13,7 +13,7 @@
  *
  * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -28,7 +28,6 @@
  */
 #include "postgres.h"
 
-#include <limits.h>
 #include <math.h>
 
 #include "access/htup_details.h"
@@ -37,6 +36,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/optimizer.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -517,7 +517,7 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 	node->havehashrows = false;
 	node->havenullrows = false;
 
-	nbuckets = (long) Min(planstate->plan->plan_rows, (double) LONG_MAX);
+	nbuckets = clamp_cardinality_to_long(planstate->plan->plan_rows);
 	if (nbuckets < 1)
 		nbuckets = 1;
 
@@ -816,7 +816,15 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 	sstate->planstate = (PlanState *) list_nth(estate->es_subplanstates,
 											   subplan->plan_id - 1);
 
-	/* ... and to its parent's state */
+	/*
+	 * This check can fail if the planner mistakenly puts a parallel-unsafe
+	 * subplan into a parallelized subquery; see ExecSerializePlan.
+	 */
+	if (sstate->planstate == NULL)
+		elog(ERROR, "subplan \"%s\" was not initialized",
+			 subplan->plan_name);
+
+	/* Link to parent's state, too */
 	sstate->parent = parent;
 
 	/* Initialize subexpressions */
@@ -1532,84 +1540,4 @@ ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent)
 
 		parent->chgParam = bms_add_member(parent->chgParam, paramid);
 	}
-}
-
-
-/*
- * ExecInitAlternativeSubPlan
- *
- * Initialize for execution of one of a set of alternative subplans.
- */
-AlternativeSubPlanState *
-ExecInitAlternativeSubPlan(AlternativeSubPlan *asplan, PlanState *parent)
-{
-	AlternativeSubPlanState *asstate = makeNode(AlternativeSubPlanState);
-	double		num_calls;
-	SubPlan    *subplan1;
-	SubPlan    *subplan2;
-	Cost		cost1;
-	Cost		cost2;
-	ListCell   *lc;
-
-	asstate->subplan = asplan;
-
-	/*
-	 * Initialize subplans.  (Can we get away with only initializing the one
-	 * we're going to use?)
-	 */
-	foreach(lc, asplan->subplans)
-	{
-		SubPlan    *sp = lfirst_node(SubPlan, lc);
-		SubPlanState *sps = ExecInitSubPlan(sp, parent);
-
-		asstate->subplans = lappend(asstate->subplans, sps);
-		parent->subPlan = lappend(parent->subPlan, sps);
-	}
-
-	/*
-	 * Select the one to be used.  For this, we need an estimate of the number
-	 * of executions of the subplan.  We use the number of output rows
-	 * expected from the parent plan node.  This is a good estimate if we are
-	 * in the parent's targetlist, and an underestimate (but probably not by
-	 * more than a factor of 2) if we are in the qual.
-	 */
-	num_calls = parent->plan->plan_rows;
-
-	/*
-	 * The planner saved enough info so that we don't have to work very hard
-	 * to estimate the total cost, given the number-of-calls estimate.
-	 */
-	Assert(list_length(asplan->subplans) == 2);
-	subplan1 = (SubPlan *) linitial(asplan->subplans);
-	subplan2 = (SubPlan *) lsecond(asplan->subplans);
-
-	cost1 = subplan1->startup_cost + num_calls * subplan1->per_call_cost;
-	cost2 = subplan2->startup_cost + num_calls * subplan2->per_call_cost;
-
-	if (cost1 < cost2)
-		asstate->active = 0;
-	else
-		asstate->active = 1;
-
-	return asstate;
-}
-
-/*
- * ExecAlternativeSubPlan
- *
- * Execute one of a set of alternative subplans.
- *
- * Note: in future we might consider changing to different subplans on the
- * fly, in case the original rowcount estimate turns out to be way off.
- */
-Datum
-ExecAlternativeSubPlan(AlternativeSubPlanState *node,
-					   ExprContext *econtext,
-					   bool *isNull)
-{
-	/* Just pass control to the active subplan */
-	SubPlanState *activesp = list_nth_node(SubPlanState,
-										   node->subplans, node->active);
-
-	return ExecSubPlan(activesp, econtext, isNull);
 }

@@ -3,11 +3,8 @@
  * toasting.h
  *	  This file provides some definitions to support creation of toast tables
  *
- * Caution: all #define's with numeric values in this file had better be
- * object OIDs, else renumber_oids.pl might change them inappropriately.
  *
- *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/toasting.h
@@ -24,7 +21,7 @@
  */
 extern void NewRelationCreateToastTable(Oid relOid, Datum reloptions);
 extern void NewHeapCreateToastTable(Oid relOid, Datum reloptions,
-									LOCKMODE lockmode);
+									LOCKMODE lockmode, Oid OIDOldToast);
 extern void AlterTableCreateToastTable(Oid relOid, Datum reloptions,
 									   LOCKMODE lockmode);
 extern void BootstrapToastTable(char *relName,
@@ -50,7 +47,7 @@ extern void BootstrapToastTable(char *relName,
 /* normal catalogs */
 DECLARE_TOAST(pg_aggregate, 4159, 4160);
 DECLARE_TOAST(pg_attrdef, 2830, 2831);
-DECLARE_TOAST(pg_collation, 4161, 4162);
+DECLARE_TOAST(pg_collation, 9447, 9448);
 DECLARE_TOAST(pg_constraint, 2832, 2833);
 DECLARE_TOAST(pg_default_acl, 4143, 4144);
 DECLARE_TOAST(pg_description, 2834, 2835);
@@ -75,36 +72,16 @@ DECLARE_TOAST(pg_ts_dict, 4169, 4170);
 DECLARE_TOAST(pg_type, 4171, 4172);
 DECLARE_TOAST(pg_user_mapping, 4173, 4174);
 
-/* shared catalogs */
-DECLARE_TOAST(pg_authid, 4175, 4176);
-#define PgAuthidToastTable 4175
-#define PgAuthidToastIndex 4176
-DECLARE_TOAST(pg_database, 4177, 4178);
-#define PgDatabaseToastTable 4177
-#define PgDatabaseToastIndex 4178
-DECLARE_TOAST(pg_db_role_setting, 2966, 2967);
-#define PgDbRoleSettingToastTable 2966
-#define PgDbRoleSettingToastIndex 2967
-DECLARE_TOAST(pg_replication_origin, 4181, 4182);
-#define PgReplicationOriginToastTable 4181
-#define PgReplicationOriginToastIndex 4182
-DECLARE_TOAST(pg_shdescription, 2846, 2847);
-#define PgShdescriptionToastTable 2846
-#define PgShdescriptionToastIndex 2847
-DECLARE_TOAST(pg_shseclabel, 4060, 4061);
-#define PgShseclabelToastTable 4060
-#define PgShseclabelToastIndex 4061
-DECLARE_TOAST(pg_subscription, 4183, 4184);
-#define PgSubscriptionToastTable 4183
-#define PgSubscriptionToastIndex 4184
-DECLARE_TOAST(pg_tablespace, 4185, 4186);
-#define PgTablespaceToastTable 4185
-#define PgTablespaceToastIndex 4186
+/*
+ * Shared-catalog TOAST tables are declared in their per-catalog headers
+ * via DECLARE_TOAST_WITH_MACRO (PG15), which also defines the
+ * Pg*ToastTable / Pg*ToastIndex macros.  Do not re-declare them here.
+ */
 
 /* GPDB additional normal catalogs */
 DECLARE_TOAST(gp_partition_template, 8024, 8025);
-DECLARE_TOAST(pg_attribute_encoding, 6233, 6234);
-DECLARE_TOAST(pg_type_encoding, 6222, 6223);
+DECLARE_TOAST(pg_attribute_encoding, 7036, 7037);
+DECLARE_TOAST(pg_type_encoding, 7034, 7035);
 DECLARE_TOAST(pg_extprotocol, 7173, 7174);
 
 /* GPDB additional shared catalogs */

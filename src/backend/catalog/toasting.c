@@ -4,7 +4,7 @@
  *	  This file contains routines to support creation of toast tables
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/toast_compression.h"
 #include "access/xact.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
@@ -37,9 +38,11 @@
 #include "utils/syscache.h"
 
 static void CheckAndCreateToastTable(Oid relOid, Datum reloptions,
-									 LOCKMODE lockmode, bool check);
+									 LOCKMODE lockmode, bool check,
+									 Oid OIDOldToast);
 static bool create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
-							   Datum reloptions, LOCKMODE lockmode, bool check);
+							   Datum reloptions, LOCKMODE lockmode, bool check,
+							   Oid OIDOldToast);
 static bool needs_toast_table(Relation rel);
 
 
@@ -58,30 +61,34 @@ static bool needs_toast_table(Relation rel);
 void
 AlterTableCreateToastTable(Oid relOid, Datum reloptions, LOCKMODE lockmode)
 {
-	CheckAndCreateToastTable(relOid, reloptions, lockmode, true);
+	CheckAndCreateToastTable(relOid, reloptions, lockmode, true, InvalidOid);
 }
 
 void
-NewHeapCreateToastTable(Oid relOid, Datum reloptions, LOCKMODE lockmode)
+NewHeapCreateToastTable(Oid relOid, Datum reloptions, LOCKMODE lockmode,
+						Oid OIDOldToast)
 {
-	CheckAndCreateToastTable(relOid, reloptions, lockmode, false);
+	CheckAndCreateToastTable(relOid, reloptions, lockmode, false, OIDOldToast);
 }
 
 void
 NewRelationCreateToastTable(Oid relOid, Datum reloptions)
 {
-	CheckAndCreateToastTable(relOid, reloptions, AccessExclusiveLock, false);
+	CheckAndCreateToastTable(relOid, reloptions, AccessExclusiveLock, false,
+							 InvalidOid);
 }
 
 static void
-CheckAndCreateToastTable(Oid relOid, Datum reloptions, LOCKMODE lockmode, bool check)
+CheckAndCreateToastTable(Oid relOid, Datum reloptions, LOCKMODE lockmode,
+						 bool check, Oid OIDOldToast)
 {
 	Relation	rel;
 
 	rel = table_open(relOid, lockmode);
 
 	/* create_toast_table does all the work */
-	(void) create_toast_table(rel, InvalidOid, InvalidOid, reloptions, lockmode, check);
+	(void) create_toast_table(rel, InvalidOid, InvalidOid, reloptions, lockmode,
+							  check, OIDOldToast);
 
 	table_close(rel, NoLock);
 }
@@ -100,14 +107,12 @@ BootstrapToastTable(char *relName, Oid toastOid, Oid toastIndexOid)
 
 	if (rel->rd_rel->relkind != RELKIND_RELATION &&
 		rel->rd_rel->relkind != RELKIND_MATVIEW)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not a table or materialized view",
-						relName)));
+		elog(ERROR, "\"%s\" is not a table or materialized view",
+			 relName);
 
 	/* create_toast_table does all the work */
 	if (!create_toast_table(rel, toastOid, toastIndexOid, (Datum) 0,
-							AccessExclusiveLock, false))
+							AccessExclusiveLock, false, InvalidOid))
 		elog(ERROR, "\"%s\" does not require a toast table",
 			 relName);
 
@@ -124,7 +129,8 @@ BootstrapToastTable(char *relName, Oid toastOid, Oid toastIndexOid)
  */
 static bool
 create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
-				   Datum reloptions, LOCKMODE lockmode, bool check)
+				   Datum reloptions, LOCKMODE lockmode, bool check,
+				   Oid OIDOldToast)
 {
 	Oid			relOid = RelationGetRelid(rel);
 	HeapTuple	reltup;
@@ -238,6 +244,20 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	TupleDescAttr(tupdesc, 1)->attstorage = TYPSTORAGE_PLAIN;
 	TupleDescAttr(tupdesc, 2)->attstorage = TYPSTORAGE_PLAIN;
 
+	/* Toast field should not be compressed */
+	TupleDescAttr(tupdesc, 0)->attcompression = InvalidCompressionMethod;
+	TupleDescAttr(tupdesc, 1)->attcompression = InvalidCompressionMethod;
+	TupleDescAttr(tupdesc, 2)->attcompression = InvalidCompressionMethod;
+
+	/*
+	 * Toast tables for regular relations go in pg_toast; those for temp
+	 * relations go into the per-backend temp-toast-table namespace.
+	 */
+	if (isTempOrTempToastNamespace(rel->rd_rel->relnamespace))
+		namespaceid = GetTempToastNamespace();
+	else
+		namespaceid = PG_TOAST_NAMESPACE;
+
 	/* Toast table is shared if and only if its parent is. */
 	shared_relation = rel->rd_rel->relisshared;
 
@@ -266,7 +286,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   false,
 										   true,
 										   true,
-										   InvalidOid,
+										   OIDOldToast,
 										   NULL,
 										   /* valid_opts */ false);
 	Assert(toast_relid != InvalidOid);
@@ -303,7 +323,10 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	indexInfo->ii_ExclusionStrats = NULL;
 	indexInfo->ii_OpclassOptions = NULL;
 	indexInfo->ii_Unique = true;
+	indexInfo->ii_NullsNotDistinct = false;
 	indexInfo->ii_ReadyForInserts = true;
+	indexInfo->ii_CheckedUnchanged = false;
+	indexInfo->ii_IndexUnchanged = false;
 	indexInfo->ii_Concurrent = false;
 	indexInfo->ii_BrokenHotChain = false;
 	indexInfo->ii_ParallelWorkers = 0;
@@ -358,9 +381,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	table_close(class_rel, RowExclusiveLock);
 
 	/*
-	 * Register dependency from the toast table to the main, so that the
-	 * toast table will be deleted if the main is.  Skip this in bootstrap
-	 * mode.
+	 * Register dependency from the toast table to the main, so that the toast
+	 * table will be deleted if the main is.  Skip this in bootstrap mode.
 	 */
 	if (!IsBootstrapProcessingMode())
 	{
@@ -403,9 +425,9 @@ needs_toast_table(Relation rel)
 
 	/*
 	 * Ignore attempts to create toast tables on catalog tables after initdb.
-	 * Which catalogs get toast tables is explicitly chosen in
-	 * catalog/toasting.h.  (We could get here via some ALTER TABLE command if
-	 * the catalog doesn't have a toast table.)
+	 * Which catalogs get toast tables is explicitly chosen in catalog/pg_*.h.
+	 * (We could get here via some ALTER TABLE command if the catalog doesn't
+	 * have a toast table.)
 	 */
 	if (IsCatalogRelation(rel) && !IsBootstrapProcessingMode())
 		return false;

@@ -1,3 +1,7 @@
+-- start_matchsubs
+-- m/'short' => '(Sort|HashAggregate|Unique)'/
+-- s/'short' => '(Sort|HashAggregate|Unique)'/'short' => 'SORT_OR_HASH'/
+-- end_matchsubs
 -- =================== -*- mode: sql; -*- ===================
 -- table_functions.sql
 --
@@ -1927,9 +1931,9 @@ explain SELECT * FROM multiset_5( TABLE (SELECT DISTINCT a, b FROM example ORDER
 --------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)  (cost=1.06..1.59 rows=30 width=36)
    ->  Table Function Scan on multiset_5  (cost=1.06..1.19 rows=10 width=36)
-         ->  Unique  (cost=1.06..1.09 rows=3 width=16)
+         ->  Sort  (cost=1.06..1.09 rows=3 width=16)
                Group Key: example.a, example.b
-               ->  Sort  (cost=1.06..1.07 rows=3 width=16)
+               ->  HashAggregate  (cost=1.06..1.07 rows=3 width=16)
                      Sort Key: example.a, example.b
                      ->  Seq Scan on example  (cost=0.00..1.03 rows=3 width=16)
  Optimizer: Postgres query optimizer
@@ -1960,9 +1964,9 @@ explain SELECT * FROM multiset_5( TABLE (SELECT DISTINCT a, b FROM example ORDER
                      ->  Gather Motion 3:1  (slice3; segments: 3)  (cost=1.07..1.16 rows=6 width=16)
                            Merge Key: example.b, example.a
                            ->  Limit  (cost=1.07..1.08 rows=2 width=16)
-                                 ->  Unique  (cost=1.06..1.09 rows=3 width=16)
+                                 ->  Sort  (cost=1.06..1.09 rows=3 width=16)
                                        Group Key: example.b, example.a
-                                       ->  Sort  (cost=1.06..1.07 rows=3 width=16)
+                                       ->  HashAggregate  (cost=1.06..1.07 rows=3 width=16)
                                              Sort Key: example.b, example.a
                                              ->  Seq Scan on example  (cost=0.00..1.03 rows=3 width=16)
  Optimizer: Postgres query optimizer
@@ -2627,7 +2631,7 @@ FROM sessionize_static(
     ),
     '1 minute' ) AS sessionize(id integer, "time" timestamp, sessionnum integer)
 ORDER BY id, time; -- FAIL, double qualified
-ERROR:  a column definition list is only allowed for functions returning "record"
+ERROR:  a column definition list is redundant for a function with OUT parameters
 LINE 10:     '1 minute' ) AS sessionize(id integer, "time" timestamp,...
                                         ^
 -- Describe with qualification fails
@@ -2642,7 +2646,7 @@ FROM sessionize_dynamic(
     ),
     '1 minute' ) AS sessionize(id integer, "time" timestamp, sessionnum integer)
 ORDER BY id, time; -- FAIL, double qualified
-ERROR:  a column definition list is only allowed for functions returning "record"
+ERROR:  a column definition list is redundant for a function with OUT parameters
 LINE 10:     '1 minute' ) AS sessionize(id integer, "time" timestamp,...
                                         ^
 -- Otherwise results should match
@@ -2958,26 +2962,26 @@ SELECT id+1  FROM project( TABLE( SELECT * FROM history ), 1) order by 1;
 (18 rows)
 
 SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2) order by 1;
- date_part 
------------
-        19
-        19
-        19
-        19
-        19
-        20
-        20
-        20
-        20
-        20
-        21
-        21
-        21
-        21
-        21
-        21
-        22
-        22
+ extract 
+---------
+      19
+      19
+      19
+      19
+      19
+      20
+      20
+      20
+      20
+      20
+      21
+      21
+      21
+      21
+      21
+      21
+      22
+      22
 (18 rows)
 
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
@@ -3016,7 +3020,7 @@ SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
 
 -- ERROR: invalid operations demonstrating different return types
 SELECT extract(day from id) FROM project( TABLE( SELECT * FROM history ), 1);
-ERROR:  function pg_catalog.date_part(unknown, integer) does not exist
+ERROR:  function pg_catalog.extract(unknown, integer) does not exist
 LINE 1: SELECT extract(day from id) FROM project( TABLE( SELECT * FR...
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

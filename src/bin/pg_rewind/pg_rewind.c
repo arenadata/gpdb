@@ -3,11 +3,12 @@
  * pg_rewind.c
  *	  Synchronizes a PostgreSQL data directory to a new timeline
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres_fe.h"
+
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
@@ -19,37 +20,40 @@
 #include "catalog/pg_control.h"
 #include "common/controldata_utils.h"
 #include "common/file_perm.h"
-#include "common/file_utils.h"
 #include "common/restricted_token.h"
 #include "common/string.h"
 #include "fe_utils/recovery_gen.h"
-#include "fetch.h"
+#include "fe_utils/string_utils.h"
 #include "file_ops.h"
 #include "filemap.h"
 #include "getopt_long.h"
+#include "miscadmin.h"
 #include "pg_rewind.h"
+#include "rewind_source.h"
 #include "storage/bufpage.h"
-#include "utils/palloc.h"
 
 static void usage(const char *progname);
+
+static void perform_rewind(filemap_t *filemap, rewind_source *source,
+						   XLogRecPtr chkptrec,
+						   TimeLineID chkpttli,
+						   XLogRecPtr chkptredo);
 
 static void createBackupLabel(XLogRecPtr startpoint, TimeLineID starttli,
 							  XLogRecPtr checkpointloc);
 
-static void digestControlFile(ControlFileData *ControlFile, char *source,
-							  size_t size);
-static void syncTargetDirectory(void);
+static void digestControlFile(ControlFileData *ControlFile,
+							  const char *content, size_t size);
 static void getRestoreCommand(const char *argv0);
 static void sanityChecks(void);
 static void findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex);
 static void ensureCleanShutdown(const char *argv0);
 static void disconnect_atexit(void);
-static int32 get_target_dbid(const char *argv0);
 
 static ControlFileData ControlFile_target;
 static ControlFileData ControlFile_source;
+static ControlFileData ControlFile_source_after;
 
-int32 dbid_target;
 const char *progname;
 int			WalSegSz;
 
@@ -58,6 +62,7 @@ char	   *datadir_target = NULL;
 char	   *datadir_source = NULL;
 char	   *connstr_source = NULL;
 char	   *restore_command = NULL;
+char	   *config_file = NULL;
 
 static bool debug = false;
 bool		showprogress = false;
@@ -73,6 +78,8 @@ int			targetNentries;
 uint64		fetch_size;
 uint64		fetch_done;
 
+static PGconn *conn;
+static rewind_source *source;
 
 static void
 usage(const char *progname)
@@ -91,7 +98,10 @@ usage(const char *progname)
 	printf(_("  -P, --progress                 write progress messages\n"));
 	printf(_("  -R, --write-recovery-conf      write configuration for replication\n"
 			 "                                 (requires --source-server)\n"));
-	printf(_("  -S, --slot=SLOTNAME            replication slot to use\n"));
+	printf(_("  -S, --slot=SLOTNAME            set primary_slot_name when writing the\n"
+			 "                                 replication configuration\n"));
+	printf(_("      --config-file=FILENAME     use specified main server configuration\n"
+			 "                                 file when running target cluster\n"));
 	printf(_("      --debug                    write a lot of debug messages\n"));
 	printf(_("      --no-ensure-shutdown       do not automatically fix unclean shutdown\n"));
 	printf(_("  -V, --version                  output version information, then exit\n"));
@@ -112,6 +122,7 @@ main(int argc, char **argv)
 		{"source-pgdata", required_argument, NULL, 1},
 		{"source-server", required_argument, NULL, 2},
 		{"no-ensure-shutdown", no_argument, NULL, 4},
+		{"config-file", required_argument, NULL, 5},
 		{"version", no_argument, NULL, 'V'},
 		{"restore-target-wal", no_argument, NULL, 'c'},
 		{"dry-run", no_argument, NULL, 'n'},
@@ -127,15 +138,14 @@ main(int argc, char **argv)
 	XLogRecPtr	chkptrec;
 	TimeLineID	chkpttli;
 	XLogRecPtr	chkptredo;
+	XLogRecPtr	target_wal_endrec;
 	size_t		size;
 	char	   *buffer;
 	bool		no_ensure_shutdown = false;
 	bool		rewind_needed;
-	XLogRecPtr	endrec;
-	TimeLineID	endtli;
-	ControlFileData ControlFile_new;
 	bool		writerecoveryconf = false;
-	char		*replication_slot = NULL;
+	char	   *replication_slot = NULL;
+	filemap_t  *filemap;
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_rewind"));
@@ -151,7 +161,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_rewind (Greenplum Database) " PG_VERSION);
+			puts("pg_rewind (PostgreSQL) " PG_VERSION);
 			exit(0);
 		}
 	}
@@ -160,10 +170,6 @@ main(int argc, char **argv)
 	{
 		switch (c)
 		{
-			case '?':
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
-				exit(1);
-
 			case 'c':
 				restore_wal = true;
 				break;
@@ -176,10 +182,6 @@ main(int argc, char **argv)
 				dry_run = true;
 				break;
 
-			case 'S':
-				replication_slot = pg_strdup(optarg);
-				break;
-
 			case 'N':
 				do_sync = false;
 				break;
@@ -188,9 +190,13 @@ main(int argc, char **argv)
 				writerecoveryconf = true;
 				break;
 
+			case 'S':			/* GPDB: slot for primary_slot_name in -R output */
+				replication_slot = pg_strdup(optarg);
+				break;
+
 			case 3:
 				debug = true;
-				pg_logging_set_level(PG_LOG_DEBUG);
+				pg_logging_increase_verbosity();
 				break;
 
 			case 'D':			/* -D or --target-pgdata */
@@ -208,40 +214,49 @@ main(int argc, char **argv)
 			case 4:
 				no_ensure_shutdown = true;
 				break;
+
+			case 5:
+				config_file = pg_strdup(optarg);
+				break;
+
+			default:
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 		}
 	}
 
 	if (datadir_source == NULL && connstr_source == NULL)
 	{
 		pg_log_error("no source specified (--source-pgdata or --source-server)");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (datadir_source != NULL && connstr_source != NULL)
 	{
 		pg_log_error("only one of --source-pgdata or --source-server can be specified");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
-		exit(1);
-	}
-
-	if (datadir_source != NULL && connstr_source != NULL)
-	{
-		fprintf(stderr, _("%s: only one of --source-pgdata or --source-server can be specified\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (datadir_target == NULL)
 	{
 		pg_log_error("no target data directory specified (--target-pgdata)");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (writerecoveryconf && connstr_source == NULL)
 	{
 		pg_log_error("no source server information (--source-server) specified for --write-recovery-conf");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+		exit(1);
+	}
+
+	if (replication_slot != NULL && !writerecoveryconf)
+	{
+		pg_log_error("--slot can be specified only with --write-recovery-conf");
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 		exit(1);
 	}
@@ -250,14 +265,7 @@ main(int argc, char **argv)
 	{
 		pg_log_error("too many command-line arguments (first is \"%s\")",
 					 argv[optind]);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
-		exit(1);
-	}
-
-	if (!writerecoveryconf && replication_slot != NULL)
-	{
-		fprintf(stderr, _("%s: --slot can be specified only if --write-recovery-conf is specified\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
@@ -271,8 +279,8 @@ main(int argc, char **argv)
 	if (geteuid() == 0)
 	{
 		pg_log_error("cannot be executed by \"root\"");
-		fprintf(stderr, _("You must run %s as the PostgreSQL superuser.\n"),
-				progname);
+		pg_log_error_hint("You must run %s as the PostgreSQL superuser.",
+						  progname);
 		exit(1);
 	}
 #endif
@@ -281,11 +289,8 @@ main(int argc, char **argv)
 
 	/* Set mask based on PGDATA permissions */
 	if (!GetDataDirectoryCreatePerm(datadir_target))
-	{
-		pg_log_error("could not read permissions of directory \"%s\": %m",
-					 datadir_target);
-		exit(1);
-	}
+		pg_fatal("could not read permissions of directory \"%s\": %m",
+				 datadir_target);
 
 	umask(pg_mode_mask);
 
@@ -293,19 +298,28 @@ main(int argc, char **argv)
 
 	atexit(disconnect_atexit);
 
-	/* Connect to remote server */
-	if (connstr_source)
-		libpqConnect(connstr_source);
-
 	/*
-	 * Ok, we have all the options and we're ready to start. Read in all the
-	 * information we need from both clusters.
+	 * Ok, we have all the options and we're ready to start. First, connect to
+	 * remote server.
 	 */
-	buffer = slurpFile(datadir_target, "global/pg_control", &size);
-	digestControlFile(&ControlFile_target, buffer, size);
-	pg_free(buffer);
+	if (connstr_source)
+	{
+		conn = PQconnectdb(connstr_source);
+
+		if (PQstatus(conn) == CONNECTION_BAD)
+			pg_fatal("%s", PQerrorMessage(conn));
+
+		if (showprogress)
+			pg_log_info("connected to server");
+
+		source = init_libpq_source(conn);
+	}
+	else
+		source = init_local_source(datadir_source);
 
 	/*
+	 * Check the status of the target instance.
+	 *
 	 * If the target instance was not cleanly shut down, start and stop the
 	 * target cluster once in single-user mode to enforce recovery to finish,
 	 * ensuring that the cluster can be used by pg_rewind.  Note that if
@@ -313,6 +327,10 @@ main(int argc, char **argv)
 	 * need to make sure by themselves that the target cluster is in a clean
 	 * state.
 	 */
+	buffer = slurpFile(datadir_target, "global/pg_control", &size);
+	digestControlFile(&ControlFile_target, buffer, size);
+	pg_free(buffer);
+
 	if (!no_ensure_shutdown &&
 		ControlFile_target.state != DB_SHUTDOWNED &&
 		ControlFile_target.state != DB_SHUTDOWNED_IN_RECOVERY)
@@ -324,60 +342,73 @@ main(int argc, char **argv)
 		pg_free(buffer);
 	}
 
-	buffer = fetchFile("global/pg_control", &size);
+	buffer = source->fetch_file(source, "global/pg_control", &size);
 	digestControlFile(&ControlFile_source, buffer, size);
 	pg_free(buffer);
-
-	dbid_target = get_target_dbid(argv[0]);
 
 	sanityChecks();
 
 	/*
+	 * Find the common ancestor timeline between the clusters.
+	 *
 	 * If both clusters are already on the same timeline, there's nothing to
 	 * do.
 	 */
-	if (ControlFile_target.checkPointCopy.ThisTimeLineID == ControlFile_source.checkPointCopy.ThisTimeLineID)
+	if (ControlFile_target.checkPointCopy.ThisTimeLineID ==
+		ControlFile_source.checkPointCopy.ThisTimeLineID)
 	{
-		pg_log_info("source and target cluster are on the same timeline: %u",
-			   ControlFile_source.checkPointCopy.ThisTimeLineID);
+		pg_log_info("source and target cluster are on the same timeline");
 		rewind_needed = false;
+		target_wal_endrec = 0;
 	}
 	else
 	{
+		XLogRecPtr	chkptendrec;
+
 		findCommonAncestorTimeline(&divergerec, &lastcommontliIndex);
 		pg_log_info("servers diverged at WAL location %X/%X on timeline %u",
-					(uint32) (divergerec >> 32), (uint32) divergerec,
+					LSN_FORMAT_ARGS(divergerec),
 					targetHistory[lastcommontliIndex].tli);
+
+		/*
+		 * Determine the end-of-WAL on the target.
+		 *
+		 * The WAL ends at the last shutdown checkpoint, or at
+		 * minRecoveryPoint if it was a standby. (If we supported rewinding a
+		 * server that was not shut down cleanly, we would need to replay
+		 * until we reach the first invalid record, like crash recovery does.)
+		 */
+
+		/* read the checkpoint record on the target to see where it ends. */
+		chkptendrec = readOneRecord(datadir_target,
+									ControlFile_target.checkPoint,
+									targetNentries - 1,
+									restore_command);
+
+		if (ControlFile_target.minRecoveryPoint > chkptendrec)
+		{
+			target_wal_endrec = ControlFile_target.minRecoveryPoint;
+		}
+		else
+		{
+			target_wal_endrec = chkptendrec;
+		}
 
 		/*
 		 * Check for the possibility that the target is in fact a direct
 		 * ancestor of the source. In that case, there is no divergent history
 		 * in the target that needs rewinding.
 		 */
-		if (ControlFile_target.checkPoint >= divergerec)
+		if (target_wal_endrec > divergerec)
 		{
 			rewind_needed = true;
 		}
 		else
 		{
-			XLogRecPtr	chkptendrec;
+			/* the last common checkpoint record must be part of target WAL */
+			Assert(target_wal_endrec == divergerec);
 
-			/* Read the checkpoint record on the target to see where it ends. */
-			chkptendrec = readOneRecord(datadir_target,
-										ControlFile_target.checkPoint,
-										targetNentries - 1,
-										restore_command);
-
-			/*
-			 * If the histories diverged exactly at the end of the shutdown
-			 * checkpoint record on the target, there are no WAL records in
-			 * the target that don't belong in the source's history, and no
-			 * rewind is needed.
-			 */
-			if (chkptendrec == divergerec)
-				rewind_needed = false;
-			else
-				rewind_needed = true;
+			rewind_needed = false;
 		}
 	}
 
@@ -393,16 +424,18 @@ main(int argc, char **argv)
 	findLastCheckpoint(datadir_target, divergerec, lastcommontliIndex,
 					   &chkptrec, &chkpttli, &chkptredo, restore_command);
 	pg_log_info("rewinding from last common checkpoint at %X/%X on timeline %u",
-				(uint32) (chkptrec >> 32), (uint32) chkptrec,
-				chkpttli);
+				LSN_FORMAT_ARGS(chkptrec), chkpttli);
+
+	/* Initialize the hash table to track the status of each file */
+	filehash_init();
 
 	/*
-	 * Collect information about all files in the target and source systems.
+	 * Collect information about all files in the both data directories.
 	 */
-	filemap_create();
 	if (showprogress)
 		pg_log_info("reading source file list");
-	fetchSourceFileList();
+	source->traverse_files(source, &process_source_file);
+
 	if (showprogress)
 		pg_log_info("reading target file list");
 	traverse_datadir(datadir_target, &process_target_file);
@@ -410,26 +443,24 @@ main(int argc, char **argv)
 	/*
 	 * Read the target WAL from last checkpoint before the point of fork, to
 	 * extract all the pages that were modified on the target cluster after
-	 * the fork. We can stop reading after reaching the final shutdown record.
-	 * XXX: If we supported rewinding a server that was not shut down cleanly,
-	 * we would need to replay until the end of WAL here.
+	 * the fork.
 	 */
 	if (showprogress)
 		pg_log_info("reading WAL in target");
 	extractPageMap(datadir_target, chkptrec, lastcommontliIndex,
-				   ControlFile_target.checkPoint, restore_command);
+				   target_wal_endrec, restore_command);
 
 	/*
 	 * We have collected all information we need from both systems. Decide
 	 * what to do with each file.
 	 */
-	decide_file_actions();
+	filemap = decide_file_actions();
 	if (showprogress)
-		calculate_totals();
+		calculate_totals(filemap);
 
 	/* this is too verbose even for verbose mode */
 	if (debug)
-		print_filemap();
+		print_filemap(filemap);
 
 	/*
 	 * Ok, we're ready to start copying things over.
@@ -445,59 +476,219 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * This is the point of no return. Once we start copying things, we have
-	 * modified the target directory and there is no turning back!
+	 * We have now collected all the information we need from both systems,
+	 * and we are ready to start modifying the target directory.
+	 *
+	 * This is the point of no return. Once we start copying things, there is
+	 * no turning back!
 	 */
+	perform_rewind(filemap, source, chkptrec, chkpttli, chkptredo);
 
-	executeFileMap();
+	if (showprogress)
+		pg_log_info("syncing target data directory");
+	sync_target_dir();
+
+	/* Also update the standby configuration, if requested. */
+	if (writerecoveryconf && !dry_run)
+		WriteRecoveryConfig(conn, datadir_target,
+							GenerateRecoveryConfig(conn, replication_slot));
+
+	/* don't need the source connection anymore */
+	source->destroy(source);
+	if (conn)
+	{
+		PQfinish(conn);
+		conn = NULL;
+	}
+
+	pg_log_info("Done!");
+
+	return 0;
+}
+
+/*
+ * Perform the rewind.
+ *
+ * We have already collected all the information we need from the
+ * target and the source.
+ */
+static void
+perform_rewind(filemap_t *filemap, rewind_source *source,
+			   XLogRecPtr chkptrec,
+			   TimeLineID chkpttli,
+			   XLogRecPtr chkptredo)
+{
+	XLogRecPtr	endrec;
+	TimeLineID	endtli;
+	ControlFileData ControlFile_new;
+	size_t		size;
+	char	   *buffer;
+
+	/*
+	 * Execute the actions in the file map, fetching data from the source
+	 * system as needed.
+	 */
+	for (int i = 0; i < filemap->nentries; i++)
+	{
+		file_entry_t *entry = filemap->entries[i];
+
+		/*
+		 * If this is a relation file, copy the modified blocks.
+		 *
+		 * This is in addition to any other changes.
+		 */
+		if (entry->target_pages_to_overwrite.bitmapsize > 0)
+		{
+			datapagemap_iterator_t *iter;
+			BlockNumber blkno;
+			off_t		offset;
+
+			iter = datapagemap_iterate(&entry->target_pages_to_overwrite);
+			while (datapagemap_next(iter, &blkno))
+			{
+				offset = blkno * BLCKSZ;
+				source->queue_fetch_range(source, entry->path, offset, BLCKSZ);
+			}
+			pg_free(iter);
+		}
+
+		switch (entry->action)
+		{
+			case FILE_ACTION_NONE:
+				/* nothing else to do */
+				break;
+
+			case FILE_ACTION_COPY:
+				source->queue_fetch_file(source, entry->path, entry->source_size);
+				break;
+
+			case FILE_ACTION_TRUNCATE:
+				truncate_target_file(entry->path, entry->source_size);
+				break;
+
+			case FILE_ACTION_COPY_TAIL:
+				source->queue_fetch_range(source, entry->path,
+										  entry->target_size,
+										  entry->source_size - entry->target_size);
+				break;
+
+			case FILE_ACTION_REMOVE:
+				remove_target(entry);
+				break;
+
+			case FILE_ACTION_CREATE:
+				create_target(entry);
+				break;
+
+			case FILE_ACTION_UNDECIDED:
+				pg_fatal("no action decided for file \"%s\"", entry->path);
+				break;
+		}
+	}
+
+	/* Complete any remaining range-fetches that we queued up above. */
+	source->finish_fetch(source);
+
+	close_target_file();
 
 	progress_report(true);
 
+	/*
+	 * Fetch the control file from the source last. This ensures that the
+	 * minRecoveryPoint is up-to-date.
+	 */
+	buffer = source->fetch_file(source, "global/pg_control", &size);
+	digestControlFile(&ControlFile_source_after, buffer, size);
+	pg_free(buffer);
+
+	/*
+	 * Sanity check: If the source is a local system, the control file should
+	 * not have changed since we started.
+	 *
+	 * XXX: We assume it hasn't been modified, but actually, what could go
+	 * wrong? The logic handles a libpq source that's modified concurrently,
+	 * why not a local datadir?
+	 */
+	if (datadir_source &&
+		memcmp(&ControlFile_source, &ControlFile_source_after,
+			   sizeof(ControlFileData)) != 0)
+	{
+		pg_fatal("source system was modified while pg_rewind was running");
+	}
+
 	if (showprogress)
 		pg_log_info("creating backup label and updating control file");
+
+	/*
+	 * Create a backup label file, to tell the target where to begin the WAL
+	 * replay. Normally, from the last common checkpoint between the source
+	 * and the target. But if the source is a standby server, it's possible
+	 * that the last common checkpoint is *after* the standby's restartpoint.
+	 * That implies that the source server has applied the checkpoint record,
+	 * but hasn't performed a corresponding restartpoint yet. Make sure we
+	 * start at the restartpoint's redo point in that case.
+	 *
+	 * Use the old version of the source's control file for this. The server
+	 * might have finished the restartpoint after we started copying files,
+	 * but we must begin from the redo point at the time that started copying.
+	 */
+	if (ControlFile_source.checkPointCopy.redo < chkptredo)
+	{
+		chkptredo = ControlFile_source.checkPointCopy.redo;
+		chkpttli = ControlFile_source.checkPointCopy.ThisTimeLineID;
+		chkptrec = ControlFile_source.checkPoint;
+	}
 	createBackupLabel(chkptredo, chkpttli, chkptrec);
 
 	/*
-	 * Update control file of target. Make it ready to perform archive
-	 * recovery when restarting.
-	 *
-	 * minRecoveryPoint is set to the current WAL insert location in the
-	 * source server. Like in an online backup, it's important that we recover
-	 * all the WAL that was generated while we copied the files over.
+	 * Update control file of target, to tell the target how far it must
+	 * replay the WAL (minRecoveryPoint).
 	 */
-	memcpy(&ControlFile_new, &ControlFile_source, sizeof(ControlFileData));
-
 	if (connstr_source)
 	{
-		endrec = libpqGetCurrentXlogInsertLocation();
-		endtli = ControlFile_source.checkPointCopy.ThisTimeLineID;
+		/*
+		 * The source is a live server. Like in an online backup, it's
+		 * important that we recover all the WAL that was generated while we
+		 * were copying files.
+		 */
+		if (ControlFile_source_after.state == DB_IN_ARCHIVE_RECOVERY)
+		{
+			/*
+			 * Source is a standby server. We must replay to its
+			 * minRecoveryPoint.
+			 */
+			endrec = ControlFile_source_after.minRecoveryPoint;
+			endtli = ControlFile_source_after.minRecoveryPointTLI;
+		}
+		else
+		{
+			/*
+			 * Source is a production, non-standby, server. We must replay to
+			 * the last WAL insert location.
+			 */
+			if (ControlFile_source_after.state != DB_IN_PRODUCTION)
+				pg_fatal("source system was in unexpected state at end of rewind");
+
+			endrec = source->get_current_wal_insert_lsn(source);
+			endtli = ControlFile_source_after.checkPointCopy.ThisTimeLineID;
+		}
 	}
 	else
 	{
-		endrec = ControlFile_source.checkPoint;
-		endtli = ControlFile_source.checkPointCopy.ThisTimeLineID;
+		/*
+		 * Source is a local data directory. It should've shut down cleanly,
+		 * and we must replay to the latest shutdown checkpoint.
+		 */
+		endrec = ControlFile_source_after.checkPoint;
+		endtli = ControlFile_source_after.checkPointCopy.ThisTimeLineID;
 	}
+
+	memcpy(&ControlFile_new, &ControlFile_source_after, sizeof(ControlFileData));
 	ControlFile_new.minRecoveryPoint = endrec;
 	ControlFile_new.minRecoveryPointTLI = endtli;
 	ControlFile_new.state = DB_IN_ARCHIVE_RECOVERY;
 	if (!dry_run)
 		update_controlfile(datadir_target, &ControlFile_new, do_sync);
-
-	if (writerecoveryconf)
-		WriteRecoveryConfig(conn, datadir_target,
-							GenerateRecoveryConfig(conn, replication_slot));
-
-	if (showprogress)
-		pg_log_info("syncing target data directory");
-	syncTargetDirectory();
-
-	if (writerecoveryconf && !dry_run)
-		WriteRecoveryConfig(conn, datadir_target,
-							GenerateRecoveryConfig(conn, NULL));
-
-	pg_log_info("Done!");
-
-	return 0;
 }
 
 static void
@@ -588,14 +779,9 @@ progress_report(bool finished)
 	if (fetch_done > fetch_size)
 		fetch_size = fetch_done;
 
-	/*
-	 * Separate step to keep platform-dependent format code out of
-	 * translatable strings.  And we only test for INT64_FORMAT availability
-	 * in snprintf, not fprintf.
-	 */
-	snprintf(fetch_done_str, sizeof(fetch_done_str), INT64_FORMAT,
+	snprintf(fetch_done_str, sizeof(fetch_done_str), UINT64_FORMAT,
 			 fetch_done / 1024);
-	snprintf(fetch_size_str, sizeof(fetch_size_str), INT64_FORMAT,
+	snprintf(fetch_size_str, sizeof(fetch_size_str), UINT64_FORMAT,
 			 fetch_size / 1024);
 
 	fprintf(stderr, _("%*s/%s kB (%d%%) copied"),
@@ -657,7 +843,7 @@ getTimelineHistory(ControlFileData *controlFile, int *nentries)
 
 		/* Get history file from appropriate source */
 		if (controlFile == &ControlFile_source)
-			histfile = fetchFile(path, NULL);
+			histfile = source->fetch_file(source, path, NULL);
 		else if (controlFile == &ControlFile_target)
 			histfile = slurpFile(datadir_target, path, NULL);
 		else
@@ -686,9 +872,9 @@ getTimelineHistory(ControlFileData *controlFile, int *nentries)
 			TimeLineHistoryEntry *entry;
 
 			entry = &history[i];
-			pg_log_debug("%d: %X/%X - %X/%X", entry->tli,
-						 (uint32) (entry->begin >> 32), (uint32) (entry->begin),
-						 (uint32) (entry->end >> 32), (uint32) (entry->end));
+			pg_log_debug("%u: %X/%X - %X/%X", entry->tli,
+						 LSN_FORMAT_ARGS(entry->begin),
+						 LSN_FORMAT_ARGS(entry->end));
 		}
 	}
 
@@ -782,8 +968,8 @@ createBackupLabel(XLogRecPtr startpoint, TimeLineID starttli, XLogRecPtr checkpo
 				   "BACKUP FROM: standby\n"
 				   "START TIME: %s\n",
 	/* omit LABEL: line */
-				   (uint32) (startpoint >> 32), (uint32) startpoint, xlogfilename,
-				   (uint32) (checkpointloc >> 32), (uint32) checkpointloc,
+				   LSN_FORMAT_ARGS(startpoint), xlogfilename,
+				   LSN_FORMAT_ARGS(checkpointloc),
 				   strfbuf);
 	if (len >= sizeof(buf))
 		pg_fatal("backup label buffer too small");	/* shouldn't happen */
@@ -813,16 +999,18 @@ checkControlFile(ControlFileData *ControlFile)
 }
 
 /*
- * Verify control file contents in the buffer src, and copy it to *ControlFile.
+ * Verify control file contents in the buffer 'content', and copy it to
+ * *ControlFile.
  */
 static void
-digestControlFile(ControlFileData *ControlFile, char *src, size_t size)
+digestControlFile(ControlFileData *ControlFile, const char *content,
+				  size_t size)
 {
 	if (size != PG_CONTROL_FILE_SIZE)
 		pg_fatal("unexpected control file size %d, expected %d",
 				 (int) size, PG_CONTROL_FILE_SIZE);
 
-	memcpy(ControlFile, src, sizeof(ControlFileData));
+	memcpy(ControlFile, content, sizeof(ControlFileData));
 
 	/* set and validate WalSegSz */
 	WalSegSz = ControlFile->xlog_seg_size;
@@ -838,141 +1026,6 @@ digestControlFile(ControlFileData *ControlFile, char *src, size_t size)
 }
 
 /*
- * Sync target data directory to ensure that modifications are safely on disk.
- *
- * We do this once, for the whole data directory, for performance reasons.  At
- * the end of pg_rewind's run, the kernel is likely to already have flushed
- * most dirty buffers to disk.  Additionally fsync_pgdata uses a two-pass
- * approach (only initiating writeback in the first pass), which often reduces
- * the overall amount of IO noticeably.
- *
- * gpdb: We assume that all files are synchronized before rewinding and thus we
- * just need to synchronize those affected files. This is a resonable
- * assumption for gpdb since we've ensured that the db state is clean shutdown
- * in pg_rewind by running single mode postgres if needed and also we do not
- * copy an unsynchronized dababase without sync as the target base.
- */
-static void
-syncTargetDirectory(void)
-{
-	if (!do_sync || dry_run)
-		return;
-
-	file_entry_t *entry;
-	int			  i;
-
-	if (chdir(datadir_target) < 0)
-	{
-		pg_log_error("could not change directory to \"%s\": %m", datadir_target);
-		exit(1);
-	}
-
-	for (i = 0; i < filemap->narray; i++)
-	{
-		entry = filemap->array[i];
-
-		if (entry->target_pages_to_overwrite.bitmapsize > 0)
-			fsync_fname(entry->path, false);
-		else
-		{
-			switch (entry->action)
-			{
-				case FILE_ACTION_COPY:
-				case FILE_ACTION_TRUNCATE:
-				case FILE_ACTION_COPY_TAIL:
-					fsync_fname(entry->path, false);
-					break;
-
-				case FILE_ACTION_CREATE:
-					fsync_fname(entry->path,
-								entry->source_type == FILE_TYPE_DIRECTORY);
-					/* FALLTHROUGH */
-				case FILE_ACTION_REMOVE:
-					/*
-					 * Fsync the parent directory if we either create or delete
-					 * files/directories in the parent directory. The parent
-					 * directory might be missing as expected, so fsync it could
-					 * fail but we ignore that error.
-					 */
-					fsync_parent_path(entry->path);
-					break;
-
-				case FILE_ACTION_NONE:
-					break;
-
-				default:
-					pg_fatal("no action decided for \"%s\"", entry->path);
-					break;
-			}
-		}
-	}
-
-	/* fsync some files that are (possibly) written by pg_rewind. */
-	fsync_fname("global/pg_control", false);
-	fsync_fname("backup_label", false);
-	fsync_fname("postgresql.auto.conf", false);
-	fsync_fname(".", true); /* due to new file backup_label. */
-}
-
-static int32
-get_target_dbid(const char *argv0)
-{
-	char		cmd_output[1024];
-	FILE	   *output;
-	int32 		dbid;
-
-	int		ret;
-#define MAXCMDLEN (2 * MAXPGPATH)
-	char	exec_path[MAXPGPATH];
-	char	cmd[MAXCMDLEN];
-	long	parsed_dbid;
-
-	/* locate postgres binary */
-	if ((ret = find_other_exec(argv0, "postgres",
-							   "postgres (Greenplum Database) " PG_VERSION "\n",
-							   exec_path)) < 0)
-	{
-		char        full_path[MAXPGPATH];
-
-		if (find_my_exec(argv0, full_path) < 0)
-			strlcpy(full_path, progname, sizeof(full_path));
-
-		if (ret == -1)
-			pg_fatal("The program \"postgres\" is needed by %s but was \n"
-					 "not found in the same directory as \"%s\".\n"
-					 "Check your installation.\n", progname, full_path);
-		else
-			pg_fatal("The program \"postgres\" was found by \"%s\"\n"
-					 "but was not the same version as %s.\n"
-					 "Check your installation.\n", full_path, progname);
-	}
-
-	snprintf(cmd, MAXCMDLEN, "\"%s\" -D \"%s\" -C gp_dbid",
-			 exec_path, datadir_target);
-
-	if ((output = popen(cmd, "r")) == NULL ||
-		fgets(cmd_output, sizeof(cmd_output), output) == NULL)
-		pg_fatal("Could not get dbid using %s: %m\n",
-				 cmd);
-
-	pclose(output);
-
-	/* Remove trailing newline */
-	if (strchr(cmd_output, '\n') != NULL)
-		*strchr(cmd_output, '\n') = '\0';
-
-	errno = 0;
-	parsed_dbid = strtol(cmd_output, NULL, 10);
-	if (errno)
-		pg_fatal("could not parse valid dbid from %s\n with cmd_output %s\n", cmd, cmd_output);
-	if(parsed_dbid > INT16_MAX || parsed_dbid <= -1)
-		pg_fatal("parsed dbid (%ld) is out of valid range: [1, INT16_MAX]", parsed_dbid);
-	dbid = (int32) parsed_dbid;
-
-	return dbid;
-}
-
-/*
  * Get value of GUC parameter restore_command from the target cluster.
  *
  * This uses a logic based on "postgres -C" to get the value from the
@@ -983,8 +1036,8 @@ getRestoreCommand(const char *argv0)
 {
 	int			rc;
 	char		postgres_exec_path[MAXPGPATH],
-				postgres_cmd[MAXPGPATH],
 				cmd_output[MAXPGPATH];
+	PQExpBuffer postgres_cmd;
 
 	if (!restore_wal)
 		return;
@@ -1002,27 +1055,37 @@ getRestoreCommand(const char *argv0)
 			strlcpy(full_path, progname, sizeof(full_path));
 
 		if (rc == -1)
-			pg_log_error("The program \"%s\" is needed by %s but was not found in the\n"
-						 "same directory as \"%s\".\n"
-						 "Check your installation.",
-						 "postgres", progname, full_path);
+			pg_fatal("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"",
+					 "postgres", progname, full_path);
 		else
-			pg_log_error("The program \"%s\" was found by \"%s\"\n"
-						 "but was not the same version as %s.\n"
-						 "Check your installation.",
-						 "postgres", full_path, progname);
-		exit(1);
+			pg_fatal("program \"%s\" was found by \"%s\" but was not the same version as %s",
+					 "postgres", full_path, progname);
 	}
 
 	/*
 	 * Build a command able to retrieve the value of GUC parameter
 	 * restore_command, if set.
 	 */
-	snprintf(postgres_cmd, sizeof(postgres_cmd),
-			 "\"%s\" -D \"%s\" -C restore_command",
-			 postgres_exec_path, datadir_target);
+	postgres_cmd = createPQExpBuffer();
 
-	if (!pipe_read_line(postgres_cmd, cmd_output, sizeof(cmd_output)))
+	/* path to postgres, properly quoted */
+	appendShellString(postgres_cmd, postgres_exec_path);
+
+	/* add -D switch, with properly quoted data directory */
+	appendPQExpBufferStr(postgres_cmd, " -D ");
+	appendShellString(postgres_cmd, datadir_target);
+
+	/* add custom configuration file only if requested */
+	if (config_file != NULL)
+	{
+		appendPQExpBufferStr(postgres_cmd, " -c config_file=");
+		appendShellString(postgres_cmd, config_file);
+	}
+
+	/* add -C switch, for restore_command */
+	appendPQExpBufferStr(postgres_cmd, " -C restore_command");
+
+	if (!pipe_read_line(postgres_cmd->data, cmd_output, sizeof(cmd_output)))
 		exit(1);
 
 	(void) pg_strip_crlf(cmd_output);
@@ -1034,6 +1097,8 @@ getRestoreCommand(const char *argv0)
 
 	pg_log_debug("using for rewind restore_command = \'%s\'",
 				 restore_command);
+
+	destroyPQExpBuffer(postgres_cmd);
 }
 
 
@@ -1047,7 +1112,7 @@ ensureCleanShutdown(const char *argv0)
 	int			ret;
 #define MAXCMDLEN (2 * MAXPGPATH)
 	char		exec_path[MAXPGPATH];
-	char		cmd[MAXCMDLEN];
+	PQExpBuffer postgres_cmd;
 
 	/* locate postgres binary */
 	if ((ret = find_other_exec(argv0, "postgres",
@@ -1060,14 +1125,10 @@ ensureCleanShutdown(const char *argv0)
 			strlcpy(full_path, progname, sizeof(full_path));
 
 		if (ret == -1)
-			pg_fatal("The program \"%s\" is needed by %s but was not found in the\n"
-					 "same directory as \"%s\".\n"
-					 "Check your installation.",
+			pg_fatal("program \"%s\" is needed by %s but was not found in the same directory as \"%s\"",
 					 "postgres", progname, full_path);
 		else
-			pg_fatal("The program \"%s\" was found by \"%s\"\n"
-					 "but was not the same version as %s.\n"
-					 "Check your installation.",
+			pg_fatal("program \"%s\" was found by \"%s\" but was not the same version as %s",
 					 "postgres", full_path, progname);
 	}
 
@@ -1085,19 +1146,18 @@ ensureCleanShutdown(const char *argv0)
 	 * Finally run postgres in single-user mode.  There is no need to use
 	 * fsync here.  This makes the recovery faster, and the target data folder
 	 * is synced at the end anyway.
-	 */
-	/*
-	 * gpdb: use postgres instead of template1, else the below postgres
-	 * instance might hang in the below scenario:
 	 *
-	 * 1. There was a prepared but not finished "create database " dtx
+	 * gpdb: use DB_FOR_COMMON_ACCESS (postgres) instead of template1, else
+	 * the postgres instance might hang in the below scenario:
+	 *
+	 * 1. There was a prepared but not finished "create database" dtx
 	 *    transaction which was recovered during crash recovery in the startup
 	 *    process and thus it holds the lock of database template1 since
 	 *    by default template1 is the template for database creation.
 	 *
-	 * 2. Single mode postgres process will execute the below code in
-	 * InitPostgres() after finishing crash recovery (i.e. calling
-	 * startupXLOG()) and then hang due to lock conflict.
+	 * 2. The single mode postgres process will execute the below code in
+	 *    InitPostgres() after finishing crash recovery (i.e. calling
+	 *    StartupXLOG()) and then hang due to lock conflict.
 	 *
 	 *    LockSharedObject(DatabaseRelationId, ...);
 	 *
@@ -1106,14 +1166,34 @@ ensureCleanShutdown(const char *argv0)
 	 * since the commands (e.g. create database with template
 	 * DB_FOR_COMMON_ACCESS) would fail.
 	 */
-	snprintf(cmd, MAXCMDLEN, "\"%s\" --single -D \"%s\" %s < %s",
-			 exec_path, datadir_target, DB_FOR_COMMON_ACCESS, DEVNULL);
+	postgres_cmd = createPQExpBuffer();
 
-	if (system(cmd) != 0)
+	/* path to postgres, properly quoted */
+	appendShellString(postgres_cmd, exec_path);
+
+	/* add set of options with properly quoted data directory */
+	appendPQExpBufferStr(postgres_cmd, " --single -F -D ");
+	appendShellString(postgres_cmd, datadir_target);
+
+	/* add custom configuration file only if requested */
+	if (config_file != NULL)
+	{
+		appendPQExpBufferStr(postgres_cmd, " -c config_file=");
+		appendShellString(postgres_cmd, config_file);
+	}
+
+	/* finish with the database name, and a properly quoted redirection */
+	appendPQExpBufferStr(postgres_cmd, " " DB_FOR_COMMON_ACCESS " < ");
+	appendShellString(postgres_cmd, DEVNULL);
+
+	if (system(postgres_cmd->data) != 0)
 	{
 		pg_log_error("postgres single-user mode in target cluster failed");
-		pg_fatal("Command was: %s", cmd);
+		pg_log_error_detail("Command was: %s", postgres_cmd->data);
+		exit(1);
 	}
+
+	destroyPQExpBuffer(postgres_cmd);
 }
 
 static void

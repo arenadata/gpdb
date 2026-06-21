@@ -14,7 +14,7 @@
  * that every visible heap tuple has a matching index tuple.
  *
  *
- * Copyright (c) 2017-2020, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/amcheck/verify_nbtree.c
@@ -32,6 +32,7 @@
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "commands/tablecmds.h"
+#include "common/pg_prng.h"
 #include "lib/bloomfilter.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
@@ -248,6 +249,9 @@ bt_index_check_internal(Oid indrelid, bool parentcheck, bool heapallindexed,
 	Relation	indrel;
 	Relation	heaprel;
 	LOCKMODE	lockmode;
+	Oid			save_userid;
+	int			save_sec_context;
+	int			save_nestlevel;
 
 	if (parentcheck)
 		lockmode = ShareLock;
@@ -264,9 +268,27 @@ bt_index_check_internal(Oid indrelid, bool parentcheck, bool heapallindexed,
 	 */
 	heapid = IndexGetRelation(indrelid, true);
 	if (OidIsValid(heapid))
+	{
 		heaprel = table_open(heapid, lockmode);
+
+		/*
+		 * Switch to the table owner's userid, so that any index functions are
+		 * run as that user.  Also lock down security-restricted operations
+		 * and arrange to make GUC variable changes local to this command.
+		 */
+		GetUserIdAndSecContext(&save_userid, &save_sec_context);
+		SetUserIdAndSecContext(heaprel->rd_rel->relowner,
+							   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+		save_nestlevel = NewGUCNestLevel();
+	}
 	else
+	{
 		heaprel = NULL;
+		/* Set these just to suppress "uninitialized variable" warnings */
+		save_userid = InvalidOid;
+		save_sec_context = -1;
+		save_nestlevel = -1;
+	}
 
 	/*
 	 * Open the target index relations separately (like relation_openrv(), but
@@ -290,7 +312,7 @@ bt_index_check_internal(Oid indrelid, bool parentcheck, bool heapallindexed,
 	if (heaprel == NULL || heapid != IndexGetRelation(indrelid, false))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_TABLE),
-				 errmsg("could not open parent table of index %s",
+				 errmsg("could not open parent table of index \"%s\"",
 						RelationGetRelationName(indrel))));
 
 	/* Relation suitable for checking as B-Tree? */
@@ -301,8 +323,7 @@ bt_index_check_internal(Oid indrelid, bool parentcheck, bool heapallindexed,
 		bool		heapkeyspace,
 					allequalimage;
 
-		RelationOpenSmgr(indrel);
-		if (!smgrexists(indrel->rd_smgr, MAIN_FORKNUM))
+		if (!smgrexists(RelationGetSmgr(indrel), MAIN_FORKNUM))
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
 					 errmsg("index \"%s\" lacks a main relation fork",
@@ -325,6 +346,12 @@ bt_index_check_internal(Oid indrelid, bool parentcheck, bool heapallindexed,
 		bt_check_every_level(indrel, heaprel, heapkeyspace, parentcheck,
 							 heapallindexed, rootdescend);
 	}
+
+	/* Roll back any GUC changes executed by index functions */
+	AtEOXact_GUC(false, save_nestlevel);
+
+	/* Restore userid and security context */
+	SetUserIdAndSecContext(save_userid, save_sec_context);
 
 	/*
 	 * Release locks early. That's ok here because nothing in the called
@@ -373,7 +400,8 @@ btree_index_checkable(Relation rel)
 /*
  * Check if B-Tree index relation should have a file for its main relation
  * fork.  Verification uses this to skip unlogged indexes when in hot standby
- * mode, where there is simply nothing to verify.
+ * mode, where there is simply nothing to verify.  We behave as if the
+ * relation is empty.
  *
  * NB: Caller should call btree_index_checkable() before calling here.
  */
@@ -384,7 +412,7 @@ btree_index_mainfork_expected(Relation rel)
 		!RecoveryInProgress())
 		return true;
 
-	ereport(NOTICE,
+	ereport(DEBUG1,
 			(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 			 errmsg("cannot verify unlogged index \"%s\" during recovery, skipping",
 					RelationGetRelationName(rel))));
@@ -466,8 +494,8 @@ bt_check_every_level(Relation rel, Relation heaprel, bool heapkeyspace,
 		total_pages = RelationGetNumberOfBlocks(rel);
 		total_elems = Max(total_pages * (MaxTIDsPerBTreePage / 3),
 						  (int64) state->rel->rd_rel->reltuples);
-		/* Random seed relies on backend srandom() call to avoid repetition */
-		seed = random();
+		/* Generate a random seed to avoid repetition */
+		seed = pg_prng_uint64(&pg_global_prng_state);
 		/* Create Bloom filter to fingerprint index */
 		state->filter = bloom_create(total_elems, maintenance_work_mem, seed);
 		state->heaptuplespresent = 0;
@@ -535,8 +563,8 @@ bt_check_every_level(Relation rel, Relation heaprel, bool heapkeyspace,
 	if (metad->btm_fastroot != metad->btm_root)
 		ereport(DEBUG1,
 				(errcode(ERRCODE_NO_DATA),
-				 errmsg("harmless fast root mismatch in index %s",
-						RelationGetRelationName(rel)),
+				 errmsg_internal("harmless fast root mismatch in index \"%s\"",
+								 RelationGetRelationName(rel)),
 				 errdetail_internal("Fast root block %u (level %u) differs from true root block %u (level %u).",
 									metad->btm_fastroot, metad->btm_fastlevel,
 									metad->btm_root, metad->btm_level)));
@@ -690,7 +718,7 @@ bt_check_level_from_leftmost(BtreeCheckState *state, BtreeLevel level)
 		state->target = palloc_btree_page(state, state->targetblock);
 		state->targetlsn = PageGetLSN(state->target);
 
-		opaque = (BTPageOpaque) PageGetSpecialPointer(state->target);
+		opaque = BTPageGetOpaque(state->target);
 
 		if (P_IGNORE(opaque))
 		{
@@ -721,8 +749,8 @@ bt_check_level_from_leftmost(BtreeCheckState *state, BtreeLevel level)
 			else
 				ereport(DEBUG1,
 						(errcode(ERRCODE_NO_DATA),
-						 errmsg("block %u of index \"%s\" ignored",
-								current, RelationGetRelationName(state->rel))));
+						 errmsg_internal("block %u of index \"%s\" concurrently deleted",
+										 current, RelationGetRelationName(state->rel))));
 			goto nextpage;
 		}
 		else if (nextleveldown.leftmost == InvalidBlockNumber)
@@ -769,7 +797,7 @@ bt_check_level_from_leftmost(BtreeCheckState *state, BtreeLevel level)
 											  P_FIRSTDATAKEY(opaque));
 				itup = (IndexTuple) PageGetItem(state->target, itemid);
 				nextleveldown.leftmost = BTreeTupleGetDownLink(itup);
-				nextleveldown.level = opaque->btpo.level - 1;
+				nextleveldown.level = opaque->btpo_level - 1;
 			}
 			else
 			{
@@ -794,14 +822,14 @@ bt_check_level_from_leftmost(BtreeCheckState *state, BtreeLevel level)
 		if (opaque->btpo_prev != leftcurrent)
 			bt_recheck_sibling_links(state, opaque->btpo_prev, leftcurrent);
 
-		/* Check level, which must be valid for non-ignorable page */
-		if (level.level != opaque->btpo.level)
+		/* Check level */
+		if (level.level != opaque->btpo_level)
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
 					 errmsg("leftmost down link for level points to block in index \"%s\" whose level is not one level down",
 							RelationGetRelationName(state->rel)),
 					 errdetail_internal("Block pointed to=%u expected level=%u level in pointed to block=%u.",
-										current, level.level, opaque->btpo.level)));
+										current, level.level, opaque->btpo_level)));
 
 		/* Verify invariants for page */
 		bt_target_page_check(state);
@@ -918,7 +946,7 @@ bt_recheck_sibling_links(BtreeCheckState *state,
 		Buffer		newtargetbuf;
 		Page		page;
 		BTPageOpaque opaque;
-		BlockNumber	newtargetblock;
+		BlockNumber newtargetblock;
 
 		/* Couple locks in the usual order for nbtree:  Left to right */
 		lbuf = ReadBufferExtended(state->rel, MAIN_FORKNUM, leftcurrent,
@@ -926,7 +954,7 @@ bt_recheck_sibling_links(BtreeCheckState *state,
 		LockBuffer(lbuf, BT_READ);
 		_bt_checkpage(state->rel, lbuf);
 		page = BufferGetPage(lbuf);
-		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+		opaque = BTPageGetOpaque(page);
 		if (P_ISDELETED(opaque))
 		{
 			/*
@@ -950,7 +978,7 @@ bt_recheck_sibling_links(BtreeCheckState *state,
 			LockBuffer(newtargetbuf, BT_READ);
 			_bt_checkpage(state->rel, newtargetbuf);
 			page = BufferGetPage(newtargetbuf);
-			opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+			opaque = BTPageGetOpaque(page);
 			/* btpo_prev_from_target may have changed; update it */
 			btpo_prev_from_target = opaque->btpo_prev;
 		}
@@ -979,8 +1007,8 @@ bt_recheck_sibling_links(BtreeCheckState *state,
 			/* Report split in left sibling, not target (or new target) */
 			ereport(DEBUG1,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("harmless concurrent page split detected in index \"%s\"",
-							RelationGetRelationName(state->rel)),
+					 errmsg_internal("harmless concurrent page split detected in index \"%s\"",
+									 RelationGetRelationName(state->rel)),
 					 errdetail_internal("Block=%u new right sibling=%u original right sibling=%u.",
 										leftcurrent, newtargetblock,
 										state->targetblock)));
@@ -1048,7 +1076,7 @@ bt_target_page_check(BtreeCheckState *state)
 	OffsetNumber max;
 	BTPageOpaque topaque;
 
-	topaque = (BTPageOpaque) PageGetSpecialPointer(state->target);
+	topaque = BTPageGetOpaque(state->target);
 	max = PageGetMaxOffsetNumber(state->target);
 
 	elog(DEBUG2, "verifying %u items on %s block %u", max,
@@ -1078,8 +1106,7 @@ bt_target_page_check(BtreeCheckState *state)
 										state->targetblock,
 										BTreeTupleGetNAtts(itup, state->rel),
 										P_ISLEAF(topaque) ? "heap" : "index",
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn)));
+										LSN_FORMAT_ARGS(state->targetlsn))));
 		}
 	}
 
@@ -1120,8 +1147,7 @@ bt_target_page_check(BtreeCheckState *state)
 					 errdetail_internal("Index tid=(%u,%u) tuple size=%zu lp_len=%u page lsn=%X/%X.",
 										state->targetblock, offset,
 										tupsize, ItemIdGetLength(itemid),
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn),
+										LSN_FORMAT_ARGS(state->targetlsn)),
 					 errhint("This could be a torn page problem.")));
 
 		/* Check the number of index tuple attributes */
@@ -1147,8 +1173,7 @@ bt_target_page_check(BtreeCheckState *state)
 										BTreeTupleGetNAtts(itup, state->rel),
 										P_ISLEAF(topaque) ? "heap" : "index",
 										htid,
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn)));
+										LSN_FORMAT_ARGS(state->targetlsn))));
 		}
 
 		/*
@@ -1167,7 +1192,7 @@ bt_target_page_check(BtreeCheckState *state)
 				bt_child_highkey_check(state,
 									   offset,
 									   NULL,
-									   topaque->btpo.level);
+									   topaque->btpo_level);
 			}
 			continue;
 		}
@@ -1195,8 +1220,7 @@ bt_target_page_check(BtreeCheckState *state)
 							RelationGetRelationName(state->rel)),
 					 errdetail_internal("Index tid=%s points to heap tid=%s page lsn=%X/%X.",
 										itid, htid,
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn)));
+										LSN_FORMAT_ARGS(state->targetlsn))));
 		}
 
 		/*
@@ -1225,8 +1249,7 @@ bt_target_page_check(BtreeCheckState *state)
 											 RelationGetRelationName(state->rel)),
 							 errdetail_internal("Index tid=%s posting list offset=%d page lsn=%X/%X.",
 												itid, i,
-												(uint32) (state->targetlsn >> 32),
-												(uint32) state->targetlsn)));
+												LSN_FORMAT_ARGS(state->targetlsn))));
 				}
 
 				ItemPointerCopy(current, &last);
@@ -1282,8 +1305,7 @@ bt_target_page_check(BtreeCheckState *state)
 										itid,
 										P_ISLEAF(topaque) ? "heap" : "index",
 										htid,
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn)));
+										LSN_FORMAT_ARGS(state->targetlsn))));
 		}
 
 		/* Fingerprint leaf page tuples (those that point to the heap) */
@@ -1390,8 +1412,7 @@ bt_target_page_check(BtreeCheckState *state)
 										itid,
 										P_ISLEAF(topaque) ? "heap" : "index",
 										htid,
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn)));
+										LSN_FORMAT_ARGS(state->targetlsn))));
 		}
 		/* Reset, in case scantid was set to (itup) posting tuple's max TID */
 		skey->scantid = scantid;
@@ -1442,8 +1463,7 @@ bt_target_page_check(BtreeCheckState *state)
 										nitid,
 										P_ISLEAF(topaque) ? "heap" : "index",
 										nhtid,
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn)));
+										LSN_FORMAT_ARGS(state->targetlsn))));
 		}
 
 		/*
@@ -1485,7 +1505,7 @@ bt_target_page_check(BtreeCheckState *state)
 					/* Get fresh copy of target page */
 					state->target = palloc_btree_page(state, state->targetblock);
 					/* Note that we deliberately do not update target LSN */
-					topaque = (BTPageOpaque) PageGetSpecialPointer(state->target);
+					topaque = BTPageGetOpaque(state->target);
 
 					/*
 					 * All !readonly checks now performed; just return
@@ -1500,8 +1520,7 @@ bt_target_page_check(BtreeCheckState *state)
 								RelationGetRelationName(state->rel)),
 						 errdetail_internal("Last item on page tid=(%u,%u) page lsn=%X/%X.",
 											state->targetblock, offset,
-											(uint32) (state->targetlsn >> 32),
-											(uint32) state->targetlsn)));
+											LSN_FORMAT_ARGS(state->targetlsn))));
 			}
 		}
 
@@ -1520,7 +1539,7 @@ bt_target_page_check(BtreeCheckState *state)
 	/*
 	 * Special case bt_child_highkey_check() call
 	 *
-	 * We don't pass an real downlink, but we've to finish the level
+	 * We don't pass a real downlink, but we've to finish the level
 	 * processing. If condition is satisfied, we've already processed all the
 	 * downlinks from the target level.  But there still might be pages to the
 	 * right of the child page pointer to by our rightmost downlink.  And they
@@ -1529,7 +1548,7 @@ bt_target_page_check(BtreeCheckState *state)
 	if (!P_ISLEAF(topaque) && P_RIGHTMOST(topaque) && state->readonly)
 	{
 		bt_child_highkey_check(state, InvalidOffsetNumber,
-							   NULL, topaque->btpo.level);
+							   NULL, topaque->btpo_level);
 	}
 }
 
@@ -1560,7 +1579,7 @@ bt_right_page_check_scankey(BtreeCheckState *state)
 	OffsetNumber nline;
 
 	/* Determine target's next block number */
-	opaque = (BTPageOpaque) PageGetSpecialPointer(state->target);
+	opaque = BTPageGetOpaque(state->target);
 
 	/* If target is already rightmost, no right sibling; nothing to do here */
 	if (P_RIGHTMOST(opaque))
@@ -1596,18 +1615,22 @@ bt_right_page_check_scankey(BtreeCheckState *state)
 		CHECK_FOR_INTERRUPTS();
 
 		rightpage = palloc_btree_page(state, targetnext);
-		opaque = (BTPageOpaque) PageGetSpecialPointer(rightpage);
+		opaque = BTPageGetOpaque(rightpage);
 
 		if (!P_IGNORE(opaque) || P_RIGHTMOST(opaque))
 			break;
 
-		/* We landed on a deleted page, so step right to find a live page */
-		targetnext = opaque->btpo_next;
-		ereport(DEBUG1,
+		/*
+		 * We landed on a deleted or half-dead sibling page.  Step right until
+		 * we locate a live sibling page.
+		 */
+		ereport(DEBUG2,
 				(errcode(ERRCODE_NO_DATA),
-				 errmsg("level %u leftmost page of index \"%s\" was found deleted or half dead",
-						opaque->btpo.level, RelationGetRelationName(state->rel)),
+				 errmsg_internal("level %u sibling page in block %u of index \"%s\" was found deleted or half dead",
+								 opaque->btpo_level, targetnext, RelationGetRelationName(state->rel)),
 				 errdetail_internal("Deleted page found when building scankey from right sibling.")));
+
+		targetnext = opaque->btpo_next;
 
 		/* Be slightly more pro-active in freeing this memory, just in case */
 		pfree(rightpage);
@@ -1731,11 +1754,11 @@ bt_right_page_check_scankey(BtreeCheckState *state)
 		 * possible that it's an internal page with only a negative infinity
 		 * item.
 		 */
-		ereport(DEBUG1,
+		ereport(DEBUG2,
 				(errcode(ERRCODE_NO_DATA),
-				 errmsg("%s block %u of index \"%s\" has no first data item",
-						P_ISLEAF(opaque) ? "leaf" : "internal", targetnext,
-						RelationGetRelationName(state->rel))));
+				 errmsg_internal("%s block %u of index \"%s\" has no first data item",
+								 P_ISLEAF(opaque) ? "leaf" : "internal", targetnext,
+								 RelationGetRelationName(state->rel))));
 		return NULL;
 	}
 
@@ -1752,14 +1775,36 @@ bt_right_page_check_scankey(BtreeCheckState *state)
  * this function is capable to compare pivot keys on different levels.
  */
 static bool
-bt_pivot_tuple_identical(IndexTuple itup1, IndexTuple itup2)
+bt_pivot_tuple_identical(bool heapkeyspace, IndexTuple itup1, IndexTuple itup2)
 {
 	if (IndexTupleSize(itup1) != IndexTupleSize(itup2))
 		return false;
 
-	if (memcmp(&itup1->t_tid.ip_posid, &itup2->t_tid.ip_posid,
-			   IndexTupleSize(itup1) - offsetof(ItemPointerData, ip_posid)) != 0)
-		return false;
+	if (heapkeyspace)
+	{
+		/*
+		 * Offset number will contain important information in heapkeyspace
+		 * indexes: the number of attributes left in the pivot tuple following
+		 * suffix truncation.  Don't skip over it (compare it too).
+		 */
+		if (memcmp(&itup1->t_tid.ip_posid, &itup2->t_tid.ip_posid,
+				   IndexTupleSize(itup1) -
+				   offsetof(ItemPointerData, ip_posid)) != 0)
+			return false;
+	}
+	else
+	{
+		/*
+		 * Cannot rely on offset number field having consistent value across
+		 * levels on pg_upgrade'd !heapkeyspace indexes.  Compare contents of
+		 * tuple starting from just after item pointer (i.e. after block
+		 * number and offset number).
+		 */
+		if (memcmp(&itup1->t_info, &itup2->t_info,
+				   IndexTupleSize(itup1) -
+				   offsetof(IndexTupleData, t_info)) != 0)
+			return false;
+	}
 
 	return true;
 }
@@ -1875,7 +1920,7 @@ bt_child_highkey_check(BtreeCheckState *state,
 		else
 			page = palloc_btree_page(state, blkno);
 
-		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+		opaque = BTPageGetOpaque(page);
 
 		/* The first page we visit at the level should be leftmost */
 		if (first && !BlockNumberIsValid(state->prevrightlink) && !P_LEFTMOST(opaque))
@@ -1885,17 +1930,17 @@ bt_child_highkey_check(BtreeCheckState *state,
 							RelationGetRelationName(state->rel)),
 					 errdetail_internal("Target block=%u child block=%u target page lsn=%X/%X.",
 										state->targetblock, blkno,
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn)));
+										LSN_FORMAT_ARGS(state->targetlsn))));
 
-		/* Check level for non-ignorable page */
-		if (!P_IGNORE(opaque) && opaque->btpo.level != target_level - 1)
+		/* Do level sanity check */
+		if ((!P_ISDELETED(opaque) || P_HAS_FULLXID(opaque)) &&
+			opaque->btpo_level != target_level - 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
 					 errmsg("block found while following rightlinks from child of index \"%s\" has invalid level",
 							RelationGetRelationName(state->rel)),
 					 errdetail_internal("Block pointed to=%u expected level=%u level in pointed to block=%u.",
-										blkno, target_level - 1, opaque->btpo.level)));
+										blkno, target_level - 1, opaque->btpo_level)));
 
 		/* Try to detect circular links */
 		if ((!first && blkno == state->prevrightlink) || blkno == opaque->btpo_prev)
@@ -1913,7 +1958,7 @@ bt_child_highkey_check(BtreeCheckState *state,
 		rightsplit = P_INCOMPLETE_SPLIT(opaque);
 
 		/*
-		 * If we visit page with high key, check that it is be equal to the
+		 * If we visit page with high key, check that it is equal to the
 		 * target key next to corresponding downlink.
 		 */
 		if (!rightsplit && !P_RIGHTMOST(opaque))
@@ -1953,7 +1998,7 @@ bt_child_highkey_check(BtreeCheckState *state,
 			else
 				pivotkey_offset = target_downlinkoffnum;
 
-			topaque = (BTPageOpaque) PageGetSpecialPointer(state->target);
+			topaque = BTPageGetOpaque(state->target);
 
 			if (!offset_is_negative_infinity(topaque, pivotkey_offset))
 			{
@@ -1971,8 +2016,7 @@ bt_child_highkey_check(BtreeCheckState *state,
 										RelationGetRelationName(state->rel)),
 								 errdetail_internal("Target block=%u child block=%u target page lsn=%X/%X.",
 													state->targetblock, blkno,
-													(uint32) (state->targetlsn >> 32),
-													(uint32) state->targetlsn)));
+													LSN_FORMAT_ARGS(state->targetlsn))));
 					pivotkey_offset = P_HIKEY;
 				}
 				itemid = PageGetItemIdCareful(state, state->targetblock,
@@ -2002,12 +2046,11 @@ bt_child_highkey_check(BtreeCheckState *state,
 									RelationGetRelationName(state->rel)),
 							 errdetail_internal("Target block=%u child block=%u target page lsn=%X/%X.",
 												state->targetblock, blkno,
-												(uint32) (state->targetlsn >> 32),
-												(uint32) state->targetlsn)));
+												LSN_FORMAT_ARGS(state->targetlsn))));
 				itup = state->lowkey;
 			}
 
-			if (!bt_pivot_tuple_identical(highkey, itup))
+			if (!bt_pivot_tuple_identical(state->heapkeyspace, highkey, itup))
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INDEX_CORRUPTED),
@@ -2015,8 +2058,7 @@ bt_child_highkey_check(BtreeCheckState *state,
 								RelationGetRelationName(state->rel)),
 						 errdetail_internal("Target block=%u child block=%u target page lsn=%X/%X.",
 											state->targetblock, blkno,
-											(uint32) (state->targetlsn >> 32),
-											(uint32) state->targetlsn)));
+											LSN_FORMAT_ARGS(state->targetlsn))));
 			}
 		}
 
@@ -2113,9 +2155,9 @@ bt_child_check(BtreeCheckState *state, BTScanInsert targetkey,
 	 * Check all items, rather than checking just the first and trusting that
 	 * the operator class obeys the transitive law.
 	 */
-	topaque = (BTPageOpaque) PageGetSpecialPointer(state->target);
+	topaque = BTPageGetOpaque(state->target);
 	child = palloc_btree_page(state, childblock);
-	copaque = (BTPageOpaque) PageGetSpecialPointer(child);
+	copaque = BTPageGetOpaque(child);
 	maxoffset = PageGetMaxOffsetNumber(child);
 
 	/*
@@ -2123,7 +2165,7 @@ bt_child_check(BtreeCheckState *state, BTScanInsert targetkey,
 	 * check for downlink connectivity.
 	 */
 	bt_child_highkey_check(state, downlinkoffnum,
-						   child, topaque->btpo.level);
+						   child, topaque->btpo_level);
 
 	/*
 	 * Since there cannot be a concurrent VACUUM operation in readonly mode,
@@ -2156,8 +2198,7 @@ bt_child_check(BtreeCheckState *state, BTScanInsert targetkey,
 						RelationGetRelationName(state->rel)),
 				 errdetail_internal("Parent block=%u child block=%u parent page lsn=%X/%X.",
 									state->targetblock, childblock,
-									(uint32) (state->targetlsn >> 32),
-									(uint32) state->targetlsn)));
+									LSN_FORMAT_ARGS(state->targetlsn))));
 
 	for (offset = P_FIRSTDATAKEY(copaque);
 		 offset <= maxoffset;
@@ -2198,8 +2239,7 @@ bt_child_check(BtreeCheckState *state, BTScanInsert targetkey,
 							RelationGetRelationName(state->rel)),
 					 errdetail_internal("Parent block=%u child index tid=(%u,%u) parent page lsn=%X/%X.",
 										state->targetblock, childblock, offset,
-										(uint32) (state->targetlsn >> 32),
-										(uint32) state->targetlsn)));
+										LSN_FORMAT_ARGS(state->targetlsn))));
 	}
 
 	pfree(child);
@@ -2222,7 +2262,7 @@ static void
 bt_downlink_missing_check(BtreeCheckState *state, bool rightsplit,
 						  BlockNumber blkno, Page page)
 {
-	BTPageOpaque opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+	BTPageOpaque opaque = BTPageGetOpaque(page);
 	ItemId		itemid;
 	IndexTuple	itup;
 	Page		child;
@@ -2265,13 +2305,12 @@ bt_downlink_missing_check(BtreeCheckState *state, bool rightsplit,
 	{
 		ereport(DEBUG1,
 				(errcode(ERRCODE_NO_DATA),
-				 errmsg("harmless interrupted page split detected in index %s",
-						RelationGetRelationName(state->rel)),
+				 errmsg_internal("harmless interrupted page split detected in index \"%s\"",
+								 RelationGetRelationName(state->rel)),
 				 errdetail_internal("Block=%u level=%u left sibling=%u page lsn=%X/%X.",
-									blkno, opaque->btpo.level,
+									blkno, opaque->btpo_level,
 									opaque->btpo_prev,
-									(uint32) (pagelsn >> 32),
-									(uint32) pagelsn)));
+									LSN_FORMAT_ARGS(pagelsn))));
 		return;
 	}
 
@@ -2292,14 +2331,13 @@ bt_downlink_missing_check(BtreeCheckState *state, bool rightsplit,
 						RelationGetRelationName(state->rel)),
 				 errdetail_internal("Block=%u page lsn=%X/%X.",
 									blkno,
-									(uint32) (pagelsn >> 32),
-									(uint32) pagelsn)));
+									LSN_FORMAT_ARGS(pagelsn))));
 
 	/* Descend from the given page, which is an internal page */
 	elog(DEBUG1, "checking for interrupted multi-level deletion due to missing downlink in index \"%s\"",
 		 RelationGetRelationName(state->rel));
 
-	level = opaque->btpo.level;
+	level = opaque->btpo_level;
 	itemid = PageGetItemIdCareful(state, blkno, page, P_FIRSTDATAKEY(opaque));
 	itup = (IndexTuple) PageGetItem(page, itemid);
 	childblk = BTreeTupleGetDownLink(itup);
@@ -2308,22 +2346,22 @@ bt_downlink_missing_check(BtreeCheckState *state, bool rightsplit,
 		CHECK_FOR_INTERRUPTS();
 
 		child = palloc_btree_page(state, childblk);
-		copaque = (BTPageOpaque) PageGetSpecialPointer(child);
+		copaque = BTPageGetOpaque(child);
 
 		if (P_ISLEAF(copaque))
 			break;
 
 		/* Do an extra sanity check in passing on internal pages */
-		if (copaque->btpo.level != level - 1)
+		if (copaque->btpo_level != level - 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
 					 errmsg_internal("downlink points to block in index \"%s\" whose level is not one level down",
 									 RelationGetRelationName(state->rel)),
 					 errdetail_internal("Top parent/under check block=%u block pointed to=%u expected level=%u level in pointed to block=%u.",
 										blkno, childblk,
-										level - 1, copaque->btpo.level)));
+										level - 1, copaque->btpo_level)));
 
-		level = copaque->btpo.level;
+		level = copaque->btpo_level;
 		itemid = PageGetItemIdCareful(state, childblk, child,
 									  P_FIRSTDATAKEY(copaque));
 		itup = (IndexTuple) PageGetItem(child, itemid);
@@ -2359,8 +2397,7 @@ bt_downlink_missing_check(BtreeCheckState *state, bool rightsplit,
 								 RelationGetRelationName(state->rel)),
 				 errdetail_internal("Top parent/target block=%u leaf block=%u top parent/under check lsn=%X/%X.",
 									blkno, childblk,
-									(uint32) (pagelsn >> 32),
-									(uint32) pagelsn)));
+									LSN_FORMAT_ARGS(pagelsn))));
 
 	/*
 	 * Iff leaf page is half-dead, its high key top parent link should point
@@ -2385,9 +2422,8 @@ bt_downlink_missing_check(BtreeCheckState *state, bool rightsplit,
 			 errmsg("internal index block lacks downlink in index \"%s\"",
 					RelationGetRelationName(state->rel)),
 			 errdetail_internal("Block=%u level=%u page lsn=%X/%X.",
-								blkno, opaque->btpo.level,
-								(uint32) (pagelsn >> 32),
-								(uint32) pagelsn)));
+								blkno, opaque->btpo_level,
+								LSN_FORMAT_ARGS(pagelsn))));
 }
 
 /*
@@ -2771,7 +2807,7 @@ invariant_l_offset(BtreeCheckState *state, BTScanInsert key,
 		bool		nonpivot;
 
 		ritup = (IndexTuple) PageGetItem(state->target, itemid);
-		topaque = (BTPageOpaque) PageGetSpecialPointer(state->target);
+		topaque = BTPageGetOpaque(state->target);
 		nonpivot = P_ISLEAF(topaque) && upperbound >= P_FIRSTDATAKEY(topaque);
 
 		/* Get number of keys + heap TID for item to the right */
@@ -2886,7 +2922,7 @@ invariant_l_nontarget_offset(BtreeCheckState *state, BTScanInsert key,
 		bool		nonpivot;
 
 		child = (IndexTuple) PageGetItem(nontarget, itemid);
-		copaque = (BTPageOpaque) PageGetSpecialPointer(nontarget);
+		copaque = BTPageGetOpaque(nontarget);
 		nonpivot = P_ISLEAF(copaque) && upperbound >= P_FIRSTDATAKEY(copaque);
 
 		/* Get number of keys + heap TID for child/non-target item */
@@ -2945,7 +2981,7 @@ palloc_btree_page(BtreeCheckState *state, BlockNumber blocknum)
 	memcpy(page, BufferGetPage(buffer), BLCKSZ);
 	UnlockReleaseBuffer(buffer);
 
-	opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+	opaque = BTPageGetOpaque(page);
 
 	if (P_ISMETA(opaque) && blocknum != BTREE_METAPAGE)
 		ereport(ERROR,
@@ -2980,21 +3016,28 @@ palloc_btree_page(BtreeCheckState *state, BlockNumber blocknum)
 	}
 
 	/*
-	 * Deleted pages have no sane "level" field, so can only check non-deleted
-	 * page level
+	 * Deleted pages that still use the old 32-bit XID representation have no
+	 * sane "level" field because they type pun the field, but all other pages
+	 * (including pages deleted on Postgres 14+) have a valid value.
 	 */
-	if (P_ISLEAF(opaque) && !P_ISDELETED(opaque) && opaque->btpo.level != 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("invalid leaf page level %u for block %u in index \"%s\"",
-						opaque->btpo.level, blocknum, RelationGetRelationName(state->rel))));
+	if (!P_ISDELETED(opaque) || P_HAS_FULLXID(opaque))
+	{
+		/* Okay, no reason not to trust btpo_level field from page */
 
-	if (!P_ISLEAF(opaque) && !P_ISDELETED(opaque) &&
-		opaque->btpo.level == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("invalid internal page level 0 for block %u in index \"%s\"",
-						blocknum, RelationGetRelationName(state->rel))));
+		if (P_ISLEAF(opaque) && opaque->btpo_level != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg_internal("invalid leaf page level %u for block %u in index \"%s\"",
+									 opaque->btpo_level, blocknum,
+									 RelationGetRelationName(state->rel))));
+
+		if (!P_ISLEAF(opaque) && opaque->btpo_level == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INDEX_CORRUPTED),
+					 errmsg_internal("invalid internal page level 0 for block %u in index \"%s\"",
+									 blocknum,
+									 RelationGetRelationName(state->rel))));
+	}
 
 	/*
 	 * Sanity checks for number of items on page.
@@ -3041,8 +3084,6 @@ palloc_btree_page(BtreeCheckState *state, BlockNumber blocknum)
 	 * state.  This state is nonetheless treated as corruption by VACUUM on
 	 * from version 9.4 on, so do the same here.  See _bt_pagedel() for full
 	 * details.
-	 *
-	 * Internal pages should never have garbage items, either.
 	 */
 	if (!P_ISLEAF(opaque) && P_ISHALFDEAD(opaque))
 		ereport(ERROR,
@@ -3051,11 +3092,27 @@ palloc_btree_page(BtreeCheckState *state, BlockNumber blocknum)
 						blocknum, RelationGetRelationName(state->rel)),
 				 errhint("This can be caused by an interrupted VACUUM in version 9.3 or older, before upgrade. Please REINDEX it.")));
 
+	/*
+	 * Check that internal pages have no garbage items, and that no page has
+	 * an invalid combination of deletion-related page level flags
+	 */
 	if (!P_ISLEAF(opaque) && P_HAS_GARBAGE(opaque))
 		ereport(ERROR,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("internal page block %u in index \"%s\" has garbage items",
-						blocknum, RelationGetRelationName(state->rel))));
+				 errmsg_internal("internal page block %u in index \"%s\" has garbage items",
+								 blocknum, RelationGetRelationName(state->rel))));
+
+	if (P_HAS_FULLXID(opaque) && !P_ISDELETED(opaque))
+		ereport(ERROR,
+				(errcode(ERRCODE_INDEX_CORRUPTED),
+				 errmsg_internal("full transaction id page flag appears in non-deleted block %u in index \"%s\"",
+								 blocknum, RelationGetRelationName(state->rel))));
+
+	if (P_ISDELETED(opaque) && P_ISHALFDEAD(opaque))
+		ereport(ERROR,
+				(errcode(ERRCODE_INDEX_CORRUPTED),
+				 errmsg_internal("deleted page block %u in index \"%s\" is half-dead",
+								 blocknum, RelationGetRelationName(state->rel))));
 
 	return page;
 }
@@ -3105,7 +3162,7 @@ PageGetItemIdCareful(BtreeCheckState *state, BlockNumber block, Page page,
 	ItemId		itemid = PageGetItemId(page, offset);
 
 	if (ItemIdGetOffset(itemid) + ItemIdGetLength(itemid) >
-		BLCKSZ - sizeof(BTPageOpaqueData))
+		BLCKSZ - MAXALIGN(sizeof(BTPageOpaqueData)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
 				 errmsg("line pointer points past end of tuple space in index \"%s\"",

@@ -6,7 +6,7 @@
  * Note this is read in MinGW as well as native Windows builds,
  * but not in Cygwin builds.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/win32_port.h
@@ -43,6 +43,14 @@
 #define _WINSOCKAPI_
 #endif
 
+/*
+ * windows.h includes a lot of other headers, slowing down compilation
+ * significantly.  WIN32_LEAN_AND_MEAN reduces that a bit. It'd be better to
+ * remove the include of windows.h (as well as indirect inclusions of it) from
+ * such a central place, but until then...
+ */
+#define WIN32_LEAN_AND_MEAN
+
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
@@ -51,7 +59,13 @@
 #include <signal.h>
 #include <direct.h>
 #undef near
-#include <sys/stat.h>			/* needed before sys/stat hacking below */
+
+/* needed before sys/stat hacking below: */
+#define fstat microsoft_native_fstat
+#define stat microsoft_native_stat
+#include <sys/stat.h>
+#undef fstat
+#undef stat
 
 /* Must be here to avoid conflicting with prototype in windows.h */
 #define mkdir(a,b)	mkdir(a)
@@ -240,20 +254,34 @@ typedef int pid_t;
  * Supplement to <sys/stat.h>.
  *
  * We must pull in sys/stat.h before this part, else our overrides lose.
- */
-#define lstat(path, sb) stat(path, sb)
-
-/*
- * stat() is not guaranteed to set the st_size field on win32, so we
- * redefine it to our own implementation that is.
  *
- * Some frontends don't need the size from stat, so if UNSAFE_STAT_OK
- * is defined we don't bother with this.
+ * stat() is not guaranteed to set the st_size field on win32, so we
+ * redefine it to our own implementation.  See src/port/win32stat.c.
+ *
+ * The struct stat is 32 bit in MSVC, so we redefine it as a copy of
+ * struct __stat64.  This also fixes the struct size for MINGW builds.
  */
-#ifndef UNSAFE_STAT_OK
-extern int	pgwin32_safestat(const char *path, struct stat *buf);
-#define stat(a,b) pgwin32_safestat(a,b)
-#endif
+struct stat						/* This should match struct __stat64 */
+{
+	_dev_t		st_dev;
+	_ino_t		st_ino;
+	unsigned short st_mode;
+	short		st_nlink;
+	short		st_uid;
+	short		st_gid;
+	_dev_t		st_rdev;
+	__int64		st_size;
+	__time64_t	st_atime;
+	__time64_t	st_mtime;
+	__time64_t	st_ctime;
+};
+
+extern int	_pgfstat64(int fileno, struct stat *buf);
+extern int	_pgstat64(const char *name, struct stat *buf);
+
+#define fstat(fileno, sb)	_pgfstat64(fileno, sb)
+#define stat(path, sb)		_pgstat64(path, sb)
+#define lstat(path, sb)		_pgstat64(path, sb)
 
 /* These macros are not provided by older MinGW, nor by MSVC */
 #ifndef S_IRUSR
@@ -349,10 +377,20 @@ extern int	pgwin32_safestat(const char *path, struct stat *buf);
 #define EADDRINUSE WSAEADDRINUSE
 #undef EADDRNOTAVAIL
 #define EADDRNOTAVAIL WSAEADDRNOTAVAIL
+#undef EHOSTDOWN
+#define EHOSTDOWN WSAEHOSTDOWN
 #undef EHOSTUNREACH
 #define EHOSTUNREACH WSAEHOSTUNREACH
+#undef ENETDOWN
+#define ENETDOWN WSAENETDOWN
+#undef ENETRESET
+#define ENETRESET WSAENETRESET
+#undef ENETUNREACH
+#define ENETUNREACH WSAENETUNREACH
 #undef ENOTCONN
 #define ENOTCONN WSAENOTCONN
+#undef ETIMEDOUT
+#define ETIMEDOUT WSAETIMEDOUT
 
 /*
  * Locale stuff.
@@ -411,16 +449,16 @@ extern char *pgwin32_setlocale(int category, const char *locale);
 /* In backend/port/win32/signal.c */
 extern PGDLLIMPORT volatile int pg_signal_queue;
 extern PGDLLIMPORT int pg_signal_mask;
-extern HANDLE pgwin32_signal_event;
-extern HANDLE pgwin32_initial_signal_pipe;
+extern PGDLLIMPORT HANDLE pgwin32_signal_event;
+extern PGDLLIMPORT HANDLE pgwin32_initial_signal_pipe;
 
 #define UNBLOCKED_SIGNAL_QUEUE()	(pg_signal_queue & ~pg_signal_mask)
 #define PG_SIGNAL_COUNT 32
 
-void		pgwin32_signal_initialize(void);
-HANDLE		pgwin32_create_signal_listener(pid_t pid);
-void		pgwin32_dispatch_queued_signals(void);
-void		pg_queue_signal(int signum);
+extern void pgwin32_signal_initialize(void);
+extern HANDLE pgwin32_create_signal_listener(pid_t pid);
+extern void pgwin32_dispatch_queued_signals(void);
+extern void pg_queue_signal(int signum);
 
 /* In src/port/kill.c */
 #define kill(pid,sig)	pgkill(pid,sig)
@@ -437,17 +475,17 @@ extern int	pgkill(int pid, int sig);
 #define recv(s, buf, len, flags) pgwin32_recv(s, buf, len, flags)
 #define send(s, buf, len, flags) pgwin32_send(s, buf, len, flags)
 
-SOCKET		pgwin32_socket(int af, int type, int protocol);
-int			pgwin32_bind(SOCKET s, struct sockaddr *addr, int addrlen);
-int			pgwin32_listen(SOCKET s, int backlog);
-SOCKET		pgwin32_accept(SOCKET s, struct sockaddr *addr, int *addrlen);
-int			pgwin32_connect(SOCKET s, const struct sockaddr *name, int namelen);
-int			pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, const struct timeval *timeout);
-int			pgwin32_recv(SOCKET s, char *buf, int len, int flags);
-int			pgwin32_send(SOCKET s, const void *buf, int len, int flags);
-int			pgwin32_waitforsinglesocket(SOCKET s, int what, int timeout);
+extern SOCKET pgwin32_socket(int af, int type, int protocol);
+extern int	pgwin32_bind(SOCKET s, struct sockaddr *addr, int addrlen);
+extern int	pgwin32_listen(SOCKET s, int backlog);
+extern SOCKET pgwin32_accept(SOCKET s, struct sockaddr *addr, int *addrlen);
+extern int	pgwin32_connect(SOCKET s, const struct sockaddr *name, int namelen);
+extern int	pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, const struct timeval *timeout);
+extern int	pgwin32_recv(SOCKET s, char *buf, int len, int flags);
+extern int	pgwin32_send(SOCKET s, const void *buf, int len, int flags);
+extern int	pgwin32_waitforsinglesocket(SOCKET s, int what, int timeout);
 
-extern int	pgwin32_noblock;
+extern PGDLLIMPORT int pgwin32_noblock;
 
 #endif							/* FRONTEND */
 
@@ -462,7 +500,12 @@ extern void _dosmaperr(unsigned long);
 
 /* in port/win32env.c */
 extern int	pgwin32_putenv(const char *);
-extern void pgwin32_unsetenv(const char *);
+extern int	pgwin32_setenv(const char *name, const char *value, int overwrite);
+extern int	pgwin32_unsetenv(const char *name);
+
+#define putenv(x) pgwin32_putenv(x)
+#define setenv(x,y,z) pgwin32_setenv(x,y,z)
+#define unsetenv(x) pgwin32_unsetenv(x)
 
 /* in port/win32security.c */
 extern int	pgwin32_is_service(void);
@@ -470,9 +513,6 @@ extern int	pgwin32_is_admin(void);
 
 /* Windows security token manipulation (in src/common/exec.c) */
 extern BOOL AddUserToTokenDacl(HANDLE hToken);
-
-#define putenv(x) pgwin32_putenv(x)
-#define unsetenv(x) pgwin32_unsetenv(x)
 
 /* Things that exist in MinGW headers, but need to be added to MSVC */
 #ifdef _MSC_VER
@@ -488,9 +528,6 @@ typedef unsigned short mode_t;
 #define F_OK 0
 #define W_OK 2
 #define R_OK 4
-
-/* Pulled from Makefile.port in MinGW */
-#define DLSUFFIX ".dll"
 
 #endif							/* _MSC_VER */
 

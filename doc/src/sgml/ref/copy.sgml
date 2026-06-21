@@ -41,7 +41,7 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
     FREEZE [ <replaceable class="parameter">boolean</replaceable> ]
     DELIMITER '<replaceable class="parameter">delimiter_character</replaceable>'
     NULL '<replaceable class="parameter">null_string</replaceable>'
-    HEADER [ <replaceable class="parameter">boolean</replaceable> ]
+    HEADER [ <replaceable class="parameter">boolean</replaceable> | MATCH ]
     QUOTE '<replaceable class="parameter">quote_character</replaceable>'
     ESCAPE '<replaceable class="parameter">escape_character</replaceable>'
     NEWLINE '<replaceable class="parameter">newline_character</replaceable>'
@@ -88,6 +88,12 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
    specified, data is transmitted via the connection between the
    client and the server.
   </para>
+
+  <para>
+    Each backend running <command>COPY</command> will report its progress
+    in the <structname>pg_stat_progress_copy</structname> view. See
+    <xref linkend="copy-progress-reporting"/> for details.
+  </para>
  </refsect1>
 
  <refsect1>
@@ -118,9 +124,11 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
     <term><replaceable class="parameter">query</replaceable></term>
     <listitem>
      <para>
-      A <xref linkend="sql-select"/>, <xref linkend="sql-values"/>,
-      <xref linkend="sql-insert"/>, <xref linkend="sql-update"/> or
-      <xref linkend="sql-delete"/> command whose results are to be
+      A <link linkend="sql-select"><command>SELECT</command></link>,
+      <link linkend="sql-values"><command>VALUES</command></link>,
+      <link linkend="sql-insert"><command>INSERT</command></link>,
+      <link linkend="sql-update"><command>UPDATE</command></link>, or
+      <link linkend="sql-delete"><command>DELETE</command></link> command whose results are to be
       copied.  Note that parentheses are required around the query.
      </para>
      <para>
@@ -293,8 +301,14 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
      <para>
       Specifies that the file contains a header line with the names of each
       column in the file.  On output, the first line contains the column
-      names from the table, and on input, the first line is ignored.
-      This option is allowed only when using <literal>CSV</literal> format.
+      names from the table.  On input, the first line is discarded when this
+      option is set to <literal>true</literal> (or equivalent Boolean value).
+      If this option is set to <literal>MATCH</literal>, the number and names
+      of the columns in the header line must match the actual column names of
+      the table, otherwise an error is raised.
+      This option is not allowed when using <literal>binary</literal> format.
+      The <literal>MATCH</literal> option is only valid for <command>COPY
+      FROM</command> commands.
      </para>
     </listitem>
    </varlistentry>
@@ -447,26 +461,22 @@ COPY <replaceable class="parameter">count</replaceable>
   <title>Notes</title>
 
    <para>
-    <command>COPY TO</command> can only be used with plain tables, not
-    with views.  However, you can write <literal>COPY (SELECT * FROM
-    <replaceable class="parameter">viewname</replaceable>) TO ...</literal>
-    to copy the current contents of a view.
+    <command>COPY TO</command> can be used only with plain
+    tables, not views, and does not copy rows from child tables
+    or child partitions.  For example, <literal>COPY <replaceable
+    class="parameter">table</replaceable> TO</literal> copies
+    the same rows as <literal>SELECT * FROM ONLY <replaceable
+    class="parameter">table</replaceable></literal>.
+    The syntax <literal>COPY (SELECT * FROM <replaceable
+    class="parameter">table</replaceable>) TO ...</literal> can be used to
+    dump all of the rows in an inheritance hierarchy, partitioned table,
+    or view.
    </para>
 
    <para>
     <command>COPY FROM</command> can be used with plain, foreign, or
     partitioned tables or with views that have
     <literal>INSTEAD OF INSERT</literal> triggers.
-   </para>
-
-   <para>
-    <command>COPY</command> only deals with the specific table named;
-    it does not copy data to or from child tables.  Thus for example
-    <literal>COPY <replaceable class="parameter">table</replaceable> TO</literal>
-    shows the same data as <literal>SELECT * FROM ONLY <replaceable
-    class="parameter">table</replaceable></literal>.  But <literal>COPY
-    (SELECT * FROM <replaceable class="parameter">table</replaceable>) TO ...</literal>
-    can be used to dump all of the data in an inheritance hierarchy.
    </para>
 
    <para>
@@ -497,7 +507,7 @@ COPY <replaceable class="parameter">count</replaceable>
     by the server, not by the client application, must be executable by the
     <productname>PostgreSQL</productname> user.
     <command>COPY</command> naming a file or command is only allowed to
-    database superusers or users who are granted one of the default roles
+    database superusers or users who are granted one of the roles
     <literal>pg_read_server_files</literal>,
     <literal>pg_write_server_files</literal>,
     or <literal>pg_execute_server_program</literal>, since it allows reading
@@ -668,12 +678,12 @@ COPY <replaceable class="parameter">count</replaceable>
       <row>
        <entry><literal>\</literal><replaceable>digits</replaceable></entry>
        <entry>Backslash followed by one to three octal digits specifies
-       the character with that numeric code</entry>
+       the byte with that numeric code</entry>
       </row>
       <row>
        <entry><literal>\x</literal><replaceable>digits</replaceable></entry>
        <entry>Backslash <literal>x</literal> followed by one or two hex digits specifies
-       the character with that numeric code</entry>
+       the byte with that numeric code</entry>
       </row>
      </tbody>
     </tgroup>
@@ -703,6 +713,12 @@ COPY <replaceable class="parameter">count</replaceable>
     They are also highly vulnerable to corruption if the <command>COPY</command> file is
     transferred across different machines (for example, from Unix to Windows
     or vice versa).
+   </para>
+
+   <para>
+     All backslash sequences are interpreted after encoding conversion.
+     The bytes specified with the octal and hex-digit backslash sequences must
+     form valid characters in the database encoding.
    </para>
 
    <para>
@@ -1089,6 +1105,14 @@ COPY [ BINARY ] <replaceable class="parameter">table_name</replaceable>
     [ [USING] DELIMITERS '<replaceable class="parameter">delimiter_character</replaceable>' ]
     [ WITH NULL AS '<replaceable class="parameter">null_string</replaceable>' ]
 </synopsis></para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="copy-progress-reporting"/></member>
+  </simplelist>
  </refsect1>
 </refentry>
 

@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 #
 # Test pg_rewind when the target's pg_wal directory is a symlink.
 #
@@ -5,8 +8,8 @@ use strict;
 use warnings;
 use File::Copy;
 use File::Path qw(rmtree);
-use TestLib;
-use Test::More tests => 5;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 use FindBin;
 use lib $FindBin::RealBin;
@@ -17,7 +20,8 @@ sub run_test
 {
 	my $test_mode = shift;
 
-	my $primary_xlogdir = "${TestLib::tmp_check}/xlog_primary";
+	my $primary_xlogdir =
+	  "${PostgreSQL::Test::Utils::tmp_check}/xlog_primary";
 
 	rmtree($primary_xlogdir);
 	RewindTest::setup_cluster($test_mode);
@@ -73,4 +77,4 @@ in standby, after promotion
 run_test('local');
 run_test('remote');
 
-exit(0);
+done_testing();

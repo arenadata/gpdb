@@ -3,7 +3,7 @@
  * int8.c
  *	  Internal 64-bit integer operations
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,7 +24,7 @@
 #include "nodes/supportnodes.h"
 #include "optimizer/optimizer.h"
 #include "utils/builtins.h"
-#include "utils/int8.h"
+#include "utils/lsyscache.h"
 
 
 typedef struct
@@ -35,18 +35,12 @@ typedef struct
 } generate_series_fctx;
 
 
-/***********************************************************************
- **
- **		Routines for 64-bit integers.
- **
- ***********************************************************************/
-
-/*----------------------------------------------------------
- * Formatting and conversion routines.
- *---------------------------------------------------------*/
-
 /*
  * scanint8 --- try to parse a string into an int8.
+ *
+ * GPDB: PG15 removed the core scanint8(); it is kept here as a Greenplum
+ * helper because several MPP call sites rely on the "soft" (errorOK) behaviour
+ * that pg_strtoint64() does not provide.
  *
  * If errorOK is false, ereport a useful error message if the string is bad.
  * If errorOK is true, just return "false" for bad input.
@@ -57,14 +51,6 @@ scanint8(const char *str, bool errorOK, int64 *result)
 	const char *ptr = str;
 	int64		tmp = 0;
 	bool		neg = false;
-
-	/*
-	 * Do our own scan, rather than relying on sscanf which might be broken
-	 * for long long.
-	 *
-	 * As INT64_MIN can't be stored as a positive 64 bit integer, accumulate
-	 * value as a negative number.
-	 */
 
 	/* skip leading spaces */
 	while (*ptr && isspace((unsigned char) *ptr))
@@ -128,16 +114,25 @@ invalid_syntax:
 	return false;
 }
 
+
+/***********************************************************************
+ **
+ **		Routines for 64-bit integers.
+ **
+ ***********************************************************************/
+
+/*----------------------------------------------------------
+ * Formatting and conversion routines.
+ *---------------------------------------------------------*/
+
 /* int8in()
  */
 Datum
 int8in(PG_FUNCTION_ARGS)
 {
-	char	   *str = PG_GETARG_CSTRING(0);
-	int64		result;
+	char	   *num = PG_GETARG_CSTRING(0);
 
-	(void) scanint8(str, false, &result);
-	PG_RETURN_INT64(result);
+	PG_RETURN_INT64(pg_strtoint64(num));
 }
 
 
@@ -902,6 +897,49 @@ Datum
 int8dec_any(PG_FUNCTION_ARGS)
 {
 	return int8dec(fcinfo);
+}
+
+/*
+ * int8inc_support
+ *		prosupport function for int8inc() and int8inc_any()
+ */
+Datum
+int8inc_support(PG_FUNCTION_ARGS)
+{
+	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
+
+	if (IsA(rawreq, SupportRequestWFuncMonotonic))
+	{
+		SupportRequestWFuncMonotonic *req = (SupportRequestWFuncMonotonic *) rawreq;
+		MonotonicFunction monotonic = MONOTONICFUNC_NONE;
+		int			frameOptions = req->window_clause->frameOptions;
+
+		/* No ORDER BY clause then all rows are peers */
+		if (req->window_clause->orderClause == NIL)
+			monotonic = MONOTONICFUNC_BOTH;
+		else
+		{
+			/*
+			 * Otherwise take into account the frame options.  When the frame
+			 * bound is the start of the window then the resulting value can
+			 * never decrease, therefore is monotonically increasing
+			 */
+			if (frameOptions & FRAMEOPTION_START_UNBOUNDED_PRECEDING)
+				monotonic |= MONOTONICFUNC_INCREASING;
+
+			/*
+			 * Likewise, if the frame bound is the end of the window then the
+			 * resulting value can never decrease.
+			 */
+			if (frameOptions & FRAMEOPTION_END_UNBOUNDED_FOLLOWING)
+				monotonic |= MONOTONICFUNC_DECREASING;
+		}
+
+		req->monotonic = monotonic;
+		PG_RETURN_POINTER(req);
+	}
+
+	PG_RETURN_POINTER(NULL);
 }
 
 

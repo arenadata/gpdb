@@ -83,8 +83,14 @@ PostgreSQL documentation
     </listitem>
     <listitem>
      <para>
-      If you are using <literal>-X none</literal>, there is no guarantee that all
-      WAL files required for the backup are archived at the end of backup.
+      <application>pg_basebackup</application> cannot force the standby
+      to switch to a new WAL file at the end of backup.
+      When you are using <literal>-X none</literal>, if write activity on
+      the primary is low, <application>pg_basebackup</application> may
+      need to wait a long time for the last WAL file required for the backup
+      to be switched and archived.  In this case, it may be useful to run
+      <function>pg_switch_wal</function> on the primary in order to
+      trigger an immediate WAL file switch.
      </para>
     </listitem>
     <listitem>
@@ -96,8 +102,8 @@ PostgreSQL documentation
      <para>
       All WAL records required for the backup must contain sufficient full-page writes,
       which requires you to enable <varname>full_page_writes</varname> on the primary and
-      not to use a tool like <application>pg_compresslog</application> as
-      <varname>archive_command</varname> to remove full-page writes from WAL files.
+      not to use a tool in your <varname>archive_library</varname> to remove
+      full-page writes from WAL files.
      </para>
     </listitem>
    </itemizedlist>
@@ -161,6 +167,7 @@ PostgreSQL documentation
             tablespaces, the main data directory will be placed in the
             target directory, but all other tablespaces will be placed
             in the same absolute path as they have on the source server.
+            (See <option>--tablespace-mapping</option> to change that.)
            </para>
            <para>
             This is the default format.
@@ -198,7 +205,10 @@ PostgreSQL documentation
       <listitem>
 
        <para>
-        Creates a <filename>standby.signal</filename> file and appends
+        Creates a
+        <link linkend="file-standby-signal"><filename>standby.signal</filename></link>
+        <indexterm><primary><filename>standby.signal</filename></primary><secondary>pg_basebackup --write-recovery-conf</secondary></indexterm>
+        file and appends
         connection settings to the <filename>postgresql.auto.conf</filename>
         file in the target directory (or within the base archive file when
         using tar format).  This eases setting up a standby server using the
@@ -209,6 +219,37 @@ PostgreSQL documentation
         settings and, if specified, the replication slot
         that <application>pg_basebackup</application> is using, so that
         streaming replication will use the same settings later on.
+       </para>
+
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-t <replaceable class="parameter">target</replaceable></option></term>
+      <term><option>--target=<replaceable class="parameter">target</replaceable></option></term>
+      <listitem>
+
+       <para>
+        Instructs the server where to place the base backup. The default target
+        is <literal>client</literal>, which specifies that the backup should
+        be sent to the machine where <application>pg_basebackup</application>
+        is running. If the target is instead set to
+        <literal>server:/some/path</literal>, the backup will be stored on
+        the machine where the server is running in the
+        <literal>/some/path</literal> directory. Storing a backup on the
+        server requires superuser privileges or having privileges of the
+        <literal>pg_write_server_files</literal> role. If the target is set to
+        <literal>blackhole</literal>, the contents are discarded and not
+        stored anywhere. This should only be used for testing purposes, as you
+        will not end up with an actual backup.
+       </para>
+
+       <para>
+        Since WAL streaming is implemented by
+        <application>pg_basebackup</application> rather than by the server,
+        this option cannot be used together with <literal>-Xstream</literal>.
+        Since that is the default, when this option is specified, you must also
+        specify either <literal>-Xfetch</literal> or <literal>-Xnone</literal>.
        </para>
 
       </listitem>
@@ -241,7 +282,12 @@ PostgreSQL documentation
         the main data directory are updated to point to the new location.  So
         the new data directory is ready to be used for a new server instance
         with all tablespaces in the updated locations.
-        </para>
+       </para>
+
+       <para>
+        Currently, this option only works with plain output format; it is
+        ignored if tar format is selected.
+       </para>
       </listitem>
      </varlistentry>
 
@@ -353,14 +399,58 @@ PostgreSQL documentation
 
      <varlistentry>
       <term><option>-Z <replaceable class="parameter">level</replaceable></option></term>
+      <term><option>-Z [{client|server}-]<replaceable class="parameter">method</replaceable>[:<replaceable>detail</replaceable>]</option></term>
       <term><option>--compress=<replaceable class="parameter">level</replaceable></option></term>
+      <term><option>--compress=[{client|server}-]<replaceable class="parameter">method</replaceable>[:<replaceable>detail</replaceable>]</option></term>
       <listitem>
        <para>
-        Enables gzip compression of tar file output, and specifies the
-        compression level (0 through 9, 0 being no compression and 9 being best
-        compression). Compression is only available when using the tar
-        format, and the suffix <filename>.gz</filename> will
-        automatically be added to all tar filenames.
+        Requests compression of the backup. If <literal>client</literal> or
+        <literal>server</literal> is included, it specifies where the
+        compression is to be performed. Compressing on the server will reduce
+        transfer bandwidth but will increase server CPU consumption.  The
+        default is <literal>client</literal> except when
+        <literal>--target</literal> is used. In that case, the backup is not
+        being sent to the client, so only server compression is sensible.
+        When <literal>-Xstream</literal>, which is the default, is used,
+        server-side compression will not be applied to the WAL. To compress
+        the WAL, use client-side compression, or
+        specify <literal>-Xfetch</literal>.
+       </para>
+       <para>
+        The compression method can be set to <literal>gzip</literal>,
+        <literal>lz4</literal>, <literal>zstd</literal>, or
+        <literal>none</literal> for no compression. A compression detail
+        string can optionally be specified.  If the detail string is an
+        integer, it specifies the compression level.  Otherwise, it should be
+        a comma-separated list of items, each of the form
+        <literal>keyword</literal> or <literal>keyword=value</literal>.
+        Currently, the supported keywords are <literal>level</literal>
+        and <literal>workers</literal>.
+       </para>
+       <para>
+        If no compression level is specified, the default compression level
+        will be used. If only a level is specified without mentioning an
+        algorithm, <literal>gzip</literal> compression will be used if the
+        level is greater than 0, and no compression will be used if the level
+        is 0.
+       </para>
+       <para>
+        When the tar format is used with <literal>gzip</literal>,
+        <literal>lz4</literal>, or <literal>zstd</literal>, the suffix
+        <filename>.gz</filename>, <filename>.lz4</filename>, or
+        <filename>.zst</filename>, respectively, will be automatically added to
+        all tar filenames. When the plain format is used, client-side
+        compression may not be specified, but it is still possible to request
+        server-side compression. If this is done, the server will compress the
+        backup for transmission, and the client will decompress and extract it.
+       </para>
+       <para>
+        When this option is used in combination with
+        <literal>-Xstream</literal>, <literal>pg_wal.tar</literal> will
+        be compressed using <literal>gzip</literal> if client-side gzip
+        compression is selected, but will not be compressed if any other
+        compression algorithm is selected, or if server-side compression
+        is selected.
        </para>
       </listitem>
      </varlistentry>
@@ -368,12 +458,12 @@ PostgreSQL documentation
    </para>
    <para>
     The following command-line options control the generation of the
-    backup and the running of the program:
+    backup and the invocation of the program:
 
     <variablelist>
      <varlistentry>
-      <term><option>-c <replaceable class="parameter">fast|spread</replaceable></option></term>
-      <term><option>--checkpoint=<replaceable class="parameter">fast|spread</replaceable></option></term>
+      <term><option>-c {fast|spread}</option></term>
+      <term><option>--checkpoint={fast|spread}</option></term>
       <listitem>
        <para>
         Sets checkpoint mode to fast (immediate) or spread (the default)
@@ -540,7 +630,7 @@ PostgreSQL documentation
         of each file for users who wish to verify that the backup has not been
         tampered with, while the CRC32C algorithm provides a checksum that is
         much faster to calculate; it is good at catching errors due to accidental
-        changes but is not resistant to targeted modifications.  Note that, to
+        changes but is not resistant to malicious modifications.  Note that, to
         be useful against an adversary who has access to the backup, the backup
         manifest would need to be stored securely elsewhere or otherwise
         verified not to have been modified since the backup was taken.
@@ -653,8 +743,9 @@ PostgreSQL documentation
       <term><option>--dbname=<replaceable class="parameter">connstr</replaceable></option></term>
       <listitem>
        <para>
-        Specifies parameters used to connect to the server, as a connection
-        string. See <xref linkend="libpq-connstring"/> for more information.
+        Specifies parameters used to connect to the server, as a <link
+        linkend="libpq-connstring">connection string</link>;  these
+        will override any conflicting command line options.
        </para>
        <para>
         The option is called <literal>--dbname</literal> for consistency with other
@@ -896,6 +987,15 @@ PostgreSQL documentation
 <screen>
 <prompt>$</prompt> <userinput>pg_basebackup -D backup/data -T /opt/ts=$(pwd)/backup/ts</userinput>
 </screen></para>
+
+  <para>
+   To create a backup of a local server with one tar file for each tablespace
+   compressed with <application>gzip</application> at level 9, stored in the
+   directory <filename>backup</filename>:
+<screen>
+<prompt>$</prompt> <userinput>pg_basebackup -D backup -Ft --compress=gzip:9</userinput>
+</screen></para>
+
  </refsect1>
 
  <refsect1>
@@ -903,6 +1003,7 @@ PostgreSQL documentation
 
   <simplelist type="inline">
    <member><xref linkend="app-pgdump"/></member>
+   <member><xref linkend="basebackup-progress-reporting"/></member>
   </simplelist>
  </refsect1>
 

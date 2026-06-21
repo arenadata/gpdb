@@ -3,7 +3,7 @@
  * event_trigger.c
  *	  PostgreSQL EVENT TRIGGER support code.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -177,7 +177,7 @@ CreateEventTrigger(CreateEventTrigStmt *stmt)
 	/* Find and validate the trigger function. */
 	funcoid = LookupFuncName(stmt->funcname, 0, NULL, false);
 	funcrettype = get_func_rettype(funcoid);
-	if (funcrettype != EVTTRIGGEROID)
+	if (funcrettype != EVENT_TRIGGEROID)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("function %s must return type %s",
@@ -940,6 +940,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_DATABASE:
 		case OBJECT_TABLESPACE:
 		case OBJECT_ROLE:
+		case OBJECT_PARAMETER_ACL:
 			/* no support for global objects */
 			return false;
 		case OBJECT_EVENT_TRIGGER:
@@ -973,6 +974,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_POLICY:
 		case OBJECT_PROCEDURE:
 		case OBJECT_PUBLICATION:
+		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:
 		case OBJECT_ROUTINE:
 		case OBJECT_RULE:
@@ -1021,6 +1023,7 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_DATABASE:
 		case OCLASS_TBLSPACE:
 		case OCLASS_ROLE:
+		case OCLASS_PARAMETER_ACL:
 			/* no support for global objects */
 			return false;
 		case OCLASS_EVENT_TRIGGER:
@@ -1057,6 +1060,7 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_EXTENSION:
 		case OCLASS_POLICY:
 		case OCLASS_PUBLICATION:
+		case OCLASS_PUBLICATION_NAMESPACE:
 		case OCLASS_PUBLICATION_REL:
 		case OCLASS_SUBSCRIPTION:
 		case OCLASS_TRANSFORM:
@@ -1296,10 +1300,6 @@ Datum
 pg_event_trigger_dropped_objects(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
 	slist_iter	iter;
 
 	/*
@@ -1312,30 +1312,8 @@ pg_event_trigger_dropped_objects(PG_FUNCTION_ARGS)
 				 errmsg("%s can only be called in a sql_drop event trigger function",
 						"pg_event_trigger_dropped_objects()")));
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
 	/* Build tuplestore to hold the result rows */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
+	SetSingleFuncCall(fcinfo, 0);
 
 	slist_foreach(iter, &(currentEventTriggerState->SQLDropList))
 	{
@@ -1404,11 +1382,9 @@ pg_event_trigger_dropped_objects(PG_FUNCTION_ARGS)
 			nulls[i++] = true;
 		}
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 	}
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
 }
@@ -1654,9 +1630,15 @@ EventTriggerAlterTableEnd(void)
 	/* If no subcommands, don't collect */
 	if (list_length(currentEventTriggerState->currentCommand->d.alterTable.subcmds) != 0)
 	{
+		MemoryContext oldcxt;
+
+		oldcxt = MemoryContextSwitchTo(currentEventTriggerState->cxt);
+
 		currentEventTriggerState->commandList =
 			lappend(currentEventTriggerState->commandList,
 					currentEventTriggerState->currentCommand);
+
+		MemoryContextSwitchTo(oldcxt);
 	}
 	else
 		pfree(currentEventTriggerState->currentCommand);
@@ -1849,10 +1831,6 @@ Datum
 pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
 	ListCell   *lc;
 
 	/*
@@ -1864,30 +1842,8 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 				 errmsg("%s can only be called in an event trigger function",
 						"pg_event_trigger_ddl_commands()")));
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
 	/* Build tuplestore to hold the result rows */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
+	SetSingleFuncCall(fcinfo, 0);
 
 	foreach(lc, currentEventTriggerState->commandList)
 	{
@@ -1938,8 +1894,19 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 					else if (cmd->type == SCT_AlterTSConfig)
 						addr = cmd->d.atscfg.address;
 
-					type = getObjectTypeDescription(&addr, false);
-					identity = getObjectIdentity(&addr, false);
+					/*
+					 * If an object was dropped in the same command we may end
+					 * up in a situation where we generated a message but can
+					 * no longer look for the object information, so skip it
+					 * rather than failing.  This can happen for example with
+					 * some subcommand combinations of ALTER TABLE.
+					 */
+					identity = getObjectIdentity(&addr, true);
+					if (identity == NULL)
+						continue;
+
+					/* The type can never be NULL. */
+					type = getObjectTypeDescription(&addr, true);
 
 					/*
 					 * Obtain schema name, if any ("pg_temp" if a temp
@@ -1973,11 +1940,7 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 								elog(ERROR,
 									 "invalid null namespace in object %u/%u/%d",
 									 addr.classId, addr.objectId, addr.objectSubId);
-							/* XXX not quite get_namespace_name_or_temp */
-							if (isAnyTempNamespace(schema_oid))
-								schema = pstrdup("pg_temp");
-							else
-								schema = get_namespace_name(schema_oid);
+							schema = get_namespace_name_or_temp(schema_oid);
 
 							table_close(catalog, AccessShareLock);
 						}
@@ -2051,11 +2014,9 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 				break;
 		}
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 	}
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	PG_RETURN_VOID();
 }
@@ -2091,6 +2052,8 @@ stringify_grant_objtype(ObjectType objtype)
 			return "LARGE OBJECT";
 		case OBJECT_SCHEMA:
 			return "SCHEMA";
+		case OBJECT_PARAMETER_ACL:
+			return "PARAMETER";
 		case OBJECT_PROCEDURE:
 			return "PROCEDURE";
 		case OBJECT_ROUTINE:
@@ -2121,6 +2084,7 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_OPFAMILY:
 		case OBJECT_POLICY:
 		case OBJECT_PUBLICATION:
+		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:
 		case OBJECT_ROLE:
 		case OBJECT_RULE:
@@ -2204,8 +2168,10 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_OPCLASS:
 		case OBJECT_OPERATOR:
 		case OBJECT_OPFAMILY:
+		case OBJECT_PARAMETER_ACL:
 		case OBJECT_POLICY:
 		case OBJECT_PUBLICATION:
+		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:
 		case OBJECT_ROLE:
 		case OBJECT_RULE:

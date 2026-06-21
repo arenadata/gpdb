@@ -12,6 +12,7 @@
 #include "catalog/pg_class_d.h"
 #include "common/connect.h"
 #include "common/logging.h"
+#include "common/string.h"
 #include "getopt_long.h"
 #include "libpq-fe.h"
 #include "pg_getopt.h"
@@ -181,16 +182,17 @@ get_opts(int argc, char **argv, struct options *my_opts)
 				break;
 
 			default:
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 				exit(1);
 		}
 	}
 
 	if (optind < argc)
 	{
-		fprintf(stderr, _("%s: too many command-line arguments (first is \"%s\")\n"),
-				progname, argv[optind]);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		pg_log_error("too many command-line arguments (first is \"%s\")",
+					 argv[optind]);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 }
@@ -293,8 +295,7 @@ PGconn *
 sql_conn(struct options *my_opts)
 {
 	PGconn	   *conn;
-	bool		have_password = false;
-	char		password[100];
+	char	   *password = NULL;
 	bool		new_pass;
 	PGresult   *res;
 
@@ -316,7 +317,7 @@ sql_conn(struct options *my_opts)
 		keywords[2] = "user";
 		values[2] = my_opts->username;
 		keywords[3] = "password";
-		values[3] = have_password ? password : NULL;
+		values[3] = password;
 		keywords[4] = "dbname";
 		values[4] = my_opts->dbname;
 		keywords[5] = "fallback_application_name";
@@ -328,19 +329,15 @@ sql_conn(struct options *my_opts)
 		conn = PQconnectdbParams(keywords, values, true);
 
 		if (!conn)
-		{
-			pg_log_error("could not connect to database %s",
-						 my_opts->dbname);
-			exit(1);
-		}
+			pg_fatal("could not connect to database %s",
+					 my_opts->dbname);
 
 		if (PQstatus(conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
-			!have_password)
+			!password)
 		{
 			PQfinish(conn);
-			simple_prompt("Password: ", password, sizeof(password), false);
-			have_password = true;
+			password = simple_prompt("Password: ", false);
 			new_pass = true;
 		}
 	} while (new_pass);
@@ -348,8 +345,7 @@ sql_conn(struct options *my_opts)
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(conn) == CONNECTION_BAD)
 	{
-		pg_log_error("could not connect to database %s: %s",
-					 my_opts->dbname, PQerrorMessage(conn));
+		pg_log_error("%s", PQerrorMessage(conn));
 		PQfinish(conn);
 		exit(1);
 	}
@@ -361,7 +357,7 @@ sql_conn(struct options *my_opts)
 					 PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		exit(-1);
+		exit(1);
 	}
 	PQclear(res);
 
@@ -392,11 +388,11 @@ sql_exec(PGconn *conn, const char *todo, bool quiet)
 	if (!res || PQresultStatus(res) > 2)
 	{
 		pg_log_error("query failed: %s", PQerrorMessage(conn));
-		pg_log_error("query was: %s", todo);
+		pg_log_error_detail("Query was: %s", todo);
 
 		PQclear(res);
 		PQfinish(conn);
-		exit(-1);
+		exit(1);
 	}
 
 	/* get the number of fields */

@@ -3,7 +3,7 @@
  * jsonapi.h
  *	  Declarations for JSON API support.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/common/jsonapi.h
@@ -79,8 +79,8 @@ typedef struct JsonLexContext
 	char	   *prev_token_terminator;
 	JsonTokenType token_type;
 	int			lex_level;
-	int			line_number;
-	char	   *line_start;
+	int			line_number;	/* line number, starting from 1 */
+	char	   *line_start;		/* where that line starts within input */
 	StringInfo	strval;
 } JsonLexContext;
 
@@ -128,7 +128,7 @@ extern JsonParseErrorType pg_parse_json(JsonLexContext *lex,
 										JsonSemAction *sem);
 
 /* the null action object used for pure validation */
-extern JsonSemAction nullSemAction;
+extern PGDLLIMPORT JsonSemAction nullSemAction;
 
 /*
  * json_count_array_elements performs a fast secondary parse to determine the

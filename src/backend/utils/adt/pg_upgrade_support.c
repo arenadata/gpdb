@@ -5,7 +5,7 @@
  *	to control oid and relfilenode assignment, and do other special
  *	hacks needed for pg_upgrade.
  *
- *	Copyright (c) 2010-2020, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/backend/utils/adt/pg_upgrade_support.c
  */
 
@@ -67,6 +67,28 @@ binary_upgrade_set_next_array_pg_type_oid(PG_FUNCTION_ARGS)
 }
 
 Datum
+binary_upgrade_set_next_multirange_pg_type_oid(PG_FUNCTION_ARGS)
+{
+	Oid			typoid = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_mrng_pg_type_oid = typoid;
+
+	PG_RETURN_VOID();
+}
+
+Datum
+binary_upgrade_set_next_multirange_array_pg_type_oid(PG_FUNCTION_ARGS)
+{
+	Oid			typoid = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_mrng_array_pg_type_oid = typoid;
+
+	PG_RETURN_VOID();
+}
+
+Datum
 binary_upgrade_set_next_heap_pg_class_oid(PG_FUNCTION_ARGS)
 {
 	Oid			reloid = PG_GETARG_OID(0);
@@ -76,6 +98,17 @@ binary_upgrade_set_next_heap_pg_class_oid(PG_FUNCTION_ARGS)
 	CHECK_IS_BINARY_UPGRADE;
 	AddPreassignedOidFromBinaryUpgrade(reloid, RelationRelationId, relname,
 									   relnamespace, InvalidOid, InvalidOid);
+
+	PG_RETURN_VOID();
+}
+
+Datum
+binary_upgrade_set_next_heap_relfilenode(PG_FUNCTION_ARGS)
+{
+	Oid			nodeoid = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_heap_pg_class_relfilenode = nodeoid;
 
 	PG_RETURN_VOID();
 }
@@ -95,6 +128,17 @@ binary_upgrade_set_next_index_pg_class_oid(PG_FUNCTION_ARGS)
 }
 
 Datum
+binary_upgrade_set_next_index_relfilenode(PG_FUNCTION_ARGS)
+{
+	Oid			nodeoid = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_index_pg_class_relfilenode = nodeoid;
+
+	PG_RETURN_VOID();
+}
+
+Datum
 binary_upgrade_set_next_toast_pg_class_oid(PG_FUNCTION_ARGS)
 {
 	Oid			reloid = PG_GETARG_OID(0);
@@ -104,6 +148,17 @@ binary_upgrade_set_next_toast_pg_class_oid(PG_FUNCTION_ARGS)
 	CHECK_IS_BINARY_UPGRADE;
 	AddPreassignedOidFromBinaryUpgrade(reloid, RelationRelationId, relname,
 									   relnamespace, InvalidOid, InvalidOid);
+
+	PG_RETURN_VOID();
+}
+
+Datum
+binary_upgrade_set_next_toast_relfilenode(PG_FUNCTION_ARGS)
+{
+	Oid			nodeoid = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_toast_pg_class_relfilenode = nodeoid;
 
 	PG_RETURN_VOID();
 }

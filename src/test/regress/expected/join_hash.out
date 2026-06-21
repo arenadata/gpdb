@@ -95,6 +95,7 @@ savepoint settings;
 set local max_parallel_workers_per_gather = 0;
 set local work_mem = '4MB';
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+set local hash_mem_multiplier = 1.0;
 explain (costs off)
   select count(*) from simple r join simple s using (id);
                      QUERY PLAN                     
@@ -132,6 +133,7 @@ savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '4MB';
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+set local hash_mem_multiplier = 1.0;
 set local enable_parallel_hash = off;
 explain (costs off)
   select count(*) from simple r join simple s using (id);
@@ -170,6 +172,7 @@ savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '4MB';
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+set local hash_mem_multiplier = 1.0;
 set local enable_parallel_hash = on;
 explain (costs off)
   select count(*) from simple r join simple s using (id);
@@ -566,6 +569,7 @@ savepoint settings;
 set local max_parallel_workers_per_gather = 2;
 set local work_mem = '4MB';
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+set local hash_mem_multiplier = 1.0;
 set local parallel_leader_participation = off;
 select * from hash_join_batches(
 $$
@@ -653,6 +657,7 @@ set enable_material = off;
 set enable_mergejoin = off;
 set work_mem = '4MB';
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+set hash_mem_multiplier = 1.0;
 explain (costs off)
   select count(*) from join_foo
     left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
@@ -764,6 +769,7 @@ set enable_material = off;
 set enable_mergejoin = off;
 set work_mem = '4MB';
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
+set hash_mem_multiplier = 1.0;
 explain (costs off)
   select count(*) from join_foo
     left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
@@ -1064,7 +1070,7 @@ WHERE
            ->  Result
                  Output: (hjtest_1.b * 5)
  Optimizer: Postgres query optimizer
- Settings: enable_sort = 'off', from_collapse_limit = '1', optimizer = 'off'
+ Settings: enable_sort = 'off', from_collapse_limit = '1'
 (38 rows)
 
 SELECT hjtest_1.a a1, hjtest_2.a a2,hjtest_1.tableoid::regclass t1, hjtest_2.tableoid::regclass t2
@@ -1128,7 +1134,7 @@ WHERE
            ->  Result
                  Output: (hjtest_2.c * 5)
  Optimizer: Postgres query optimizer
- Settings: enable_sort = 'off', from_collapse_limit = '1', optimizer = 'off'
+ Settings: enable_sort = 'off', from_collapse_limit = '1'
 (38 rows)
 
 SELECT hjtest_1.a a1, hjtest_2.a a2,hjtest_1.tableoid::regclass t1, hjtest_2.tableoid::regclass t2

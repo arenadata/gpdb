@@ -4,7 +4,7 @@
  *	  fetch tuples from a GIN scan.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -16,6 +16,7 @@
 
 #include "access/gin_private.h"
 #include "access/relscan.h"
+#include "common/pg_prng.h"
 #include "miscadmin.h"
 #include "storage/predicate.h"
 #include "utils/datum.h"
@@ -264,24 +265,28 @@ collectMatchBitmap(GinBtreeData *btree, GinBtreeStack *stack,
 			/* Search forward to re-find idatum */
 			for (;;)
 			{
-				Datum		newDatum;
-				GinNullCategory newCategory;
-
 				if (moveRightIfItNeeded(btree, stack, snapshot) == false)
-					elog(ERROR, "lost saved point in index");	/* must not happen !!! */
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("failed to re-find tuple within index \"%s\"",
+									RelationGetRelationName(btree->index))));
 
 				page = BufferGetPage(stack->buffer);
 				itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, stack->off));
 
-				if (gintuple_get_attrnum(btree->ginstate, itup) != attnum)
-					elog(ERROR, "lost saved point in index");	/* must not happen !!! */
-				newDatum = gintuple_get_key(btree->ginstate, itup,
-											&newCategory);
+				if (gintuple_get_attrnum(btree->ginstate, itup) == attnum)
+				{
+					Datum		newDatum;
+					GinNullCategory newCategory;
 
-				if (ginCompareEntries(btree->ginstate, attnum,
-									  newDatum, newCategory,
-									  idatum, icategory) == 0)
-					break;		/* Found! */
+					newDatum = gintuple_get_key(btree->ginstate, itup,
+												&newCategory);
+
+					if (ginCompareEntries(btree->ginstate, attnum,
+										  newDatum, newCategory,
+										  idatum, icategory) == 0)
+						break;	/* Found! */
+				}
 
 				stack->off++;
 			}
@@ -783,7 +788,7 @@ entryLoadMoreItems(GinState *ginstate, GinScanEntry entry,
 	}
 }
 
-#define gin_rand() (((double) random()) / ((double) MAX_RANDOM_VALUE))
+#define gin_rand() pg_prng_double(&pg_global_prng_state)
 #define dropItem(e) ( gin_rand() > ((double)GinFuzzySearchLimit)/((double)((e)->predictNumberResult)) )
 
 /*
@@ -1314,7 +1319,7 @@ scanGetItem(IndexScanDesc scan, ItemPointerData advancePast,
 			GinScanKey	key = so->keys + i;
 
 			/*
-			 * If we're considering a lossy page, skip excludeOnly keys,  They
+			 * If we're considering a lossy page, skip excludeOnly keys. They
 			 * can't exclude the whole page anyway.
 			 */
 			if (ItemPointerIsLossyPage(item) && key->excludeOnly)

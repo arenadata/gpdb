@@ -3,7 +3,7 @@
  * tsrank.c
  *		rank tsvector by tsquery
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -337,7 +337,7 @@ calc_rank_or(const float *w, TSVector t, TSQuery q)
 			}
 /*
 			limit (sum(1/i^2),i=1,inf) = pi^2/6
-			resj = sum(wi/i^2),i=1,noccurence,
+			resj = sum(wi/i^2),i=1,noccurrence,
 			wi - should be sorted desc,
 			don't sort for now, just choose maximum weight. This should be corrected
 			Oleg Bartunov
@@ -857,8 +857,7 @@ calc_rank_cd(const float4 *arrdata, TSVector txt, TSQuery query, int method)
 	double		Wdoc = 0.0;
 	double		invws[lengthof(weights)];
 	double		SumDist = 0.0,
-				PrevExtPos = 0.0,
-				CurExtPos = 0.0;
+				PrevExtPos = 0.0;
 	int			NExtent = 0;
 	QueryRepresentation qr;
 
@@ -889,6 +888,7 @@ calc_rank_cd(const float4 *arrdata, TSVector txt, TSQuery query, int method)
 	{
 		double		Cpos = 0.0;
 		double		InvSum = 0.0;
+		double		CurExtPos;
 		int			nNoise;
 		DocRepresentation *ptr = ext.begin;
 

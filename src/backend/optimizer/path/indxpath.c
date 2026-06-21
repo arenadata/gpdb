@@ -6,7 +6,7 @@
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -159,7 +159,8 @@ static IndexClause *match_clause_to_indexcol(PlannerInfo *root,
 											 RestrictInfo *rinfo,
 											 int indexcol,
 											 IndexOptInfo *index);
-static IndexClause *match_boolean_index_clause(RestrictInfo *rinfo,
+static IndexClause *match_boolean_index_clause(PlannerInfo *root,
+											   RestrictInfo *rinfo,
 											   int indexcol, IndexOptInfo *index);
 static IndexClause *match_opclause_to_indexcol(PlannerInfo *root,
 											   RestrictInfo *rinfo,
@@ -175,13 +176,16 @@ static IndexClause *get_index_clause_from_support(PlannerInfo *root,
 												  int indexarg,
 												  int indexcol,
 												  IndexOptInfo *index);
-static IndexClause *match_saopclause_to_indexcol(RestrictInfo *rinfo,
+static IndexClause *match_saopclause_to_indexcol(PlannerInfo *root,
+												 RestrictInfo *rinfo,
 												 int indexcol,
 												 IndexOptInfo *index);
-static IndexClause *match_rowcompare_to_indexcol(RestrictInfo *rinfo,
+static IndexClause *match_rowcompare_to_indexcol(PlannerInfo *root,
+												 RestrictInfo *rinfo,
 												 int indexcol,
 												 IndexOptInfo *index);
-static IndexClause *expand_indexqual_rowcompare(RestrictInfo *rinfo,
+static IndexClause *expand_indexqual_rowcompare(PlannerInfo *root,
+												RestrictInfo *rinfo,
 												int indexcol,
 												IndexOptInfo *index,
 												Oid expr_op,
@@ -1826,7 +1830,6 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 	bool		result;
 	Bitmapset  *attrs_used = NULL;
 	Bitmapset  *index_canreturn_attrs = NULL;
-	Bitmapset  *index_cannotreturn_attrs = NULL;
 	ListCell   *lc;
 	int			i;
 
@@ -1866,11 +1869,7 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 
 	/*
 	 * Construct a bitmapset of columns that the index can return back in an
-	 * index-only scan.  If there are multiple index columns containing the
-	 * same attribute, all of them must be capable of returning the value,
-	 * since we might recheck operators on any of them.  (Potentially we could
-	 * be smarter about that, but it's such a weird situation that it doesn't
-	 * seem worth spending a lot of sweat on.)
+	 * index-only scan.
 	 */
 	for (i = 0; i < index->ncolumns; i++)
 	{
@@ -1887,21 +1886,13 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 			index_canreturn_attrs =
 				bms_add_member(index_canreturn_attrs,
 							   attno - FirstLowInvalidHeapAttributeNumber);
-		else
-			index_cannotreturn_attrs =
-				bms_add_member(index_cannotreturn_attrs,
-							   attno - FirstLowInvalidHeapAttributeNumber);
 	}
-
-	index_canreturn_attrs = bms_del_members(index_canreturn_attrs,
-											index_cannotreturn_attrs);
 
 	/* Do we have all the necessary attributes? */
 	result = bms_is_subset(attrs_used, index_canreturn_attrs);
 
 	bms_free(attrs_used);
 	bms_free(index_canreturn_attrs);
-	bms_free(index_cannotreturn_attrs);
 
 	return result;
 }
@@ -2009,6 +2000,7 @@ adjust_rowcount_for_semijoins(PlannerInfo *root,
 			nunique = estimate_num_groups(root,
 										  sjinfo->semi_rhs_exprs,
 										  nraw,
+										  NULL,
 										  NULL);
 			if (rowcount > nunique)
 				rowcount = nunique;
@@ -2339,7 +2331,7 @@ match_clause_to_indexcol(PlannerInfo *root,
 	opfamily = index->opfamily[indexcol];
 	if (IsBooleanOpfamily(opfamily))
 	{
-		iclause = match_boolean_index_clause(rinfo, indexcol, index);
+		iclause = match_boolean_index_clause(root, rinfo, indexcol, index);
 		if (iclause)
 			return iclause;
 	}
@@ -2359,11 +2351,11 @@ match_clause_to_indexcol(PlannerInfo *root,
 	}
 	else if (IsA(clause, ScalarArrayOpExpr))
 	{
-		return match_saopclause_to_indexcol(rinfo, indexcol, index);
+		return match_saopclause_to_indexcol(root, rinfo, indexcol, index);
 	}
 	else if (IsA(clause, RowCompareExpr))
 	{
-		return match_rowcompare_to_indexcol(rinfo, indexcol, index);
+		return match_rowcompare_to_indexcol(root, rinfo, indexcol, index);
 	}
 	else if (index->amsearchnulls && IsA(clause, NullTest))
 	{
@@ -2402,7 +2394,8 @@ match_clause_to_indexcol(PlannerInfo *root,
  * index's key, and if so, build a suitable IndexClause.
  */
 static IndexClause *
-match_boolean_index_clause(RestrictInfo *rinfo,
+match_boolean_index_clause(PlannerInfo *root,
+						   RestrictInfo *rinfo,
 						   int indexcol,
 						   IndexOptInfo *index)
 {
@@ -2472,7 +2465,7 @@ match_boolean_index_clause(RestrictInfo *rinfo,
 		IndexClause *iclause = makeNode(IndexClause);
 
 		iclause->rinfo = rinfo;
-		iclause->indexquals = list_make1(make_simple_restrictinfo(op));
+		iclause->indexquals = list_make1(make_simple_restrictinfo(root, op));
 		iclause->lossy = false;
 		iclause->indexcol = indexcol;
 		iclause->indexcols = NIL;
@@ -2697,7 +2690,8 @@ get_index_clause_from_support(PlannerInfo *root,
 		{
 			Expr	   *clause = (Expr *) lfirst(lc);
 
-			indexquals = lappend(indexquals, make_simple_restrictinfo(clause));
+			indexquals = lappend(indexquals,
+								 make_simple_restrictinfo(root, clause));
 		}
 
 		iclause->rinfo = rinfo;
@@ -2718,7 +2712,8 @@ get_index_clause_from_support(PlannerInfo *root,
  *	  which see for comments.
  */
 static IndexClause *
-match_saopclause_to_indexcol(RestrictInfo *rinfo,
+match_saopclause_to_indexcol(PlannerInfo *root,
+							 RestrictInfo *rinfo,
 							 int indexcol,
 							 IndexOptInfo *index)
 {
@@ -2737,7 +2732,7 @@ match_saopclause_to_indexcol(RestrictInfo *rinfo,
 		return NULL;
 	leftop = (Node *) linitial(saop->args);
 	rightop = (Node *) lsecond(saop->args);
-	right_relids = pull_varnos(rightop);
+	right_relids = pull_varnos(root, rightop);
 	expr_op = saop->opno;
 	expr_coll = saop->inputcollid;
 
@@ -2785,7 +2780,8 @@ match_saopclause_to_indexcol(RestrictInfo *rinfo,
  * is handled by expand_indexqual_rowcompare().
  */
 static IndexClause *
-match_rowcompare_to_indexcol(RestrictInfo *rinfo,
+match_rowcompare_to_indexcol(PlannerInfo *root,
+							 RestrictInfo *rinfo,
 							 int indexcol,
 							 IndexOptInfo *index)
 {
@@ -2830,14 +2826,14 @@ match_rowcompare_to_indexcol(RestrictInfo *rinfo,
 	 * These syntactic tests are the same as in match_opclause_to_indexcol()
 	 */
 	if (match_index_to_operand(leftop, indexcol, index) &&
-		!bms_is_member(index_relid, pull_varnos(rightop)) &&
+		!bms_is_member(index_relid, pull_varnos(root, rightop)) &&
 		!contain_volatile_functions(rightop))
 	{
 		/* OK, indexkey is on left */
 		var_on_left = true;
 	}
 	else if (match_index_to_operand(rightop, indexcol, index) &&
-			 !bms_is_member(index_relid, pull_varnos(leftop)) &&
+			 !bms_is_member(index_relid, pull_varnos(root, leftop)) &&
 			 !contain_volatile_functions(leftop))
 	{
 		/* indexkey is on right, so commute the operator */
@@ -2856,7 +2852,8 @@ match_rowcompare_to_indexcol(RestrictInfo *rinfo,
 		case BTLessEqualStrategyNumber:
 		case BTGreaterEqualStrategyNumber:
 		case BTGreaterStrategyNumber:
-			return expand_indexqual_rowcompare(rinfo,
+			return expand_indexqual_rowcompare(root,
+											   rinfo,
 											   indexcol,
 											   index,
 											   expr_op,
@@ -2890,7 +2887,8 @@ match_rowcompare_to_indexcol(RestrictInfo *rinfo,
  * but we split it out for comprehensibility.
  */
 static IndexClause *
-expand_indexqual_rowcompare(RestrictInfo *rinfo,
+expand_indexqual_rowcompare(PlannerInfo *root,
+							RestrictInfo *rinfo,
 							int indexcol,
 							IndexOptInfo *index,
 							Oid expr_op,
@@ -2960,7 +2958,7 @@ expand_indexqual_rowcompare(RestrictInfo *rinfo,
 			if (expr_op == InvalidOid)
 				break;			/* operator is not usable */
 		}
-		if (bms_is_member(index->rel->relid, pull_varnos(constop)))
+		if (bms_is_member(index->rel->relid, pull_varnos(root, constop)))
 			break;				/* no good, Var on wrong side */
 		if (contain_volatile_functions(constop))
 			break;				/* no good, volatile comparison value */
@@ -3070,7 +3068,8 @@ expand_indexqual_rowcompare(RestrictInfo *rinfo,
 									  matching_cols);
 			rc->rargs = list_truncate(copyObject(non_var_args),
 									  matching_cols);
-			iclause->indexquals = list_make1(make_simple_restrictinfo((Expr *) rc));
+			iclause->indexquals = list_make1(make_simple_restrictinfo(root,
+																	  (Expr *) rc));
 		}
 		else
 		{
@@ -3084,7 +3083,7 @@ expand_indexqual_rowcompare(RestrictInfo *rinfo,
 							   copyObject(linitial(non_var_args)),
 							   InvalidOid,
 							   linitial_oid(clause->inputcollids));
-			iclause->indexquals = list_make1(make_simple_restrictinfo(op));
+			iclause->indexquals = list_make1(make_simple_restrictinfo(root, op));
 		}
 	}
 
@@ -3420,7 +3419,7 @@ check_index_predicates(PlannerInfo *root, RelOptInfo *rel)
 	 * and pass them through to EvalPlanQual via a side channel; but for now,
 	 * we just don't remove implied quals at all for target relations.
 	 */
-	is_target_rel = (rel->relid == root->parse->resultRelation ||
+	is_target_rel = (bms_is_member(rel->relid, root->all_result_relids) ||
 					 get_plan_rowmark(root->rowMarks, rel->relid) != NULL);
 
 	/*
@@ -3701,7 +3700,9 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
  * specified index column matches a boolean restriction clause.
  */
 bool
-indexcol_is_bool_constant_for_query(IndexOptInfo *index, int indexcol)
+indexcol_is_bool_constant_for_query(PlannerInfo *root,
+									IndexOptInfo *index,
+									int indexcol)
 {
 	ListCell   *lc;
 
@@ -3723,7 +3724,7 @@ indexcol_is_bool_constant_for_query(IndexOptInfo *index, int indexcol)
 			continue;
 
 		/* See if we can match the clause's expression to the index column */
-		if (match_boolean_index_clause(rinfo, indexcol, index))
+		if (match_boolean_index_clause(root, rinfo, indexcol, index))
 			return true;
 	}
 
@@ -3835,10 +3836,10 @@ match_index_to_operand(Node *operand,
  * index: the index of interest
  */
 bool
-is_pseudo_constant_for_index(Node *expr, IndexOptInfo *index)
+is_pseudo_constant_for_index(PlannerInfo *root, Node *expr, IndexOptInfo *index)
 {
 	/* pull_varnos is cheaper than volatility check, so do that first */
-	if (bms_is_member(index->rel->relid, pull_varnos(expr)))
+	if (bms_is_member(index->rel->relid, pull_varnos(root, expr)))
 		return false;			/* no good, contains Var of table */
 	if (contain_volatile_functions(expr))
 		return false;			/* no good, volatile comparison value */

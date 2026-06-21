@@ -1,6 +1,10 @@
 --
 -- Test the LOCK statement
 --
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
 -- Setup
 CREATE SCHEMA lock_schema1;
 SET search_path = lock_schema1;
@@ -13,6 +17,7 @@ CREATE VIEW lock_view4 AS SELECT (select a from lock_tbl1a limit 1) from lock_tb
 CREATE VIEW lock_view5 AS SELECT * from lock_tbl1 where a in (select * from lock_tbl1a);
 CREATE VIEW lock_view6 AS SELECT * from (select * from lock_tbl1) sub;
 CREATE ROLE regress_rol_lock1;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
 ALTER ROLE regress_rol_lock1 SET search_path = lock_schema1;
 GRANT USAGE ON SCHEMA lock_schema1 TO regress_rol_lock1;
 -- Try all valid lock options; also try omitting the optional TABLE keyword.
@@ -46,13 +51,13 @@ select l.gp_segment_id, relname from pg_locks l, pg_class c
  order by relname;
  gp_segment_id |  relname   
 ---------------+------------
-             0 | lock_tbl1
-             0 | lock_view1
-             1 | lock_tbl1
-             1 | lock_view1
              2 | lock_tbl1
-             2 | lock_view1
+             1 | lock_tbl1
+             0 | lock_tbl1
             -1 | lock_tbl1
+             2 | lock_view1
+             1 | lock_view1
+             0 | lock_view1
             -1 | lock_view1
 (8 rows)
 
@@ -65,17 +70,17 @@ select l.gp_segment_id, relname from pg_locks l, pg_class c
  order by relname;
  gp_segment_id |  relname   
 ---------------+------------
-             0 | lock_tbl1
-             0 | lock_tbl1a
-             0 | lock_view2
-             1 | lock_tbl1
-             1 | lock_tbl1a
-             1 | lock_view2
              2 | lock_tbl1
-             2 | lock_tbl1a
-             2 | lock_view2
+             1 | lock_tbl1
+             0 | lock_tbl1
             -1 | lock_tbl1
+             2 | lock_tbl1a
+             1 | lock_tbl1a
+             0 | lock_tbl1a
             -1 | lock_tbl1a
+             2 | lock_view2
+             1 | lock_view2
+             0 | lock_view2
             -1 | lock_view2
 (12 rows)
 
@@ -88,21 +93,21 @@ select l.gp_segment_id, relname from pg_locks l, pg_class c
  order by relname;
  gp_segment_id |  relname   
 ---------------+------------
-             0 | lock_tbl1
-             0 | lock_tbl1a
-             0 | lock_view2
-             0 | lock_view3
-             1 | lock_tbl1
-             1 | lock_tbl1a
-             1 | lock_view2
-             1 | lock_view3
              2 | lock_tbl1
-             2 | lock_tbl1a
-             2 | lock_view2
-             2 | lock_view3
+             1 | lock_tbl1
+             0 | lock_tbl1
             -1 | lock_tbl1
+             2 | lock_tbl1a
+             1 | lock_tbl1a
+             0 | lock_tbl1a
             -1 | lock_tbl1a
+             2 | lock_view2
+             1 | lock_view2
+             0 | lock_view2
             -1 | lock_view2
+             2 | lock_view3
+             1 | lock_view3
+             0 | lock_view3
             -1 | lock_view3
 (16 rows)
 
@@ -115,17 +120,17 @@ select l.gp_segment_id, relname from pg_locks l, pg_class c
  order by relname;
  gp_segment_id |  relname   
 ---------------+------------
-             0 | lock_tbl1
-             0 | lock_tbl1a
-             0 | lock_view4
-             1 | lock_tbl1
-             1 | lock_tbl1a
-             1 | lock_view4
              2 | lock_tbl1
-             2 | lock_tbl1a
-             2 | lock_view4
+             1 | lock_tbl1
+             0 | lock_tbl1
             -1 | lock_tbl1
+             2 | lock_tbl1a
+             1 | lock_tbl1a
+             0 | lock_tbl1a
             -1 | lock_tbl1a
+             2 | lock_view4
+             1 | lock_view4
+             0 | lock_view4
             -1 | lock_view4
 (12 rows)
 
@@ -138,17 +143,17 @@ select l.gp_segment_id, relname from pg_locks l, pg_class c
  order by relname;
  gp_segment_id |  relname   
 ---------------+------------
-             0 | lock_tbl1
-             0 | lock_tbl1a
-             0 | lock_view5
-             1 | lock_tbl1
-             1 | lock_tbl1a
-             1 | lock_view5
              2 | lock_tbl1
-             2 | lock_tbl1a
-             2 | lock_view5
+             1 | lock_tbl1
+             0 | lock_tbl1
             -1 | lock_tbl1
+             2 | lock_tbl1a
+             1 | lock_tbl1a
+             0 | lock_tbl1a
             -1 | lock_tbl1a
+             2 | lock_view5
+             1 | lock_view5
+             0 | lock_view5
             -1 | lock_view5
 (12 rows)
 
@@ -161,31 +166,31 @@ select l.gp_segment_id, relname from pg_locks l, pg_class c
  order by relname;
  gp_segment_id |  relname   
 ---------------+------------
-             0 | lock_tbl1
-             0 | lock_view6
-             1 | lock_tbl1
-             1 | lock_view6
              2 | lock_tbl1
-             2 | lock_view6
+             1 | lock_tbl1
+             0 | lock_tbl1
             -1 | lock_tbl1
+             2 | lock_view6
+             1 | lock_view6
+             0 | lock_view6
             -1 | lock_view6
 (8 rows)
 
 ROLLBACK;
--- detecting infinite recursions in view definitions
+-- Verify that we cope with infinite recursion in view definitions.
 CREATE OR REPLACE VIEW lock_view2 AS SELECT * from lock_view3;
 BEGIN TRANSACTION;
 LOCK TABLE lock_view2 IN EXCLUSIVE MODE;
-ERROR:  infinite recursion detected in rules for relation "lock_view2"
 ROLLBACK;
 CREATE VIEW lock_view7 AS SELECT * from lock_view2;
 BEGIN TRANSACTION;
 LOCK TABLE lock_view7 IN EXCLUSIVE MODE;
-ERROR:  infinite recursion detected in rules for relation "lock_view2"
 ROLLBACK;
 -- Verify that we can lock a table with inheritance children.
 CREATE TABLE lock_tbl2 (b BIGINT) INHERITS (lock_tbl1);
+NOTICE:  table has parent, setting distribution columns to match parent table
 CREATE TABLE lock_tbl3 () INHERITS (lock_tbl2);
+NOTICE:  table has parent, setting distribution columns to match parent table
 BEGIN TRANSACTION;
 LOCK TABLE lock_tbl1 * IN ACCESS EXCLUSIVE MODE;
 ROLLBACK;
@@ -205,9 +210,81 @@ BEGIN;
 LOCK TABLE ONLY lock_tbl1;
 ROLLBACK;
 RESET ROLE;
+REVOKE UPDATE ON TABLE lock_tbl1 FROM regress_rol_lock1;
+-- Tables referred to by views are locked without explicit permission to do so
+-- as long as we have permission to lock the view itself.
+SET ROLE regress_rol_lock1;
+-- fail without permissions on the view
+BEGIN;
+LOCK TABLE lock_view1;
+ERROR:  permission denied for view lock_view1
+ROLLBACK;
+RESET ROLE;
+GRANT UPDATE ON TABLE lock_view1 TO regress_rol_lock1;
+SET ROLE regress_rol_lock1;
+BEGIN;
+LOCK TABLE lock_view1 IN ACCESS EXCLUSIVE MODE;
+-- lock_view1 and lock_tbl1 (plus children lock_tbl2 and lock_tbl3) are locked.
+-- GPDB: DISTINCT collapses the per-segment pg_locks rows (the lock is taken on
+-- every segment) so the set of locked relations matches upstream regardless of
+-- the segment count.
+select distinct relname from pg_locks l, pg_class c
+ where l.relation = c.oid and relname like '%lock_%' and mode = 'AccessExclusiveLock'
+ order by relname;
+  relname   
+------------
+ lock_tbl1
+ lock_tbl2
+ lock_tbl3
+ lock_view1
+(4 rows)
+
+ROLLBACK;
+RESET ROLE;
+REVOKE UPDATE ON TABLE lock_view1 FROM regress_rol_lock1;
+-- Tables referred to by security invoker views require explicit permission to
+-- be locked.
+CREATE VIEW lock_view8 WITH (security_invoker) AS SELECT * FROM lock_tbl1;
+SET ROLE regress_rol_lock1;
+-- fail without permissions on the view
+BEGIN;
+LOCK TABLE lock_view8;
+ERROR:  permission denied for view lock_view8
+ROLLBACK;
+RESET ROLE;
+GRANT UPDATE ON TABLE lock_view8 TO regress_rol_lock1;
+SET ROLE regress_rol_lock1;
+-- fail without permissions on the table referenced by the view
+BEGIN;
+LOCK TABLE lock_view8;
+ERROR:  permission denied for table lock_tbl1
+ROLLBACK;
+RESET ROLE;
+GRANT UPDATE ON TABLE lock_tbl1 TO regress_rol_lock1;
+BEGIN;
+LOCK TABLE lock_view8 IN ACCESS EXCLUSIVE MODE;
+-- lock_view8 and lock_tbl1 (plus children lock_tbl2 and lock_tbl3) are locked.
+-- GPDB: DISTINCT collapses the per-segment pg_locks rows (the lock is taken on
+-- every segment) so the set of locked relations matches upstream regardless of
+-- the segment count.
+select distinct relname from pg_locks l, pg_class c
+ where l.relation = c.oid and relname like '%lock_%' and mode = 'AccessExclusiveLock'
+ order by relname;
+  relname   
+------------
+ lock_tbl1
+ lock_tbl2
+ lock_tbl3
+ lock_view8
+(4 rows)
+
+ROLLBACK;
+RESET ROLE;
+REVOKE UPDATE ON TABLE lock_view8 FROM regress_rol_lock1;
 --
 -- Clean up
 --
+DROP VIEW lock_view8;
 DROP VIEW lock_view7;
 DROP VIEW lock_view6;
 DROP VIEW lock_view5;
@@ -223,6 +300,10 @@ DROP SCHEMA lock_schema1 CASCADE;
 DROP ROLE regress_rol_lock1;
 -- atomic ops tests
 RESET search_path;
+CREATE FUNCTION test_atomic_ops()
+    RETURNS bool
+    AS :'regresslib'
+    LANGUAGE C;
 SELECT test_atomic_ops();
  test_atomic_ops 
 -----------------

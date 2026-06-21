@@ -4,7 +4,7 @@
  *	  POSTGRES heap access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/heapam.h
@@ -65,6 +65,12 @@ typedef struct HeapScanDescData
 
 	HeapTupleData rs_ctup;		/* current tuple in scan, if any */
 
+	/*
+	 * For parallel scans to store page allocation data.  NULL when not
+	 * performing a parallel scan.
+	 */
+	ParallelBlockTableScanWorkerData *rs_parallelworkerdata;
+
 	/* these fields only used in page-at-a-time mode and for bitmap scans */
 	int			rs_cindex;		/* current tuple's index in vistuples */
 	int			rs_ntuples;		/* number of visible tuples on page */
@@ -121,15 +127,18 @@ extern void heap_endscan(TableScanDesc scan);
 extern HeapTuple heap_getnext(TableScanDesc scan, ScanDirection direction);
 extern bool heap_getnextslot(TableScanDesc sscan,
 							 ScanDirection direction, struct TupleTableSlot *slot);
-
+extern void heap_set_tidrange(TableScanDesc sscan, ItemPointer mintid,
+							  ItemPointer maxtid);
+extern bool heap_getnextslot_tidrange(TableScanDesc sscan,
+									  ScanDirection direction,
+									  TupleTableSlot *slot);
 extern bool heap_fetch(Relation relation, Snapshot snapshot,
-					   HeapTuple tuple, Buffer *userbuf);
+					   HeapTuple tuple, Buffer *userbuf, bool keep_buf);
 extern bool heap_hot_search_buffer(ItemPointer tid, Relation relation,
 								   Buffer buffer, Snapshot snapshot, HeapTuple heapTuple,
 								   bool *all_dead, bool first_call);
 
 extern void heap_get_latest_tid(TableScanDesc scan, ItemPointer tid);
-extern void setLastTid(const ItemPointer tid);
 
 extern BulkInsertState GetBulkInsertState(void);
 extern void FreeBulkInsertState(BulkInsertState);
@@ -158,8 +167,10 @@ extern void heap_inplace_update(Relation relation, HeapTuple tuple);
 extern bool heap_freeze_tuple(HeapTupleHeader tuple,
 							  TransactionId relfrozenxid, TransactionId relminmxid,
 							  TransactionId cutoff_xid, TransactionId cutoff_multi);
-extern bool heap_tuple_needs_freeze(HeapTupleHeader tuple, TransactionId cutoff_xid,
-									MultiXactId cutoff_multi, Buffer buf);
+extern bool heap_tuple_would_freeze(HeapTupleHeader tuple, TransactionId cutoff_xid,
+									MultiXactId cutoff_multi,
+									TransactionId *relfrozenxid_out,
+									MultiXactId *relminmxid_out);
 extern bool heap_tuple_needs_eventual_freeze(HeapTupleHeader tuple);
 
 extern void simple_heap_insert(Relation relation, HeapTuple tup);
@@ -168,18 +179,18 @@ extern void simple_heap_delete(Relation relation, ItemPointer tid);
 extern void simple_heap_update(Relation relation, ItemPointer otid,
 							   HeapTuple tup);
 
-extern TransactionId heap_compute_xid_horizon_for_tuples(Relation rel,
-														 ItemPointerData *items,
-														 int nitems);
+extern TransactionId heap_index_delete_tuples(Relation rel,
+											  TM_IndexDeleteOp *delstate);
 
 /* in heap/pruneheap.c */
 struct GlobalVisState;
 extern void heap_page_prune_opt(Relation relation, Buffer buffer);
 extern int	heap_page_prune(Relation relation, Buffer buffer,
 							struct GlobalVisState *vistest,
-							TransactionId limited_oldest_xmin,
-							TimestampTz limited_oldest_ts,
-							bool report_stats, TransactionId *latestRemovedXid);
+							TransactionId old_snap_xmin,
+							TimestampTz old_snap_ts_ts,
+							int *nnewlpdead,
+							OffsetNumber *off_loc);
 extern void heap_page_prune_execute(Buffer buffer,
 									OffsetNumber *redirected, int nredirected,
 									OffsetNumber *nowdead, int ndead,
@@ -187,7 +198,9 @@ extern void heap_page_prune_execute(Buffer buffer,
 extern void heap_get_root_tuples(Page page, OffsetNumber *root_offsets);
 
 /* in heap/vacuumlazy.c */
-extern void parallel_vacuum_main(dsm_segment *seg, shm_toc *toc);
+struct VacuumParams;
+extern void heap_vacuum_rel(Relation rel,
+							struct VacuumParams *params, BufferAccessStrategy bstrategy);
 
 /* in heap/heapam_visibility.c */
 extern bool HeapTupleSatisfiesVisibility(Relation relation, HeapTuple stup, Snapshot snapshot,

@@ -752,6 +752,8 @@ SELECT power('-inf'::numeric, '-inf');
 -- ******************************
 -- numeric AVG used to fail on some platforms
 SELECT AVG(val) FROM num_data;
+SELECT MAX(val) FROM num_data;
+SELECT MIN(val) FROM num_data;
 SELECT STDDEV(val) FROM num_data;
 SELECT VARIANCE(val) FROM num_data;
 
@@ -770,6 +772,20 @@ INSERT INTO fract_only VALUES (10, 'Inf');	-- should fail
 INSERT INTO fract_only VALUES (11, '-Inf');	-- should fail
 SELECT * FROM fract_only;
 DROP TABLE fract_only;
+
+-- Check conversion to integers
+SELECT (-9223372036854775808.5)::int8; -- should fail
+SELECT (-9223372036854775808.4)::int8; -- ok
+SELECT 9223372036854775807.4::int8; -- ok
+SELECT 9223372036854775807.5::int8; -- should fail
+SELECT (-2147483648.5)::int4; -- should fail
+SELECT (-2147483648.4)::int4; -- ok
+SELECT 2147483647.4::int4; -- ok
+SELECT 2147483647.5::int4; -- should fail
+SELECT (-32768.5)::int2; -- should fail
+SELECT (-32768.4)::int2; -- ok
+SELECT 32767.4::int2; -- ok
+SELECT 32767.5::int2; -- should fail
 
 -- Check inf/nan conversion behavior
 SELECT 'NaN'::float8::numeric;
@@ -829,7 +845,6 @@ SELECT width_bucket(5.0::float8, 3.0::float8, 4.0::float8, -5);
 SELECT width_bucket(3.5::float8, 3.0::float8, 3.0::float8, 888);
 SELECT width_bucket('NaN', 3.0, 4.0, 888);
 SELECT width_bucket(0::float8, 'NaN', 4.0::float8, 888);
-SELECT width_bucket('inf', 3.0, 4.0, 888);
 SELECT width_bucket(2.0, 3.0, '-inf', 888);
 SELECT width_bucket(0::float8, '-inf', 4.0::float8, 888);
 
@@ -874,8 +889,12 @@ SELECT
     width_bucket(operand_f8, -25, 25, 10) AS wb_5f
     FROM width_bucket_test;
 
--- for float8 only, check positive and negative infinity: we require
+-- Check positive and negative infinity: we require
 -- finite bucket bounds, but allow an infinite operand
+SELECT width_bucket(0.0::numeric, 'Infinity'::numeric, 5, 10); -- error
+SELECT width_bucket(0.0::numeric, 5, '-Infinity'::numeric, 20); -- error
+SELECT width_bucket('Infinity'::numeric, 1, 10, 10),
+       width_bucket('-Infinity'::numeric, 1, 10, 10);
 SELECT width_bucket(0.0::float8, 'Infinity'::float8, 5, 10); -- error
 SELECT width_bucket(0.0::float8, 5, '-Infinity'::float8, 20); -- error
 SELECT width_bucket('Infinity'::float8, 1, 10, 10),
@@ -883,39 +902,48 @@ SELECT width_bucket('Infinity'::float8, 1, 10, 10),
 
 DROP TABLE width_bucket_test;
 
+-- Simple test for roundoff error when results should be exact
+SELECT x, width_bucket(x::float8, 10, 100, 9) as flt,
+       width_bucket(x::numeric, 10, 100, 9) as num
+FROM generate_series(0, 110, 10) x;
+SELECT x, width_bucket(x::float8, 100, 10, 9) as flt,
+       width_bucket(x::numeric, 100, 10, 9) as num
+FROM generate_series(0, 110, 10) x;
+
+--
 -- TO_CHAR()
 --
-SELECT '' AS to_char_1, to_char(val, '9G999G999G999G999G999')
+SELECT to_char(val, '9G999G999G999G999G999')
 	FROM num_data;
 
-SELECT '' AS to_char_2, to_char(val, '9G999G999G999G999G999D999G999G999G999G999')
+SELECT to_char(val, '9G999G999G999G999G999D999G999G999G999G999')
 	FROM num_data;
 
-SELECT '' AS to_char_3, to_char(val, '9999999999999999.999999999999999PR')
+SELECT to_char(val, '9999999999999999.999999999999999PR')
 	FROM num_data;
 
-SELECT '' AS to_char_4, to_char(val, '9999999999999999.999999999999999S')
+SELECT to_char(val, '9999999999999999.999999999999999S')
 	FROM num_data;
 
-SELECT '' AS to_char_5,  to_char(val, 'MI9999999999999999.999999999999999')     FROM num_data;
-SELECT '' AS to_char_6,  to_char(val, 'FMS9999999999999999.999999999999999')    FROM num_data;
-SELECT '' AS to_char_7,  to_char(val, 'FM9999999999999999.999999999999999THPR') FROM num_data;
-SELECT '' AS to_char_8,  to_char(val, 'SG9999999999999999.999999999999999th')   FROM num_data;
-SELECT '' AS to_char_9,  to_char(val, '0999999999999999.999999999999999')       FROM num_data;
-SELECT '' AS to_char_10, to_char(val, 'S0999999999999999.999999999999999')      FROM num_data;
-SELECT '' AS to_char_11, to_char(val, 'FM0999999999999999.999999999999999')     FROM num_data;
-SELECT '' AS to_char_12, to_char(val, 'FM9999999999999999.099999999999999') 	FROM num_data;
-SELECT '' AS to_char_13, to_char(val, 'FM9999999999990999.990999999999999') 	FROM num_data;
-SELECT '' AS to_char_14, to_char(val, 'FM0999999999999999.999909999999999') 	FROM num_data;
-SELECT '' AS to_char_15, to_char(val, 'FM9999999990999999.099999999999999') 	FROM num_data;
-SELECT '' AS to_char_16, to_char(val, 'L9999999999999999.099999999999999')	FROM num_data;
-SELECT '' AS to_char_17, to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data;
-SELECT '' AS to_char_18, to_char(val, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
-SELECT '' AS to_char_19, to_char(val, 'FMS 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
-SELECT '' AS to_char_20, to_char(val, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM num_data;
-SELECT '' AS to_char_21, to_char(val, '999999SG9999999999')			FROM num_data;
-SELECT '' AS to_char_22, to_char(val, 'FM9999999999999999.999999999999999')	FROM num_data;
-SELECT '' AS to_char_23, to_char(val, '9.999EEEE')				FROM num_data;
+SELECT to_char(val, 'MI9999999999999999.999999999999999')     FROM num_data;
+SELECT to_char(val, 'FMS9999999999999999.999999999999999')    FROM num_data;
+SELECT to_char(val, 'FM9999999999999999.999999999999999THPR') FROM num_data;
+SELECT to_char(val, 'SG9999999999999999.999999999999999th')   FROM num_data;
+SELECT to_char(val, '0999999999999999.999999999999999')       FROM num_data;
+SELECT to_char(val, 'S0999999999999999.999999999999999')      FROM num_data;
+SELECT to_char(val, 'FM0999999999999999.999999999999999')     FROM num_data;
+SELECT to_char(val, 'FM9999999999999999.099999999999999') 	FROM num_data;
+SELECT to_char(val, 'FM9999999999990999.990999999999999') 	FROM num_data;
+SELECT to_char(val, 'FM0999999999999999.999909999999999') 	FROM num_data;
+SELECT to_char(val, 'FM9999999990999999.099999999999999') 	FROM num_data;
+SELECT to_char(val, 'L9999999999999999.099999999999999')	FROM num_data;
+SELECT to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data;
+SELECT to_char(val, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
+SELECT to_char(val, 'FMS 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
+SELECT to_char(val, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM num_data;
+SELECT to_char(val, '999999SG9999999999')			FROM num_data;
+SELECT to_char(val, 'FM9999999999999999.999999999999999')	FROM num_data;
+SELECT to_char(val, '9.999EEEE')				FROM num_data;
 
 WITH v(val) AS
   (VALUES('0'::numeric),('-4.2'),('4.2e9'),('1.2e-5'),('inf'),('-inf'),('nan'))
@@ -923,6 +951,13 @@ SELECT val,
   to_char(val, '9.999EEEE') as numeric,
   to_char(val::float8, '9.999EEEE') as float8,
   to_char(val::float4, '9.999EEEE') as float4
+FROM v;
+
+WITH v(exp) AS
+  (VALUES(-16379),(-16378),(-1234),(-789),(-45),(-5),(-4),(-3),(-2),(-1),(0),
+         (1),(2),(3),(4),(5),(38),(275),(2345),(45678),(131070),(131071))
+SELECT exp,
+  to_char(('1.2345e'||exp)::numeric, '9.999EEEE') as numeric
 FROM v;
 
 WITH v(val) AS
@@ -941,47 +976,47 @@ SELECT val,
   to_char(val::float4, 'MI99.99') as float4
 FROM v;
 
-SELECT '' AS to_char_24, to_char('100'::numeric, 'FM999.9');
-SELECT '' AS to_char_25, to_char('100'::numeric, 'FM999.');
-SELECT '' AS to_char_26, to_char('100'::numeric, 'FM999');
+SELECT to_char('100'::numeric, 'FM999.9');
+SELECT to_char('100'::numeric, 'FM999.');
+SELECT to_char('100'::numeric, 'FM999');
 
 -- Check parsing of literal text in a format string
-SELECT '' AS to_char_27, to_char('100'::numeric, 'foo999');
-SELECT '' AS to_char_28, to_char('100'::numeric, 'f\oo999');
-SELECT '' AS to_char_29, to_char('100'::numeric, 'f\\oo999');
-SELECT '' AS to_char_30, to_char('100'::numeric, 'f\"oo999');
-SELECT '' AS to_char_31, to_char('100'::numeric, 'f\\"oo999');
-SELECT '' AS to_char_32, to_char('100'::numeric, 'f"ool"999');
-SELECT '' AS to_char_33, to_char('100'::numeric, 'f"\ool"999');
-SELECT '' AS to_char_34, to_char('100'::numeric, 'f"\\ool"999');
-SELECT '' AS to_char_35, to_char('100'::numeric, 'f"ool\"999');
-SELECT '' AS to_char_36, to_char('100'::numeric, 'f"ool\\"999');
+SELECT to_char('100'::numeric, 'foo999');
+SELECT to_char('100'::numeric, 'f\oo999');
+SELECT to_char('100'::numeric, 'f\\oo999');
+SELECT to_char('100'::numeric, 'f\"oo999');
+SELECT to_char('100'::numeric, 'f\\"oo999');
+SELECT to_char('100'::numeric, 'f"ool"999');
+SELECT to_char('100'::numeric, 'f"\ool"999');
+SELECT to_char('100'::numeric, 'f"\\ool"999');
+SELECT to_char('100'::numeric, 'f"ool\"999');
+SELECT to_char('100'::numeric, 'f"ool\\"999');
 
 -- TO_NUMBER()
 --
 SET lc_numeric = 'C';
-SELECT '' AS to_number_1,  to_number('-34,338,492', '99G999G999');
-SELECT '' AS to_number_2,  to_number('-34,338,492.654,878', '99G999G999D999G999');
-SELECT '' AS to_number_3,  to_number('<564646.654564>', '999999.999999PR');
-SELECT '' AS to_number_4,  to_number('0.00001-', '9.999999S');
-SELECT '' AS to_number_5,  to_number('5.01-', 'FM9.999999S');
-SELECT '' AS to_number_5,  to_number('5.01-', 'FM9.999999MI');
-SELECT '' AS to_number_7,  to_number('5 4 4 4 4 8 . 7 8', '9 9 9 9 9 9 . 9 9');
-SELECT '' AS to_number_8,  to_number('.01', 'FM9.99');
-SELECT '' AS to_number_9,  to_number('.0', '99999999.99999999');
-SELECT '' AS to_number_10, to_number('0', '99.99');
-SELECT '' AS to_number_11, to_number('.-01', 'S99.99');
-SELECT '' AS to_number_12, to_number('.01-', '99.99S');
-SELECT '' AS to_number_13, to_number(' . 0 1-', ' 9 9 . 9 9 S');
-SELECT '' AS to_number_14, to_number('34,50','999,99');
-SELECT '' AS to_number_15, to_number('123,000','999G');
-SELECT '' AS to_number_16, to_number('123456','999G999');
-SELECT '' AS to_number_17, to_number('$1234.56','L9,999.99');
-SELECT '' AS to_number_18, to_number('$1234.56','L99,999.99');
-SELECT '' AS to_number_19, to_number('$1,234.56','L99,999.99');
-SELECT '' AS to_number_20, to_number('1234.56','L99,999.99');
-SELECT '' AS to_number_21, to_number('1,234.56','L99,999.99');
-SELECT '' AS to_number_22, to_number('42nd', '99th');
+SELECT to_number('-34,338,492', '99G999G999');
+SELECT to_number('-34,338,492.654,878', '99G999G999D999G999');
+SELECT to_number('<564646.654564>', '999999.999999PR');
+SELECT to_number('0.00001-', '9.999999S');
+SELECT to_number('5.01-', 'FM9.999999S');
+SELECT to_number('5.01-', 'FM9.999999MI');
+SELECT to_number('5 4 4 4 4 8 . 7 8', '9 9 9 9 9 9 . 9 9');
+SELECT to_number('.01', 'FM9.99');
+SELECT to_number('.0', '99999999.99999999');
+SELECT to_number('0', '99.99');
+SELECT to_number('.-01', 'S99.99');
+SELECT to_number('.01-', '99.99S');
+SELECT to_number(' . 0 1-', ' 9 9 . 9 9 S');
+SELECT to_number('34,50','999,99');
+SELECT to_number('123,000','999G');
+SELECT to_number('123456','999G999');
+SELECT to_number('$1234.56','L9,999.99');
+SELECT to_number('$1234.56','L99,999.99');
+SELECT to_number('$1,234.56','L99,999.99');
+SELECT to_number('1234.56','L99,999.99');
+SELECT to_number('1,234.56','L99,999.99');
+SELECT to_number('42nd', '99th');
 RESET lc_numeric;
 
 --
@@ -1019,6 +1054,40 @@ INSERT INTO num_input_test(n1) VALUES ('+ infinity');
 SELECT * FROM num_input_test;
 
 --
+-- Test precision and scale typemods
+--
+
+CREATE TABLE num_typemod_test (
+  millions numeric(3, -6),
+  thousands numeric(3, -3),
+  units numeric(3, 0),
+  thousandths numeric(3, 3),
+  millionths numeric(3, 6)
+);
+\d num_typemod_test
+
+-- rounding of valid inputs
+INSERT INTO num_typemod_test VALUES (123456, 123, 0.123, 0.000123, 0.000000123);
+INSERT INTO num_typemod_test VALUES (654321, 654, 0.654, 0.000654, 0.000000654);
+INSERT INTO num_typemod_test VALUES (2345678, 2345, 2.345, 0.002345, 0.000002345);
+INSERT INTO num_typemod_test VALUES (7654321, 7654, 7.654, 0.007654, 0.000007654);
+INSERT INTO num_typemod_test VALUES (12345678, 12345, 12.345, 0.012345, 0.000012345);
+INSERT INTO num_typemod_test VALUES (87654321, 87654, 87.654, 0.087654, 0.000087654);
+INSERT INTO num_typemod_test VALUES (123456789, 123456, 123.456, 0.123456, 0.000123456);
+INSERT INTO num_typemod_test VALUES (987654321, 987654, 987.654, 0.987654, 0.000987654);
+INSERT INTO num_typemod_test VALUES ('NaN', 'NaN', 'NaN', 'NaN', 'NaN');
+
+SELECT scale(millions), * FROM num_typemod_test ORDER BY millions;
+
+-- invalid inputs
+INSERT INTO num_typemod_test (millions) VALUES ('inf');
+INSERT INTO num_typemod_test (millions) VALUES (999500000);
+INSERT INTO num_typemod_test (thousands) VALUES (999500);
+INSERT INTO num_typemod_test (units) VALUES (999.5);
+INSERT INTO num_typemod_test (thousandths) VALUES (0.9995);
+INSERT INTO num_typemod_test (millionths) VALUES (0.0009995);
+
+--
 -- Test some corner cases for multiplication
 --
 
@@ -1029,6 +1098,8 @@ select 4789999999999999999999999999999999999999999999999999999999999999999999999
 select 4770999999999999999999999999999999999999999999999999999999999999999999999999999999999999 * 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999;
 
 select 4769999999999999999999999999999999999999999999999999999999999999999999999999999999999999 * 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999;
+
+select trim_scale((0.1 - 2e-16383) * (0.1 - 3e-16383));
 
 --
 -- Test some corner cases for division
@@ -1075,10 +1146,21 @@ select 3.789 ^ 21;
 select 3.789 ^ 35;
 select 1.2 ^ 345;
 select 0.12 ^ (-20);
+select 1.000000000123 ^ (-2147483648);
+select coalesce(nullif(0.9999999999 ^ 23300000000000, 0), 0) as rounds_to_zero;
+select round(((1 - 1.500012345678e-1000) ^ 1.45e1003) * 1e1000);
 
 -- cases that used to error out
 select 0.12 ^ (-25);
 select 0.5678 ^ (-85);
+select coalesce(nullif(0.9999999999 ^ 70000000000000, 0), 0) as underflows;
+
+-- negative base to integer powers
+select (-1.0) ^ 2147483646;
+select (-1.0) ^ 2147483647;
+select (-1.0) ^ 2147483648;
+select (-1.0) ^ 1000000000000000;
+select (-1.0) ^ 1000000000000001;
 
 --
 -- Tests for raising to non-integer powers
@@ -1121,6 +1203,8 @@ select exp(1.0::numeric(71,70));
 select exp('nan'::numeric);
 select exp('inf'::numeric);
 select exp('-inf'::numeric);
+select coalesce(nullif(exp(-5000::numeric), 0), 0) as rounds_to_zero;
+select coalesce(nullif(exp(-10000::numeric), 0), 0) as underflows;
 
 -- cases that used to generate inaccurate results
 select exp(32.999);
@@ -1263,6 +1347,42 @@ SELECT SUM(9999::numeric) FROM generate_series(1, 100000);
 SELECT SUM((-9999)::numeric) FROM generate_series(1, 100000);
 
 --
+-- Tests for VARIANCE()
+--
+CREATE TABLE num_variance (a numeric);
+INSERT INTO num_variance VALUES (0);
+INSERT INTO num_variance VALUES (3e-500);
+INSERT INTO num_variance VALUES (-3e-500);
+INSERT INTO num_variance VALUES (4e-500 - 1e-16383);
+INSERT INTO num_variance VALUES (-4e-500 + 1e-16383);
+
+-- variance is just under 12.5e-1000 and so should round down to 12e-1000
+SELECT trim_scale(variance(a) * 1e1000) FROM num_variance;
+
+-- check that parallel execution produces the same result
+BEGIN;
+ALTER TABLE num_variance SET (parallel_workers = 4);
+SET LOCAL parallel_setup_cost = 0;
+SET LOCAL max_parallel_workers_per_gather = 4;
+SELECT trim_scale(variance(a) * 1e1000) FROM num_variance;
+ROLLBACK;
+
+-- case where sum of squares would overflow but variance does not
+DELETE FROM num_variance;
+INSERT INTO num_variance SELECT 9e131071 + x FROM generate_series(1, 5) x;
+SELECT variance(a) FROM num_variance;
+
+-- check that parallel execution produces the same result
+BEGIN;
+ALTER TABLE num_variance SET (parallel_workers = 4);
+SET LOCAL parallel_setup_cost = 0;
+SET LOCAL max_parallel_workers_per_gather = 4;
+SELECT variance(a) FROM num_variance;
+ROLLBACK;
+
+DROP TABLE num_variance;
+
+--
 -- Tests for GCD()
 --
 SELECT a, b, gcd(a, b), gcd(a, -b), gcd(-b, a), gcd(-b, -a)
@@ -1298,12 +1418,10 @@ SELECT lcm(9999 * (10::numeric)^131068 + (10::numeric^131068 - 1), 2); -- overfl
 --
 -- Tests for factorial
 --
-SELECT 4!;
-SELECT !!3;
+SELECT factorial(4);
 SELECT factorial(15);
-SELECT 100000!;
-SELECT 0!;
-SELECT -4!;
+SELECT factorial(100000);
+SELECT factorial(0);
 SELECT factorial(-4);
 
 --

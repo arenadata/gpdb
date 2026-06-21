@@ -202,7 +202,6 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newmt, mt, ModifyTable);
 				PLANMUTATE(newmt, mt);
-				MUTATE(newmt->plans, mt->plans, List *);
 				MUTATE(newmt->onConflictSet, mt->onConflictSet, List *);
 				MUTATE(newmt->onConflictWhere, mt->onConflictWhere , Node *);
 				MUTATE(newmt->withCheckOptionLists, mt->withCheckOptionLists, List *);
@@ -1053,7 +1052,7 @@ get_function_name(Oid proid, const char *dflt)
 }
 
 /* Utility to get a name for a tle to use as an eref. */
-Value *
+Node *
 get_tle_name(TargetEntry *tle, List *rtable, const char *default_name)
 {
 	char *name = NULL;

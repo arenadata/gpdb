@@ -4,7 +4,7 @@
  *	  Utility routines for the Postgres inverted index access method.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -100,7 +100,7 @@ initGinState(GinState *state, Relation index)
 	MemSet(state, 0, sizeof(GinState));
 
 	state->index = index;
-	state->oneCol = (origTupdesc->natts == 1) ? true : false;
+	state->oneCol = (origTupdesc->natts == 1);
 	state->origTupdesc = origTupdesc;
 
 	for (i = 0; i < origTupdesc->natts; i++)
@@ -348,7 +348,6 @@ GinInitPage(Page page, uint32 f, Size pageSize)
 	PageInit(page, pageSize, sizeof(GinPageOpaqueData));
 
 	opaque = GinPageGetOpaque(page);
-	memset(opaque, 0, sizeof(GinPageOpaqueData));
 	opaque->flags = f;
 	opaque->rightlink = InvalidBlockNumber;
 }

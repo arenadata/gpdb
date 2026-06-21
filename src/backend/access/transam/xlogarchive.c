@@ -4,7 +4,7 @@
  *		Functions for archiving WAL files and restoring from the archive.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xlogarchive.c
@@ -24,12 +24,13 @@
 #include "access/xlogarchive.h"
 #include "common/archive.h"
 #include "miscadmin.h"
+#include "pgstat.h"
 #include "postmaster/startup.h"
+#include "postmaster/pgarch.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
-#include "storage/pmsignal.h"
 
 /*
  * GPDB specific imports:
@@ -174,7 +175,9 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	/*
 	 * Copy xlog from archival storage to XLOGDIR
 	 */
+	pgstat_report_wait_start(WAIT_EVENT_RESTORE_COMMAND);
 	rc = system(xlogRestoreCmd);
+	pgstat_report_wait_end();
 
 	PostRestoreCommand();
 	pfree(xlogRestoreCmd);
@@ -208,10 +211,10 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 				else
 					elevel = FATAL;
 				ereport(elevel,
-						(errmsg("archive file \"%s\" has wrong size: %lu instead of %lu",
+						(errmsg("archive file \"%s\" has wrong size: %lld instead of %lld",
 								xlogfname,
-								(unsigned long) stat_buf.st_size,
-								(unsigned long) expectedSize)));
+								(long long int) stat_buf.st_size,
+								(long long int) expectedSize)));
 				return false;
 			}
 			else
@@ -226,11 +229,12 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 		else
 		{
 			/* stat failed */
-			if (errno != ENOENT)
-				ereport(FATAL,
-						(errcode_for_file_access(),
-						 errmsg("could not stat file \"%s\": %m",
-								xlogpath)));
+			int			elevel = (errno == ENOENT) ? LOG : FATAL;
+
+			ereport(elevel,
+					(errcode_for_file_access(),
+					 errmsg("could not stat file \"%s\": %m", xlogpath),
+					 errdetail("restore_command returned a zero exit status, but stat() failed.")));
 		}
 	}
 
@@ -289,7 +293,8 @@ not_available:
  * This is currently used for recovery_end_command and archive_cleanup_command.
  */
 void
-ExecuteRecoveryCommand(const char *command, const char *commandName, bool failOnSignal)
+ExecuteRecoveryCommand(const char *command, const char *commandName,
+					   bool failOnSignal, uint32 wait_event_info)
 {
 	char		xlogRecoveryCmd[MAXPGPATH];
 	char		lastRestartPointFname[MAXPGPATH];
@@ -368,7 +373,10 @@ ExecuteRecoveryCommand(const char *command, const char *commandName, bool failOn
 	/*
 	 * execute the constructed command
 	 */
+	pgstat_report_wait_start(wait_event_info);
 	rc = system(xlogRecoveryCmd);
+	pgstat_report_wait_end();
+
 	if (rc != 0)
 	{
 		/*
@@ -503,20 +511,36 @@ XLogArchiveNotify(const char *xlog)
 		return;
 	}
 
+	/*
+	 * Timeline history files are given the highest archival priority to lower
+	 * the chance that a promoted standby will choose a timeline that is
+	 * already in use.  However, the archiver ordinarily tries to gather
+	 * multiple files to archive from each scan of the archive_status
+	 * directory, which means that newly created timeline history files could
+	 * be left unarchived for a while.  To ensure that the archiver picks up
+	 * timeline history files as soon as possible, we force the archiver to
+	 * scan the archive_status directory the next time it looks for a file to
+	 * archive.
+	 */
+	if (IsTLHistoryFileName(xlog))
+		PgArchForceDirScan();
+
 	/* Notify archiver that it's got something to do */
 	if (IsUnderPostmaster)
-		SendPostmasterSignal(PMSIGNAL_WAKEN_ARCHIVER);
+		PgArchWakeup();
 }
 
 /*
  * Convenience routine to notify using segment number representation of filename
  */
 void
-XLogArchiveNotifySeg(XLogSegNo segno)
+XLogArchiveNotifySeg(XLogSegNo segno, TimeLineID tli)
 {
 	char		xlog[MAXFNAMELEN];
 
-	XLogFileName(xlog, ThisTimeLineID, segno, wal_segment_size);
+	Assert(tli != 0);
+
+	XLogFileName(xlog, tli, segno, wal_segment_size);
 	XLogArchiveNotify(xlog);
 }
 

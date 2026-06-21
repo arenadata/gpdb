@@ -3,7 +3,7 @@
  * miscinit.c
  *	  miscellaneous initialization support stuff
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -32,11 +32,14 @@
 #include "catalog/pg_authid.h"
 #include "common/file_perm.h"
 #include "libpq/libpq.h"
+#include "libpq/pqsignal.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/fts.h"
+#include "postmaster/interrupt.h"
+#include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/startup.h"
 #include "replication/walsender.h"
@@ -95,7 +98,8 @@ bool		IgnoreSystemIndexes = false;
 /*
  * Initialize the basic environment for a postmaster child
  *
- * Should be called as early as possible after the child's startup.
+ * Should be called as early as possible after the child's startup. However,
+ * on EXEC_BACKEND builds it does need to be after read_backend_variables().
  */
 void
 InitPostmasterChild(void)
@@ -103,13 +107,21 @@ InitPostmasterChild(void)
 	IsUnderPostmaster = true;	/* we are a postmaster subprocess now */
 
 	/*
-	 * Set reference point for stack-depth checking. We re-do that even in the
-	 * !EXEC_BACKEND case, because there are some edge cases where processes
-	 * are started with an alternative stack (e.g. starting bgworkers when
-	 * running postgres using the rr debugger, as bgworkers are launched from
-	 * signal handlers).
+	 * Start our win32 signal implementation. This has to be done after we
+	 * read the backend variables, because we need to pick up the signal pipe
+	 * from the parent process.
 	 */
-	set_stack_base();
+#ifdef WIN32
+	pgwin32_signal_initialize();
+#endif
+
+	/*
+	 * Set reference point for stack-depth checking.  This might seem
+	 * redundant in !EXEC_BACKEND builds; but it's not because the postmaster
+	 * launches its children from signal handlers, so we might be running on
+	 * an alternative stack.
+	 */
+	(void) set_stack_base();
 
 	InitProcessGlobals();
 
@@ -125,6 +137,11 @@ InitPostmasterChild(void)
 
 	/* We don't want the postmaster's proc_exit() handlers */
 	on_exit_reset();
+
+	/* In EXEC_BACKEND case we will not have inherited BlockSig etc values */
+#ifdef EXEC_BACKEND
+	pqinitmask();
+#endif
 
 	/* Initialize process-local latch support */
 	InitializeLatchSupport();
@@ -143,6 +160,18 @@ InitPostmasterChild(void)
 		elog(FATAL, "setsid() failed: %m");
 #endif
 
+	/*
+	 * Every postmaster child process is expected to respond promptly to
+	 * SIGQUIT at all times.  Therefore we centrally remove SIGQUIT from
+	 * BlockSig and install a suitable signal handler.  (Client-facing
+	 * processes may choose to replace this default choice of handler with
+	 * quickdie().)  All other blockable signals remain blocked for now.
+	 */
+	pqsignal(SIGQUIT, SignalHandlerForCrashExit);
+
+	sigdelset(&BlockSig, SIGQUIT);
+	PG_SETMASK(&BlockSig);
+
 	/* Request a signal if the postmaster dies, if possible. */
 	PostmasterDeathSignalInit();
 }
@@ -157,6 +186,13 @@ InitStandaloneProcess(const char *argv0)
 {
 	Assert(!IsPostmasterEnvironment);
 
+	/*
+	 * Start our win32 signal implementation
+	 */
+#ifdef WIN32
+	pgwin32_signal_initialize();
+#endif
+
 	InitProcessGlobals();
 
 	/* Initialize process-local latch support */
@@ -164,6 +200,13 @@ InitStandaloneProcess(const char *argv0)
 	MyLatch = &LocalLatchData;
 	InitLatch(MyLatch);
 	InitializeLatchWaitSet();
+
+	/*
+	 * For consistency with InitPostmasterChild, initialize signal mask here.
+	 * But we don't unblock SIGQUIT or provide a default handler for it.
+	 */
+	pqinitmask();
+	PG_SETMASK(&BlockSig);
 
 	/* Compute paths, no postmaster to inherit from */
 	if (my_exec_path[0] == '\0')
@@ -186,7 +229,8 @@ SwitchToSharedLatch(void)
 	MyLatch = &MyProc->procLatch;
 
 	if (FeBeWaitSet)
-		ModifyWaitEvent(FeBeWaitSet, 1, WL_LATCH_SET, MyLatch);
+		ModifyWaitEvent(FeBeWaitSet, FeBeWaitSetLatchPos, WL_LATCH_SET,
+						MyLatch);
 
 	/*
 	 * Set the shared latch as the local one might have been set. This
@@ -205,7 +249,8 @@ SwitchBackToLocalLatch(void)
 	MyLatch = &LocalLatchData;
 
 	if (FeBeWaitSet)
-		ModifyWaitEvent(FeBeWaitSet, 1, WL_LATCH_SET, MyLatch);
+		ModifyWaitEvent(FeBeWaitSet, FeBeWaitSetLatchPos, WL_LATCH_SET,
+						MyLatch);
 
 	SetLatch(MyLatch);
 }
@@ -252,9 +297,6 @@ GetBackendTypeDesc(BackendType backendType)
 			break;
 		case B_ARCHIVER:
 			backendDesc = "archiver";
-			break;
-		case B_STATS_COLLECTOR:
-			backendDesc = "stats collector";
 			break;
 		case B_LOGGER:
 			backendDesc = "logger";
@@ -548,15 +590,21 @@ GetAuthenticatedUserId(void)
  * with guc.c's internal state, so SET ROLE has to be disallowed.
  *
  * SECURITY_RESTRICTED_OPERATION indicates that we are inside an operation
- * that does not wish to trust called user-defined functions at all.  This
- * bit prevents not only SET ROLE, but various other changes of session state
- * that normally is unprotected but might possibly be used to subvert the
- * calling session later.  An example is replacing an existing prepared
- * statement with new code, which will then be executed with the outer
- * session's permissions when the prepared statement is next used.  Since
- * these restrictions are fairly draconian, we apply them only in contexts
- * where the called functions are really supposed to be side-effect-free
- * anyway, such as VACUUM/ANALYZE/REINDEX.
+ * that does not wish to trust called user-defined functions at all.  The
+ * policy is to use this before operations, e.g. autovacuum and REINDEX, that
+ * enumerate relations of a database or schema and run functions associated
+ * with each found relation.  The relation owner is the new user ID.  Set this
+ * as soon as possible after locking the relation.  Restore the old user ID as
+ * late as possible before closing the relation; restoring it shortly after
+ * close is also tolerable.  If a command has both relation-enumerating and
+ * non-enumerating modes, e.g. ANALYZE, both modes set this bit.  This bit
+ * prevents not only SET ROLE, but various other changes of session state that
+ * normally is unprotected but might possibly be used to subvert the calling
+ * session later.  An example is replacing an existing prepared statement with
+ * new code, which will then be executed with the outer session's permissions
+ * when the prepared statement is next used.  These restrictions are fairly
+ * draconian, but the functions called in relation-enumerating operations are
+ * really supposed to be side-effect-free anyway.
  *
  * SECURITY_NOFORCE_RLS indicates that we are inside an operation which should
  * ignore the FORCE ROW LEVEL SECURITY per-table indication.  This is used to
@@ -776,7 +824,7 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 					PGC_BACKEND, PGC_S_OVERRIDE);
 	SetConfigOption("is_superuser",
 					AuthenticatedUserIsSuperuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 
 	ReleaseSysCache(roleTup);
 }
@@ -842,7 +890,7 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 }
 
 /*
@@ -905,7 +953,7 @@ SetCurrentRoleId(Oid roleid, bool is_superuser)
 
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 }
 
 
@@ -1664,6 +1712,10 @@ char	   *local_preload_libraries_string = NULL;
 
 /* Flag telling that we are loading shared_preload_libraries */
 bool		process_shared_preload_libraries_in_progress = false;
+bool		process_shared_preload_libraries_done = false;
+
+shmem_request_hook_type shmem_request_hook = NULL;
+bool		process_shmem_requests_in_progress = false;
 
 /*
  * load the shared libraries listed in 'libraries'
@@ -1711,7 +1763,7 @@ load_libraries(const char *libraries, const char *gucname, bool restricted)
 		}
 		load_file(filename, restricted);
 		ereport(DEBUG1,
-				(errmsg("loaded library \"%s\"", filename)));
+				(errmsg_internal("loaded library \"%s\"", filename)));
 		if (expanded)
 			pfree(expanded);
 	}
@@ -1733,6 +1785,7 @@ process_shared_preload_libraries(void)
 				   false);
 
 	process_shared_preload_libraries_in_progress = false;
+	process_shared_preload_libraries_done = true;
 }
 
 /*
@@ -1747,6 +1800,18 @@ process_session_preload_libraries(void)
 	load_libraries(local_preload_libraries_string,
 				   "local_preload_libraries",
 				   true);
+}
+
+/*
+ * process any shared memory requests from preloaded libraries
+ */
+void
+process_shmem_requests(void)
+{
+	process_shmem_requests_in_progress = true;
+	if (shmem_request_hook)
+		shmem_request_hook();
+	process_shmem_requests_in_progress = false;
 }
 
 void

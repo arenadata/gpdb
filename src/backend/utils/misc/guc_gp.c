@@ -95,7 +95,7 @@ static void assign_pljava_classpath_insecure(bool newval, void *extra);
 static bool check_gp_resource_group_bypass(bool *newval, void **extra, GucSource source);
 static int guc_array_compare(const void *a, const void *b);
 
-extern struct config_generic *find_option(const char *name, bool create_placeholders, int elevel);
+extern struct config_generic *find_option(const char *name, bool create_placeholders, bool skip_errors, int elevel);
 
 extern int listenerBacklog;
 
@@ -2799,7 +2799,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
-		{"stats_queue_level", PGC_SUSET, STATS_COLLECTOR,
+		{"stats_queue_level", PGC_SUSET, STATS_CUMULATIVE,
 			gettext_noop("Collects resource queue-level statistics on database activity."),
 			NULL
 		},
@@ -4872,7 +4872,7 @@ check_pljava_classpath_insecure(bool *newval, void **extra, GucSource source)
 {
 	if ( *newval == true )
 	{
-		struct config_generic *pljava_cp = find_option("pljava_classpath", false, ERROR);
+		struct config_generic *pljava_cp = find_option("pljava_classpath", false, false, ERROR);
 		if (pljava_cp != NULL)
 		{
 			pljava_cp->context = PGC_USERSET;
@@ -4891,7 +4891,7 @@ assign_pljava_classpath_insecure(bool newval, void *extra)
 {
 	if ( newval == true )
 	{
-		struct config_generic *pljava_cp = find_option("pljava_classpath", false, ERROR);
+		struct config_generic *pljava_cp = find_option("pljava_classpath", false, false, ERROR);
 		if (pljava_cp != NULL)
 		{
 			pljava_cp->context = PGC_USERSET;
@@ -5079,7 +5079,7 @@ assign_gp_default_storage_options(const char *newval, void *extra)
 void
 set_gp_replication_config(const char *name, const char *value)
 {
-	A_Const aconst = {.type = T_A_Const, .val = {.type = T_String, .val.str = pstrdup(value)}};
+	A_Const aconst = {.type = T_A_Const, .val = {.sval = {.type = T_String, .sval = pstrdup(value)}}};
 	List *args = list_make1(&aconst);
 	VariableSetStmt setstmt = {.type = T_VariableSetStmt, .kind = VAR_SET_VALUE, .name = pstrdup(name), .args = args};
 	AlterSystemStmt alterSystemStmt = {.type = T_AlterSystemStmt, .setstmt = &setstmt};

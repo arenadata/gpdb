@@ -1,12 +1,15 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 # Minimal test testing streaming replication
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 36;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Initialize primary node
-my $node_primary = get_new_node('primary');
+my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 # A specific role is created to perform some tests related to replication,
 # and it needs proper authentication configuration.
 $node_primary->init(
@@ -20,7 +23,7 @@ my $backup_name = 'my_backup';
 $node_primary->backup($backup_name);
 
 # Create streaming standby linking to primary
-my $node_standby_1 = get_new_node('standby_1');
+my $node_standby_1 = PostgreSQL::Test::Cluster->new('standby_1');
 $node_standby_1->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 $node_standby_1->start;
@@ -35,20 +38,19 @@ $node_standby_1->backup('my_backup_2');
 $node_primary->start;
 
 # Create second standby node linking to standby 1
-my $node_standby_2 = get_new_node('standby_2');
+my $node_standby_2 = PostgreSQL::Test::Cluster->new('standby_2');
 $node_standby_2->init_from_backup($node_standby_1, $backup_name,
 	has_streaming => 1);
 $node_standby_2->start;
 
-# Create some content on primary and check its presence in standby 1
+# Create some content on primary and check its presence in standby nodes
 $node_primary->safe_psql('postgres',
 	"CREATE TABLE tab_int AS SELECT generate_series(1,1002) AS a");
 
 # Wait for standbys to catch up
-$node_primary->wait_for_catchup($node_standby_1, 'replay',
-	$node_primary->lsn('insert'));
-$node_standby_1->wait_for_catchup($node_standby_2, 'replay',
-	$node_standby_1->lsn('replay'));
+my $primary_lsn = $node_primary->lsn('write');
+$node_primary->wait_for_catchup($node_standby_1, 'replay', $primary_lsn);
+$node_standby_1->wait_for_catchup($node_standby_2, 'replay', $primary_lsn);
 
 my $result =
   $node_standby_1->safe_psql('postgres', "SELECT count(*) FROM tab_int");
@@ -60,6 +62,23 @@ $result =
 print "standby 2: $result\n";
 is($result, qq(1002), 'check streamed content on standby 2');
 
+# Likewise, but for a sequence
+$node_primary->safe_psql('postgres',
+	"CREATE SEQUENCE seq1; SELECT nextval('seq1')");
+
+# Wait for standbys to catch up
+$primary_lsn = $node_primary->lsn('write');
+$node_primary->wait_for_catchup($node_standby_1, 'replay', $primary_lsn);
+$node_standby_1->wait_for_catchup($node_standby_2, 'replay', $primary_lsn);
+
+$result = $node_standby_1->safe_psql('postgres', "SELECT * FROM seq1");
+print "standby 1: $result\n";
+is($result, qq(33|0|t), 'check streamed sequence content on standby 1');
+
+$result = $node_standby_2->safe_psql('postgres', "SELECT * FROM seq1");
+print "standby 2: $result\n";
+is($result, qq(33|0|t), 'check streamed sequence content on standby 2');
+
 # Check that only READ-only queries can run on standbys
 is($node_standby_1->psql('postgres', 'INSERT INTO tab_int VALUES (1)'),
 	3, 'read-only queries on standby 1');
@@ -69,39 +88,60 @@ is($node_standby_2->psql('postgres', 'INSERT INTO tab_int VALUES (1)'),
 # Tests for connection parameter target_session_attrs
 note "testing connection parameter \"target_session_attrs\"";
 
-# Routine designed to run tests on the connection parameter
-# target_session_attrs with multiple nodes.
+# Attempt to connect to $node1, then $node2, using target_session_attrs=$mode.
+# Expect to connect to $target_node (undef for failure) with given $status.
 sub test_target_session_attrs
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my $node1       = shift;
 	my $node2       = shift;
 	my $target_node = shift;
 	my $mode        = shift;
 	my $status      = shift;
 
-	my $node1_host = $node1->host;
-	my $node1_port = $node1->port;
-	my $node1_name = $node1->name;
-	my $node2_host = $node2->host;
-	my $node2_port = $node2->port;
-	my $node2_name = $node2->name;
-
-	my $target_name = $target_node->name;
+	my $node1_host  = $node1->host;
+	my $node1_port  = $node1->port;
+	my $node1_name  = $node1->name;
+	my $node2_host  = $node2->host;
+	my $node2_port  = $node2->port;
+	my $node2_name  = $node2->name;
+	my $target_port = undef;
+	$target_port = $target_node->port if (defined $target_node);
+	my $target_name = undef;
+	$target_name = $target_node->name if (defined $target_node);
 
 	# Build connection string for connection attempt.
 	my $connstr = "host=$node1_host,$node2_host ";
 	$connstr .= "port=$node1_port,$node2_port ";
 	$connstr .= "target_session_attrs=$mode";
 
-	# The client used for the connection does not matter, only the backend
-	# point does.
+	# Attempt to connect, and if successful, get the server port number
+	# we connected to.  Note we must pass the SQL command via the command
+	# line not stdin, else Perl may spit up trying to write to stdin of
+	# an already-failed psql process.
 	my ($ret, $stdout, $stderr) =
-	  $node1->psql('postgres', 'SHOW port;',
-		extra_params => [ '-d', $connstr ]);
-	is( $status == $ret && $stdout eq $target_node->port,
-		1,
-		"connect to node $target_name if mode \"$mode\" and $node1_name,$node2_name listed"
-	);
+	  $node1->psql('postgres', undef,
+		extra_params => [ '-d', $connstr, '-c', 'SHOW port;' ]);
+	if ($status == 0)
+	{
+		is( $status == $ret && $stdout eq $target_port,
+			1,
+			"connect to node $target_name with mode \"$mode\" and $node1_name,$node2_name listed"
+		);
+	}
+	else
+	{
+		print "status = $status\n";
+		print "ret = $ret\n";
+		print "stdout = $stdout\n";
+		print "stderr = $stderr\n";
+
+		is( $status == $ret && !defined $target_node,
+			1,
+			"fail to connect with mode \"$mode\" and $node1_name,$node2_name listed"
+		);
+	}
 
 	return;
 }
@@ -115,12 +155,63 @@ test_target_session_attrs($node_standby_1, $node_primary, $node_primary,
 	"read-write", 0);
 
 # Connect to primary in "any" mode with primary,standby1 list.
-test_target_session_attrs($node_primary, $node_standby_1, $node_primary, "any",
-	0);
+test_target_session_attrs($node_primary, $node_standby_1, $node_primary,
+	"any", 0);
 
 # Connect to standby1 in "any" mode with standby1,primary list.
 test_target_session_attrs($node_standby_1, $node_primary, $node_standby_1,
 	"any", 0);
+
+# Connect to primary in "primary" mode with primary,standby1 list.
+test_target_session_attrs($node_primary, $node_standby_1, $node_primary,
+	"primary", 0);
+
+# Connect to primary in "primary" mode with standby1,primary list.
+test_target_session_attrs($node_standby_1, $node_primary, $node_primary,
+	"primary", 0);
+
+# Connect to standby1 in "read-only" mode with primary,standby1 list.
+test_target_session_attrs($node_primary, $node_standby_1, $node_standby_1,
+	"read-only", 0);
+
+# Connect to standby1 in "read-only" mode with standby1,primary list.
+test_target_session_attrs($node_standby_1, $node_primary, $node_standby_1,
+	"read-only", 0);
+
+# Connect to primary in "prefer-standby" mode with primary,primary list.
+test_target_session_attrs($node_primary, $node_primary, $node_primary,
+	"prefer-standby", 0);
+
+# Connect to standby1 in "prefer-standby" mode with primary,standby1 list.
+test_target_session_attrs($node_primary, $node_standby_1, $node_standby_1,
+	"prefer-standby", 0);
+
+# Connect to standby1 in "prefer-standby" mode with standby1,primary list.
+test_target_session_attrs($node_standby_1, $node_primary, $node_standby_1,
+	"prefer-standby", 0);
+
+# Connect to standby1 in "standby" mode with primary,standby1 list.
+test_target_session_attrs($node_primary, $node_standby_1, $node_standby_1,
+	"standby", 0);
+
+# Connect to standby1 in "standby" mode with standby1,primary list.
+test_target_session_attrs($node_standby_1, $node_primary, $node_standby_1,
+	"standby", 0);
+
+# Fail to connect in "read-write" mode with standby1,standby2 list.
+test_target_session_attrs($node_standby_1, $node_standby_2, undef,
+	"read-write", 2);
+
+# Fail to connect in "primary" mode with standby1,standby2 list.
+test_target_session_attrs($node_standby_1, $node_standby_2, undef,
+	"primary", 2);
+
+# Fail to connect in "read-only" mode with primary,primary list.
+test_target_session_attrs($node_primary, $node_primary, undef,
+	"read-only", 2);
+
+# Fail to connect in "standby" mode with primary,primary list.
+test_target_session_attrs($node_primary, $node_primary, undef, "standby", 2);
 
 # Test for SHOW commands using a WAL sender connection with a replication
 # role.
@@ -130,8 +221,8 @@ $node_primary->psql(
 	'postgres', "
 CREATE ROLE repl_role REPLICATION LOGIN;
 GRANT pg_read_all_settings TO repl_role;");
-my $primary_host    = $node_primary->host;
-my $primary_port    = $node_primary->port;
+my $primary_host   = $node_primary->host;
+my $primary_port   = $node_primary->port;
 my $connstr_common = "host=$primary_host port=$primary_port user=repl_role";
 my $connstr_rep    = "$connstr_common replication=1";
 my $connstr_db     = "$connstr_common replication=database dbname=postgres";
@@ -179,6 +270,36 @@ ok( $ret == 0,
 ok( $ret == 0,
 	"SHOW with superuser-settable parameter, replication role and logical replication"
 );
+
+note "testing READ_REPLICATION_SLOT command for replication connection";
+
+my $slotname = 'test_read_replication_slot_physical';
+
+($ret, $stdout, $stderr) = $node_primary->psql(
+	'postgres',
+	'READ_REPLICATION_SLOT non_existent_slot;',
+	extra_params => [ '-d', $connstr_rep ]);
+ok($ret == 0, "READ_REPLICATION_SLOT exit code 0 on success");
+like($stdout, qr/^\|\|$/,
+	"READ_REPLICATION_SLOT returns NULL values if slot does not exist");
+
+$node_primary->psql(
+	'postgres',
+	"CREATE_REPLICATION_SLOT $slotname PHYSICAL RESERVE_WAL;",
+	extra_params => [ '-d', $connstr_rep ]);
+
+($ret, $stdout, $stderr) = $node_primary->psql(
+	'postgres',
+	"READ_REPLICATION_SLOT $slotname;",
+	extra_params => [ '-d', $connstr_rep ]);
+ok($ret == 0, "READ_REPLICATION_SLOT success with existing slot");
+like($stdout, qr/^physical\|[^|]*\|1$/,
+	"READ_REPLICATION_SLOT returns tuple with slot information");
+
+$node_primary->psql(
+	'postgres',
+	"DROP_REPLICATION_SLOT $slotname;",
+	extra_params => [ '-d', $connstr_rep ]);
 
 note "switching to physical replication slot";
 
@@ -252,10 +373,11 @@ sub replay_check
 	my $newval = $node_primary->safe_psql('postgres',
 		'INSERT INTO replayed(val) SELECT coalesce(max(val),0) + 1 AS newval FROM replayed RETURNING val'
 	);
-	$node_primary->wait_for_catchup($node_standby_1, 'replay',
-		$node_primary->lsn('insert'));
+	my $primary_lsn = $node_primary->lsn('write');
+	$node_primary->wait_for_catchup($node_standby_1, 'replay', $primary_lsn);
 	$node_standby_1->wait_for_catchup($node_standby_2, 'replay',
-		$node_standby_1->lsn('replay'));
+		$primary_lsn);
+
 	$node_standby_1->safe_psql('postgres',
 		qq[SELECT 1 FROM replayed WHERE val = $newval])
 	  or die "standby_1 didn't replay primary value $newval";
@@ -359,8 +481,7 @@ $node_standby_1->stop;
 my $newval = $node_primary->safe_psql('postgres',
 	'INSERT INTO replayed(val) SELECT coalesce(max(val),0) + 1 AS newval FROM replayed RETURNING val'
 );
-$node_primary->wait_for_catchup($node_standby_2, 'replay',
-	$node_primary->lsn('insert'));
+$node_primary->wait_for_catchup($node_standby_2);
 my $is_replayed = $node_standby_2->safe_psql('postgres',
 	qq[SELECT 1 FROM replayed WHERE val = $newval]);
 is($is_replayed, qq(1), "standby_2 didn't replay primary value $newval");
@@ -413,3 +534,5 @@ my $primary_data = $node_primary->data_dir;
 # point.
 ok(-f "$primary_data/pg_wal/$segment_removed",
 	"WAL segment $segment_removed recycled after physical slot advancing");
+
+done_testing();

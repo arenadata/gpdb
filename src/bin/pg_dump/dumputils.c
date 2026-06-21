@@ -5,7 +5,7 @@
  * Basically this is stuff that is useful in both pg_dump and pg_dumpall.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_dump/dumputils.c
@@ -37,7 +37,7 @@ static void AddAcl(PQExpBuffer aclbuf, const char *keyword,
  *	nspname: the namespace the object is in (NULL if none); not pre-quoted
  *	type: the object type (as seen in GRANT command: must be one of
  *		TABLE, SEQUENCE, FUNCTION, PROCEDURE, LANGUAGE, SCHEMA, DATABASE, TABLESPACE,
- *		FOREIGN DATA WRAPPER, SERVER, or LARGE OBJECT)
+ *		FOREIGN DATA WRAPPER, SERVER, PARAMETER or LARGE OBJECT)
  *	acls: the ACL string fetched from the database
  *	baseacls: the initial ACL string for this object; can be
  *		NULL or empty string to indicate "not available from server"
@@ -210,50 +210,29 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 		/* Scan individual REVOKE ACL items */
 		for (i = 0; i < nrevokeitems; i++)
 		{
-			if (!parseAclItem(revokeitems[i],
-							  type, name, subname, remoteVersion,
-							  grantee, grantor, privs, privswgo))
+			if (!parseAclItem(revokeitems[i], type, name, subname, remoteVersion,
+							  grantee, grantor, privs, NULL))
 			{
 				ok = false;
 				break;
 			}
 
-			if (privs->len > 0 || privswgo->len > 0)
+			if (privs->len > 0)
 			{
-				if (privs->len > 0)
-				{
-					appendPQExpBuffer(firstsql, "%sREVOKE %s ON %s ",
-									  prefix, privs->data, type);
-					if (nspname && *nspname)
-						appendPQExpBuffer(firstsql, "%s.", fmtId(nspname));
-					appendPQExpBuffer(firstsql, "%s FROM ", name);
-					if (grantee->len == 0)
-						appendPQExpBufferStr(firstsql, "PUBLIC;\n");
-					else if (strncmp(grantee->data, "group ",
-									 strlen("group ")) == 0)
-						appendPQExpBuffer(firstsql, "GROUP %s;\n",
-										  fmtId(grantee->data + strlen("group ")));
-					else
-						appendPQExpBuffer(firstsql, "%s;\n",
-										  fmtId(grantee->data));
-				}
-				if (privswgo->len > 0)
-				{
-					appendPQExpBuffer(firstsql,
-									  "%sREVOKE GRANT OPTION FOR %s ON %s ",
-									  prefix, privswgo->data, type);
-					if (nspname && *nspname)
-						appendPQExpBuffer(firstsql, "%s.", fmtId(nspname));
-					appendPQExpBuffer(firstsql, "%s FROM ", name);
-					if (grantee->len == 0)
-						appendPQExpBufferStr(firstsql, "PUBLIC");
-					else if (strncmp(grantee->data, "group ",
-									 strlen("group ")) == 0)
-						appendPQExpBuffer(firstsql, "GROUP %s",
-										  fmtId(grantee->data + strlen("group ")));
-					else
-						appendPQExpBufferStr(firstsql, fmtId(grantee->data));
-				}
+				appendPQExpBuffer(firstsql, "%sREVOKE %s ON %s ",
+								  prefix, privs->data, type);
+				if (nspname && *nspname)
+					appendPQExpBuffer(firstsql, "%s.", fmtId(nspname));
+				appendPQExpBuffer(firstsql, "%s FROM ", name);
+				if (grantee->len == 0)
+					appendPQExpBufferStr(firstsql, "PUBLIC;\n");
+				else if (strncmp(grantee->data, "group ",
+								 strlen("group ")) == 0)
+					appendPQExpBuffer(firstsql, "GROUP %s;\n",
+									  fmtId(grantee->data + strlen("group ")));
+				else
+					appendPQExpBuffer(firstsql, "%s;\n",
+									  fmtId(grantee->data));
 			}
 		}
 	}
@@ -422,18 +401,17 @@ buildDefaultACLCommands(const char *type, const char *nspname,
 /*
  * This will parse an aclitem string, having the general form
  *		username=privilegecodes/grantor
- * or
- *		group groupname=privilegecodes/grantor
- * (the "group" case occurs only with servers before 8.1).
  *
  * Returns true on success, false on parse error.  On success, the components
  * of the string are returned in the PQExpBuffer parameters.
  *
- * The returned grantee string will be the dequoted username or groupname
- * (preceded with "group " in the latter case).  Note that a grant to PUBLIC
- * is represented by an empty grantee string.  The returned grantor is the
- * dequoted grantor name.  Privilege characters are decoded and split between
- * privileges with grant option (privswgo) and without (privs).
+ * The returned grantee string will be the dequoted username, or an empty
+ * string in the case of a grant to PUBLIC.  The returned grantor is the
+ * dequoted grantor name.  Privilege characters are translated to GRANT/REVOKE
+ * comma-separated privileges lists.  If "privswgo" is non-NULL, the result is
+ * separate lists for privileges with grant option ("privswgo") and without
+ * ("privs").  Otherwise, "privs" bears every relevant privilege, ignoring the
+ * grant option distinction.
  *
  * Note: for cross-version compatibility, it's important to use ALL to
  * represent the privilege sets whenever appropriate.
@@ -484,7 +462,7 @@ parseAclItem(const char *item, const char *type,
 do { \
 	if ((pos = strchr(eqpos + 1, code))) \
 	{ \
-		if (*(pos + 1) == '*') \
+		if (*(pos + 1) == '*' && privswgo != NULL) \
 		{ \
 			AddAcl(privswgo, keywd, subname); \
 			all_without_go = false; \
@@ -521,8 +499,7 @@ do { \
 			{
 				CONVERT_PRIV('d', "DELETE");
 				CONVERT_PRIV('t', "TRIGGER");
-				if (remoteVersion >= 80400)
-					CONVERT_PRIV('D', "TRUNCATE");
+				CONVERT_PRIV('D', "TRUNCATE");
 			}
 		}
 
@@ -560,6 +537,11 @@ do { \
 		CONVERT_PRIV('U', "USAGE");
 	else if (strcmp(type, "FOREIGN TABLE") == 0)
 		CONVERT_PRIV('r', "SELECT");
+	else if (strcmp(type, "PARAMETER") == 0)
+	{
+		CONVERT_PRIV('s', "SET");
+		CONVERT_PRIV('A', "ALTER SYSTEM");
+	}
 	else if (strcmp(type, "LARGE OBJECT") == 0)
 	{
 		CONVERT_PRIV('r', "SELECT");
@@ -747,11 +729,12 @@ emitShSecLabels(PGconn *conn, PGresult *res, PQExpBuffer buffer,
 bool
 variable_is_guc_list_quote(const char *name)
 {
-	if (pg_strcasecmp(name, "temp_tablespaces") == 0 ||
+	if (pg_strcasecmp(name, "local_preload_libraries") == 0 ||
+		pg_strcasecmp(name, "search_path") == 0 ||
 		pg_strcasecmp(name, "session_preload_libraries") == 0 ||
 		pg_strcasecmp(name, "shared_preload_libraries") == 0 ||
-		pg_strcasecmp(name, "local_preload_libraries") == 0 ||
-		pg_strcasecmp(name, "search_path") == 0)
+		pg_strcasecmp(name, "temp_tablespaces") == 0 ||
+		pg_strcasecmp(name, "unix_socket_directories") == 0)
 		return true;
 	else
 		return false;

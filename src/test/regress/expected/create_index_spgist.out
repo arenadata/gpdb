@@ -64,13 +64,13 @@ SELECT count(*) FROM quad_point_tbl WHERE p >> '(5000, 4000)';
   4999
 (1 row)
 
-SELECT count(*) FROM quad_point_tbl WHERE p <^ '(5000, 4000)';
+SELECT count(*) FROM quad_point_tbl WHERE p <<| '(5000, 4000)';
  count 
 -------
   5000
 (1 row)
 
-SELECT count(*) FROM quad_point_tbl WHERE p >^ '(5000, 4000)';
+SELECT count(*) FROM quad_point_tbl WHERE p |>> '(5000, 4000)';
  count 
 -------
   5999
@@ -305,36 +305,36 @@ SELECT count(*) FROM quad_point_tbl WHERE p >> '(5000, 4000)';
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM quad_point_tbl WHERE p <^ '(5000, 4000)';
+SELECT count(*) FROM quad_point_tbl WHERE p <<| '(5000, 4000)';
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Index Only Scan using sp_quad_ind on quad_point_tbl
-                     Index Cond: (p <^ '(5000,4000)'::point)
+                     Index Cond: (p <<| '(5000,4000)'::point)
  Optimizer: Postgres query optimizer
 (6 rows)
 
-SELECT count(*) FROM quad_point_tbl WHERE p <^ '(5000, 4000)';
+SELECT count(*) FROM quad_point_tbl WHERE p <<| '(5000, 4000)';
  count 
 -------
   5000
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM quad_point_tbl WHERE p >^ '(5000, 4000)';
+SELECT count(*) FROM quad_point_tbl WHERE p |>> '(5000, 4000)';
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Index Only Scan using sp_quad_ind on quad_point_tbl
-                     Index Cond: (p >^ '(5000,4000)'::point)
+                     Index Cond: (p |>> '(5000,4000)'::point)
  Optimizer: Postgres query optimizer
 (6 rows)
 
-SELECT count(*) FROM quad_point_tbl WHERE p >^ '(5000, 4000)';
+SELECT count(*) FROM quad_point_tbl WHERE p |>> '(5000, 4000)';
  count 
 -------
   5999
@@ -505,36 +505,36 @@ SELECT count(*) FROM kd_point_tbl WHERE p >> '(5000, 4000)';
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM kd_point_tbl WHERE p <^ '(5000, 4000)';
+SELECT count(*) FROM kd_point_tbl WHERE p <<| '(5000, 4000)';
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Index Only Scan using sp_kd_ind on kd_point_tbl
-                     Index Cond: (p <^ '(5000,4000)'::point)
+                     Index Cond: (p <<| '(5000,4000)'::point)
  Optimizer: Postgres query optimizer
 (6 rows)
 
-SELECT count(*) FROM kd_point_tbl WHERE p <^ '(5000, 4000)';
+SELECT count(*) FROM kd_point_tbl WHERE p <<| '(5000, 4000)';
  count 
 -------
   5000
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM kd_point_tbl WHERE p >^ '(5000, 4000)';
+SELECT count(*) FROM kd_point_tbl WHERE p |>> '(5000, 4000)';
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Index Only Scan using sp_kd_ind on kd_point_tbl
-                     Index Cond: (p >^ '(5000,4000)'::point)
+                     Index Cond: (p |>> '(5000,4000)'::point)
  Optimizer: Postgres query optimizer
 (6 rows)
 
-SELECT count(*) FROM kd_point_tbl WHERE p >^ '(5000, 4000)';
+SELECT count(*) FROM kd_point_tbl WHERE p |>> '(5000, 4000)';
  count 
 -------
   5999
@@ -632,6 +632,39 @@ WHERE seq.dist IS DISTINCT FROM idx.dist;
 ---+------+---+---+------+---
 (0 rows)
 
+-- test KNN scan with included columns
+-- the distance numbers are not exactly the same across platforms
+SET extra_float_digits = 0;
+CREATE INDEX ON quad_point_tbl_ord_seq1 USING spgist(p) INCLUDE(dist);
+EXPLAIN (COSTS OFF)
+SELECT p, dist FROM quad_point_tbl_ord_seq1 ORDER BY p <-> '0,0' LIMIT 10;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: ((p <-> '(0,0)'::point))
+         ->  Limit
+               ->  Index Only Scan using quad_point_tbl_ord_seq1_p_dist_idx on quad_point_tbl_ord_seq1
+                     Order By: (p <-> '(0,0)'::point)
+ Optimizer: Postgres query optimizer
+(7 rows)
+
+SELECT p, dist FROM quad_point_tbl_ord_seq1 ORDER BY p <-> '0,0' LIMIT 10;
+     p     |       dist       
+-----------+------------------
+ (59,21)   | 62.6258732474047
+ (88,104)  | 136.235090927411
+ (39,143)  | 148.222805262888
+ (139,160) | 211.945747775227
+ (209,38)  |  212.42645786248
+ (157,156) | 221.325552072055
+ (175,150) | 230.488611432322
+ (236,34)  | 238.436574375661
+ (263,28)  | 264.486294540946
+ (322,53)  |  326.33265236565
+(10 rows)
+
+RESET extra_float_digits;
 -- check ORDER BY distance to NULL
 SELECT DISTINCT ON (i) p FROM kd_point_tbl,
     (VALUES (1, point '1,2'), (2, NULL), (3, '1234,5678')) pts(i, pt)
@@ -890,6 +923,24 @@ SELECT count(*) FROM radix_text_tbl WHERE t ^@	 'Worth';
      2
 (1 row)
 
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM radix_text_tbl WHERE starts_with(t, 'Worth');
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Index Only Scan using sp_radix_ind on radix_text_tbl
+               Index Cond: (t ^@ 'Worth'::text)
+               Filter: starts_with(t, 'Worth'::text)
+ Optimizer: Postgres query optimizer
+(6 rows)
+
+SELECT count(*) FROM radix_text_tbl WHERE starts_with(t, 'Worth');
+ count 
+-------
+     2
+(1 row)
+
 -- Now check the results from bitmap indexscan
 SET enable_seqscan = OFF;
 SET enable_indexscan = OFF;
@@ -1032,40 +1083,40 @@ SELECT count(*) FROM quad_point_tbl WHERE p >> '(5000, 4000)';
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM quad_point_tbl WHERE p <^ '(5000, 4000)';
-                            QUERY PLAN                             
--------------------------------------------------------------------
+SELECT count(*) FROM quad_point_tbl WHERE p <<| '(5000, 4000)';
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Bitmap Heap Scan on quad_point_tbl
-                     Recheck Cond: (p <^ '(5000,4000)'::point)
+                     Recheck Cond: (p <<| '(5000,4000)'::point)
                      ->  Bitmap Index Scan on sp_quad_ind
-                           Index Cond: (p <^ '(5000,4000)'::point)
+                           Index Cond: (p <<| '(5000,4000)'::point)
  Optimizer: Postgres query optimizer
 (8 rows)
 
-SELECT count(*) FROM quad_point_tbl WHERE p <^ '(5000, 4000)';
+SELECT count(*) FROM quad_point_tbl WHERE p <<| '(5000, 4000)';
  count 
 -------
   5000
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM quad_point_tbl WHERE p >^ '(5000, 4000)';
-                            QUERY PLAN                             
--------------------------------------------------------------------
+SELECT count(*) FROM quad_point_tbl WHERE p |>> '(5000, 4000)';
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Bitmap Heap Scan on quad_point_tbl
-                     Recheck Cond: (p >^ '(5000,4000)'::point)
+                     Recheck Cond: (p |>> '(5000,4000)'::point)
                      ->  Bitmap Index Scan on sp_quad_ind
-                           Index Cond: (p >^ '(5000,4000)'::point)
+                           Index Cond: (p |>> '(5000,4000)'::point)
  Optimizer: Postgres query optimizer
 (8 rows)
 
-SELECT count(*) FROM quad_point_tbl WHERE p >^ '(5000, 4000)';
+SELECT count(*) FROM quad_point_tbl WHERE p |>> '(5000, 4000)';
  count 
 -------
   5999
@@ -1172,40 +1223,40 @@ SELECT count(*) FROM kd_point_tbl WHERE p >> '(5000, 4000)';
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM kd_point_tbl WHERE p <^ '(5000, 4000)';
-                            QUERY PLAN                             
--------------------------------------------------------------------
+SELECT count(*) FROM kd_point_tbl WHERE p <<| '(5000, 4000)';
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Bitmap Heap Scan on kd_point_tbl
-                     Recheck Cond: (p <^ '(5000,4000)'::point)
+                     Recheck Cond: (p <<| '(5000,4000)'::point)
                      ->  Bitmap Index Scan on sp_kd_ind
-                           Index Cond: (p <^ '(5000,4000)'::point)
+                           Index Cond: (p <<| '(5000,4000)'::point)
  Optimizer: Postgres query optimizer
 (8 rows)
 
-SELECT count(*) FROM kd_point_tbl WHERE p <^ '(5000, 4000)';
+SELECT count(*) FROM kd_point_tbl WHERE p <<| '(5000, 4000)';
  count 
 -------
   5000
 (1 row)
 
 EXPLAIN (COSTS OFF)
-SELECT count(*) FROM kd_point_tbl WHERE p >^ '(5000, 4000)';
-                            QUERY PLAN                             
--------------------------------------------------------------------
+SELECT count(*) FROM kd_point_tbl WHERE p |>> '(5000, 4000)';
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Bitmap Heap Scan on kd_point_tbl
-                     Recheck Cond: (p >^ '(5000,4000)'::point)
+                     Recheck Cond: (p |>> '(5000,4000)'::point)
                      ->  Bitmap Index Scan on sp_kd_ind
-                           Index Cond: (p >^ '(5000,4000)'::point)
+                           Index Cond: (p |>> '(5000,4000)'::point)
  Optimizer: Postgres query optimizer
 (8 rows)
 
-SELECT count(*) FROM kd_point_tbl WHERE p >^ '(5000, 4000)';
+SELECT count(*) FROM kd_point_tbl WHERE p |>> '(5000, 4000)';
  count 
 -------
   5999
@@ -1507,6 +1558,25 @@ SELECT count(*) FROM radix_text_tbl WHERE t ^@	 'Worth';
 (1 row)
 
 RESET optimizer_enable_tablescan;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM radix_text_tbl WHERE starts_with(t, 'Worth');
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Bitmap Heap Scan on radix_text_tbl
+               Filter: starts_with(t, 'Worth'::text)
+               ->  Bitmap Index Scan on sp_radix_ind
+                     Index Cond: (t ^@ 'Worth'::text)
+ Optimizer: Postgres query optimizer
+(7 rows)
+
+SELECT count(*) FROM radix_text_tbl WHERE starts_with(t, 'Worth');
+ count 
+-------
+     2
+(1 row)
+
 RESET enable_seqscan;
 RESET enable_indexscan;
 RESET enable_bitmapscan;

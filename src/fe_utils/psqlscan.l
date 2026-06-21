@@ -24,7 +24,7 @@
  * See psqlscan_int.h for additional commentary.
  *
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -115,7 +115,7 @@ extern void psql_yyset_column(int column_no, yyscan_t yyscanner);
  *  <xb> bit string literal
  *  <xc> extended C-style comments
  *  <xd> delimited identifiers (double-quoted identifiers)
- *  <xh> hexadecimal numeric string
+ *  <xh> hexadecimal byte string
  *  <xq> standard quoted strings
  *  <xqs> quote stop (detect continued strings)
  *  <xe> extended quoted strings (support backslash escape sequences)
@@ -203,7 +203,7 @@ quotecontinuefail	{whitespace}*"-"?
 xbstart			[bB]{quote}
 xbinside		[^']*
 
-/* Hexadecimal number */
+/* Hexadecimal byte string */
 xhstart			[xX]{quote}
 xhinside		[^']*
 
@@ -282,7 +282,6 @@ xcstart			\/\*{op_chars}*
 xcstop			\*+\/
 xcinside		[^*/]+
 
-digit			[0-9]
 ident_start		[A-Za-z\200-\377_]
 ident_cont		[A-Za-z\200-\377_0-9\$]
 
@@ -321,24 +320,31 @@ self			[,()\[\].;\:\+\-\*\/\%\^\<\>\=]
 op_chars		[\~\!\@\#\^\&\|\`\?\+\-\*\/\%\<\>\=]
 operator		{op_chars}+
 
-/* we no longer allow unary minus in numbers.
- * instead we pass it separately to parser. there it gets
- * coerced via doNegate() -- Leon aug 20 1999
+/*
+ * Numbers
+ *
+ * Unary minus is not part of a number here.  Instead we pass it separately to
+ * the parser, and there it gets coerced via doNegate().
  *
  * {decimalfail} is used because we would like "1..10" to lex as 1, dot_dot, 10.
  *
- * {realfail1} and {realfail2} are added to prevent the need for scanner
+ * {realfail} is added to prevent the need for scanner
  * backup when the {real} rule fails to match completely.
  */
+digit			[0-9]
 
 integer			{digit}+
 decimal			(({digit}*\.{digit}+)|({digit}+\.{digit}*))
 decimalfail		{digit}+\.\.
 real			({integer}|{decimal})[Ee][-+]?{digit}+
-realfail1		({integer}|{decimal})[Ee]
-realfail2		({integer}|{decimal})[Ee][-+]
+realfail		({integer}|{decimal})[Ee][-+]
+
+integer_junk	{integer}{ident_start}
+decimal_junk	{decimal}{ident_start}
+real_junk		{real}{ident_start}
 
 param			\${integer}
+param_junk		\${integer}{ident_start}
 
 /* psql-specific: characters allowed in variable names */
 variable_char	[A-Za-z\200-\377_0-9]
@@ -379,12 +385,11 @@ other			.
 					/*
 					 * Note that the whitespace rule includes both true
 					 * whitespace and single-line ("--" style) comments.
-					 * We suppress whitespace at the start of the query
-					 * buffer.  We also suppress all single-line comments,
-					 * which is pretty dubious but is the historical
-					 * behavior.
+					 * We suppress whitespace until we have collected some
+					 * non-whitespace data.  (This interacts with some
+					 * decisions in MainLoop(); see there for details.)
 					 */
-					if (!(output_buf->len == 0 || yytext[0] == '-'))
+					if (output_buf->len > 0)
 						ECHO;
 				}
 
@@ -648,10 +653,11 @@ other			.
 
 ";"				{
 					ECHO;
-					if (cur_state->paren_depth == 0)
+					if (cur_state->paren_depth == 0 && cur_state->begin_depth == 0)
 					{
 						/* Terminate lexing temporarily */
 						cur_state->start_state = YY_START;
+						cur_state->identifier_count = 0;
 						return LEXRES_SEMI;
 					}
 				}
@@ -664,6 +670,8 @@ other			.
 "\\"[;:]		{
 					/* Force a semi-colon or colon into the query buffer */
 					psqlscan_emit(cur_state, yytext + 1, 1);
+					if (yytext[1] == ';')
+						cur_state->identifier_count = 0;
 				}
 
 "\\"			{
@@ -838,6 +846,9 @@ other			.
 {param}			{
 					ECHO;
 				}
+{param_junk}	{
+					ECHO;
+				}
 
 {integer}		{
 					ECHO;
@@ -853,23 +864,70 @@ other			.
 {real}			{
 					ECHO;
 				}
-{realfail1}		{
-					/*
-					 * throw back the [Ee], and figure out whether what
-					 * remains is an {integer} or {decimal}.
-					 * (in psql, we don't actually care...)
-					 */
-					yyless(yyleng - 1);
+{realfail}		{
 					ECHO;
 				}
-{realfail2}		{
-					/* throw back the [Ee][+-], and proceed as above */
-					yyless(yyleng - 2);
+{integer_junk}	{
+					ECHO;
+				}
+{decimal_junk}	{
+					ECHO;
+				}
+{real_junk}		{
 					ECHO;
 				}
 
 
 {identifier}	{
+					/*
+					 * We need to track if we are inside a BEGIN .. END block
+					 * in a function definition, so that semicolons contained
+					 * therein don't terminate the whole statement.  Short of
+					 * writing a full parser here, the following heuristic
+					 * should work.  First, we track whether the beginning of
+					 * the statement matches CREATE [OR REPLACE]
+					 * {FUNCTION|PROCEDURE}
+					 */
+
+					if (cur_state->identifier_count == 0)
+						memset(cur_state->identifiers, 0, sizeof(cur_state->identifiers));
+
+					if (pg_strcasecmp(yytext, "create") == 0 ||
+						pg_strcasecmp(yytext, "function") == 0 ||
+						pg_strcasecmp(yytext, "procedure") == 0 ||
+						pg_strcasecmp(yytext, "or") == 0 ||
+						pg_strcasecmp(yytext, "replace") == 0)
+					{
+						if (cur_state->identifier_count < sizeof(cur_state->identifiers))
+							cur_state->identifiers[cur_state->identifier_count] = pg_tolower((unsigned char) yytext[0]);
+					}
+
+					cur_state->identifier_count++;
+
+					if (cur_state->identifiers[0] == 'c' &&
+						(cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
+						 (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
+						  (cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p'))) &&
+						cur_state->paren_depth == 0)
+					{
+						if (pg_strcasecmp(yytext, "begin") == 0)
+							cur_state->begin_depth++;
+						else if (pg_strcasecmp(yytext, "case") == 0)
+						{
+							/*
+							 * CASE also ends with END.  We only need to track
+							 * this if we are already inside a BEGIN.
+							 */
+							if (cur_state->begin_depth >= 1)
+								cur_state->begin_depth++;
+						}
+						else if (pg_strcasecmp(yytext, "end") == 0)
+						{
+							if (cur_state->begin_depth > 0)
+								cur_state->begin_depth--;
+						}
+					}
+
 					ECHO;
 				}
 
@@ -1057,6 +1115,11 @@ psql_scan(PsqlScanState state,
 						result = PSCAN_INCOMPLETE;
 						*prompt = PROMPT_PAREN;
 					}
+					else if (state->begin_depth > 0)
+					{
+						result = PSCAN_INCOMPLETE;
+						*prompt = PROMPT_CONTINUE;
+					}
 					else if (query_buf->len > 0)
 					{
 						result = PSCAN_EOL;
@@ -1173,6 +1236,8 @@ psql_scan_reset(PsqlScanState state)
 	if (state->dolqstart)
 		free(state->dolqstart);
 	state->dolqstart = NULL;
+	state->identifier_count = 0;
+	state->begin_depth = 0;
 }
 
 /*

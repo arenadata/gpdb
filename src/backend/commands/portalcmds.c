@@ -11,7 +11,7 @@
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -29,6 +29,7 @@
 #include "commands/portalcmds.h"
 #include "executor/executor.h"
 #include "executor/tstoreReceiver.h"
+#include "miscadmin.h"
 #include "rewrite/rewriteHandler.h"
 #include "miscadmin.h"
 #include "port/atomics.h"
@@ -87,14 +88,8 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 	 * rewriter.  We do not do AcquireRewriteLocks: we assume the query either
 	 * came straight from the parser, or suitable locks were acquired by
 	 * plancache.c.
-	 *
-	 * Because the rewriter and planner tend to scribble on the input, we make
-	 * a preliminary copy of the source querytree.  This prevents problems in
-	 * the case that the DECLARE CURSOR is in a portal or plpgsql function and
-	 * is executed repeatedly.  (See also the same hack in EXPLAIN and
-	 * PREPARE.)  XXX FIXME someday.
 	 */
-	rewritten = QueryRewrite((Query *) copyObject(query));
+	rewritten = QueryRewrite(query);
 
 	/* SELECT should never rewrite to more or less than one query */
 	if (list_length(rewritten) != 1)
@@ -469,6 +464,8 @@ PersistHoldablePortal(Portal portal)
 	savePortalContext = PortalContext;
 	PG_TRY();
 	{
+		ScanDirection direction = ForwardScanDirection;
+
 		ActivePortal = portal;
 		if (portal->resowner)
 			CurrentResourceOwner = portal->resowner;
@@ -479,8 +476,20 @@ PersistHoldablePortal(Portal portal)
 		PushActiveSnapshot(queryDesc->snapshot);
 
 		/*
-		 * Rewind the executor: we need to store the entire result set in the
-		 * tuplestore, so that subsequent backward FETCHs can be processed.
+		 * If the portal is marked scrollable, we need to store the entire
+		 * result set in the tuplestore, so that subsequent backward FETCHs
+		 * can be processed.  Otherwise, store only the not-yet-fetched rows.
+		 * (The latter is not only more efficient, but avoids semantic
+		 * problems if the query's output isn't stable.)
+		 *
+		 * In the no-scroll case, tuple indexes in the tuplestore will not
+		 * match the cursor's nominal position (portalPos).  Currently this
+		 * causes no difficulty because we only navigate in the tuplestore by
+		 * relative position, except for the tuplestore_skiptuples call below
+		 * and the tuplestore_rescan call in DoPortalRewind, both of which are
+		 * disabled for no-scroll cursors.  But someday we might need to track
+		 * the offset between the holdStore and the cursor's nominal position
+		 * explicitly.
 		 */
 		/*
 		 * We don't allow scanning backwards in MPP! skip this call and 
@@ -488,6 +497,23 @@ PersistHoldablePortal(Portal portal)
 		 */
 		if (Gp_role == GP_ROLE_UTILITY)
 			ExecutorRewind(queryDesc);
+		if (portal->cursorOptions & CURSOR_OPT_SCROLL)
+		{
+			ExecutorRewind(queryDesc);
+		}
+		else
+		{
+			/*
+			 * If we already reached end-of-query, set the direction to
+			 * NoMovement to avoid trying to fetch any tuples.  (This check
+			 * exists because not all plan node types are robust about being
+			 * called again if they've already returned NULL once.)  We'll
+			 * still set up an empty tuplestore, though, to keep this from
+			 * being a special case later.
+			 */
+			if (portal->atEnd)
+				direction = NoMovementScanDirection;
+		}
 
 		/*
 		 * Change the destination to output to the tuplestore.  Note we tell
@@ -503,7 +529,7 @@ PersistHoldablePortal(Portal portal)
 										NULL);
 
 		/* Fetch the result set into the tuplestore */
-		ExecutorRun(queryDesc, ForwardScanDirection, 0L, false);
+		ExecutorRun(queryDesc, direction, 0L, false);
 
 		queryDesc->dest->rDestroy(queryDesc->dest);
 		queryDesc->dest = NULL;
@@ -541,7 +567,14 @@ PersistHoldablePortal(Portal portal)
 			else
 			{
 				tuplestore_rescan(portal->holdStore);
+			}
 
+			/*
+			 * In the no-scroll case, the start of the tuplestore is exactly
+			 * where we want to be, so no repositioning is wanted.
+			 */
+			if (portal->cursorOptions & CURSOR_OPT_SCROLL)
+			{
 				if (!tuplestore_skiptuples(portal->holdStore,
 										   portal->portalPos,
 										   true))

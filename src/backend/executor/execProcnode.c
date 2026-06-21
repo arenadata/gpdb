@@ -9,7 +9,7 @@
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -97,6 +97,7 @@
 #include "executor/nodeLimit.h"
 #include "executor/nodeLockRows.h"
 #include "executor/nodeMaterial.h"
+#include "executor/nodeMemoize.h"
 #include "executor/nodeMergeAppend.h"
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeModifyTable.h"
@@ -112,6 +113,7 @@
 #include "executor/nodeSubplan.h"
 #include "executor/nodeSubqueryscan.h"
 #include "executor/nodeTableFuncscan.h"
+#include "executor/nodeTidrangescan.h"
 #include "executor/nodeTidscan.h"
 #include "executor/nodeTupleSplit.h"
 #include "executor/nodeUnique.h"
@@ -328,6 +330,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 												   estate, eflags);
 			break;
 
+		case T_TidRangeScan:
+			result = (PlanState *) ExecInitTidRangeScan((TidRangeScan *) node,
+														estate, eflags);
+			break;
+
 		case T_SubqueryScan:
 			result = (PlanState *) ExecInitSubqueryScan((SubqueryScan *) node,
 														estate, eflags);
@@ -426,7 +433,12 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 														   estate, eflags);
 			break;
 
-#ifdef NOT_USED /* Group nodes are not used in GPDB */
+		case T_Memoize:
+			result = (PlanState *) ExecInitMemoize((Memoize *) node, estate,
+												   eflags);
+			break;
+
+#if 0 /* GPDB: Group plan node is not used (Agg is used instead) */
 		case T_Group:
 			result = (PlanState *) ExecInitGroup((Group *) node,
 												 estate, eflags);
@@ -883,6 +895,10 @@ ExecEndNode(PlanState *node)
 			ExecEndTidScan((TidScanState *) node);
 			break;
 
+		case T_TidRangeScanState:
+			ExecEndTidRangeScan((TidRangeScanState *) node);
+			break;
+
 		case T_SubqueryScanState:
 			ExecEndSubqueryScan((SubqueryScanState *) node);
 			break;
@@ -960,7 +976,11 @@ ExecEndNode(PlanState *node)
 			ExecEndIncrementalSort((IncrementalSortState *) node);
 			break;
 
-#ifdef NOT_USED /* GroupState nodes are not used in GPDB */
+		case T_MemoizeState:
+			ExecEndMemoize((MemoizeState *) node);
+			break;
+
+#if 0 /* GPDB: Group plan node is not used (Agg is used instead) */
 		case T_GroupState:
 			ExecEndGroup((GroupState *) node);
 			break;
@@ -1211,10 +1231,7 @@ planstate_walk_kids(PlanState *planstate,
 
 		case T_ModifyTableState:
 			{
-				ModifyTableState *mts = (ModifyTableState *) planstate;
-
-				v = planstate_walk_array(mts->mt_plans, mts->mt_nplans, walker, context, flags);
-				Assert(!planstate->lefttree && !planstate->righttree);
+				v = planstate_walk_node_extended(planstate->lefttree, walker, context, flags);
 				break;
 			}
 

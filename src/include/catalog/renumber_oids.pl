@@ -8,7 +8,7 @@
 #    Note: This does not reformat the .dat files, so you may want
 #    to run reformat_dat_file.pl afterwards.
 #
-# Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/renumber_oids.pl
@@ -61,8 +61,8 @@ if ($output_path ne '' && substr($output_path, -1) ne '/')
 }
 
 # Collect all the existing assigned OIDs (including those to be remapped).
-my @header_files = (glob("pg_*.h"), qw(indexing.h toasting.h));
-my $oids = Catalog::FindAllOidsFromHeaders(@header_files);
+my @header_files = glob("pg_*.h");
+my $oids         = Catalog::FindAllOidsFromHeaders(@header_files);
 
 # Hash-ify the existing OIDs for convenient lookup.
 my %oidhash;
@@ -140,14 +140,47 @@ foreach my $input_file (@header_files)
 				$changed = 1;
 			}
 		}
-		elsif (
-			$line =~ m/^(DECLARE_(UNIQUE_)?INDEX\(\s*\w+,\s*)(\d+)(,\s*.+)\)/)
+		elsif ($line =~
+			m/^(DECLARE_TOAST_WITH_MACRO\(\s*\w+,\s*)(\d+)(,\s*)(\d+)(,\s*\w+,\s*\w+)\)/
+		  )
 		{
-			if (exists $maphash{$3})
+			my $oid2 = $2;
+			my $oid4 = $4;
+			if (exists $maphash{$oid2})
 			{
-				my $repl = $1 . $maphash{$3} . $4 . ")";
+				$oid2 = $maphash{$oid2};
+				my $repl = $1 . $oid2 . $3 . $oid4 . $5 . ")";
 				$line =~
-				  s/^DECLARE_(UNIQUE_)?INDEX\(\s*\w+,\s*\d+,\s*.+\)/$repl/;
+				  s/^DECLARE_TOAST_WITH_MACRO\(\s*\w+,\s*\d+,\s*\d+,\s*\w+,\s*\w+\)/$repl/;
+				$changed = 1;
+			}
+			if (exists $maphash{$oid4})
+			{
+				$oid4 = $maphash{$oid4};
+				my $repl = $1 . $oid2 . $3 . $oid4 . $5 . ")";
+				$line =~
+				  s/^DECLARE_TOAST_WITH_MACRO\(\s*\w+,\s*\d+,\s*\d+,\s*\w+,\s*\w+\)/$repl/;
+				$changed = 1;
+			}
+		}
+		elsif ($line =~
+			m/^(DECLARE_(UNIQUE_)?INDEX(_PKEY)?\(\s*\w+,\s*)(\d+)(,\s*.+)\)/)
+		{
+			if (exists $maphash{$4})
+			{
+				my $repl = $1 . $maphash{$4} . $5 . ")";
+				$line =~
+				  s/^DECLARE_(UNIQUE_)?INDEX(_PKEY)?\(\s*\w+,\s*\d+,\s*.+\)/$repl/;
+				$changed = 1;
+			}
+		}
+		elsif (/^(DECLARE_OID_DEFINING_MACRO\(\s*\w+,\s*)(\d+)\)/)
+		{
+			if (exists $maphash{$2})
+			{
+				my $repl = $1 . $maphash{$2} . ")";
+				$line =~
+				  s/^DECLARE_OID_DEFINING_MACRO\(\s*\w+,\s*\d+\)/$repl/;
 				$changed = 1;
 			}
 		}
@@ -170,19 +203,6 @@ foreach my $input_file (@header_files)
 					$line =~ s/BKI_ROWTYPE_OID\(\d+,\w+\)/$repl/;
 					$changed = 1;
 				}
-			}
-		}
-
-		# In indexing.h and toasting.h only, check for #define SYM nnnn,
-		# and replace if within mapped range.
-		elsif ($line =~ m/^(\s*#\s*define\s+\w+\s+)(\d+)\b/)
-		{
-			if (($catname eq 'indexing' || $catname eq 'toasting')
-				&& exists $maphash{$2})
-			{
-				my $repl = $1 . $maphash{$2};
-				$line =~ s/^\s*#\s*define\s+\w+\s+\d+\b/$repl/;
-				$changed = 1;
 			}
 		}
 

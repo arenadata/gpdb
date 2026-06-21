@@ -3,7 +3,7 @@
  * reloptions.c
  *	  Core support for relation options (pg_class.reloptions)
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -149,12 +149,12 @@ static relopt_bool boolRelOpts[] =
 	},
 	{
 		{
-			"vacuum_index_cleanup",
-			"Enables index vacuuming and index cleanup",
-			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST,
-			ShareUpdateExclusiveLock
+			"security_invoker",
+			"Privileges on underlying relations are checked as the invoking user, not the view owner",
+			RELOPT_KIND_VIEW,
+			AccessExclusiveLock
 		},
-		true
+		false
 	},
 	{
 		{
@@ -471,7 +471,7 @@ static relopt_real realRelOpts[] =
 	{
 		{
 			"vacuum_cleanup_index_scale_factor",
-			"Number of tuple inserts prior to index cleanup as a fraction of reltuples.",
+			"Deprecated B-Tree parameter.",
 			RELOPT_KIND_BTREE,
 			ShareUpdateExclusiveLock
 		},
@@ -481,8 +481,23 @@ static relopt_real realRelOpts[] =
 	{{NULL}}
 };
 
+/* values from StdRdOptIndexCleanup */
+static relopt_enum_elt_def StdRdOptIndexCleanupValues[] =
+{
+	{"auto", STDRD_OPTION_VACUUM_INDEX_CLEANUP_AUTO},
+	{"on", STDRD_OPTION_VACUUM_INDEX_CLEANUP_ON},
+	{"off", STDRD_OPTION_VACUUM_INDEX_CLEANUP_OFF},
+	{"true", STDRD_OPTION_VACUUM_INDEX_CLEANUP_ON},
+	{"false", STDRD_OPTION_VACUUM_INDEX_CLEANUP_OFF},
+	{"yes", STDRD_OPTION_VACUUM_INDEX_CLEANUP_ON},
+	{"no", STDRD_OPTION_VACUUM_INDEX_CLEANUP_OFF},
+	{"1", STDRD_OPTION_VACUUM_INDEX_CLEANUP_ON},
+	{"0", STDRD_OPTION_VACUUM_INDEX_CLEANUP_OFF},
+	{(const char *) NULL}		/* list terminator */
+};
+
 /* values from GistOptBufferingMode */
-relopt_enum_elt_def gistBufferingOptValues[] =
+static relopt_enum_elt_def gistBufferingOptValues[] =
 {
 	{"auto", GIST_OPTION_BUFFERING_AUTO},
 	{"on", GIST_OPTION_BUFFERING_ON},
@@ -491,7 +506,7 @@ relopt_enum_elt_def gistBufferingOptValues[] =
 };
 
 /* values from ViewOptCheckOption */
-relopt_enum_elt_def viewCheckOptValues[] =
+static relopt_enum_elt_def viewCheckOptValues[] =
 {
 	/* no value for NOT_SET */
 	{"local", VIEW_OPTION_CHECK_OPTION_LOCAL},
@@ -501,6 +516,17 @@ relopt_enum_elt_def viewCheckOptValues[] =
 
 static relopt_enum enumRelOpts[] =
 {
+	{
+		{
+			"vacuum_index_cleanup",
+			"Controls index vacuuming and index cleanup",
+			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST,
+			ShareUpdateExclusiveLock
+		},
+		StdRdOptIndexCleanupValues,
+		STDRD_OPTION_VACUUM_INDEX_CLEANUP_AUTO,
+		gettext_noop("Valid values are \"on\", \"off\", and \"auto\".")
+	},
 	{
 		{
 			"buffering",
@@ -1872,7 +1898,7 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, user_catalog_table)},
 		{"parallel_workers", RELOPT_TYPE_INT,
 		offsetof(StdRdOptions, parallel_workers)},
-		{"vacuum_index_cleanup", RELOPT_TYPE_BOOL,
+		{"vacuum_index_cleanup", RELOPT_TYPE_ENUM,
 		offsetof(StdRdOptions, vacuum_index_cleanup)},
 		{"vacuum_truncate", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, vacuum_truncate)},
@@ -1988,8 +2014,12 @@ bytea *
 partitioned_table_reloptions(Datum reloptions, bool validate)
 {
 	/*
-	 * GPDB: we maintain reloptions for partition roots to support reloption
-	 * inheritance and hierarchy wide ALTER TABLE SET().
+	 * GPDB: unlike upstream, a partitioned root accepts the full set of
+	 * heap options (fillfactor, analyze_hll_non_part_table, ...).  The
+	 * root has no storage that would use them, but GPDB's partition DDL
+	 * stores them on the root and propagates them to newly created
+	 * children, and pre-PG14 GPDB (inheritance-based partitioning, where
+	 * the root was a plain table) always allowed this.
 	 */
 	return default_reloptions(reloptions, validate, RELOPT_KIND_HEAP);
 }
@@ -2003,6 +2033,8 @@ view_reloptions(Datum reloptions, bool validate)
 	static const relopt_parse_elt tab[] = {
 		{"security_barrier", RELOPT_TYPE_BOOL,
 		offsetof(ViewOptions, security_barrier)},
+		{"security_invoker", RELOPT_TYPE_BOOL,
+		offsetof(ViewOptions, security_invoker)},
 		{"check_option", RELOPT_TYPE_ENUM,
 		offsetof(ViewOptions, check_option)}
 	};

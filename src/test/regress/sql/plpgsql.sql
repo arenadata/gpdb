@@ -1946,6 +1946,30 @@ $$ language plpgsql;
 select refcursor_test2(20000, 20000) as "Should be false",
        refcursor_test2(20, 20) as "Should be true";
 
+-- should fail
+create function constant_refcursor() returns refcursor as $$
+declare
+    rc constant refcursor;
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
+
+select constant_refcursor();
+
+-- but it's okay like this
+create or replace function constant_refcursor() returns refcursor as $$
+declare
+    rc constant refcursor := 'my_cursor_name';
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
+
+select constant_refcursor();
+
 --
 -- tests for cursors with named parameter arguments
 --
@@ -3516,10 +3540,9 @@ select * from tftest(10);
 
 drop function tftest(int);
 
-create or replace function rttest()
+create function rttest()
 returns setof int as $$
 declare rc int;
-  rca int[];
 begin
   return query values(10),(20);
   get diagnostics rc = row_count;
@@ -3528,16 +3551,37 @@ begin
   get diagnostics rc = row_count;
   raise notice '% %', found, rc;
   return query execute 'values(10),(20)';
-  -- just for fun, let's use array elements as targets
-  get diagnostics rca[1] = row_count;
-  raise notice '% %', found, rca[1];
+  get diagnostics rc = row_count;
+  raise notice '% %', found, rc;
   return query execute 'select * from (values(10),(20)) f(a) where false';
-  get diagnostics rca[2] = row_count;
-  raise notice '% %', found, rca[2];
+  get diagnostics rc = row_count;
+  raise notice '% %', found, rc;
 end;
 $$ language plpgsql;
 
 select * from rttest();
+
+-- check some error cases, too
+
+create or replace function rttest()
+returns setof int as $$
+begin
+  return query select 10 into no_such_table;
+end;
+$$ language plpgsql;
+
+select * from rttest();
+
+create or replace function rttest()
+returns setof int as $$
+begin
+  return query execute 'select 10 into no_such_table';
+end;
+$$ language plpgsql;
+
+select * from rttest();
+
+select * from no_such_table;
 
 drop function rttest();
 
@@ -3797,22 +3841,42 @@ end;
 $outer$;
 
 -- Check variable scoping -- a var is not available in its own or prior
--- default expressions.
+-- default expressions, but it is available in later ones.
 
-create function scope_test() returns int as $$
+do $$
+declare x int := x + 1;  -- error
+begin
+  raise notice 'x = %', x;
+end;
+$$;
+
+do $$
+declare y int := x + 1;  -- error
+        x int := 42;
+begin
+  raise notice 'x = %, y = %', x, y;
+end;
+$$;
+
+do $$
+declare x int := 42;
+        y int := x + 1;
+begin
+  raise notice 'x = %, y = %', x, y;
+end;
+$$;
+
+do $$
 declare x int := 42;
 begin
   declare y int := x + 1;
           x int := x + 2;
+          z int := x * 10;
   begin
-    return x * 100 + y;
+    raise notice 'x = %, y = %, z = %', x, y, z;
   end;
 end;
-$$ language plpgsql;
-
-select scope_test();
-
-drop function scope_test();
+$$;
 
 -- Check handling of conflicts between plpgsql vars and table columns.
 

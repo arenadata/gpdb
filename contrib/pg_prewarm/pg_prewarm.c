@@ -3,7 +3,7 @@
  * pg_prewarm.c
  *		  prewarming utilities
  *
- * Copyright (c) 2010-2020, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/pg_prewarm/pg_prewarm.c
@@ -109,8 +109,7 @@ pg_prewarm(PG_FUNCTION_ARGS)
 		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind), get_rel_name(relOid));
 
 	/* Check that the fork exists. */
-	RelationOpenSmgr(rel);
-	if (!smgrexists(rel->rd_smgr, forkNumber))
+	if (!smgrexists(RelationGetSmgr(rel), forkNumber))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("fork \"%s\" does not exist for this relation",
@@ -126,8 +125,8 @@ pg_prewarm(PG_FUNCTION_ARGS)
 		if (first_block < 0 || first_block >= nblocks)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("starting block number must be between 0 and " INT64_FORMAT,
-							nblocks - 1)));
+					 errmsg("starting block number must be between 0 and %lld",
+							(long long) (nblocks - 1))));
 	}
 	if (PG_ARGISNULL(4))
 		last_block = nblocks - 1;
@@ -137,8 +136,8 @@ pg_prewarm(PG_FUNCTION_ARGS)
 		if (last_block < 0 || last_block >= nblocks)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("ending block number must be between 0 and " INT64_FORMAT,
-							nblocks - 1)));
+					 errmsg("ending block number must be between 0 and %lld",
+							(long long) (nblocks - 1))));
 	}
 
 	/* Now we're ready to do the real work. */
@@ -178,7 +177,7 @@ pg_prewarm(PG_FUNCTION_ARGS)
 		for (block = first_block; block <= last_block; ++block)
 		{
 			CHECK_FOR_INTERRUPTS();
-			smgrread(rel->rd_smgr, forkNumber, block, blockbuffer.data);
+			smgrread(RelationGetSmgr(rel), forkNumber, block, blockbuffer.data);
 			++blocks_done;
 		}
 	}

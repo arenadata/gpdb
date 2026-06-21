@@ -6,7 +6,7 @@
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/paths.h
@@ -24,6 +24,7 @@
  */
 extern PGDLLIMPORT int min_parallel_table_scan_size;
 extern PGDLLIMPORT int min_parallel_index_scan_size;
+extern PGDLLIMPORT bool enable_group_by_reordering;
 
 /* Hook for plugins to get control in set_rel_pathlist() */
 typedef void (*set_rel_pathlist_hook_type) (PlannerInfo *root,
@@ -76,7 +77,8 @@ extern void create_index_paths(PlannerInfo *root, RelOptInfo *rel);
 extern bool relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 										  List *restrictlist,
 										  List *exprlist, List *oprlist);
-extern bool indexcol_is_bool_constant_for_query(IndexOptInfo *index,
+extern bool indexcol_is_bool_constant_for_query(PlannerInfo *root,
+												IndexOptInfo *index,
 												int indexcol);
 extern bool match_index_to_operand(Node *operand, int indexcol,
 								   IndexOptInfo *index);
@@ -135,7 +137,17 @@ extern EquivalenceClass *get_eclass_for_sort_expr(PlannerInfo *root,
 												  Index sortref,
 												  Relids rel,
 												  bool create_it);
-extern Expr *find_em_expr_for_rel(EquivalenceClass *ec, RelOptInfo *rel);
+extern EquivalenceMember *find_ec_member_matching_expr(EquivalenceClass *ec,
+													   Expr *expr,
+													   Relids relids);
+extern EquivalenceMember *find_computable_ec_member(PlannerInfo *root,
+													EquivalenceClass *ec,
+													List *exprs,
+													Relids relids,
+													bool require_parallel_safe);
+extern bool relation_can_be_sorted_early(PlannerInfo *root, RelOptInfo *rel,
+										 EquivalenceClass *ec,
+										 bool require_parallel_safe);
 extern void generate_base_implied_equalities(PlannerInfo *root);
 extern List *generate_join_implied_equalities(PlannerInfo *root,
 											  Relids join_relids,
@@ -150,6 +162,8 @@ extern bool exprs_known_equal(PlannerInfo *root, Node *item1, Node *item2);
 extern EquivalenceClass *match_eclasses_to_foreign_key_col(PlannerInfo *root,
 														   ForeignKeyOptInfo *fkinfo,
 														   int colno);
+extern RestrictInfo *find_derived_clause_for_ec_member(EquivalenceClass *ec,
+													   EquivalenceMember *em);
 extern void add_child_rel_equivalences(PlannerInfo *root,
 									   AppendRelInfo *appinfo,
 									   RelOptInfo *parent_rel,
@@ -203,6 +217,12 @@ extern void generate_implied_quals(PlannerInfo *root);
 extern PathKeysComparison compare_pathkeys(List *keys1, List *keys2);
 extern bool pathkeys_contained_in(List *keys1, List *keys2);
 extern bool pathkeys_count_contained_in(List *keys1, List *keys2, int *n_common);
+extern int	group_keys_reorder_by_pathkeys(List *pathkeys,
+										   List **group_pathkeys,
+										   List **group_clauses);
+extern List *get_useful_group_keys_orderings(PlannerInfo *root, double nrows,
+											 List *path_pathkeys,
+											 List *pathkeys, List *clauses);
 extern Path *get_cheapest_path_for_pathkeys(List *paths, List *pathkeys,
 											Relids required_outer,
 											CostSelector cost_criterion,

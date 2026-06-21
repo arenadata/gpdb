@@ -3,7 +3,7 @@
  * pg_constraint.c
  *	  routines to support manipulation of the pg_constraint relation
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -70,6 +70,8 @@ CreateConstraintEntry(const char *constraintName,
 					  int foreignNKeys,
 					  char foreignUpdateType,
 					  char foreignDeleteType,
+					  const int16 *fkDeleteSetCols,
+					  int numFkDeleteSetCols,
 					  char foreignMatchType,
 					  const Oid *exclOp,
 					  Node *conExpr,
@@ -90,9 +92,12 @@ CreateConstraintEntry(const char *constraintName,
 	ArrayType  *conppeqopArray;
 	ArrayType  *conffeqopArray;
 	ArrayType  *conexclopArray;
+	ArrayType  *confdelsetcolsArray;
 	NameData	cname;
 	int			i;
 	ObjectAddress conobject;
+	ObjectAddresses *addrs_auto;
+	ObjectAddresses *addrs_normal;
 
 	conDesc = table_open(ConstraintRelationId, RowExclusiveLock);
 
@@ -136,6 +141,16 @@ CreateConstraintEntry(const char *constraintName,
 			fkdatums[i] = ObjectIdGetDatum(ffEqOp[i]);
 		conffeqopArray = construct_array(fkdatums, foreignNKeys,
 										 OIDOID, sizeof(Oid), true, TYPALIGN_INT);
+
+		if (numFkDeleteSetCols > 0)
+		{
+			for (i = 0; i < numFkDeleteSetCols; i++)
+				fkdatums[i] = Int16GetDatum(fkDeleteSetCols[i]);
+			confdelsetcolsArray = construct_array(fkdatums, numFkDeleteSetCols,
+												  INT2OID, 2, true, TYPALIGN_SHORT);
+		}
+		else
+			confdelsetcolsArray = NULL;
 	}
 	else
 	{
@@ -143,6 +158,7 @@ CreateConstraintEntry(const char *constraintName,
 		conpfeqopArray = NULL;
 		conppeqopArray = NULL;
 		conffeqopArray = NULL;
+		confdelsetcolsArray = NULL;
 	}
 
 	if (exclOp != NULL)
@@ -212,6 +228,11 @@ CreateConstraintEntry(const char *constraintName,
 	else
 		nulls[Anum_pg_constraint_conffeqop - 1] = true;
 
+	if (confdelsetcolsArray)
+		values[Anum_pg_constraint_confdelsetcols - 1] = PointerGetDatum(confdelsetcolsArray);
+	else
+		nulls[Anum_pg_constraint_confdelsetcols - 1] = true;
+
 	if (conexclopArray)
 		values[Anum_pg_constraint_conexclop - 1] = PointerGetDatum(conexclopArray);
 	else
@@ -230,6 +251,9 @@ CreateConstraintEntry(const char *constraintName,
 
 	table_close(conDesc, RowExclusiveLock);
 
+	/* Handle set of auto dependencies */
+	addrs_auto = new_object_addresses();
+
 	if (OidIsValid(relId))
 	{
 		/*
@@ -244,13 +268,13 @@ CreateConstraintEntry(const char *constraintName,
 			{
 				ObjectAddressSubSet(relobject, RelationRelationId, relId,
 									constraintKey[i]);
-				recordDependencyOn(&conobject, &relobject, DEPENDENCY_AUTO);
+				add_exact_object_address(&relobject, addrs_auto);
 			}
 		}
 		else
 		{
 			ObjectAddressSet(relobject, RelationRelationId, relId);
-			recordDependencyOn(&conobject, &relobject, DEPENDENCY_AUTO);
+			add_exact_object_address(&relobject, addrs_auto);
 		}
 	}
 
@@ -262,8 +286,15 @@ CreateConstraintEntry(const char *constraintName,
 		ObjectAddress domobject;
 
 		ObjectAddressSet(domobject, TypeRelationId, domainId);
-		recordDependencyOn(&conobject, &domobject, DEPENDENCY_AUTO);
+		add_exact_object_address(&domobject, addrs_auto);
 	}
+
+	record_object_address_dependencies(&conobject, addrs_auto,
+									   DEPENDENCY_AUTO);
+	free_object_addresses(addrs_auto);
+
+	/* Handle set of normal dependencies */
+	addrs_normal = new_object_addresses();
 
 	if (OidIsValid(foreignRelId))
 	{
@@ -279,13 +310,13 @@ CreateConstraintEntry(const char *constraintName,
 			{
 				ObjectAddressSubSet(relobject, RelationRelationId,
 									foreignRelId, foreignKey[i]);
-				recordDependencyOn(&conobject, &relobject, DEPENDENCY_NORMAL);
+				add_exact_object_address(&relobject, addrs_normal);
 			}
 		}
 		else
 		{
 			ObjectAddressSet(relobject, RelationRelationId, foreignRelId);
-			recordDependencyOn(&conobject, &relobject, DEPENDENCY_NORMAL);
+			add_exact_object_address(&relobject, addrs_normal);
 		}
 	}
 
@@ -300,7 +331,7 @@ CreateConstraintEntry(const char *constraintName,
 		ObjectAddress relobject;
 
 		ObjectAddressSet(relobject, RelationRelationId, indexRelId);
-		recordDependencyOn(&conobject, &relobject, DEPENDENCY_NORMAL);
+		add_exact_object_address(&relobject, addrs_normal);
 	}
 
 	if (foreignNKeys > 0)
@@ -319,19 +350,23 @@ CreateConstraintEntry(const char *constraintName,
 		for (i = 0; i < foreignNKeys; i++)
 		{
 			oprobject.objectId = pfEqOp[i];
-			recordDependencyOn(&conobject, &oprobject, DEPENDENCY_NORMAL);
+			add_exact_object_address(&oprobject, addrs_normal);
 			if (ppEqOp[i] != pfEqOp[i])
 			{
 				oprobject.objectId = ppEqOp[i];
-				recordDependencyOn(&conobject, &oprobject, DEPENDENCY_NORMAL);
+				add_exact_object_address(&oprobject, addrs_normal);
 			}
 			if (ffEqOp[i] != pfEqOp[i])
 			{
 				oprobject.objectId = ffEqOp[i];
-				recordDependencyOn(&conobject, &oprobject, DEPENDENCY_NORMAL);
+				add_exact_object_address(&oprobject, addrs_normal);
 			}
 		}
 	}
+
+	record_object_address_dependencies(&conobject, addrs_normal,
+									   DEPENDENCY_NORMAL);
+	free_object_addresses(addrs_normal);
 
 	/*
 	 * We don't bother to register dependencies on the exclusion operators of
@@ -1145,13 +1180,15 @@ get_primary_key_attnos(Oid relid, bool deferrableOk, Oid *constraintOid)
 /*
  * Extract data from the pg_constraint tuple of a foreign-key constraint.
  *
- * All arguments save the first are output arguments; the last three of them
- * can be passed as NULL if caller doesn't need them.
+ * All arguments save the first are output arguments.  All output arguments
+ * other than numfks, conkey and confkey can be passed as NULL if caller
+ * doesn't need them.
  */
 void
 DeconstructFkConstraintRow(HeapTuple tuple, int *numfks,
 						   AttrNumber *conkey, AttrNumber *confkey,
-						   Oid *pf_eq_oprs, Oid *pp_eq_oprs, Oid *ff_eq_oprs)
+						   Oid *pf_eq_oprs, Oid *pp_eq_oprs, Oid *ff_eq_oprs,
+						   int *num_fk_del_set_cols, AttrNumber *fk_del_set_cols)
 {
 	Oid			constrId;
 	Datum		adatum;
@@ -1246,6 +1283,32 @@ DeconstructFkConstraintRow(HeapTuple tuple, int *numfks,
 		memcpy(ff_eq_oprs, ARR_DATA_PTR(arr), numkeys * sizeof(Oid));
 		if ((Pointer) arr != DatumGetPointer(adatum))
 			pfree(arr);			/* free de-toasted copy, if any */
+	}
+
+	if (fk_del_set_cols)
+	{
+		adatum = SysCacheGetAttr(CONSTROID, tuple,
+								 Anum_pg_constraint_confdelsetcols, &isNull);
+		if (isNull)
+		{
+			*num_fk_del_set_cols = 0;
+		}
+		else
+		{
+			int			num_delete_cols;
+
+			arr = DatumGetArrayTypeP(adatum);	/* ensure not toasted */
+			if (ARR_NDIM(arr) != 1 ||
+				ARR_HASNULL(arr) ||
+				ARR_ELEMTYPE(arr) != INT2OID)
+				elog(ERROR, "confdelsetcols is not a 1-D smallint array");
+			num_delete_cols = ARR_DIMS(arr)[0];
+			memcpy(fk_del_set_cols, ARR_DATA_PTR(arr), num_delete_cols * sizeof(int16));
+			if ((Pointer) arr != DatumGetPointer(adatum))
+				pfree(arr);		/* free de-toasted copy, if any */
+
+			*num_fk_del_set_cols = num_delete_cols;
+		}
 	}
 
 	*numfks = numkeys;

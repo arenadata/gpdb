@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2020, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/bin/psql/describe.h
  */
@@ -19,13 +19,17 @@ extern bool describeAccessMethods(const char *pattern, bool verbose);
 extern bool describeTablespaces(const char *pattern, bool verbose);
 
 /* \df, \dfa, \dfn, \dft, \dfw, etc. */
-extern bool describeFunctions(const char *functypes, const char *pattern, bool verbose, bool showSystem);
+extern bool describeFunctions(const char *functypes, const char *func_pattern,
+							  char **arg_patterns, int num_arg_patterns,
+							  bool verbose, bool showSystem);
 
 /* \dT */
 extern bool describeTypes(const char *pattern, bool verbose, bool showSystem);
 
 /* \do */
-extern bool describeOperators(const char *pattern, bool verbose, bool showSystem);
+extern bool describeOperators(const char *oper_pattern,
+							  char **arg_patterns, int num_arg_patterns,
+							  bool verbose, bool showSystem);
 
 /* \du, \dg */
 extern bool describeRoles(const char *pattern, bool verbose, bool showSystem);
@@ -84,6 +88,10 @@ extern bool listDomains(const char *pattern, bool verbose, bool showSystem);
 /* \dc */
 extern bool listConversions(const char *pattern, bool verbose, bool showSystem);
 
+/* \dconfig */
+extern bool describeConfigurationParameters(const char *pattern, bool verbose,
+											bool showSystem);
+
 /* \dC */
 extern bool listCasts(const char *pattern, bool verbose);
 
@@ -113,6 +121,9 @@ extern bool listExtensions(const char *pattern);
 
 /* \dx+ */
 extern bool listExtensionContents(const char *pattern);
+
+/* \dX */
+extern bool listExtendedStats(const char *pattern);
 
 /* \dy */
 extern bool listEventTriggers(const char *pattern, bool verbose);
@@ -144,5 +155,7 @@ extern bool listOpFamilyOperators(const char *accessMethod_pattern,
 extern bool listOpFamilyFunctions(const char *access_method_pattern,
 								  const char *family_pattern, bool verbose);
 
+/* \dl or \lo_list */
+extern bool listLargeObjects(bool verbose);
 
 #endif							/* DESCRIBE_H */

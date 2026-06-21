@@ -3,7 +3,7 @@
  * walreceiver.h
  *	  Exports from replication/walreceiverfuncs.c.
  *
- * Portions Copyright (c) 2010-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * src/include/replication/walreceiver.h
  *
@@ -19,14 +19,15 @@
 #include "port/atomics.h"
 #include "replication/logicalproto.h"
 #include "replication/walsender.h"
+#include "storage/condition_variable.h"
 #include "storage/latch.h"
 #include "storage/spin.h"
 #include "utils/tuplestore.h"
 
 /* user-settable parameters */
-extern int	wal_receiver_status_interval;
-extern int	wal_receiver_timeout;
-extern bool hot_standby_feedback;
+extern PGDLLIMPORT int wal_receiver_status_interval;
+extern PGDLLIMPORT int wal_receiver_timeout;
+extern PGDLLIMPORT bool hot_standby_feedback;
 
 /*
  * MAXCONNINFO: maximum size of a connection string.
@@ -62,6 +63,7 @@ typedef struct
 	 */
 	pid_t		pid;
 	WalRcvState walRcvState;
+	ConditionVariable walRcvStoppedCV;
 	pg_time_t	startTime;
 
 	/*
@@ -158,7 +160,7 @@ typedef struct
 	sig_atomic_t force_reply;	/* used as a bool */
 } WalRcvData;
 
-extern WalRcvData *WalRcv;
+extern PGDLLIMPORT WalRcvData *WalRcv;
 
 typedef struct
 {
@@ -178,6 +180,9 @@ typedef struct
 			uint32		proto_version;	/* Logical protocol version */
 			List	   *publication_names;	/* String list of publications */
 			bool		binary; /* Ask publisher to use binary */
+			bool		streaming;	/* Streaming of large transactions */
+			bool		twophase;	/* Streaming of two-phase transactions at
+									 * prepare time */
 		}			logical;
 	}			proto;
 } WalRcvStreamOptions;
@@ -209,6 +214,7 @@ typedef enum
 typedef struct WalRcvExecResult
 {
 	WalRcvExecStatus status;
+	int			sqlstate;
 	char	   *err;
 	Tuplestorestate *tuplestore;
 	TupleDesc	tupledesc;
@@ -343,6 +349,7 @@ typedef void (*walrcv_send_fn) (WalReceiverConn *conn,
 typedef char *(*walrcv_create_slot_fn) (WalReceiverConn *conn,
 										const char *slotname,
 										bool temporary,
+										bool two_phase,
 										CRSSnapshotAction snapshot_action,
 										XLogRecPtr *lsn);
 
@@ -416,8 +423,8 @@ extern PGDLLIMPORT WalReceiverFunctionsType *WalReceiverFunctions;
 	WalReceiverFunctions->walrcv_receive(conn, buffer, wait_fd)
 #define walrcv_send(conn, buffer, nbytes) \
 	WalReceiverFunctions->walrcv_send(conn, buffer, nbytes)
-#define walrcv_create_slot(conn, slotname, temporary, snapshot_action, lsn) \
-	WalReceiverFunctions->walrcv_create_slot(conn, slotname, temporary, snapshot_action, lsn)
+#define walrcv_create_slot(conn, slotname, temporary, two_phase, snapshot_action, lsn) \
+	WalReceiverFunctions->walrcv_create_slot(conn, slotname, temporary, two_phase, snapshot_action, lsn)
 #define walrcv_get_backend_pid(conn) \
 	WalReceiverFunctions->walrcv_get_backend_pid(conn)
 #define walrcv_exec(conn, exec, nRetTypes, retTypes) \

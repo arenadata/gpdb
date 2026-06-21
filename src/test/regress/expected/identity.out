@@ -79,22 +79,22 @@ INSERT INTO itest4 DEFAULT VALUES;
 SELECT * FROM itest1;
  a | b 
 ---+---
- 1 | 
  2 | 
+ 1 | 
 (2 rows)
 
 SELECT * FROM itest2;
  a | b 
 ---+---
- 1 | 
  2 | 
+ 1 | 
 (2 rows)
 
 SELECT * FROM itest3;
  a  | b 
 ----+---
-  7 | 
  12 | 
+  7 | 
 (2 rows)
 
 SELECT * FROM itest4;
@@ -105,16 +105,72 @@ SELECT * FROM itest4;
 (2 rows)
 
 -- VALUES RTEs
+CREATE TABLE itest5 (a int generated always as identity, b text);
+INSERT INTO itest5 VALUES (1, 'a');  -- error
+ERROR:  cannot insert a non-DEFAULT value into column "a"
+DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
+HINT:  Use OVERRIDING SYSTEM VALUE to override.
+INSERT INTO itest5 VALUES (DEFAULT, 'a');  -- ok
+INSERT INTO itest5 VALUES (2, 'b'), (3, 'c');  -- error
+ERROR:  cannot insert a non-DEFAULT value into column "a"
+DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
+HINT:  Use OVERRIDING SYSTEM VALUE to override.
+INSERT INTO itest5 VALUES (DEFAULT, 'b'), (3, 'c');  -- error
+ERROR:  cannot insert a non-DEFAULT value into column "a"
+DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
+HINT:  Use OVERRIDING SYSTEM VALUE to override.
+INSERT INTO itest5 VALUES (2, 'b'), (DEFAULT, 'c');  -- error
+ERROR:  cannot insert a non-DEFAULT value into column "a"
+DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
+HINT:  Use OVERRIDING SYSTEM VALUE to override.
+INSERT INTO itest5 VALUES (DEFAULT, 'b'), (DEFAULT, 'c');  -- ok
+INSERT INTO itest5 OVERRIDING SYSTEM VALUE VALUES (-1, 'aa');
+INSERT INTO itest5 OVERRIDING SYSTEM VALUE VALUES (-2, 'bb'), (-3, 'cc');
+INSERT INTO itest5 OVERRIDING SYSTEM VALUE VALUES (DEFAULT, 'dd'), (-4, 'ee');
+INSERT INTO itest5 OVERRIDING SYSTEM VALUE VALUES (-5, 'ff'), (DEFAULT, 'gg');
+INSERT INTO itest5 OVERRIDING SYSTEM VALUE VALUES (DEFAULT, 'hh'), (DEFAULT, 'ii');
+INSERT INTO itest5 OVERRIDING USER VALUE VALUES (-1, 'aaa');
+INSERT INTO itest5 OVERRIDING USER VALUE VALUES (-2, 'bbb'), (-3, 'ccc');
+INSERT INTO itest5 OVERRIDING USER VALUE VALUES (DEFAULT, 'ddd'), (-4, 'eee');
+INSERT INTO itest5 OVERRIDING USER VALUE VALUES (-5, 'fff'), (DEFAULT, 'ggg');
+INSERT INTO itest5 OVERRIDING USER VALUE VALUES (DEFAULT, 'hhh'), (DEFAULT, 'iii');
+SELECT * FROM itest5;
+ a  |  b  
+----+-----
+ -1 | aa
+  5 | gg
+  6 | hh
+  9 | bbb
+ 10 | ccc
+ 11 | ddd
+ 13 | fff
+ 14 | ggg
+  1 | a
+ -2 | bb
+ -3 | cc
+ -4 | ee
+ -5 | ff
+ 12 | eee
+ 15 | hhh
+  2 | b
+  3 | c
+  4 | dd
+  7 | ii
+  8 | aaa
+ 16 | iii
+(21 rows)
+
+DROP TABLE itest5;
 INSERT INTO itest3 VALUES (DEFAULT, 'a');
 INSERT INTO itest3 VALUES (DEFAULT, 'b'), (DEFAULT, 'c');
 SELECT * FROM itest3;
  a  | b 
 ----+---
   7 | 
- 12 | 
- 17 | a
  22 | b
  27 | c
+ 17 | a
+ 12 | 
 (5 rows)
 
 -- OVERRIDING tests
@@ -131,17 +187,17 @@ INSERT INTO itest1 OVERRIDING USER VALUE VALUES (30, 'xyz');
 SELECT * FROM itest1;
  a  |  b  
 ----+-----
-  1 | 
   2 | 
- 10 | xyz
- 20 | xyz
   3 | xyz
+ 10 | xyz
+  1 | 
+ 20 | xyz
 (5 rows)
 
 -- GENERATED ALWAYS
 -- This is an error:
 INSERT INTO itest2 VALUES (10, 'xyz');
-ERROR:  cannot insert into column "a"
+ERROR:  cannot insert a non-DEFAULT value into column "a"
 DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
 HINT:  Use OVERRIDING SYSTEM VALUE to override.
 -- This inserts the row as presented:
@@ -151,10 +207,10 @@ INSERT INTO itest2 OVERRIDING USER VALUE VALUES (30, 'xyz');
 SELECT * FROM itest2;
  a  |  b  
 ----+-----
-  1 | 
   2 | 
- 20 | xyz
   3 | xyz
+  1 | 
+ 20 | xyz
 (4 rows)
 
 -- UPDATE tests
@@ -165,10 +221,10 @@ SELECT * FROM itest1;
   a  |  b  
 -----+-----
   10 | xyz
-  20 | xyz
    3 | xyz
  101 | 
    4 | 
+  20 | xyz
 (5 rows)
 
 -- GENERATED ALWAYS allows only DEFAULT.
@@ -179,10 +235,10 @@ UPDATE itest2 SET a = DEFAULT WHERE a = 2;  -- ok
 SELECT * FROM itest2;
  a  |  b  
 ----+-----
-  1 | 
- 20 | xyz
   3 | xyz
   4 | 
+  1 | 
+ 20 | xyz
 (4 rows)
 
 -- COPY tests
@@ -205,16 +261,16 @@ ERROR:  column "a" of relation "itest4" is not an identity column
 ALTER TABLE itest4 ALTER COLUMN a DROP IDENTITY IF EXISTS;  -- noop
 NOTICE:  column "a" of relation "itest4" is not an identity column, skipping
 INSERT INTO itest4 DEFAULT VALUES;  -- fails because NOT NULL is not dropped
-ERROR:  null value in column "a" of relation "itest4" violates not-null constraint
+ERROR:  null value in column "a" of relation "itest4" violates not-null constraint  (seg0 172.17.0.3:7002 pid=545609)
 DETAIL:  Failing row contains (null, ).
 ALTER TABLE itest4 ALTER COLUMN a DROP NOT NULL;
 INSERT INTO itest4 DEFAULT VALUES;
 SELECT * FROM itest4;
  a | b 
 ---+---
- 1 | 
  2 | 
    | 
+ 1 | 
 (3 rows)
 
 -- check that sequence is removed
@@ -234,15 +290,15 @@ INSERT INTO itestv11 DEFAULT VALUES;
 SELECT * FROM itestv10;
  a | b 
 ---+---
- 1 | 
  2 | 
+ 1 | 
 (2 rows)
 
 SELECT * FROM itestv11;
  a | b 
 ---+---
- 1 | 
  2 | 
+ 1 | 
 (2 rows)
 
 INSERT INTO itestv10 VALUES (10, 'xyz');
@@ -251,22 +307,22 @@ SELECT * FROM itestv10;
  a  |  b  
 ----+-----
   1 | 
-  2 | 
  10 | xyz
+  2 | 
   3 | xyz
 (4 rows)
 
 INSERT INTO itestv11 VALUES (10, 'xyz');
-ERROR:  cannot insert into column "a"
+ERROR:  cannot insert a non-DEFAULT value into column "a"
 DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
 HINT:  Use OVERRIDING SYSTEM VALUE to override.
 INSERT INTO itestv11 OVERRIDING SYSTEM VALUE VALUES (11, 'xyz');
 SELECT * FROM itestv11;
  a  |  b  
 ----+-----
-  1 | 
   2 | 
  11 | xyz
+  1 | 
 (3 rows)
 
 DROP VIEW itestv10, itestv11;
@@ -330,12 +386,12 @@ INSERT INTO itest6 DEFAULT VALUES;
 SELECT * FROM itest6;
   a  | b 
 -----+---
-   1 | 
- 100 | 
  102 | 
+ 100 | 
+   1 | 
 (3 rows)
 
-SELECT table_name, column_name, is_identity, identity_generation FROM information_schema.columns WHERE table_name = 'itest6';
+SELECT table_name, column_name, is_identity, identity_generation FROM information_schema.columns WHERE table_name = 'itest6' ORDER BY 1, 2;
  table_name | column_name | is_identity | identity_generation 
 ------------+-------------+-------------+---------------------
  itest6     | a           | YES         | BY DEFAULT
@@ -359,9 +415,11 @@ SELECT * FROM itest7;
 
 -- identity property is not inherited
 CREATE TABLE itest7a (b text) INHERITS (itest7);
+NOTICE:  table has parent, setting distribution columns to match parent table
 -- make column identity in child table
 CREATE TABLE itest7b (a int);
 CREATE TABLE itest7c (a int GENERATED ALWAYS AS IDENTITY) INHERITS (itest7b);
+NOTICE:  table has parent, setting distribution columns to match parent table
 NOTICE:  merging column "a" with inherited definition
 INSERT INTO itest7c DEFAULT VALUES;
 SELECT * FROM itest7c;
@@ -372,6 +430,7 @@ SELECT * FROM itest7c;
 
 CREATE TABLE itest7d (a int not null);
 CREATE TABLE itest7e () INHERITS (itest7d);
+NOTICE:  table has parent, setting distribution columns to match parent table
 ALTER TABLE itest7d ALTER COLUMN a ADD GENERATED ALWAYS AS IDENTITY;
 ALTER TABLE itest7d ADD COLUMN b int GENERATED ALWAYS AS IDENTITY;  -- error
 ERROR:  cannot recursively add identity column to table that has child tables
@@ -393,6 +452,7 @@ ALTER TABLE itest7 ALTER COLUMN a RESTART;
 ALTER TABLE itest7 ALTER COLUMN a DROP IDENTITY;
 -- privileges
 CREATE USER regress_identity_user1;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
 CREATE TABLE itest8 (a int GENERATED ALWAYS AS IDENTITY, b text);
 GRANT SELECT, INSERT ON itest8 TO regress_identity_user1;
 SET ROLE regress_identity_user1;
@@ -433,7 +493,7 @@ INSERT INTO itest8 VALUES(0), (1);
 ALTER TABLE itest8
   ADD COLUMN f22 int NOT NULL,
   ALTER COLUMN f22 ADD GENERATED ALWAYS AS IDENTITY;
-ERROR:  column "f22" of relation "itest8" contains null values
+ERROR:  column "f22" of relation "itest8" contains null values  (seg1 172.17.0.3:7003 pid=545613)
 TABLE itest8;
  f1 | f2 | f3 | f4 | f5 
 ----+----+----+----+----
@@ -442,14 +502,14 @@ TABLE itest8;
 (2 rows)
 
 \d+ itest8
-                                               Table "public.itest8"
- Column |  Type   | Collation | Nullable |             Default              | Storage | Stats target | Description 
---------+---------+-----------+----------+----------------------------------+---------+--------------+-------------
- f1     | integer |           |          |                                  | plain   |              | 
- f2     | integer |           | not null | generated always as identity     | plain   |              | 
- f3     | integer |           | not null | generated by default as identity | plain   |              | 
- f4     | bigint  |           | not null | generated always as identity     | plain   |              | 
- f5     | bigint  |           |          |                                  | plain   |              | 
+                                                      Table "public.itest8"
+ Column |  Type   | Collation | Nullable |             Default              | Storage | Compression | Stats target | Description 
+--------+---------+-----------+----------+----------------------------------+---------+-------------+--------------+-------------
+ f1     | integer |           |          |                                  | plain   |             |              | 
+ f2     | integer |           | not null | generated always as identity     | plain   |             |              | 
+ f3     | integer |           | not null | generated by default as identity | plain   |             |              | 
+ f4     | bigint  |           | not null | generated always as identity     | plain   |             |              | 
+ f5     | bigint  |           |          |                                  | plain   |             |              | 
 
 \d itest8_f2_seq
                    Sequence "public.itest8_f2_seq"
@@ -491,3 +551,75 @@ CREATE TABLE itest14 (id serial);
 ALTER TABLE itest14 ALTER id DROP DEFAULT;
 ALTER TABLE itest14 ALTER id ADD GENERATED BY DEFAULT AS IDENTITY;
 INSERT INTO itest14 (id) VALUES (DEFAULT);
+-- Identity columns must be NOT NULL (cf bug #16913)
+CREATE TABLE itest15 (id integer GENERATED ALWAYS AS IDENTITY NULL); -- fail
+ERROR:  conflicting NULL/NOT NULL declarations for column "id" of table "itest15"
+LINE 1: ...ABLE itest15 (id integer GENERATED ALWAYS AS IDENTITY NULL);
+                                                                 ^
+CREATE TABLE itest15 (id integer NULL GENERATED ALWAYS AS IDENTITY); -- fail
+ERROR:  conflicting NULL/NOT NULL declarations for column "id" of table "itest15"
+LINE 1: CREATE TABLE itest15 (id integer NULL GENERATED ALWAYS AS ID...
+                                              ^
+CREATE TABLE itest15 (id integer GENERATED ALWAYS AS IDENTITY NOT NULL);
+DROP TABLE itest15;
+CREATE TABLE itest15 (id integer NOT NULL GENERATED ALWAYS AS IDENTITY);
+DROP TABLE itest15;
+-- MERGE tests
+CREATE TABLE itest15 (a int GENERATED ALWAYS AS IDENTITY, b text);
+CREATE TABLE itest16 (a int GENERATED BY DEFAULT AS IDENTITY, b text);
+MERGE INTO itest15 t
+USING (SELECT 10 AS s_a, 'inserted by merge' AS s_b) s
+ON t.a = s.s_a
+WHEN NOT MATCHED THEN
+	INSERT (a, b) VALUES (s.s_a, s.s_b);
+ERROR:  cannot insert a non-DEFAULT value into column "a"
+DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
+HINT:  Use OVERRIDING SYSTEM VALUE to override.
+-- Used to fail, but now it works and ignores the user supplied value
+MERGE INTO itest15 t
+USING (SELECT 20 AS s_a, 'inserted by merge' AS s_b) s
+ON t.a = s.s_a
+WHEN NOT MATCHED THEN
+	INSERT (a, b) OVERRIDING USER VALUE VALUES (s.s_a, s.s_b);
+ERROR:  MERGE on a distributed table is not supported when the join requires redistributing the target table
+HINT:  Use a join condition that includes the target table's distribution key column(s), or distribute the source table so that it is co-located with the target.
+MERGE INTO itest15 t
+USING (SELECT 30 AS s_a, 'inserted by merge' AS s_b) s
+ON t.a = s.s_a
+WHEN NOT MATCHED THEN
+	INSERT (a, b) OVERRIDING SYSTEM VALUE VALUES (s.s_a, s.s_b);
+ERROR:  MERGE on a distributed table is not supported when the join requires redistributing the target table
+HINT:  Use a join condition that includes the target table's distribution key column(s), or distribute the source table so that it is co-located with the target.
+MERGE INTO itest16 t
+USING (SELECT 10 AS s_a, 'inserted by merge' AS s_b) s
+ON t.a = s.s_a
+WHEN NOT MATCHED THEN
+	INSERT (a, b) VALUES (s.s_a, s.s_b);
+ERROR:  MERGE on a distributed table is not supported when the join requires redistributing the target table
+HINT:  Use a join condition that includes the target table's distribution key column(s), or distribute the source table so that it is co-located with the target.
+MERGE INTO itest16 t
+USING (SELECT 20 AS s_a, 'inserted by merge' AS s_b) s
+ON t.a = s.s_a
+WHEN NOT MATCHED THEN
+	INSERT (a, b) OVERRIDING USER VALUE VALUES (s.s_a, s.s_b);
+ERROR:  MERGE on a distributed table is not supported when the join requires redistributing the target table
+HINT:  Use a join condition that includes the target table's distribution key column(s), or distribute the source table so that it is co-located with the target.
+MERGE INTO itest16 t
+USING (SELECT 30 AS s_a, 'inserted by merge' AS s_b) s
+ON t.a = s.s_a
+WHEN NOT MATCHED THEN
+	INSERT (a, b) OVERRIDING SYSTEM VALUE VALUES (s.s_a, s.s_b);
+ERROR:  MERGE on a distributed table is not supported when the join requires redistributing the target table
+HINT:  Use a join condition that includes the target table's distribution key column(s), or distribute the source table so that it is co-located with the target.
+SELECT * FROM itest15;
+ a | b 
+---+---
+(0 rows)
+
+SELECT * FROM itest16;
+ a | b 
+---+---
+(0 rows)
+
+DROP TABLE itest15;
+DROP TABLE itest16;

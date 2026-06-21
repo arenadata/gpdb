@@ -380,10 +380,10 @@ void ListFreeDeep(List *list);
 TypeCacheEntry *LookupTypeCache(Oid type_id, int flags);
 
 // create a value node for a string
-Value *MakeStringValue(char *str);
+Node *MakeStringValue(char *str);
 
 // create a value node for an integer
-Value *MakeIntegerValue(long i);
+Node *MakeIntegerValue(long i);
 
 // create a constant of type int4
 Node *MakeIntConst(int32 intValue);
@@ -539,6 +539,8 @@ bool Equals(void *p1, void *p2);
 
 // check whether a type is composite
 bool IsCompositeType(Oid typid);
+
+bool IsMultirangeType(Oid typid);
 
 bool IsTextRelatedType(Oid typid);
 

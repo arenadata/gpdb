@@ -1,5 +1,16 @@
 create or replace language plpython3u;
 
+--
+-- Postgres (PG15) revoked the default CREATE privilege on the public schema
+-- from PUBLIC.  Several isolation2 tests create objects in public as
+-- non-superuser roles and still expect the pre-PG15 read/write default
+-- (mirrors src/test/regress/sql/test_setup.sql).  Without this, e.g.
+-- resource_queue_deadlock's "CREATE TABLE ... " as a non-superuser role
+-- fails with "permission denied for schema public", which cascades into a
+-- gp_wait_until_triggered_fault() hang.
+--
+GRANT ALL ON SCHEMA public TO public;
+
 -- Helper function, to call either __gp_aoseg, or gp_aocsseg, depending
 -- on whether the table is row- or column-oriented. This allows us to
 -- run the same test queries on both.
@@ -360,7 +371,11 @@ create or replace function pg_basebackup(host text, dbid int, port int, create_s
             os.environ.pop('PGAPPNAME')
         results = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True).replace(b'.', b'').decode()
     except subprocess.CalledProcessError as e:
-        results = str(e) + "\ncommand output: " + e.output
+        # e.output is bytes under Python 3; decode it before concatenating
+        # (otherwise this error handler itself raises TypeError and masks the
+        # real pg_basebackup failure).
+        output = e.output.decode() if e.output is not None else ''
+        results = str(e) + "\ncommand output: " + output
 
     return results
 $$ language plpython3u;

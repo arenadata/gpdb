@@ -3,7 +3,7 @@
  *
  *	database server functions
  *
- *	Copyright (c) 2010-2020, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/server.c
  */
 
@@ -12,6 +12,7 @@
 #include "common/connect.h"
 #include "fe_utils/string_utils.h"
 #include "greenplum/pg_upgrade_greenplum.h"
+#include "libpq/pqcomm.h"
 #include "pg_upgrade.h"
 
 static PGconn *get_db_conn(ClusterInfo *cluster, const char *db_name);
@@ -31,8 +32,7 @@ connectToServer(ClusterInfo *cluster, const char *db_name)
 
 	if (conn == NULL || PQstatus(conn) != CONNECTION_OK)
 	{
-		pg_log(PG_REPORT, "connection to database failed: %s",
-			   PQerrorMessage(conn));
+		pg_log(PG_REPORT, "%s", PQerrorMessage(conn));
 
 		if (conn)
 			PQfinish(conn);
@@ -51,6 +51,8 @@ connectToServer(ClusterInfo *cluster, const char *db_name)
  * get_db_conn()
  *
  * get database connection, using named database + standard params for cluster
+ *
+ * Caller must check for connection failure!
  */
 static PGconn *
 get_db_conn(ClusterInfo *cluster, const char *db_name)
@@ -228,20 +230,13 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 		snprintf(socket_string + strlen(socket_string),
 				 sizeof(socket_string) - strlen(socket_string),
 				 " -c %s='%s'",
-				 (GET_MAJOR_VERSION(cluster->major_version) < 903) ?
+				 (GET_MAJOR_VERSION(cluster->major_version) <= 902) ?
 				 "unix_socket_directory" : "unix_socket_directories",
 				 cluster->sockdir);
 #endif
 
 	/*
-	 * Since PG 9.1, we have used -b to disable autovacuum.  For earlier
-	 * releases, setting autovacuum=off disables cleanup vacuum and analyze,
-	 * but freeze vacuums can still happen, so we set
-	 * autovacuum_freeze_max_age to its maximum.
-	 * (autovacuum_multixact_freeze_max_age was introduced after 9.1, so there
-	 * is no need to set that.)  We assume all datfrozenxid and relfrozenxid
-	 * values are less than a gap of 2000000000 from the current xid counter,
-	 * so autovacuum will not touch them.
+	 * Use -b to disable autovacuum.
 	 *
 	 * Turn off durability requirements to improve object creation speed, and
 	 * we only modify the new cluster, so only use it there.  If there is a
@@ -265,8 +260,8 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	}
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d -c %s %s%s %s%s %s\" start",
-			 cluster->bindir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
+			 "\"%s/pg_ctl\" -w -l \"%s/%s\" -D \"%s\" -o \"-p %d -c %s %s%s %s%s %s\" start",
+			 cluster->bindir, log_opts.logdir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
 			 (GET_MAJOR_VERSION(cluster->major_version) < 1200) ?
 			 "gp_session_role=utility" :
 			 "gp_role=utility",
@@ -318,8 +313,7 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	if ((conn = get_db_conn(cluster, "template1")) == NULL ||
 		PQstatus(conn) != CONNECTION_OK)
 	{
-		pg_log(PG_REPORT, "\nconnection to database failed: %s",
-			   PQerrorMessage(conn));
+		pg_log(PG_REPORT, "\n%s", PQerrorMessage(conn));
 		if (conn)
 			PQfinish(conn);
 		if (cluster == &old_cluster)
@@ -400,7 +394,7 @@ check_pghost_envvar(void)
 			if (value && strlen(value) > 0 &&
 			/* check for 'local' host values */
 				(strcmp(value, "localhost") != 0 && strcmp(value, "127.0.0.1") != 0 &&
-				 strcmp(value, "::1") != 0 && value[0] != '/'))
+				 strcmp(value, "::1") != 0 && !is_unixsock_path(value)))
 				pg_fatal("libpq environment variable %s has a non-local server value: %s\n",
 						 option->envvar, value);
 		}
