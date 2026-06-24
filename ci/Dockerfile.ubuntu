@@ -6,24 +6,12 @@ WORKDIR /home/gpadmin
 
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-ARG UBUNTU_MAIN_MIRROR=http://archive.ubuntu.com/ubuntu
-ARG UBUNTU_UPDATES_MIRROR=http://archive.ubuntu.com/ubuntu
-ARG UBUNTU_BACKPORTS_MIRROR=http://archive.ubuntu.com/ubuntu
-ARG UBUNTU_SECURITY_MIRROR=http://security.ubuntu.com/ubuntu
-ARG OS_CODENAME=jammy
-
 ARG adb_python3=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/adb6-python_3.9.18-3304_all.deb
 ARG adb_python3_bin=/opt/adb6-python3.9/bin/python3
 
 COPY README.ubuntu.bash ./
 COPY gpMgmt/bin/gpload_test/pytest_requirement.txt ./
 RUN set -eux; \
-    sed -i \
-      -e "s|http://archive.ubuntu.com/ubuntu/ ${OS_CODENAME} |${UBUNTU_MAIN_MIRROR}/ ${OS_CODENAME} |g" \
-      -e "s|http://archive.ubuntu.com/ubuntu/ ${OS_CODENAME}-updates |${UBUNTU_UPDATES_MIRROR}/ ${OS_CODENAME}-updates |g" \
-      -e "s|http://archive.ubuntu.com/ubuntu/ ${OS_CODENAME}-backports |${UBUNTU_BACKPORTS_MIRROR}/ ${OS_CODENAME}-backports |g" \
-      -e "s|http://security.ubuntu.com/ubuntu/ ${OS_CODENAME}-security |${UBUNTU_SECURITY_MIRROR}/ ${OS_CODENAME}-security |g" \
-      /etc/apt/sources.list; \
     ./README.ubuntu.bash; \
     rm README.ubuntu.bash; \
     if [ "$(lsb_release -sr)" = "22.04" ]; then \
