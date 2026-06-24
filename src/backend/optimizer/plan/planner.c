@@ -5245,20 +5245,18 @@ create_one_window_path(PlannerInfo *root,
 	{
 		WindowClause *wc = lfirst_node(WindowClause, l);
 		List	   *window_pathkeys;
-#if 0 /* PostgreSQL */
 		int			presorted_keys;
 		bool		is_sorted;
-#endif
 
 		window_pathkeys = make_pathkeys_for_window(root,
 												   wc,
 												   root->processed_tlist);
-#if 0 /* PostgreSQL */
 
 		is_sorted = pathkeys_count_contained_in(window_pathkeys,
 												path->pathkeys,
 												&presorted_keys);
 
+#if 0 /* PostgreSQL */
 		/* Sort if necessary */
 		if (!is_sorted)
 		{
@@ -5299,12 +5297,12 @@ create_one_window_path(PlannerInfo *root,
 		 * This is the same logic that is used for sorted Aggregates.
 		 */
 		path = cdb_prepare_path_for_sorted_agg(root,
-											   pathkeys_contained_in(window_pathkeys, path->pathkeys),
+											   is_sorted,
 											   window_rel,
 											   path,
 											   path->pathtarget,
 											   window_pathkeys,
-											   NO_INCREMENTAL_SORT,
+											   enable_incremental_sort ? presorted_keys : NO_INCREMENTAL_SORT,
 											   -1.0,
 											   wc->partitionClause,
 											   NIL);
