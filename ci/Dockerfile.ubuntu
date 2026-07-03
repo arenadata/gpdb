@@ -14,13 +14,14 @@ COPY gpMgmt/bin/gpload_test/pytest_requirement.txt ./
 RUN set -eux; \
     ./README.ubuntu.bash; \
     rm README.ubuntu.bash; \
-    if [ "$(lsb_release -sr)" = "22.04" ]; then \
+    UBUNTU_VERSION="$(lsb_release -sr)"; \
+    if [ "$UBUNTU_VERSION" = "22.04" ]; then \
       wget $adb_python3; \
       apt-get install -y ./*.deb; \
       rm ./*.deb; \
-    fi; \
 # Set Python 2 as default when needed
-    test "$(lsb_release -sr)" == "22.04" && ln -s python2 /usr/bin/python; \
+    ln -s python2 /usr/bin/python; \
+    fi; \
 # Install pg_bsd_indent used by pgindent utility
     wget --progress=dot:giga --no-hsts https://ftp.postgresql.org/pub/dev/pg_bsd_indent-1.3.tar.gz -O - | tar -xzf -; \
     make install -C pg_bsd_indent; \
@@ -39,9 +40,9 @@ RUN set -eux; \
 # ADCC extension dependencies
     $adb_python3_bin -m pip install --no-cache-dir protobuf==3.20.0 && \
 # Install isolation2 tests dependencies (psutil/wheel/installer provided by apt on 24.04+)
-    if [ "$(lsb_release -sr)" = "22.04" ]; then \
+    if [ "$UBUNTU_VERSION" = "22.04" ]; then \
       $adb_python3_bin -m pip install --no-cache-dir psutil==5.7.0 wheel installer; \
-    fi && \
+    fi ; \
 # Cleanup to reduce image size
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/man/
