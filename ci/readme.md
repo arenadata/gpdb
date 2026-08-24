@@ -26,6 +26,13 @@ To build a Rocky Linux 9 image:
 docker build -t gpdb6_rockylinux9:latest --build-arg OS_VERSION=9 -f ci/Dockerfile.rockylinux .
 ```
 
+CI pushes docker images to the internal registry for each branch. We can pull it with usage of:
+
+* branch name as tag (latest for `adb-6.x` branch)
+* commit hash:
+  ```bash
+  docker pull hub.adsw.io/library/gpdb6_regress:1353d81 
+  ```
 
 ## Full regression tests suite run
 
