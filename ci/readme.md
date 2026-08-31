@@ -14,12 +14,17 @@ To build an image based on Ubuntu 24.04, specify the version in build args:
 docker build -t gpdb6_regress:latest --build-arg OS_VERSION=24.04 -f ci/Dockerfile.ubuntu .
 ```
 
-There are two additional options in [Dockerfile](./Dockerfile) to passthrough urls for [sigar](https://github.com/hyperic/sigar) packages:
+To build a Rocky Linux 8 image:
 
-* `--build-arg sigar=https://path_to_sigar.rpm` for package with sigar library
-* `--build-arg sigar_headers=https://path_to_sigar_headers.rpm` for package with sigar headers files
+```bash
+docker build -t gpdb6_rockylinux8:latest -f ci/Dockerfile.rockylinux .
+```
 
-These options may be useful to build image on different platforms.
+To build a Rocky Linux 9 image:
+
+```bash
+docker build -t gpdb6_rockylinux9:latest --build-arg OS_VERSION=9 -f ci/Dockerfile.rockylinux .
+```
 
 CI pushes docker images to the internal registry for each branch. We can pull it with usage of:
 

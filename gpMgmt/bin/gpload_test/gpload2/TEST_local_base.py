@@ -62,17 +62,16 @@ def get_port():
 def get_ip(hostname=None):
     if hostname is None:
         hostname = socket.gethostname()
-    else:
-        hostname = hostname
-    hostinfo = socket.getaddrinfo(hostname, None)
-    ipaddrlist = list(set([(ai[4][0]) for ai in hostinfo]))
-    for myip in ipaddrlist:
-        if myip.find(":") > 0:
-            ipv6 = myip
-            return ipv6
-        elif myip.find(".") > 0:
-            ipv4 = myip
-            return ipv4
+    hostinfo = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    ipv4 = None
+    ipv6 = None
+    for family, _, _, _, sockaddr in hostinfo:
+        if family == socket.AF_INET and ipv4 is None:
+            ipv4 = sockaddr[0]
+            break
+        elif family == socket.AF_INET6 and ipv6 is None:
+            ipv6 = sockaddr[0]
+    return ipv4 or ipv6
 
 
 def run(cmd):
@@ -201,7 +200,7 @@ masterPort = getPortMasterOnly()
 
 
 def write_config_file(version='1.0.0.1', database='reuse_gptest', user=os.environ.get('USER'), host=hostNameAddrs, port=masterPort, config='config/config_file', local_host=[hostNameAddrs], file='data/external_file_01.txt', input_port='8081', port_range=None,
-    ssl=None,columns=None, format='text', force_not_null=[], log_errors=None, error_limit=None, delimiter="'|'", encoding=None, escape=None, null_as=None, fill_missing_fields=None, quote=None, header=None, transform=None, transform_config=None, max_line_length=None, 
+    ssl=None,columns=None, format='text', force_not_null=[], log_errors=None, error_limit=None, delimiter="'|'", encoding=None, escape=None, null_as=None, fill_missing_fields=None, quote=None, header=None, transform=None, transform_config=None, max_line_length=None,
     table='texttable', mode='insert', update_columns=['n2'], update_condition=None, match_columns=['n1','s1','s2'], staging_table=None, mapping=None, externalSchema=None, preload=True, truncate=False, reuse_tables=True, fast_match=None,
     sql=False, before=None, after=None, error_table=None, newline=None):
 
@@ -271,7 +270,7 @@ def write_config_file(version='1.0.0.1', database='reuse_gptest', user=os.enviro
         f.write("\n    - TRANSFORM_CONFIG: "+transform_config)
     if max_line_length:
         f.write("\n    - MAX_LINE_LENGTH: "+max_line_length)
-    
+
     if externalSchema:
         f.write("\n   EXTERNAL:")
         f.write("\n    - SCHEMA: "+externalSchema)
@@ -471,7 +470,7 @@ def get_table_name():
                      OR
                      relname LIKE 'staging_gpload_reusable%')
                      AND cls.relname=sch.table_name;"""
-                
+
     resultList = db.query(queryString.encode('utf-8')).getresult()
     return resultList
 
@@ -569,7 +568,7 @@ def doTest(num):
     runfile(file)
 
     if num in Modify_Output_Case:  # some cases need to modify output file to avoid compareing fail with ans file
-        pat1 = r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}"  # host ip 
+        pat1 = r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}"  # host ip
         #newpat1 = lambda x : x[0][0]+'*'
         newpat1 = "*"
         pat2 = r'[a-zA-Z0-9/\_-]*/data_file'  # file location

@@ -2,6 +2,7 @@
 
 Greengage was launched and is maintained by a team of independent contributors to Greenplum. Currently, we own the [Greengage DB repository on GitHub](https://github.com/GreengageDB/greengage), appoint the members of the architectural committee and perform other work related to the organizational process in addition to software development. However, great open source projects cannot exist and last long without a strong community, **so community contributions to Greengage DB are very welcome**. In this section, you’ll find initial guidance on how to contribute to Greengage and links to additional resources that will help you get your code released as part of Greengage.
 
+
 ## Getting started
 
 To contribute to Greengage, you will need a [GitHub account](https://github.com/signup). If you haven’t used Git before, find a time to familiarize yourself with [Git tooling and workflow](https://wiki.postgresql.org/wiki/Working_with_Git) before you start.
